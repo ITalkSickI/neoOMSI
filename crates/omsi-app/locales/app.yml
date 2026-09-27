@@ -1,0 +1,1708 @@
+# Interface texts: the English text is the key (see omsi_ui::tr). _version 2: every
+# language of a text under it.
+_version: 2
+
+"Mo":
+  ru: "Пн"
+  de: "Mo"
+  fr: "Lu"
+"Tu":
+  ru: "Вт"
+  de: "Di"
+  fr: "Ma"
+"We":
+  ru: "Ср"
+  de: "Mi"
+  fr: "Me"
+"Th":
+  ru: "Чт"
+  de: "Do"
+  fr: "Je"
+"Fr":
+  ru: "Пт"
+  de: "Fr"
+  fr: "Ve"
+"Sa":
+  ru: "Сб"
+  de: "Sa"
+  fr: "Sa"
+"Su":
+  ru: "Вс"
+  de: "So"
+  fr: "Di"
+"Jan":
+  ru: "янв"
+  de: "Jan"
+  fr: "janv"
+"Feb":
+  ru: "фев"
+  de: "Feb"
+  fr: "févr"
+"Mar":
+  ru: "мар"
+  de: "Mär"
+  fr: "mars"
+"Apr":
+  ru: "апр"
+  de: "Apr"
+  fr: "avr"
+"May":
+  ru: "мая"
+  de: "Mai"
+  fr: "mai"
+"Jun":
+  ru: "июн"
+  de: "Jun"
+  fr: "juin"
+"Jul":
+  ru: "июл"
+  de: "Jul"
+  fr: "juil"
+"Aug":
+  ru: "авг"
+  de: "Aug"
+  fr: "août"
+"Sep":
+  ru: "сен"
+  de: "Sep"
+  fr: "sept"
+"Oct":
+  ru: "окт"
+  de: "Okt"
+  fr: "oct"
+"Nov":
+  ru: "ноя"
+  de: "Nov"
+  fr: "nov"
+"Dec":
+  ru: "дек"
+  de: "Dez"
+  fr: "déc"
+"January":
+  ru: "Январь"
+  de: "Januar"
+  fr: "Janvier"
+"February":
+  ru: "Февраль"
+  de: "Februar"
+  fr: "Février"
+"March":
+  ru: "Март"
+  de: "März"
+  fr: "Mars"
+"April":
+  ru: "Апрель"
+  de: "April"
+  fr: "Avril"
+"June":
+  ru: "Июнь"
+  de: "Juni"
+  fr: "Juin"
+"July":
+  ru: "Июль"
+  de: "Juli"
+  fr: "Juillet"
+"August":
+  ru: "Август"
+  de: "August"
+  fr: "Août"
+"September":
+  ru: "Сентябрь"
+  de: "September"
+  fr: "Septembre"
+"October":
+  ru: "Октябрь"
+  de: "Oktober"
+  fr: "Octobre"
+"November":
+  ru: "Ноябрь"
+  de: "November"
+  fr: "Novembre"
+"December":
+  ru: "Декабрь"
+  de: "Dezember"
+  fr: "Décembre"
+"Bus":
+  ru: "Автобус"
+  de: "Bus"
+  fr: "Bus"
+"Route":
+  ru: "Маршрут"
+  de: "Route"
+  fr: "Itinéraire"
+"Time & weather":
+  ru: "Время и погода"
+  de: "Zeit & Wetter"
+  fr: "Heure et météo"
+"Roadbook":
+  ru: "Путевой лист"
+  de: "Fahrplan"
+  fr: "Feuille de route"
+"Search buses…":
+  ru: "Поиск автобусов…"
+  de: "Busse suchen…"
+  fr: "Rechercher des bus…"
+"Reading the buses…":
+  ru: "Чтение автобусов…"
+  de: "Busse werden gelesen…"
+  fr: "Lecture des bus…"
+"No bus matches.":
+  ru: "Нет подходящих автобусов."
+  de: "Kein passender Bus."
+  fr: "Aucun bus ne correspond."
+"NEW":
+  ru: "НОВЫЙ"
+  de: "NEU"
+  fr: "NOUVEAU"
+"PARTS MISSING":
+  ru: "НЕТ ДЕТАЛЕЙ"
+  de: "TEILE FEHLEN"
+  fr: "PIÈCES MANQUANTES"
+"Livery":
+  ru: "Окраска"
+  de: "Lackierung"
+  fr: "Livrée"
+"Default paint":
+  ru: "Окраска по умолчанию"
+  de: "Standardlackierung"
+  fr: "Peinture d'origine"
+"Map":
+  ru: "Карта"
+  de: "Karte"
+  fr: "Carte"
+"Free drive (no timetable duty)":
+  ru: "Свободная езда (без рейса)"
+  de: "Freie Fahrt (ohne Dienst)"
+  fr: "Conduite libre (sans service)"
+"Automatic (the map's first)":
+  ru: "Автоматически (первая на карте)"
+  de: "Automatisch (erster der Karte)"
+  fr: "Automatique (premier de la carte)"
+"Automatic (nearest to the first stop)":
+  ru: "Автоматически (ближайшая к первой остановке)"
+  de: "Automatisch (nächster zur ersten Haltestelle)"
+  fr: "Automatique (le plus proche du premier arrêt)"
+"Start at":
+  ru: "Старт"
+  de: "Start bei"
+  fr: "Départ à"
+"Free driving: the bus starts where you chose, with the traffic and the timetable's buses around it, but no line of your own.":
+  ru: "Свободная езда: автобус начинает там, где вы выбрали, вокруг движение и автобусы по расписанию, но без своего маршрута."
+  de: "Freie Fahrt: der Bus startet am gewählten Ort, mit Verkehr und Fahrplanbussen, aber ohne eigene Linie."
+  fr: "Conduite libre : le bus part où vous l'avez choisi, avec la circulation et les bus du réseau, mais sans ligne à vous."
+"Line":
+  ru: "Линия"
+  de: "Linie"
+  fr: "Ligne"
+"Filter…":
+  ru: "Фильтр…"
+  de: "Filter…"
+  fr: "Filtrer…"
+"Reading the timetable…":
+  ru: "Чтение расписания…"
+  de: "Fahrplan wird gelesen…"
+  fr: "Lecture des horaires…"
+"No lines on this date.":
+  ru: "В эту дату линий нет."
+  de: "An diesem Datum keine Linien."
+  fr: "Aucune ligne à cette date."
+"Tour":
+  ru: "Выход"
+  de: "Umlauf"
+  fr: "Service"
+"Pick a line first. As in OMSI, the start time and date then say where in the tour the bus is: the trip under way, or the next to leave.":
+  ru: "Сначала выберите линию. Как в OMSI, время и дата старта определяют, где в выходе находится автобус: текущий рейс или следующий."
+  de: "Wähle zuerst eine Linie. Wie in OMSI bestimmen Startzeit und Datum, wo im Umlauf der Bus ist: die laufende Fahrt oder die nächste."
+  fr: "Choisissez d'abord une ligne. Comme dans OMSI, l'heure et la date de départ indiquent où en est le bus dans son service : le trajet en cours ou le suivant."
+"Time":
+  ru: "Время"
+  de: "Zeit"
+  fr: "Heure"
+"Date":
+  ru: "Дата"
+  de: "Datum"
+  fr: "Date"
+"By date":
+  ru: "По дате"
+  de: "Nach Datum"
+  fr: "Selon la date"
+"Spring":
+  ru: "Весна"
+  de: "Frühling"
+  fr: "Printemps"
+"Summer":
+  ru: "Лето"
+  de: "Sommer"
+  fr: "Été"
+"Autumn":
+  ru: "Осень"
+  de: "Herbst"
+  fr: "Automne"
+"Winter":
+  ru: "Зима"
+  de: "Winter"
+  fr: "Hiver"
+"Cars around":
+  ru: "Машины вокруг"
+  de: "Autos ringsum"
+  fr: "Voitures autour"
+"Passengers":
+  ru: "Пассажиры"
+  de: "Fahrgäste"
+  fr: "Passagers"
+"Timetable buses":
+  ru: "Автобусы по расписанию"
+  de: "Fahrplanbusse"
+  fr: "Bus du réseau"
+"Put the bus into service on start (Shift+U)":
+  ru: "Подготовить автобус к работе при старте (Shift+U)"
+  de: "Bus beim Start in Betrieb nehmen (Shift+U)"
+  fr: "Mettre le bus en service au départ (Shift+U)"
+"LAN play":
+  ru: "Игра по сети"
+  de: "Netzwerkspiel"
+  fr: "Jeu en réseau"
+"Alone":
+  ru: "Один"
+  de: "Allein"
+  fr: "Seul"
+"Host":
+  ru: "Создать"
+  de: "Hosten"
+  fr: "Héberger"
+"Join":
+  ru: "Присоединиться"
+  de: "Beitreten"
+  fr: "Rejoindre"
+"Session code OMSI-XXXX-…, or an address; empty = search the LAN":
+  ru: "Код сессии OMSI-XXXX-… или адрес; пусто = поиск в локальной сети"
+  de: "Sitzungscode OMSI-XXXX-… oder Adresse; leer = LAN durchsuchen"
+  fr: "Code de session OMSI-XXXX-… ou adresse ; vide = chercher sur le réseau local"
+"Once the game runs, the Sessions page shows the session code with a copy button; your friend pastes it into Join. It works at home and over the internet — no VPN needed.":
+  ru: "Когда игра запущена, на странице «Сессии» виден код сессии с кнопкой копирования; друг вставляет его в «Присоединиться». Работает дома и через интернет — VPN не нужен."
+  de: "Sobald das Spiel läuft, zeigt die Seite Sitzungen den Code mit Kopier-Knopf; dein Freund fügt ihn bei Beitreten ein. Funktioniert zu Hause und über das Internet — ohne VPN."
+  fr: "Une fois le jeu lancé, la page Sessions affiche le code avec un bouton copier ; votre ami le colle dans Rejoindre. Fonctionne à la maison et sur Internet — sans VPN."
+"Weather":
+  ru: "Погода"
+  de: "Wetter"
+  fr: "Météo"
+"Map default":
+  ru: "По умолчанию карты"
+  de: "Karten-Standard"
+  fr: "Par défaut de la carte"
+"Whatever the map starts with":
+  ru: "То, с чем начинается карта"
+  de: "Was die Karte vorgibt"
+  fr: "Ce que la carte propose"
+"Current weather":
+  ru: "Текущая погода"
+  de: "Aktuelles Wetter"
+  fr: "Météo actuelle"
+"clear air":
+  ru: "ясно"
+  de: "klare Luft"
+  fr: "ciel dégagé"
+"Airport":
+  ru: "Аэропорт"
+  de: "Flughafen"
+  fr: "Aéroport"
+"Your first trip":
+  ru: "Ваш первый рейс"
+  de: "Deine erste Fahrt"
+  fr: "Votre premier trajet"
+"Then":
+  ru: "Затем"
+  de: "Danach"
+  fr: "Ensuite"
+"depot run":
+  ru: "перегон из депо"
+  de: "Betriebsfahrt"
+  fr: "haut-le-pied"
+"Pick a line to see what to type into the IBIS. Shift+U in the game types it for you and puts the bus into service.":
+  ru: "Выберите линию, чтобы увидеть, что ввести в IBIS. Shift+U в игре введёт это за вас и подготовит автобус."
+  de: "Wähle eine Linie, um zu sehen, was ins IBIS einzugeben ist. Shift+U im Spiel tippt es ein und nimmt den Bus in Betrieb."
+  fr: "Choisissez une ligne pour voir quoi saisir dans l'IBIS. Shift+U dans le jeu le saisit pour vous et met le bus en service."
+"No bus chosen":
+  ru: "Автобус не выбран"
+  de: "Kein Bus gewählt"
+  fr: "Aucun bus choisi"
+"Free drive":
+  ru: "Свободная езда"
+  de: "Freie Fahrt"
+  fr: "Conduite libre"
+"Duty":
+  ru: "Смена"
+  de: "Dienst"
+  fr: "Service"
+"Start":
+  ru: "Старт"
+  de: "Start"
+  fr: "Démarrer"
+"Start another game":
+  ru: "Запустить ещё одну игру"
+  de: "Weiteres Spiel starten"
+  fr: "Lancer une autre partie"
+"Drive":
+  ru: "Поездка"
+  de: "Fahren"
+  fr: "Conduire"
+"Start the duty":
+  ru: "Начать смену"
+  de: "Dienst beginnen"
+  fr: "Commencer le service"
+"Choose a bus and a map first.":
+  ru: "Сначала выберите автобус и карту."
+  de: "Wähle zuerst einen Bus und eine Karte."
+  fr: "Choisissez d'abord un bus et une carte."
+"A game is running already (its window may be behind this one — see Sessions). Click again to start another one anyway.":
+  ru: "Игра уже запущена (её окно может быть позади — см. «Сессии»). Нажмите ещё раз, чтобы запустить ещё одну."
+  de: "Ein Spiel läuft bereits (sein Fenster liegt vielleicht dahinter — siehe Sitzungen). Nochmals klicken, um trotzdem ein weiteres zu starten."
+  fr: "Une partie est déjà lancée (sa fenêtre est peut-être derrière — voir Sessions). Cliquez encore pour en lancer une autre."
+"Profile":
+  ru: "Профиль"
+  de: "Profil"
+  fr: "Profil"
+"Settings":
+  ru: "Настройки"
+  de: "Einstellungen"
+  fr: "Paramètres"
+"Controls":
+  ru: "Управление"
+  de: "Steuerung"
+  fr: "Commandes"
+"Sessions":
+  ru: "Сессии"
+  de: "Sitzungen"
+  fr: "Sessions"
+"Mods":
+  ru: "Моды"
+  de: "Mods"
+  fr: "Mods"
+"Tutorials":
+  ru: "Обучение"
+  de: "Tutorials"
+  fr: "Tutoriels"
+"Setup":
+  ru: "Установка"
+  de: "Einrichtung"
+  fr: "Installation"
+"The original OMSI 2 was not found automatically. Choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.":
+  ru: "Оригинальная OMSI 2 не найдена автоматически. Выберите её папку (где Omsi.exe, maps и Vehicles) и нажмите «Сохранить»."
+  de: "Das originale OMSI 2 wurde nicht automatisch gefunden. Wähle seinen Ordner (mit Omsi.exe, maps und Vehicles) und drücke Speichern."
+  fr: "L'OMSI 2 original n'a pas été trouvé automatiquement. Choisissez son dossier (celui avec Omsi.exe, maps et Vehicles) et appuyez sur Enregistrer."
+"No preview":
+  ru: "Нет превью"
+  de: "Keine Vorschau"
+  fr: "Pas d'aperçu"
+"Loading…":
+  ru: "Загрузка…"
+  de: "Lädt…"
+  fr: "Chargement…"
+"No driver":
+  ru: "Нет водителя"
+  de: "Kein Fahrer"
+  fr: "Aucun conducteur"
+"Reading the OMSI folder…":
+  ru: "Чтение папки OMSI…"
+  de: "OMSI-Ordner wird gelesen…"
+  fr: "Lecture du dossier OMSI…"
+"A session needs the original OMSI 2: choose its folder under Setup first.":
+  ru: "Для игры нужна оригинальная OMSI 2: сначала выберите её папку в «Установке»."
+  de: "Eine Sitzung braucht das originale OMSI 2: wähle zuerst seinen Ordner unter Einrichtung."
+  fr: "Une session a besoin de l'OMSI 2 original : choisissez d'abord son dossier dans Installation."
+"Starting the game…":
+  ru: "Запуск игры…"
+  de: "Spiel wird gestartet…"
+  fr: "Lancement du jeu…"
+"Starting the tutorial…":
+  ru: "Запуск обучения…"
+  de: "Tutorial wird gestartet…"
+  fr: "Lancement du tutoriel…"
+"Settings saved.":
+  ru: "Настройки сохранены."
+  de: "Einstellungen gespeichert."
+  fr: "Paramètres enregistrés."
+"The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.":
+  ru: "Оригинальная OMSI 2 не найдена автоматически: выберите её папку (где Omsi.exe, maps и Vehicles) и нажмите «Сохранить»."
+  de: "Das originale OMSI 2 wurde nicht automatisch gefunden: wähle seinen Ordner (mit Omsi.exe, maps und Vehicles) und drücke Speichern."
+  fr: "L'OMSI 2 original n'a pas été trouvé automatiquement : choisissez son dossier (celui avec Omsi.exe, maps et Vehicles) et appuyez sur Enregistrer."
+"The driver whose personnel file the game writes: hours, kilometres, punctuality, tickets.":
+  ru: "Водитель, в личное дело которого игра пишет: часы, километры, пунктуальность, билеты."
+  de: "Der Fahrer, dessen Personalakte das Spiel führt: Stunden, Kilometer, Pünktlichkeit, Fahrscheine."
+  fr: "Le conducteur dont le jeu tient le dossier : heures, kilomètres, ponctualité, billets."
+"Driver":
+  ru: "Водитель"
+  de: "Fahrer"
+  fr: "Conducteur"
+"Click again to delete":
+  ru: "Нажмите ещё раз для удаления"
+  de: "Zum Löschen nochmals klicken"
+  fr: "Cliquez encore pour supprimer"
+"Delete this driver":
+  ru: "Удалить этого водителя"
+  de: "Diesen Fahrer löschen"
+  fr: "Supprimer ce conducteur"
+"New driver's name":
+  ru: "Имя нового водителя"
+  de: "Name des neuen Fahrers"
+  fr: "Nom du nouveau conducteur"
+"Create":
+  ru: "Создать"
+  de: "Anlegen"
+  fr: "Créer"
+"Create a driver to start a personnel file.":
+  ru: "Создайте водителя, чтобы завести личное дело."
+  de: "Lege einen Fahrer an, um eine Personalakte zu beginnen."
+  fr: "Créez un conducteur pour ouvrir un dossier."
+"LEVEL":
+  ru: "УРОВЕНЬ"
+  de: "STUFE"
+  fr: "NIVEAU"
+" (no personnel file yet)":
+  ru: " (личного дела пока нет)"
+  de: " (noch keine Personalakte)"
+  fr: " (pas encore de dossier)"
+"hours driven":
+  ru: "часов за рулём"
+  de: "Stunden gefahren"
+  fr: "heures de conduite"
+"stops served":
+  ru: "остановок обслужено"
+  de: "Haltestellen bedient"
+  fr: "arrêts desservis"
+"early / late":
+  ru: "раньше / позже"
+  de: "zu früh / zu spät"
+  fr: "en avance / en retard"
+"tickets sold":
+  ru: "билетов продано"
+  de: "Fahrscheine verkauft"
+  fr: "billets vendus"
+"pedestrians hurt":
+  ru: "пешеходов пострадало"
+  de: "Fußgänger verletzt"
+  fr: "piétons blessés"
+"driving (0 = best)":
+  ru: "вождение (0 = лучше всего)"
+  de: "Fahrweise (0 = beste)"
+  fr: "conduite (0 = meilleure)"
+"ticket selling":
+  ru: "продажа билетов"
+  de: "Fahrscheinverkauf"
+  fr: "vente de billets"
+"Recent runs":
+  ru: "Последние поездки"
+  de: "Letzte Fahrten"
+  fr: "Trajets récents"
+"No runs yet. Drive a duty and it shows up here.":
+  ru: "Поездок пока нет. Отработайте смену — она появится здесь."
+  de: "Noch keine Fahrten. Fahre einen Dienst, dann erscheint er hier."
+  fr: "Aucun trajet pour l'instant. Faites un service et il apparaîtra ici."
+"Every change is saved at once; the game reads them when it starts.":
+  ru: "Каждое изменение сохраняется сразу; игра читает их при запуске."
+  de: "Jede Änderung wird sofort gespeichert; das Spiel liest sie beim Start."
+  fr: "Chaque modification est enregistrée aussitôt ; le jeu les lit au démarrage."
+"Graphics":
+  ru: "Графика"
+  de: "Grafik"
+  fr: "Graphismes"
+"Vanilla (as OMSI 2)":
+  ru: "Ванильная (как в OMSI 2)"
+  de: "Vanilla (wie OMSI 2)"
+  fr: "Vanilla (comme OMSI 2)"
+"Vanilla+":
+  ru: "Ванильная+"
+  de: "Vanilla+"
+  fr: "Vanilla+"
+"Enhanced":
+  ru: "Улучшенная"
+  de: "Erweitert"
+  fr: "Améliorée"
+"Anti-aliasing":
+  ru: "Сглаживание"
+  de: "Kantenglättung"
+  fr: "Anticrénelage"
+"Off":
+  ru: "Выкл."
+  de: "Aus"
+  fr: "Désactivé"
+"Render scale":
+  ru: "Масштаб рендера"
+  de: "Renderskalierung"
+  fr: "Échelle de rendu"
+"Auto":
+  ru: "Авто"
+  de: "Auto"
+  fr: "Auto"
+"Anisotropic":
+  ru: "Анизотропная"
+  de: "Anisotrop"
+  fr: "Anisotrope"
+"Shadow map":
+  ru: "Карта теней"
+  de: "Schattenkarte"
+  fr: "Carte d'ombres"
+"Ambient occlusion":
+  ru: "Фоновое затенение"
+  de: "Umgebungsverdeckung"
+  fr: "Occlusion ambiante"
+"Sun shadows":
+  ru: "Тени от солнца"
+  de: "Sonnenschatten"
+  fr: "Ombres du soleil"
+"Detail texturing up close":
+  ru: "Детальные текстуры вблизи"
+  de: "Detailtexturen aus der Nähe"
+  fr: "Textures de détail de près"
+"Clouds":
+  ru: "Облака"
+  de: "Wolken"
+  fr: "Nuages"
+"Fullscreen":
+  ru: "Полный экран"
+  de: "Vollbild"
+  fr: "Plein écran"
+"V-sync":
+  ru: "Верт. синхронизация"
+  de: "V-Sync"
+  fr: "Synchro verticale"
+"World & memory":
+  ru: "Мир и память"
+  de: "Welt & Speicher"
+  fr: "Monde et mémoire"
+"View distance":
+  ru: "Дальность видимости"
+  de: "Sichtweite"
+  fr: "Distance de vue"
+"Default (1200 m)":
+  ru: "По умолчанию (1200 м)"
+  de: "Standard (1200 m)"
+  fr: "Par défaut (1200 m)"
+"600 m — fastest":
+  ru: "600 м — быстрее всего"
+  de: "600 m — am schnellsten"
+  fr: "600 m — le plus rapide"
+"Automatic":
+  ru: "Автоматически"
+  de: "Automatisch"
+  fr: "Automatique"
+"Texture memory":
+  ru: "Память текстур"
+  de: "Texturspeicher"
+  fr: "Mémoire des textures"
+"Compress textures on loading":
+  ru: "Сжимать текстуры при загрузке"
+  de: "Texturen beim Laden komprimieren"
+  fr: "Compresser les textures au chargement"
+"Simulation":
+  ru: "Симуляция"
+  de: "Simulation"
+  fr: "Simulation"
+"Maintenance":
+  ru: "Техническое состояние"
+  de: "Wartung"
+  fr: "Entretien"
+"Infinite (no wear)":
+  ru: "Бесконечное (без износа)"
+  de: "Unbegrenzt (kein Verschleiß)"
+  fr: "Infini (sans usure)"
+"Very bad":
+  ru: "Очень плохое"
+  de: "Sehr schlecht"
+  fr: "Très mauvais"
+"Bad":
+  ru: "Плохое"
+  de: "Schlecht"
+  fr: "Mauvais"
+"Normal":
+  ru: "Обычное"
+  de: "Normal"
+  fr: "Normal"
+"Good":
+  ru: "Хорошее"
+  de: "Gut"
+  fr: "Bon"
+"Random traffic":
+  ru: "Случайное движение"
+  de: "Zufallsverkehr"
+  fr: "Trafic aléatoire"
+"Navigator":
+  ru: "Навигатор"
+  de: "Navigator"
+  fr: "Navigateur"
+"Navigator (Shift+N: map, schedule, off)":
+  ru: "Навигатор (Shift+N: карта, расписание, выкл.)"
+  de: "Navigator (Shift+N: Karte, Fahrplan, aus)"
+  fr: "Navigateur (Shift+N : carte, horaire, désactivé)"
+"Route arrows (as in OMSI 2)":
+  ru: "Стрелки маршрута (как в OMSI 2)"
+  de: "Routenpfeile (wie in OMSI 2)"
+  fr: "Flèches d’itinéraire (comme dans OMSI 2)"
+"Opacity":
+  ru: "Непрозрачность"
+  de: "Deckkraft"
+  fr: "Opacité"
+"Corner":
+  ru: "Угол"
+  de: "Ecke"
+  fr: "Coin"
+"Interface & online":
+  ru: "Интерфейс и сеть"
+  de: "Oberfläche & Online"
+  fr: "Interface et en ligne"
+"Language":
+  ru: "Язык"
+  de: "Sprache"
+  fr: "Langue"
+"Chat in online games":
+  ru: "Чат в сетевой игре"
+  de: "Chat in Online-Spielen"
+  fr: "Chat en ligne"
+"Name of the button under the mouse":
+  ru: "Название кнопки под курсором"
+  de: "Name des Schalters unter der Maus"
+  fr: "Nom du bouton sous la souris"
+"Other players' names above their buses":
+  ru: "Имена игроков над их автобусами"
+  de: "Namen anderer Spieler über ihren Bussen"
+  fr: "Noms des autres joueurs au-dessus de leurs bus"
+"Driver at the wheel (outside views)":
+  ru: "Водитель за рулём (виды снаружи)"
+  de: "Fahrer am Steuer (Außenansichten)"
+  fr: "Conducteur au volant (vues extérieures)"
+"Frame rate in the corner":
+  ru: "Частота кадров в углу"
+  de: "Bildrate in der Ecke"
+  fr: "Images/s dans le coin"
+"Performance":
+  ru: "Производительность"
+  de: "Leistung"
+  fr: "Performances"
+"Low":
+  ru: "Низкое"
+  de: "Niedrig"
+  fr: "Faible"
+"Medium":
+  ru: "Среднее"
+  de: "Mittel"
+  fr: "Moyen"
+"High":
+  ru: "Высокое"
+  de: "Hoch"
+  fr: "Élevé"
+"Ultra":
+  ru: "Ультра"
+  de: "Ultra"
+  fr: "Ultra"
+"Custom":
+  ru: "Своё"
+  de: "Benutzerdefiniert"
+  fr: "Personnalisé"
+"Quality preset":
+  ru: "Предустановка качества"
+  de: "Qualitätsstufe"
+  fr: "Préréglage de qualité"
+"Frame limit":
+  ru: "Ограничение кадров"
+  de: "Bildratenlimit"
+  fr: "Limite d'images"
+"Small objects":
+  ru: "Мелкие объекты"
+  de: "Kleine Objekte"
+  fr: "Petits objets"
+"All":
+  ru: "Все"
+  de: "Alle"
+  fr: "Tous"
+"Fewer (faster)":
+  ru: "Меньше (быстрее)"
+  de: "Weniger (schneller)"
+  fr: "Moins (plus rapide)"
+"Few (fastest)":
+  ru: "Мало (быстрее всего)"
+  de: "Wenige (am schnellsten)"
+  fr: "Peu (le plus rapide)"
+"Object distance":
+  ru: "Дальность объектов"
+  de: "Objektweite"
+  fr: "Distance des objets"
+"Mirrors":
+  ru: "Зеркала"
+  de: "Spiegel"
+  fr: "Rétroviseurs"
+"Low (128)":
+  ru: "Низкое (128)"
+  de: "Niedrig (128)"
+  fr: "Faible (128)"
+"Normal (256)":
+  ru: "Обычное (256)"
+  de: "Normal (256)"
+  fr: "Normal (256)"
+"High (512)":
+  ru: "Высокое (512)"
+  de: "Hoch (512)"
+  fr: "Élevé (512)"
+"Very high (1024)":
+  ru: "Очень высокое (1024)"
+  de: "Sehr hoch (1024)"
+  fr: "Très élevé (1024)"
+"Boarding":
+  ru: "Посадка"
+  de: "Einsteigen"
+  fr: "Montée"
+"Pay and take the ticket":
+  ru: "Оплатить и взять билет"
+  de: "Bezahlen und Fahrschein nehmen"
+  fr: "Payer et prendre le billet"
+"The driver sells the ticket":
+  ru: "Билет продаёт водитель"
+  de: "Der Fahrer verkauft den Fahrschein"
+  fr: "Le conducteur vend le billet"
+"Just walk in":
+  ru: "Просто входят"
+  de: "Einfach einsteigen"
+  fr: "Entrer simplement"
+"Passengers pay the exact fare":
+  ru: "Пассажиры платят без сдачи"
+  de: "Fahrgäste zahlen passend"
+  fr: "Les passagers font l'appoint"
+"Passenger voices":
+  ru: "Голоса пассажиров"
+  de: "Fahrgaststimmen"
+  fr: "Voix des passagers"
+"Greetings and tickets":
+  ru: "Приветствия и билеты"
+  de: "Grüße und Fahrscheine"
+  fr: "Salutations et billets"
+"Only the ticket asked for":
+  ru: "Только просьба о билете"
+  de: "Nur der gewünschte Fahrschein"
+  fr: "Seulement le billet demandé"
+"Silent":
+  ru: "Молчат"
+  de: "Still"
+  fr: "Silencieux"
+"Ability to get up (Ctrl+Shift+G)":
+  ru: "Возможность встать (Ctrl+Shift+G)"
+  de: "Aufstehen möglich (Ctrl+Shift+G)"
+  fr: "Pouvoir se lever (Ctrl+Shift+G)"
+"How many passengers":
+  ru: "Сколько пассажиров"
+  de: "Wie viele Fahrgäste"
+  fr: "Nombre de passagers"
+"Controls & sound":
+  ru: "Управление и звук"
+  de: "Steuerung & Ton"
+  fr: "Commandes et son"
+"Driving keys":
+  ru: "Клавиши вождения"
+  de: "Fahrtasten"
+  fr: "Touches de conduite"
+"Custom controls (Controls page)":
+  ru: "Свои (страница «Управление»)"
+  de: "Eigene (Seite Steuerung)"
+  fr: "Personnalisées (page Commandes)"
+"W A S D + arrows":
+  ru: "W A S D + стрелки"
+  de: "W A S D + Pfeiltasten"
+  fr: "W A S D + flèches"
+"W A S D only":
+  ru: "Только W A S D"
+  de: "Nur W A S D"
+  fr: "W A S D seulement"
+"Arrow keys only":
+  ru: "Только стрелки"
+  de: "Nur Pfeiltasten"
+  fr: "Flèches seulement"
+"Volume":
+  ru: "Громкость"
+  de: "Lautstärke"
+  fr: "Volume"
+"Doppler effect":
+  ru: "Эффект Доплера"
+  de: "Doppler-Effekt"
+  fr: "Effet Doppler"
+"Traffic":
+  ru: "Транспорт"
+  de: "Verkehr"
+  fr: "Circulation"
+"Surroundings":
+  ru: "Окружение"
+  de: "Umgebung"
+  fr: "Environnement"
+"Timetable vehicles":
+  ru: "Машины по расписанию"
+  de: "Fahrplanfahrzeuge"
+  fr: "Véhicules du réseau"
+"At most 10":
+  ru: "Не больше 10"
+  de: "Höchstens 10"
+  fr: "Au plus 10"
+"At most 25":
+  ru: "Не больше 25"
+  de: "Höchstens 25"
+  fr: "Au plus 25"
+"At most 50":
+  ru: "Не больше 50"
+  de: "Höchstens 50"
+  fr: "Au plus 50"
+"Parked cars":
+  ru: "Припаркованные машины"
+  de: "Parkende Autos"
+  fr: "Voitures garées"
+"Every space":
+  ru: "Все места"
+  de: "Jeder Platz"
+  fr: "Toutes les places"
+"At most 35":
+  ru: "Не больше 35"
+  de: "Höchstens 35"
+  fr: "Au plus 35"
+"At most 100":
+  ru: "Не больше 100"
+  de: "Höchstens 100"
+  fr: "Au plus 100"
+"At most 250":
+  ru: "Не больше 250"
+  de: "Höchstens 250"
+  fr: "Au plus 250"
+"Start at the real time":
+  ru: "Начинать в реальное время"
+  de: "Zur echten Uhrzeit starten"
+  fr: "Démarrer à l'heure réelle"
+"Start on today's date":
+  ru: "Начинать с сегодняшней даты"
+  de: "Mit dem heutigen Datum starten"
+  fr: "Démarrer à la date du jour"
+"Collisions with vehicles":
+  ru: "Столкновения с машинами"
+  de: "Kollisionen mit Fahrzeugen"
+  fr: "Collisions avec les véhicules"
+"Collisions with people":
+  ru: "Столкновения с людьми"
+  de: "Kollisionen mit Personen"
+  fr: "Collisions avec les personnes"
+"Head moves with the bus":
+  ru: "Голова двигается с автобусом"
+  de: "Kopf bewegt sich mit dem Bus"
+  fr: "La tête bouge avec le bus"
+"Throttle":
+  ru: "Газ"
+  de: "Gas"
+  fr: "Accélérateur"
+"Brake":
+  ru: "Тормоз"
+  de: "Bremse"
+  fr: "Frein"
+"Throttle (full, kickdown)":
+  ru: "Газ (полный, кикдаун)"
+  de: "Gas (voll, Kickdown)"
+  fr: "Accélérateur (à fond, kickdown)"
+"Clutch":
+  ru: "Сцепление"
+  de: "Kupplung"
+  fr: "Embrayage"
+"Steer left":
+  ru: "Руль влево"
+  de: "Links lenken"
+  fr: "Tourner à gauche"
+"Steer right":
+  ru: "Руль вправо"
+  de: "Rechts lenken"
+  fr: "Tourner à droite"
+"Steering to centre":
+  ru: "Руль в центр"
+  de: "Lenkung zur Mitte"
+  fr: "Volant au centre"
+"Parking brake":
+  ru: "Стояночный тормоз"
+  de: "Feststellbremse"
+  fr: "Frein de stationnement"
+"Indicator left":
+  ru: "Левый поворотник"
+  de: "Blinker links"
+  fr: "Clignotant gauche"
+"Indicator right":
+  ru: "Правый поворотник"
+  de: "Blinker rechts"
+  fr: "Clignotant droit"
+"Indicators off":
+  ru: "Поворотники выкл."
+  de: "Blinker aus"
+  fr: "Clignotants éteints"
+"Hazard lights":
+  ru: "Аварийка"
+  de: "Warnblinker"
+  fr: "Feux de détresse"
+"Horn":
+  ru: "Гудок"
+  de: "Hupe"
+  fr: "Klaxon"
+"Headlights":
+  ru: "Фары"
+  de: "Scheinwerfer"
+  fr: "Phares"
+"Sidelights":
+  ru: "Габариты"
+  de: "Standlicht"
+  fr: "Feux de position"
+"High beam":
+  ru: "Дальний свет"
+  de: "Fernlicht"
+  fr: "Feux de route"
+"Starter":
+  ru: "Стартер"
+  de: "Anlasser"
+  fr: "Démarreur"
+"Wipers (next mode)":
+  ru: "Дворники (след. режим)"
+  de: "Scheibenwischer (nächste Stufe)"
+  fr: "Essuie-glaces (mode suivant)"
+"Battery / ignition":
+  ru: "Батарея / зажигание"
+  de: "Batterie / Zündung"
+  fr: "Batterie / contact"
+"Gear D":
+  ru: "Передача D"
+  de: "Fahrstufe D"
+  fr: "Rapport D"
+"Gear N":
+  ru: "Передача N"
+  de: "Fahrstufe N"
+  fr: "Rapport N"
+"Gear R":
+  ru: "Передача R"
+  de: "Fahrstufe R"
+  fr: "Rapport R"
+"Front door (leaf 1)":
+  ru: "Передняя дверь (створка 1)"
+  de: "Vordertür (Flügel 1)"
+  fr: "Porte avant (vantail 1)"
+"Front door (leaf 2)":
+  ru: "Передняя дверь (створка 2)"
+  de: "Vordertür (Flügel 2)"
+  fr: "Porte avant (vantail 2)"
+"Release rear doors":
+  ru: "Разблокировать задние двери"
+  de: "Hintere Türen freigeben"
+  fr: "Libérer les portes arrière"
+"Sell the requested ticket":
+  ru: "Продать запрошенный билет"
+  de: "Gewünschten Fahrschein verkaufen"
+  fr: "Vendre le billet demandé"
+"Driver's view":
+  ru: "Вид водителя"
+  de: "Fahrersicht"
+  fr: "Vue conducteur"
+"Passenger view":
+  ru: "Вид пассажира"
+  de: "Fahrgastsicht"
+  fr: "Vue passager"
+"Outside view":
+  ru: "Вид снаружи"
+  de: "Außenansicht"
+  fr: "Vue extérieure"
+"Next view":
+  ru: "Следующий вид"
+  de: "Nächste Ansicht"
+  fr: "Vue suivante"
+"Quit":
+  ru: "Выход"
+  de: "Beenden"
+  fr: "Quitter"
+"Pause":
+  ru: "Пауза"
+  de: "Pause"
+  fr: "Pause"
+"Click a key and press the new one (hold Shift, Ctrl or Alt for a combination); Escape leaves it as it is.":
+  ru: "Нажмите на клавишу и затем новую (удерживайте Shift, Ctrl или Alt для сочетания); Escape оставляет как есть."
+  de: "Klicke eine Taste an und drücke die neue (Shift, Ctrl oder Alt für eine Kombination halten); Escape lässt sie wie sie ist."
+  fr: "Cliquez sur une touche puis appuyez sur la nouvelle (maintenez Shift, Ctrl ou Alt pour une combinaison) ; Échap la laisse telle quelle."
+"Driving & the bus":
+  ru: "Вождение и автобус"
+  de: "Fahren & der Bus"
+  fr: "Conduite et bus"
+"The bus's own keys":
+  ru: "Клавиши самого автобуса"
+  de: "Die Tasten des Busses"
+  fr: "Les touches du bus"
+"The game":
+  ru: "Игра"
+  de: "Das Spiel"
+  fr: "Le jeu"
+"Menus, views, pausing":
+  ru: "Меню, виды, пауза"
+  de: "Menüs, Ansichten, Pause"
+  fr: "Menus, vues, pause"
+"press a key…":
+  ru: "нажмите клавишу…"
+  de: "Taste drücken…"
+  fr: "appuyez sur une touche…"
+"Key bindings saved.":
+  ru: "Назначения клавиш сохранены."
+  de: "Tastenbelegung gespeichert."
+  fr: "Raccourcis enregistrés."
+"The games you started: their logs, and their LAN session — the code to give a friend, who joined, the chat.":
+  ru: "Запущенные вами игры: их журналы и сетевая сессия — код для друга, кто подключился, чат."
+  de: "Die gestarteten Spiele: ihre Protokolle und ihre LAN-Sitzung — der Code für einen Freund, wer beigetreten ist, der Chat."
+  fr: "Les parties lancées : leurs journaux et leur session réseau — le code à donner à un ami, qui a rejoint, le chat."
+"No game is running. Start a duty on the Drive page; to drive with a friend, choose LAN play → Host there, and give them the session code shown here.":
+  ru: "Игра не запущена. Начните смену на странице «Поездка»; чтобы играть с другом, выберите там «Игра по сети → Создать» и дайте ему код сессии отсюда."
+  de: "Kein Spiel läuft. Starte einen Dienst auf der Seite Fahren; um mit einem Freund zu fahren, wähle dort Netzwerkspiel → Hosten und gib ihm den hier gezeigten Code."
+  fr: "Aucune partie en cours. Lancez un service sur la page Conduire ; pour jouer avec un ami, choisissez Jeu en réseau → Héberger et donnez-lui le code affiché ici."
+"Stopping…":
+  ru: "Остановка…"
+  de: "Wird beendet…"
+  fr: "Arrêt…"
+"Stop":
+  ru: "Стоп"
+  de: "Beenden"
+  fr: "Arrêter"
+"Hide log":
+  ru: "Скрыть журнал"
+  de: "Protokoll ausblenden"
+  fr: "Masquer le journal"
+"Show log":
+  ru: "Показать журнал"
+  de: "Protokoll zeigen"
+  fr: "Afficher le journal"
+"LAN SESSION CODE":
+  ru: "КОД СЕТЕВОЙ СЕССИИ"
+  de: "LAN-SITZUNGSCODE"
+  fr: "CODE DE SESSION RÉSEAU"
+"Your friend pastes it into LAN play → Join — at home or anywhere on the internet.":
+  ru: "Друг вставляет его в «Игра по сети → Присоединиться» — дома или где угодно через интернет."
+  de: "Dein Freund fügt ihn bei Netzwerkspiel → Beitreten ein — zu Hause oder irgendwo im Internet."
+  fr: "Votre ami le colle dans Jeu en réseau → Rejoindre — à la maison ou n'importe où sur Internet."
+"Copy code":
+  ru: "Скопировать код"
+  de: "Code kopieren"
+  fr: "Copier le code"
+"PLAYERS":
+  ru: "ИГРОКИ"
+  de: "SPIELER"
+  fr: "JOUEURS"
+"CHAT  (V in the game to write)":
+  ru: "ЧАТ  (V в игре, чтобы написать)"
+  de: "CHAT  (V im Spiel zum Schreiben)"
+  fr: "CHAT  (V dans le jeu pour écrire)"
+"ERROR":
+  ru: "ОШИБКА"
+  de: "FEHLER"
+  fr: "ERREUR"
+"WARN":
+  ru: "ПРЕДУПР."
+  de: "WARNUNG"
+  fr: "ALERTE"
+"Session code copied.":
+  ru: "Код сессии скопирован."
+  de: "Sitzungscode kopiert."
+  fr: "Code de session copié."
+"A bus, a map, scenery, a whole OMSI folder — as a folder or a .zip. The original OMSI 2 folder is never written to.":
+  ru: "Автобус, карта, объекты, целая папка OMSI — папкой или .zip. В папку оригинальной OMSI 2 ничего не пишется."
+  de: "Ein Bus, eine Karte, Szenerie, ein ganzer OMSI-Ordner — als Ordner oder .zip. In den originalen OMSI-2-Ordner wird nie geschrieben."
+  fr: "Un bus, une carte, des décors, tout un dossier OMSI — en dossier ou en .zip. Le dossier de l'OMSI 2 original n'est jamais modifié."
+"Install a mod":
+  ru: "Установить мод"
+  de: "Mod installieren"
+  fr: "Installer un mod"
+"Choose a folder":
+  ru: "Выбрать папку"
+  de: "Ordner wählen"
+  fr: "Choisir un dossier"
+"Choose a .zip":
+  ru: "Выбрать .zip"
+  de: ".zip wählen"
+  fr: "Choisir un .zip"
+"A .zip archive is":
+  ru: "Архив .zip"
+  de: "Ein .zip-Archiv wird"
+  fr: "Une archive .zip est"
+"Unpacked":
+  ru: "Распакован"
+  de: "Entpackt"
+  fr: "Décompressée"
+"Used in place":
+  ru: "Используется на месте"
+  de: "An Ort und Stelle genutzt"
+  fr: "Utilisée sur place"
+"…or drop a mod folder or .zip onto this window":
+  ru: "…или перетащите папку мода или .zip в это окно"
+  de: "…oder einen Mod-Ordner oder eine .zip auf dieses Fenster ziehen"
+  fr: "…ou déposez un dossier de mod ou un .zip sur cette fenêtre"
+"can be used in place":
+  ru: "можно использовать на месте"
+  de: "kann direkt genutzt werden"
+  fr: "peut être utilisé sur place"
+"The Mods folder":
+  ru: "Папка модов"
+  de: "Der Mods-Ordner"
+  fr: "Le dossier Mods"
+"Installs":
+  ru: "Установки"
+  de: "Installationen"
+  fr: "Installations"
+"Clear finished":
+  ru: "Убрать завершённые"
+  de: "Fertige entfernen"
+  fr: "Effacer les terminées"
+"Nothing installed since the launcher started. Big archives are checked against the free disk space before anything is unpacked; a cancelled or failed install leaves nothing behind.":
+  ru: "С момента запуска лаунчера ничего не установлено. Большие архивы проверяются на свободное место перед распаковкой; отменённая или неудачная установка ничего не оставляет."
+  de: "Seit dem Start des Launchers nichts installiert. Große Archive werden vor dem Entpacken mit dem freien Speicher verglichen; eine abgebrochene oder fehlgeschlagene Installation hinterlässt nichts."
+  fr: "Rien d'installé depuis le lancement. Les grosses archives sont comparées à l'espace libre avant décompression ; une installation annulée ou échouée ne laisse rien."
+"Cancel":
+  ru: "Отмена"
+  de: "Abbrechen"
+  fr: "Annuler"
+"Content folder":
+  ru: "Папка контента"
+  de: "Inhaltsordner"
+  fr: "Dossier de contenu"
+"Reading…":
+  ru: "Чтение…"
+  de: "Lese…"
+  fr: "Lecture…"
+"Archives used in place":
+  ru: "Архивы на месте"
+  de: "Direkt genutzte Archive"
+  fr: "Archives utilisées sur place"
+"Waiting for their bus":
+  ru: "Ждут свой автобус"
+  de: "Warten auf ihren Bus"
+  fr: "Attendent leur bus"
+"Where the original game and this one are.":
+  ru: "Где находятся оригинальная игра и эта."
+  de: "Wo das Originalspiel und dieses liegen."
+  fr: "Où se trouvent le jeu original et celui-ci."
+"Folders":
+  ru: "Папки"
+  de: "Ordner"
+  fr: "Dossiers"
+"OMSI 2 folder":
+  ru: "Папка OMSI 2"
+  de: "OMSI-2-Ordner"
+  fr: "Dossier OMSI 2"
+"Browse":
+  ru: "Обзор"
+  de: "Durchsuchen"
+  fr: "Parcourir"
+"The OMSI 2 folder (with maps and Vehicles in it)":
+  ru: "Папка OMSI 2 (с maps и Vehicles внутри)"
+  de: "Der OMSI-2-Ordner (mit maps und Vehicles darin)"
+  fr: "Le dossier OMSI 2 (avec maps et Vehicles)"
+"Game binary":
+  ru: "Файл игры"
+  de: "Spieldatei"
+  fr: "Exécutable du jeu"
+"The openomsi program":
+  ru: "Программа openomsi"
+  de: "Das Programm openomsi"
+  fr: "Le programme openomsi"
+"The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation, Steam or not). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.":
+  ru: "Папка OMSI 2 — та, где есть maps и Vehicles (любая полная установка, Steam или нет). Файл игры — программа omsi этого переписанного варианта; он находится сам, если лежит рядом с лаунчером."
+  de: "Der OMSI-2-Ordner ist der mit maps und Vehicles (jede vollständige Installation, Steam oder nicht). Die Spieldatei ist das Programm openomsi; sie wird gefunden, wenn sie neben dem Launcher liegt."
+  fr: "Le dossier OMSI 2 est celui qui contient maps et Vehicles (toute installation complète, Steam ou non). L'exécutable est le programme omsi de cette réécriture ; il est trouvé tout seul s'il est à côté du lanceur."
+"Save":
+  ru: "Сохранить"
+  de: "Speichern"
+  fr: "Enregistrer"
+"Saved. Reading the content again…":
+  ru: "Сохранено. Повторное чтение контента…"
+  de: "Gespeichert. Inhalt wird neu gelesen…"
+  fr: "Enregistré. Relecture du contenu…"
+"OMSI 2's own lessons: each opens its situation, with its pages beside the picture (Enter turns the page).":
+  ru: "Уроки самой OMSI 2: каждый открывает свою ситуацию со страницами рядом с картинкой (Enter листает)."
+  de: "Die Lektionen von OMSI 2: jede öffnet ihre Situation, mit ihren Seiten neben dem Bild (Enter blättert um)."
+  fr: "Les leçons d'OMSI 2 : chacune ouvre sa situation, avec ses pages à côté de l'image (Entrée tourne la page)."
+"No tutorials were found in the OMSI 2 folder (Tutorials).":
+  ru: "В папке OMSI 2 не найдено уроков (Tutorials)."
+  de: "Im OMSI-2-Ordner wurden keine Tutorials gefunden (Tutorials)."
+  fr: "Aucun tutoriel trouvé dans le dossier OMSI 2 (Tutorials)."
+"Start the lesson":
+  ru: "Начать урок"
+  de: "Lektion starten"
+  fr: "Commencer la leçon"
+"Vehicles":
+  ru: "Транспорт"
+  de: "Fahrzeuge"
+  fr: "Véhicules"
+"Situations":
+  ru: "Ситуации"
+  de: "Situationen"
+  fr: "Situations"
+"Arrow keys choose, Enter starts, Esc quits":
+  ru: "Стрелки — выбор, Enter — старт, Esc — выход"
+  de: "Pfeiltasten wählen, Enter startet, Esc beendet"
+  fr: "Flèches pour choisir, Entrée pour démarrer, Échap pour quitter"
+"Click here or press / to chat":
+  ru: "Нажмите сюда или / для чата"
+  de: "Hier klicken oder / drücken zum Chatten"
+  fr: "Cliquez ici ou appuyez sur / pour discuter"
+"Paused  ·  P to go on":
+  ru: "Пауза  ·  P — продолжить"
+  de: "Pause  ·  P zum Fortsetzen"
+  fr: "En pause  ·  P pour reprendre"
+"Paused":
+  ru: "Пауза"
+  de: "Pausiert"
+  fr: "En pause"
+"Menu":
+  ru: "Меню"
+  de: "Menü"
+  fr: "Menu"
+"Pedestrian knocked down!":
+  ru: "Сбит пешеход!"
+  de: "Fußgänger angefahren!"
+  fr: "Piéton renversé !"
+"This bus has no saloon lights":
+  ru: "У этого автобуса нет освещения салона"
+  de: "Dieser Bus hat keine Innenbeleuchtung"
+  fr: "Ce bus n'a pas d'éclairage intérieur"
+"Saloon light switches on — no power (battery off?)":
+  ru: "Свет в салоне включён — нет питания (батарея выключена?)"
+  de: "Innenlicht an — kein Strom (Batterie aus?)"
+  fr: "Éclairage allumé — pas de courant (batterie coupée ?)"
+"Saloon lights off":
+  ru: "Свет в салоне выключен"
+  de: "Innenbeleuchtung aus"
+  fr: "Éclairage intérieur éteint"
+"Putting the vehicle into service ...":
+  ru: "Подготовка автобуса к работе ..."
+  de: "Fahrzeug wird in Betrieb genommen ..."
+  fr: "Mise en service du véhicule ..."
+"Shutting the vehicle down ...":
+  ru: "Выключение автобуса ..."
+  de: "Fahrzeug wird abgestellt ..."
+  fr: "Arrêt du véhicule ..."
+"No game controller found":
+  ru: "Игровой контроллер не найден"
+  de: "Kein Gamecontroller gefunden"
+  fr: "Aucune manette trouvée"
+"Game controller on":
+  ru: "Контроллер включён"
+  de: "Gamecontroller an"
+  fr: "Manette activée"
+"Game controller off":
+  ru: "Контроллер выключен"
+  de: "Gamecontroller aus"
+  fr: "Manette désactivée"
+"This vehicle has no coupling at its back":
+  ru: "У этого транспорта нет сцепки сзади"
+  de: "Dieses Fahrzeug hat hinten keine Kupplung"
+  fr: "Ce véhicule n'a pas d'attelage à l'arrière"
+"Nothing to couple: back up to a trailer's coupling (within 2.5 m, in line)":
+  ru: "Нечего сцеплять: сдайте назад к сцепке прицепа (в пределах 2,5 м, по одной линии)"
+  de: "Nichts zu kuppeln: an die Kupplung eines Anhängers zurücksetzen (bis 2,5 m, in Linie)"
+  fr: "Rien à atteler : reculez jusqu'à l'attelage d'une remorque (à moins de 2,5 m, dans l'axe)"
+"Nothing coupled by hand (an articulated bus's rear section stays)":
+  ru: "Ничего не сцеплено вручную (задняя секция сочленённого автобуса остаётся)"
+  de: "Nichts von Hand gekuppelt (das Heck eines Gelenkbusses bleibt)"
+  fr: "Rien d'attelé à la main (l'arrière d'un bus articulé reste)"
+"Uncoupled":
+  ru: "Расцеплено"
+  de: "Abgekuppelt"
+  fr: "Dételé"
+"Object editor off (unsaved changes stay until the end of the session)":
+  ru: "Редактор объектов выкл. (несохранённые изменения остаются до конца сессии)"
+  de: "Objekteditor aus (ungespeicherte Änderungen bleiben bis zum Ende der Sitzung)"
+  fr: "Éditeur d'objets désactivé (les modifications non enregistrées restent jusqu'à la fin de la session)"
+"Nothing to save":
+  ru: "Нечего сохранять"
+  de: "Nichts zu speichern"
+  fr: "Rien à enregistrer"
+"Not saved: no content folder":
+  ru: "Не сохранено: нет папки контента"
+  de: "Nicht gespeichert: kein Inhaltsordner"
+  fr: "Non enregistré : pas de dossier de contenu"
+"Pick an object first (Enter)":
+  ru: "Сначала выберите объект (Enter)"
+  de: "Zuerst ein Objekt wählen (Enter)"
+  fr: "Choisissez d'abord un objet (Entrée)"
+"No vehicles found":
+  ru: "Транспорт не найден"
+  de: "Keine Fahrzeuge gefunden"
+  fr: "Aucun véhicule trouvé"
+"In a LAN session the host sets the clock":
+  ru: "В сетевой игре время задаёт хост"
+  de: "In einer LAN-Sitzung stellt der Host die Uhr"
+  fr: "En réseau, l'hôte règle l'heure"
+"In a LAN session the host sets the weather":
+  ru: "В сетевой игре погоду задаёт хост"
+  de: "In einer LAN-Sitzung bestimmt der Host das Wetter"
+  fr: "En réseau, l'hôte règle la météo"
+"There is no other vehicle to drive":
+  ru: "Нет другого транспорта для вождения"
+  de: "Kein anderes Fahrzeug zum Fahren"
+  fr: "Aucun autre véhicule à conduire"
+"No quicksave yet (Alt+S saves one)":
+  ru: "Быстрого сохранения нет (Alt+S — сохранить)"
+  de: "Noch kein Schnellspeicher (Alt+S speichert)"
+  fr: "Pas encore de sauvegarde rapide (Alt+S en crée une)"
+"This bus has no ticket desk camera":
+  ru: "У этого автобуса нет камеры кассы"
+  de: "Dieser Bus hat keine Kassenkamera"
+  fr: "Ce bus n'a pas de caméra de caisse"
+"Passenger":
+  ru: "Пассажир"
+  de: "Fahrgast"
+  fr: "Passager"
+"Mouse steering on: across steers, up is the throttle, down the brake (O turns it off)":
+  ru: "Руление мышью вкл.: влево-вправо — руль, вверх — газ, вниз — тормоз (O — выключить)"
+  de: "Maussteuerung an: quer lenkt, hoch ist Gas, runter Bremse (O schaltet aus)"
+  fr: "Direction à la souris : horizontal pour tourner, haut pour accélérer, bas pour freiner (O pour désactiver)"
+"Mouse steering off":
+  ru: "Руление мышью выкл."
+  de: "Maussteuerung aus"
+  fr: "Direction à la souris désactivée"
+"A LAN session cannot be paused":
+  ru: "Сетевую игру нельзя поставить на паузу"
+  de: "Eine LAN-Sitzung kann nicht pausiert werden"
+  fr: "Une session réseau ne peut pas être mise en pause"
+"Quicksave":
+  ru: "Быстрое сохранение"
+  de: "Schnellspeichern"
+  fr: "Sauvegarde rapide"
+"Situation saved (quicksave)":
+  ru: "Ситуация сохранена (быстрое сохранение)"
+  de: "Situation gespeichert (Schnellspeicher)"
+  fr: "Situation enregistrée (sauvegarde rapide)"
+"Screenshots":
+  ru: "Скриншоты"
+  de: "Screenshots"
+  fr: "Captures d'écran"
+"Resume":
+  ru: "Продолжить"
+  de: "Fortsetzen"
+  fr: "Reprendre"
+"Drive the next vehicle":
+  ru: "Управлять следующим транспортом"
+  de: "Nächstes Fahrzeug fahren"
+  fr: "Conduire le véhicule suivant"
+"Place a vehicle...":
+  ru: "Поставить транспорт..."
+  de: "Fahrzeug einsetzen..."
+  fr: "Placer un véhicule..."
+"Couple":
+  ru: "Сцепить"
+  de: "Kuppeln"
+  fr: "Atteler"
+"Uncouple":
+  ru: "Расцепить"
+  de: "Abkuppeln"
+  fr: "Dételer"
+"Save the situation":
+  ru: "Сохранить ситуацию"
+  de: "Situation speichern"
+  fr: "Enregistrer la situation"
+"Load the quicksave":
+  ru: "Загрузить быстрое сохранение"
+  de: "Schnellspeicher laden"
+  fr: "Charger la sauvegarde rapide"
+"Next weather":
+  ru: "Следующая погода"
+  de: "Nächstes Wetter"
+  fr: "Météo suivante"
+"Clock +1 hour":
+  ru: "Часы +1 час"
+  de: "Uhr +1 Stunde"
+  fr: "Horloge +1 heure"
+"Clock -1 hour":
+  ru: "Часы −1 час"
+  de: "Uhr −1 Stunde"
+  fr: "Horloge −1 heure"
+"Screenshot":
+  ru: "Скриншот"
+  de: "Screenshot"
+  fr: "Capture d'écran"
+"Timetable":
+  ru: "Расписание"
+  de: "Fahrplan"
+  fr: "Horaire"
+"Information bar":
+  ru: "Информационная строка"
+  de: "Infoleiste"
+  fr: "Barre d'information"
+"Refuel":
+  ru: "Заправить"
+  de: "Tanken"
+  fr: "Faire le plein"
+"Wash":
+  ru: "Помыть"
+  de: "Waschen"
+  fr: "Laver"
+"Repair":
+  ru: "Отремонтировать"
+  de: "Reparieren"
+  fr: "Réparer"
+"Object editor":
+  ru: "Редактор объектов"
+  de: "Objekteditor"
+  fr: "Éditeur d'objets"
+"End the session":
+  ru: "Завершить сессию"
+  de: "Sitzung beenden"
+  fr: "Terminer la session"
+"Refuel and wash only at a petrol station or in the depot's wash yard":
+  ru: "Заправка и мойка — только на заправке или на мойке депо"
+  de: "Tanken und Waschen nur an einer Tankstelle oder in der Waschanlage des Betriebshofs"
+  fr: "Plein et lavage seulement à une station-service ou à l'aire de lavage du dépôt"
+"Get up":
+  ru: "Встать"
+  de: "Aufstehen"
+  fr: "Se lever"
+"Sit down":
+  ru: "Сесть"
+  de: "Hinsetzen"
+  fr: "S'asseoir"
+"On foot: W A S D walk, Shift runs, Space jumps, F1 / F2 / F3 cameras, G at a door sits down":
+  ru: "Пешком: W A S D — идти, Shift — бег, Пробел — прыжок, F1 / F2 / F3 — камеры, G у двери — сесть"
+  de: "Zu Fuß: W A S D gehen, Shift rennen, Leertaste springen, F1 / F2 / F3 Kameras, G an einer Tür hinsetzen"
+  fr: "À pied : W A S D pour marcher, Shift pour courir, Espace pour sauter, F1 / F2 / F3 caméras, G à une porte pour s'asseoir"
+"No free seat here: stand by a bus's door":
+  ru: "Здесь нет свободного места: встаньте у двери автобуса"
+  de: "Hier ist kein Platz frei: stell dich an eine Bustür"
+  fr: "Pas de place libre ici : placez-vous près d'une porte de bus"
+"Getting up is off: turn on \"Ability to get up\" in the settings":
+  ru: "Вставать нельзя: включите «Возможность встать» в настройках"
+  de: "Aufstehen ist aus: schalte \"Aufstehen möglich\" in den Einstellungen ein"
+  fr: "Se lever est désactivé : activez « Pouvoir se lever » dans les paramètres"
+
+"go to":
+  ru: "идти к"
+  de: "hinfahren"
+  fr: "aller vers"
+
+"bring here":
+  ru: "привести сюда"
+  de: "herholen"
+  fr: "amener ici"
+
+"send away":
+  ru: "выгнать"
+  de: "hinauswerfen"
+  fr: "renvoyer"
+
+"send away for the session":
+  ru: "выгнать до конца сессии"
+  de: "für die Sitzung hinauswerfen"
+  fr: "renvoyer pour la session"
+
+"Time speed":
+  ru: "Скорость времени"
+  de: "Zeitraffer"
+  fr: "Vitesse du temps"
+
+"(now)":
+  ru: "(сейчас)"
+  de: "(aktuell)"
+  fr: "(actuel)"
+
+"Administration...":
+  ru: "Администрирование..."
+  de: "Verwaltung..."
+  fr: "Administration..."
+
+"Back to my bus":
+  ru: "Вернуться в свой автобус"
+  de: "Zurück zu meinem Bus"
+  fr: "Retour à mon bus"
+
+"Back":
+  ru: "Назад"
+  de: "Zurück"
+  fr: "Retour"
+
+"Back at the wheel":
+  ru: "Снова за рулём"
+  de: "Wieder am Steuer"
+  fr: "De retour au volant"
+
+"Real time":
+  ru: "Реальное время"
+  de: "Echtzeit"
+  fr: "Temps réel"
+
+"Time speed (not in multiplayer)":
+  ru: "Скорость времени (не в мультиплеере)"
+  de: "Zeitraffer (nicht im Mehrspieler)"
+  fr: "Vitesse du temps (hors multijoueur)"
+
+"Translate the remaining texts automatically (offline, downloads 620 MB once)":
+  ru: "Переводить остальные тексты автоматически (офлайн, однократно скачивается 620 МБ)"
+  de: "Übrige Texte automatisch übersetzen (offline, einmalig 620 MB)"
+  fr: "Traduire automatiquement les textes restants (hors ligne, 620 Mo téléchargés une fois)"
+
+"Your next duty opens a session. Give the code to your friends: it works at home and over the internet.":
+  ru: "Ваша следующая смена откроет сессию. Дайте код друзьям: он работает и дома, и через интернет."
+  de: "Dein nächster Dienst öffnet eine Sitzung. Gib deinen Freunden den Code: er funktioniert zu Hause und über das Internet."
+  fr: "Votre prochain service ouvre une session. Donnez le code à vos amis : il fonctionne à la maison et sur Internet."
+
+"Friends can join from anywhere":
+  ru: "Друзья могут подключиться откуда угодно"
+  de: "Freunde können von überall beitreten"
+  fr: "Vos amis peuvent rejoindre de partout"
+
+"Getting ready for friends on the internet…":
+  ru: "Подготовка к подключению друзей через интернет…"
+  de: "Vorbereitung für Freunde im Internet…"
+  fr: "Préparation pour les amis sur Internet…"
+
+"Server address":
+  ru: "Адрес сервера"
+  de: "Serveradresse"
+  fr: "Adresse du serveur"
+
+"That is not a server address: copy it again from its owner":
+  ru: "Это не адрес сервера: скопируйте его ещё раз у владельца"
+  de: "Das ist keine Serveradresse: kopiere sie erneut vom Besitzer"
+  fr: "Ce n'est pas une adresse de serveur : recopiez-la auprès de son propriétaire"
+
+"No servers yet. Add a server by the address its owner gives you.":
+  ru: "Серверов пока нет. Добавьте сервер по адресу, который даст его владелец."
+  de: "Noch keine Server. Füge einen Server mit der Adresse hinzu, die dir sein Besitzer gibt."
+  fr: "Aucun serveur pour l'instant. Ajoutez un serveur avec l'adresse donnée par son propriétaire."
+
+"The games you started, and who drives with you.":
+  ru: "Запущенные игры и те, кто едет с вами."
+  de: "Die Spiele, die du gestartet hast, und wer mit dir fährt."
+  fr: "Les parties lancées et qui roule avec vous."
+
+"No game is running. Start a duty on the Drive page; to drive with friends, turn on hosting on the Multiplayer page and give them the code shown here.":
+  ru: "Игра не запущена. Начните смену на странице «Поездка»; чтобы ездить с друзьями, включите хостинг на странице «Мультиплеер» и дайте им код, который появится здесь."
+  de: "Kein Spiel läuft. Starte einen Dienst auf der Seite Fahren; um mit Freunden zu fahren, schalte auf der Seite Mehrspieler das Hosten ein und gib ihnen den Code, der hier erscheint."
+  fr: "Aucune partie en cours. Lancez un service sur la page Conduire ; pour rouler avec des amis, activez l'hébergement sur la page Multijoueur et donnez-leur le code affiché ici."
+
+"SESSION CODE":
+  ru: "КОД СЕССИИ"
+  de: "SITZUNGSCODE"
+  fr: "CODE DE SESSION"
+
+"Your friends paste it into Multiplayer → Connect by Code.":
+  ru: "Друзья вставляют его в «Мультиплеер → Подключение по коду»."
+  de: "Deine Freunde fügen ihn bei Mehrspieler → Per Code verbinden ein."
+  fr: "Vos amis le collent dans Multijoueur → Connexion par code."
+
+"Multiplayer":
+  ru: "Мультиплеер"
+  de: "Mehrspieler"
+  fr: "Multijoueur"
+
+"Connect by Code":
+  ru: "Подключение по коду"
+  de: "Per Code verbinden"
+  fr: "Connexion par code"
+
+"Servers":
+  ru: "Серверы"
+  de: "Server"
+  fr: "Serveurs"
+
+"Host a game":
+  ru: "Создать игру"
+  de: "Spiel hosten"
+  fr: "Héberger une partie"
+
+"Host my next duty":
+  ru: "Хостить мою следующую смену"
+  de: "Meinen nächsten Dienst hosten"
+  fr: "Héberger mon prochain service"
+
+"Session code":
+  ru: "Код сессии"
+  de: "Sitzungscode"
+  fr: "Code de session"
+
+"Copy the code":
+  ru: "Скопировать код"
+  de: "Code kopieren"
+  fr: "Copier le code"
+
+"Go to Drive":
+  ru: "К поездке"
+  de: "Zu Fahren"
+  fr: "Aller à Conduire"
+
+"Add server":
+  ru: "Добавить сервер"
+  de: "Server hinzufügen"
+  fr: "Ajouter un serveur"
+
+"Name (optional)":
+  ru: "Имя (необязательно)"
+  de: "Name (optional)"
+  fr: "Nom (facultatif)"
+
+"Choose a bus and join":
+  ru: "Выбрать автобус и подключиться"
+  de: "Bus wählen und beitreten"
+  fr: "Choisir un bus et rejoindre"
+
+"Paste the code your friend's game shows. The map, time and weather are the host's; you choose your bus.":
+  ru: "Вставьте код из игры друга. Карта, время и погода — как у хоста; автобус выбираете вы."
+  de: "Füge den Code aus dem Spiel deines Freundes ein. Karte, Zeit und Wetter sind die des Hosts; den Bus wählst du."
+  fr: "Collez le code affiché par le jeu de votre ami. La carte, l'heure et la météo sont celles de l'hôte ; vous choisissez votre bus."
+
+"Drive with friends by a code, or on servers that are always on.":
+  ru: "Ездите с друзьями по коду или на серверах, которые работают всегда."
+  de: "Fahre mit Freunden per Code oder auf Servern, die immer laufen."
+  fr: "Roulez avec des amis par code ou sur des serveurs toujours en ligne."
+
+"Online: nobody else yet":
+  ru: "Онлайн: пока никого"
+  de: "Online: noch niemand sonst"
+  fr: "En ligne : personne d'autre pour l'instant"
+
+"Online: 1 other player":
+  ru: "Онлайн: ещё 1 игрок"
+  de: "Online: 1 weiterer Spieler"
+  fr: "En ligne : 1 autre joueur"
+
+"Get in through an open door of the bus, then G by a seat sits down":
+  ru: "Войдите в открытую дверь автобуса, затем G у сиденья — сесть"
+  de: "Steig durch eine offene Tür ein, dann G am Sitz zum Hinsetzen"
+  fr: "Montez par une porte ouverte, puis G près d'un siège pour s'asseoir"
+
+"No free seat near: walk up to one":
+  ru: "Рядом нет свободного места: подойдите к сиденью"
+  de: "Kein freier Sitz in der Nähe: geh zu einem hin"
+  fr: "Pas de siège libre à proximité : approchez-vous d'un siège"
+
+"The host brought you to them":
+  ru: "Хост перенёс вас к себе"
+  de: "Der Host hat dich zu sich geholt"
+  fr: "L'hôte vous a amené à lui"
+
+"You administer this server now: Esc → Administration":
+  ru: "Теперь вы администратор сервера: Esc → Администрирование"
+  de: "Du verwaltest jetzt diesen Server: Esc → Verwaltung"
+  fr: "Vous administrez ce serveur : Échap → Administration"
+
+"Wrong admin password":
+  ru: "Неверный пароль администратора"
+  de: "Falsches Admin-Passwort"
+  fr: "Mot de passe administrateur incorrect"
+
+"That player has no bus to go to":
+  ru: "У этого игрока нет автобуса"
+  de: "Dieser Spieler hat keinen Bus"
+  fr: "Ce joueur n'a pas de bus"
+
+"livery":
+  ru: "окраска"
+  de: "Lackierung"
+  fr: "livrée"
+
+"liveries":
+  ru: "окрасок"
+  de: "Lackierungen"
+  fr: "livrées"
+
+"Screen refresh rate":
+  ru: "Частота экрана"
+  de: "Bildwiederholrate"
+  fr: "Fréquence de l'écran"
+
+"Unlimited":
+  ru: "Без ограничения"
+  de: "Unbegrenzt"
+  fr: "Illimité"

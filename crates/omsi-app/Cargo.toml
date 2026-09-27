@@ -1,0 +1,63 @@
+[package]
+name = "omsi-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The openOMSI application: loads a map and renders it"
+
+[[bin]]
+name = "openomsi"
+path = "src/main.rs"
+
+[build-dependencies]
+winresource = "0.1"
+
+[dependencies]
+omsi-cfg = { path = "../omsi-cfg" }
+omsi-map = { path = "../omsi-map" }
+omsi-scenery = { path = "../omsi-scenery" }
+omsi-model = { path = "../omsi-model" }
+omsi-o3d = { path = "../omsi-o3d" }
+omsi-texture = { path = "../omsi-texture" }
+omsi-geometry = { path = "../omsi-geometry" }
+omsi-render = { path = "../omsi-render" }
+omsi-sim = { path = "../omsi-sim" }
+omsi-plugin = { path = "../omsi-plugin" }
+omsi-vehicle = { path = "../omsi-vehicle" }
+omsi-content = { path = "../omsi-content" }
+omsi-timetable = { path = "../omsi-timetable" }
+omsi-script = { path = "../omsi-script" }
+omsi-audio = { path = "../omsi-audio" }
+wgpu.workspace = true
+winit.workspace = true
+glam.workspace = true
+pollster.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+log.workspace = true
+env_logger.workspace = true
+rayon.workspace = true
+omsi-net = { path = "../omsi-net" }
+omsi-ui = { path = "../omsi-ui" }
+omsi-launcher-core = { path = "../omsi-launcher-core" }
+arboard = { version = "3", default-features = false }
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+hashbrown.workspace = true
+parking_lot.workspace = true
+image.workspace = true
+serde_json = "1"
+ab_glyph = "0.2"
+rustrict = "0.7"
+gilrs = "0.11"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+sha2 = "0.10"
+rust-i18n = "4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# the interface's machine translation (`mt`): CTranslate2 with Meta's NLLB model, as the
+# `trad` crate does it (Apple's Accelerate for the maths)
+[target.'cfg(target_os = "macos")'.dependencies]
+ct2rs = { version = "0.9.17", default-features = false, features = ["tokenizers", "accelerate", "ruy"] }

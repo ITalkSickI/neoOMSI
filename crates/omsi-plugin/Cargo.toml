@@ -1,0 +1,14 @@
+[package]
+name = "omsi-plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OMSI plugins: the .opl files of the plugins folder and their DLLs, driven as Omsi.exe drives them"
+
+[dependencies]
+libloading = "0.8"
+log.workspace = true
+
+[[bin]]
+name = "omsi-plugin-host"
+path = "src/bin/omsi-plugin-host.rs"

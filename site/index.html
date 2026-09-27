@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openOMSI</title>
+<meta name="description" content="openOMSI: OMSI 2 recreated from scratch in Rust, fully compatible with every map and mod.">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="apple-touch-icon" href="assets/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&family=Material+Icons&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="appbar elevation-4">
+  <button class="icon-btn" id="menu-btn" aria-label="Menu"><span class="material-icons">menu</span></button>
+  <a href="#/" class="brand"><img src="assets/logos/openomsi-wordmark-light.svg" alt="openOMSI"></a>
+  <span class="spacer"></span>
+  <a class="icon-btn" href="https://github.com/turbo-devv/openOMSI" aria-label="GitHub" title="GitHub">
+    <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+  </a>
+</header>
+
+<nav class="drawer" id="drawer">
+  <div class="drawer-section">
+    <a href="#/" data-route="/"><span class="material-icons">home</span>Overview</a>
+    <a href="#/download" data-route="/download"><span class="material-icons">download</span>Download</a>
+  </div>
+  <div class="drawer-subheader">Documentation</div>
+  <div class="drawer-section" id="doc-links"></div>
+  <div class="drawer-subheader">Project</div>
+  <div class="drawer-section">
+    <a href="https://github.com/turbo-devv/openOMSI"><span class="material-icons">code</span>Source code</a>
+    <a href="https://github.com/turbo-devv/openOMSI/releases"><span class="material-icons">new_releases</span>Releases</a>
+    <a href="https://github.com/turbo-devv/openOMSI/issues"><span class="material-icons">bug_report</span>Issues</a>
+  </div>
+</nav>
+<div class="scrim" id="scrim"></div>
+
+<main id="main">
+  <div id="view"></div>
+  <footer class="footer">
+    openOMSI is an independent project, not affiliated with MR Software or aerosoft.
+    OMSI&nbsp;2 is required to play. · <a href="https://github.com/turbo-devv/openOMSI/blob/main/LICENSE">MIT License</a>
+  </footer>
+</main>
+
+<template id="home">
+  <section class="hero">
+    <img class="hero-logo" src="assets/logos/openomsi-wordmark-light.svg" alt="openOMSI">
+    <p class="hero-text">OMSI&nbsp;2, recreated from scratch in Rust — with full compatibility for every map, bus and mod.</p>
+    <div class="hero-actions">
+      <a class="btn btn-contained" href="#/download"><span class="material-icons">download</span>Download</a>
+      <a class="btn btn-outlined" href="#/docs/USER_GUIDE"><span class="material-icons">menu_book</span>Documentation</a>
+    </div>
+    <div class="chip" id="version-chip"><span class="material-icons">sell</span><span>latest version…</span></div>
+  </section>
+
+  <div class="content">
+    <div class="card card-warning elevation-2">
+      <span class="material-icons card-icon">warning</span>
+      <div>
+        <h3>You need the original OMSI&nbsp;2</h3>
+        <p>openOMSI contains <b>no game content</b>. It plays on the maps, vehicles and files of an installed
+        copy of OMSI&nbsp;2 (any version, Steam or not) and <b>does not start without one</b>.
+        Get it on <a href="https://store.steampowered.com/app/252530/OMSI_2_Steam_Edition/">Steam</a>.</p>
+      </div>
+    </div>
+
+    <h2 class="section-title">What is openOMSI?</h2>
+    <p class="lead">openOMSI is a project to recreate the bus simulator <b>OMSI&nbsp;2</b> from the ground up in
+    <b>Rust</b>. Every content format of the original — maps, splines, scenery objects, buses, scripts,
+    timetables, HOF files, fonts, weather, tickets, plugins — is reverse engineered, documented and loaded
+    exactly as OMSI&nbsp;2.2.032 does, so existing maps and mods run unchanged. Underneath it is a new engine:
+    64-bit, multithreaded, with a modern renderer.</p>
+
+    <div class="grid">
+      <div class="card elevation-1"><span class="material-icons card-icon">extension</span><h3>100% mod compatibility</h3><p>Maps, buses, AI vehicles, scenery and plugins from the community work as they are — no conversion.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">speed</span><h3>A modern engine</h3><p>64-bit, no 2&nbsp;GB limit, tile streaming and texture loading on worker threads, Metal / Vulkan / DirectX&nbsp;12.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">devices</span><h3>Windows, macOS, Linux</h3><p>Native builds for every platform, released automatically for every change.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">groups</span><h3>Multiplayer</h3><p>LAN sessions and a dedicated server that simulates the whole map without a window.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">tune</span><h3>A real launcher</h3><p>Profiles, duties from the timetable, bus and livery preview, settings, one-click mod installs.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">description</span><h3>Open formats</h3><p>Every OMSI file format is written down — useful for modders and tool makers too.</p></div>
+    </div>
+  </div>
+</template>
+
+<template id="download">
+  <div class="content">
+    <h1>Download</h1>
+    <div class="card card-warning elevation-2">
+      <span class="material-icons card-icon">warning</span>
+      <div><h3>OMSI&nbsp;2 is required</h3><p>Install the original OMSI&nbsp;2 first. On the first start, point the launcher to its folder (the one with <code>maps</code> and <code>Vehicles</code>).</p></div>
+    </div>
+    <p class="lead" id="dl-version">Loading the latest release…</p>
+    <div class="grid" id="dl-grid"></div>
+    <h2 class="section-title">Installing</h2>
+    <ul class="steps">
+      <li><b>Windows:</b> unpack the zip anywhere and run <code>openomsi.exe</code>.</li>
+      <li><b>macOS:</b> unpack and open <code>openOMSI.app</code>. The app is not notarized: the first time, right-click it and choose <b>Open</b>.</li>
+      <li><b>Linux:</b> unpack and run <code>./openomsi</code> (Vulkan drivers needed).</li>
+      <li>Mods go into the folder next to the game, or through the launcher's <b>Mods</b> page. The original OMSI&nbsp;2 folder is never changed.</li>
+    </ul>
+    <p>All versions: <a href="https://github.com/turbo-devv/openOMSI/releases">GitHub Releases</a>. Versions are numbered <code>MAJOR.MINOR.COMMIT</code> — see <a href="#/docs/VERSIONING">Versioning</a>.</p>
+  </div>
+</template>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

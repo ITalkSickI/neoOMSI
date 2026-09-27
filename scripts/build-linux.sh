@@ -1,0 +1,17 @@
+#!/bin/sh
+# Build openOMSI for Linux x86_64 into dist/linux (the game, which is also the launcher
+# window, and the launcher's terminal tools). Needs Rust and, on Debian/Ubuntu:
+#   sudo apt install build-essential pkg-config libasound2-dev libudev-dev libgtk-3-dev \
+#     libxkbcommon-dev libwayland-dev libssl-dev
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+export PATH="$HOME/.cargo/bin:$PATH"
+command -v cargo >/dev/null 2>&1 || { echo "Install Rust from https://rustup.rs, then run this script again." >&2; exit 1; }
+export OPENOMSI_VERSION="${OPENOMSI_VERSION:-$(sh scripts/version.sh 2>/dev/null || echo 0.0.0)}"
+cargo build --locked --release -p omsi-app -p omsi-launcher-core
+out=dist/linux
+mkdir -p "$out"   # (the folder is also the content folder: mods stay)
+cp target/release/openomsi target/release/openomsi-launcher "$out/"
+cp assets/icons/app/openomsi-256.png "$out/openomsi.png"
+cp scripts/linux/openomsi.desktop "$out/"
+printf '\nopenOMSI %s built in %s\n' "$OPENOMSI_VERSION" "$out"

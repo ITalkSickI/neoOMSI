@@ -1,0 +1,704 @@
+//! The launcher: where a duty is put together (bus, map, line and tour, time, weather),
+//! the driver's profile, the settings and key bindings, the running games and the mods.
+//!
+//! It is a window of the game binary itself, drawn with wgpu: the chosen bus stands in a
+//! picture drawn by the game's renderer (see `showroom`) whenever it changes, and the
+//! interface — flat and dark, every control custom — is drawn with `omsi-ui` straight
+//! onto the window. The data side (content
+//! lists, timetables, profiles, installs, running games) is `omsi-launcher-core`, the same
+//! functions `omsi-launcher --cli` offers a terminal.
+
+mod drive;
+mod multiplayer;
+mod pages;
+mod showroom;
+mod state;
+mod theme;
+mod timetable;
+mod ui;
+
+use glam::Vec2;
+use omsi_launcher_lib as core;
+use omsi_render::{Renderer, SurfaceState};
+use omsi_ui::paint::Align;
+use omsi_ui::{Draw, Rect, Weight};
+use std::sync::Arc;
+use std::time::Instant;
+use theme::*;
+use ui::{Key, Ui};
+use winit::application::ApplicationHandler;
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
+use winit::window::{Window, WindowId};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Page {
+    Drive,
+    Multiplayer,
+    Profile,
+    Settings,
+    Controls,
+    Sessions,
+    Mods,
+    Tutorials,
+    Timetable,
+    Setup,
+}
+
+const PAGES: [(Page, &str, &str); 10] = [
+    (Page::Drive, "Drive", "directions_bus"),
+    (Page::Multiplayer, "Multiplayer", "groups"),
+    (Page::Profile, "Profile", "badge"),
+    (Page::Settings, "Settings", "tune"),
+    (Page::Controls, "Controls", "keyboard"),
+    (Page::Sessions, "Sessions", "sports_esports"),
+    (Page::Mods, "Mods", "extension"),
+    (Page::Tutorials, "Tutorials", "help"),
+    (Page::Timetable, "Timetable", "schedule"),
+    (Page::Setup, "Setup", "folder_open"),
+];
+
+/// Width of the left rail (points).
+pub const RAIL_W: f32 = 236.0;
+
+pub struct Launcher {
+    instance: wgpu::Instance,
+    window: Option<Arc<Window>>,
+    surface: Option<SurfaceState<'static>>,
+    renderer: Option<Renderer>,
+    gpu: Option<omsi_ui::Gpu>,
+    ui: Ui,
+    state: state::State,
+    showroom: showroom::Showroom,
+    page: Page,
+    page_anim: f32,
+    pub drive: drive::DriveView,
+    pub pages: pages::PagesView,
+    pub mp: multiplayer::MultiplayerView,
+    /// Server icons in the interface pipeline (by server address), and those decoded but
+    /// not yet uploaded.
+    pub icons: std::collections::HashMap<String, usize>,
+    pub icons_pending: Vec<(String, image::RgbaImage)>,
+    last: Instant,
+    modifiers: ModifiersState,
+    /// Right or left drag over the showroom.
+    dragging: Option<Vec2>,
+    clipboard: Option<arboard::Clipboard>,
+    exit_after: Option<f32>,
+    shot: Option<(f32, std::path::PathBuf)>,
+    started: Instant,
+    /// `OMSI_LAUNCHER_INPUT="t=2 click 400,300; t=3 type Bauern; t=4 key Enter; t=5 shot a.png;
+    /// t=6 wheel -3; t=7 move 900,400"`: the window worked by a script (logical pixels).
+    script: Vec<(f32, String)>,
+    release_next: bool,
+    /// Where the bus preview is this frame, its texture in the interface pipeline, and the
+    /// showroom picture it was bound to.
+    preview_rect: Option<Rect>,
+    preview_tex: Option<usize>,
+    preview_gen: u64,
+    /// The window has the keyboard / is hidden: without focus it is drawn ten times a
+    /// second, hidden not at all (a game started from it is being played).
+    focused: bool,
+    occluded: bool,
+    /// The last mouse or key event (an idle launcher draws less often: it kept the GPU busy
+    /// at the screen's rate doing nothing).
+    last_input: Instant,
+}
+
+/// Run the launcher window until it is closed.
+pub fn run(instance: wgpu::Instance) -> anyhow::Result<()> {
+    core::cleanup();
+    let event_loop = EventLoop::new()?;
+    let mut app = Launcher {
+        instance,
+        window: None,
+        surface: None,
+        renderer: None,
+        gpu: None,
+        ui: Ui::new(),
+        state: state::State::new(),
+        showroom: showroom::Showroom::new(),
+        page: Page::Drive,
+        page_anim: 1.0,
+        drive: drive::DriveView::default(),
+        pages: pages::PagesView::default(),
+        mp: multiplayer::MultiplayerView::default(),
+        icons: Default::default(),
+        icons_pending: Vec::new(),
+        last: Instant::now(),
+        modifiers: ModifiersState::empty(),
+        dragging: None,
+        clipboard: arboard::Clipboard::new().ok(),
+        // OMSI_LAUNCHER_EXIT=secs, OMSI_LAUNCHER_SHOT=secs:file.png, OMSI_LAUNCHER_PAGE=mods:
+        // looking at the window without a person at it
+        exit_after: omsi_cfg::env::var("OMSI_LAUNCHER_EXIT").ok().and_then(|v| v.parse().ok()),
+        shot: omsi_cfg::env::var("OMSI_LAUNCHER_SHOT").ok().and_then(|v| v.split_once(':').map(|(t, f)| (t.parse().unwrap_or(5.0), std::path::PathBuf::from(f)))),
+        started: Instant::now(),
+        script: omsi_cfg::env::var("OMSI_LAUNCHER_INPUT")
+            .map(|v| {
+                v.split(';')
+                    .filter_map(|c| {
+                        let c = c.trim();
+                        let (t, rest) = c.strip_prefix("t=")?.split_once(' ')?;
+                        Some((t.parse().ok()?, rest.trim().to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        release_next: false,
+        preview_rect: None,
+        preview_tex: None,
+        preview_gen: 0,
+        focused: true,
+        occluded: false,
+        last_input: Instant::now(),
+    };
+    // no original installation found anywhere: the launcher still opens, on Setup, and says
+    // what it needs (only starting a session needs the game)
+    if omsi_cfg::missing_original_essentials(std::path::Path::new(&app.state.config.root)).len() > 0 {
+        app.page = Page::Setup;
+        app.state.set_status("The original OMSI 2 was not found automatically. Choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.", true);
+    }
+    if let Ok(p) = omsi_cfg::env::var("OMSI_LAUNCHER_PAGE") {
+        if let Some((pg, _, _)) = PAGES.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(p.split(':').next().unwrap_or(""))) {
+            app.page = *pg;
+        }
+        if let Some(step) = p.split(':').nth(1).and_then(|s| s.parse().ok()) {
+            app.drive.step = step;
+            // (the Controls page's second part is its tab: controls:1 the game controllers)
+            app.pages.controls_tab = step;
+        }
+    }
+    event_loop.run_app(&mut app)?;
+    Ok(())
+}
+
+impl ApplicationHandler for Launcher {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_some() {
+            return;
+        }
+        // (`OMSI_LAUNCHER_SIZE=WxH`: another window size, for looking at the layout)
+        let (iw, ih) = omsi_cfg::env::var("OMSI_LAUNCHER_SIZE").ok().and_then(|v| v.split_once('x').and_then(|(a, b)| Some((a.parse::<f64>().ok()?, b.parse::<f64>().ok()?)))).unwrap_or((1440.0, 880.0));
+        let mut attrs = Window::default_attributes().with_title("openOMSI").with_window_icon(crate::startup::window_icon()).with_inner_size(winit::dpi::LogicalSize::new(iw, ih)).with_min_inner_size(winit::dpi::LogicalSize::new(1080.0, 680.0));
+        if omsi_cfg::env::var_os("OMSI_BACKGROUND").is_some() {
+            attrs = attrs.with_active(false);
+        }
+        let window = Arc::new(event_loop.create_window(attrs).expect("window"));
+        let surface = self.instance.create_surface(window.clone()).expect("surface");
+        let settings = crate::settings::Settings::load();
+        let renderer = pollster::block_on(Renderer::new_with(&self.instance, Some(&surface), None, showroom_options(&settings))).expect("renderer");
+        drop(surface);
+        let size = window.inner_size();
+        let surface = SurfaceState::new_with(&self.instance, window.clone(), &renderer, size.width, size.height, true).expect("surface");
+        log::info!("launcher window {}x{} (scale {:.2}), adapter {}", size.width, size.height, window.scale_factor(), renderer.adapter_name);
+        self.gpu = Some(omsi_ui::Gpu::new(&renderer.device, renderer.format(), 4, self.ui.atlas.size));
+        self.window = Some(window);
+        self.surface = Some(surface);
+        self.renderer = Some(renderer);
+        self.last = Instant::now();
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        let scale = self.ui_scale();
+        if !matches!(event, WindowEvent::RedrawRequested) {
+            self.last_input = Instant::now();
+        }
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Focused(f) => self.focused = f,
+            WindowEvent::Occluded(o) => self.occluded = o,
+            WindowEvent::Resized(s) => {
+                if let (Some(sf), Some(r)) = (self.surface.as_mut(), self.renderer.as_ref()) {
+                    sf.resize(r, s.width, s.height);
+                }
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                self.modifiers = m.state();
+                self.ui.input.shift = self.modifiers.shift_key();
+                self.ui.input.ctrl = self.modifiers.control_key() || self.modifiers.super_key();
+                self.ui.input.alt = self.modifiers.alt_key();
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let p = Vec2::new(position.x as f32, position.y as f32) / scale;
+                if let Some(last) = self.dragging {
+                    let d = p - last;
+                    self.showroom.orbit(d.x, d.y);
+                    self.dragging = Some(p);
+                }
+                self.ui.input.mouse = p;
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let down = state == ElementState::Pressed;
+                match button {
+                    MouseButton::Left => {
+                        if down {
+                            self.ui.input.pressed = true;
+                            // a drag on the preview turns the bus
+                            if self.preview_rect.map(|r| r.contains(self.ui.input.mouse)).unwrap_or(false) {
+                                self.dragging = Some(self.ui.input.mouse);
+                            }
+                        } else {
+                            self.ui.input.released = true;
+                            self.dragging = None;
+                        }
+                        self.ui.input.down = down;
+                    }
+                    MouseButton::Right => {
+                        self.ui.input.right_down = down;
+                        if down {
+                            self.ui.input.right_pressed = true;
+                            if self.preview_rect.map(|r| r.contains(self.ui.input.mouse)).unwrap_or(false) {
+                                self.dragging = Some(self.ui.input.mouse);
+                            }
+                        } else {
+                            self.dragging = None;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let d = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => Vec2::new(x, y),
+                    MouseScrollDelta::PixelDelta(p) => Vec2::new(p.x as f32, p.y as f32) / 40.0,
+                };
+                self.ui.input.wheel += d;
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state != ElementState::Pressed {
+                    return;
+                }
+                let cmd = self.modifiers.control_key() || self.modifiers.super_key();
+                if let PhysicalKey::Code(code) = event.physical_key {
+                    self.ui.input.raw_key = Some(code);
+                    let k = match code {
+                        KeyCode::ArrowLeft => Some(Key::Left),
+                        KeyCode::ArrowRight => Some(Key::Right),
+                        KeyCode::ArrowUp => Some(Key::Up),
+                        KeyCode::ArrowDown => Some(Key::Down),
+                        KeyCode::Home => Some(Key::Home),
+                        KeyCode::End => Some(Key::End),
+                        KeyCode::Backspace => Some(Key::Backspace),
+                        KeyCode::Delete => Some(Key::Delete),
+                        KeyCode::Enter | KeyCode::NumpadEnter => Some(Key::Enter),
+                        KeyCode::Escape => Some(Key::Escape),
+                        KeyCode::Tab => Some(Key::Tab),
+                        KeyCode::KeyA if cmd => Some(Key::SelectAll),
+                        KeyCode::KeyC if cmd => Some(Key::Copy),
+                        KeyCode::KeyV if cmd => Some(Key::Paste),
+                        KeyCode::KeyX if cmd => Some(Key::Cut),
+                        _ => None,
+                    };
+                    if let Some(k) = k {
+                        if k == Key::Paste {
+                            self.ui.clipboard_in = self.clipboard.as_mut().and_then(|c| c.get_text().ok());
+                        }
+                        self.ui.input.keys.push(k);
+                    }
+                }
+                if !cmd {
+                    if let Some(t) = event.text.as_ref() {
+                        self.ui.input.text.push_str(t);
+                    }
+                }
+            }
+            WindowEvent::DroppedFile(path) => {
+                // a mod folder or .zip dropped on the window is installed
+                self.page = Page::Mods;
+                self.state.install(path.to_string_lossy().to_string());
+            }
+            WindowEvent::HoveredFile(_) => self.pages.drop_hover = true,
+            WindowEvent::HoveredFileCancelled => self.pages.drop_hover = false,
+            WindowEvent::RedrawRequested => {
+                self.frame(event_loop);
+            }
+            _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.check_exit(event_loop);
+        // (a screenshot asked for by a script is drawn even when hidden)
+        let occluded = self.occluded && self.shot.is_none() && !self.script.iter().any(|(_, c)| c.starts_with("shot"));
+        let interval = if occluded {
+            0.5
+        } else if !self.focused && omsi_cfg::env::var_os("OMSI_BACKGROUND").is_none() {
+            0.1
+        } else if self.last_input.elapsed().as_secs_f32() > 3.0 && self.dragging.is_none() && self.script.is_empty() {
+            // idle: 20 frames a second keep the preview and the progress bars moving
+            0.05
+        } else {
+            0.0
+        };
+        let since = self.last.elapsed().as_secs_f32();
+        if interval > 0.0 && since < interval {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(self.last + std::time::Duration::from_secs_f32(interval)));
+            return;
+        }
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        if occluded {
+            // nothing to draw: keep the data side going (polls, installs, the script)
+            let dt = since.min(1.0);
+            self.last = Instant::now();
+            self.run_script();
+            self.state.update(dt);
+            self.check_exit(event_loop);
+        } else if let Some(w) = self.window.as_ref() {
+            w.request_redraw();
+        }
+    }
+}
+
+impl Launcher {
+    /// Physical pixels per interface pixel: the screen's scale, times a zoom that makes the
+    /// interface (laid out for a 1440 x 880 window) grow with a bigger window and shrink a
+    /// little with a smaller one, so that it fills the window the same way at any size.
+    fn ui_scale(&self) -> f32 {
+        let Some(w) = self.window.as_ref() else { return 1.0 };
+        let dpi = w.scale_factor() as f32;
+        let s = w.inner_size();
+        let (lw, lh) = (s.width as f32 / dpi, s.height as f32 / dpi);
+        // (the height counts a little less: on a wide, low screen — 2560 x 1080 — the text
+        // stayed the size of a 1440 x 880 window's, tiny across the width; the pages scroll or
+        // keep their width, see `draw_ui`)
+        dpi * (lw / 1440.0).min(lh / 820.0).clamp(0.8, 2.2)
+    }
+
+    fn frame(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
+        self.last = now;
+        let (Some(window), Some(_)) = (self.window.clone(), self.surface.as_ref()) else { return };
+        let scale = self.ui_scale();
+        let phys = window.inner_size();
+        let (pw, ph) = (phys.width.max(1), phys.height.max(1));
+        let size = Vec2::new(pw as f32, ph as f32) / scale;
+
+        self.run_script();
+        self.state.update(dt);
+        // the preview shows the chosen bus in the chosen light
+        let c = &self.state.choice;
+        let look = showroom::Look { root: std::path::PathBuf::from(&self.state.config.root), map: c.map.clone(), bus: c.bus.clone(), paint: c.paint.clone(), weather: c.weather.clone(), time: c.time, date: c.date.clone() };
+        if !look.bus.is_empty() && !look.map.is_empty() {
+            self.showroom.want(look);
+        }
+        if let Some(r) = self.renderer.as_ref() {
+            self.showroom.update(r, dt);
+        }
+
+        // --- the interface
+        self.preview_rect = None;
+        self.ui.begin(size, scale, dt);
+        self.draw_ui();
+        window.set_cursor(if self.dragging.is_some() { winit::window::CursorIcon::Grabbing } else { self.ui.cursor });
+        if let Some(t) = self.ui.clipboard_out.take() {
+            if let Some(c) = self.clipboard.as_mut() {
+                let _ = c.set_text(t);
+            }
+        }
+        let (layers, verts, ranges) = self.ui.finish();
+
+        // --- to the GPU: the preview when it changed, then the interface onto the window
+        let Some(renderer) = self.renderer.as_mut() else { return };
+        if let Some(r) = self.preview_rect {
+            let (w, h) = ((r.w * scale) as u32, (r.h * scale) as u32);
+            if let (Some(view), Some(gpu)) = (self.showroom.preview(renderer, w, h), self.gpu.as_mut()) {
+                if self.preview_gen != self.showroom.generation {
+                    self.preview_gen = self.showroom.generation;
+                    match self.preview_tex {
+                        Some(id) => gpu.set_view(&renderer.device, id, &view, (w, h)),
+                        None => self.preview_tex = Some(gpu.add_view(&renderer.device, &view, (w, h))),
+                    }
+                }
+            }
+        }
+        // server icons decoded this frame go to the GPU (drawn from the next)
+        for (addr, img) in std::mem::take(&mut self.icons_pending) {
+            if let Some(gpu) = self.gpu.as_mut() {
+                let (w, h) = img.dimensions();
+                let tex = renderer.device.create_texture(&wgpu::TextureDescriptor { label: Some("server icon"), size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: wgpu::TextureFormat::Rgba8UnormSrgb, usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, view_formats: &[] });
+                renderer.queue.write_texture(tex.as_image_copy(), &img, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * w), rows_per_image: Some(h) }, wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 });
+                let view = tex.create_view(&Default::default());
+                let id = gpu.add_view(&renderer.device, &view, (w, h));
+                self.icons.insert(addr, id);
+            }
+        }
+        let draws: Vec<Draw> = ranges.iter().enumerate().map(|(k, (r, tex))| Draw { buffer: 0, range: r.clone(), layer: k, texture: *tex }).collect();
+        let bg = wgpu::Color { r: 0.0056, g: 0.0056, b: 0.0056, a: 1.0 };
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.upload(&renderer.device, &renderer.queue, 0, &verts);
+            gpu.upload_atlas(&renderer.queue, &mut self.ui.atlas);
+        }
+        // OMSI_LAUNCHER_SHOT: the window's picture into a file (drawn into a texture of its
+        // own, so a hidden window gives one too)
+        let t = self.started.elapsed().as_secs_f32();
+        if let Some((at, file)) = self.shot.clone() {
+            if t >= at {
+                self.shot = None;
+                if let Some(img) = self.shot_image(pw, ph, &layers, &draws, bg) {
+                    let _ = img.save(&file);
+                    log::info!("launcher: picture written to {}", file.display());
+                }
+            }
+        }
+        let Some(renderer) = self.renderer.as_mut() else { return };
+        let surface = self.surface.as_mut().unwrap();
+        let frame = match surface.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                surface.resize(renderer, pw, ph);
+                return;
+            }
+            _ => return,
+        };
+        let view = frame.texture.create_view(&Default::default());
+        if let Some(gpu) = self.gpu.as_mut() {
+            let mut enc = renderer.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("launcher") });
+            gpu.render(&renderer.device, &renderer.queue, &mut enc, &view, (pw, ph), Some(bg), &layers, &draws);
+            renderer.queue.submit([enc.finish()]);
+        }
+        window.pre_present_notify();
+        frame.present();
+        self.check_exit(event_loop);
+    }
+
+    fn check_exit(&mut self, event_loop: &ActiveEventLoop) {
+        if self.exit_after.map(|e| self.started.elapsed().as_secs_f32() >= e).unwrap_or(false) {
+            event_loop.exit();
+        }
+    }
+
+    fn run_script(&mut self) {
+        if self.release_next {
+            self.ui.input.released = true;
+            self.ui.input.down = false;
+            self.release_next = false;
+        }
+        let t = self.started.elapsed().as_secs_f32();
+        while let Some((at, cmd)) = self.script.first().cloned() {
+            if at > t {
+                break;
+            }
+            self.script.remove(0);
+            log::info!("launcher input t={at}: {cmd}");
+            let (verb, arg) = cmd.split_once(' ').unwrap_or((cmd.as_str(), ""));
+            let xy = || {
+                let mut it = arg.split(',').map(|v| v.trim().parse::<f32>().unwrap_or(0.0));
+                Vec2::new(it.next().unwrap_or(0.0), it.next().unwrap_or(0.0))
+            };
+            match verb {
+                "move" => self.ui.input.mouse = xy(),
+                "click" => {
+                    self.ui.input.mouse = xy();
+                    self.ui.input.pressed = true;
+                    self.ui.input.down = true;
+                    self.release_next = true;
+                }
+                "wheel" => self.ui.input.wheel.y += arg.trim().parse::<f32>().unwrap_or(0.0),
+                "type" => self.ui.input.text.push_str(arg),
+                "key" => {
+                    let k = match arg.trim() {
+                        "Enter" => Some(Key::Enter),
+                        "Escape" => Some(Key::Escape),
+                        "Backspace" => Some(Key::Backspace),
+                        _ => None,
+                    };
+                    if let Some(k) = k {
+                        self.ui.input.keys.push(k);
+                    }
+                }
+                "shot" => self.shot = Some((0.0, std::path::PathBuf::from(arg.trim()))),
+                "page" => {
+                    if let Some((pg, _, _)) = PAGES.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(arg.trim())) {
+                        self.go(*pg);
+                    }
+                }
+                _ => log::warn!("launcher input: what is '{cmd}'?"),
+            }
+        }
+    }
+
+    /// The window's picture drawn again into a texture and read back (for OMSI_LAUNCHER_SHOT).
+    fn shot_image(&mut self, w: u32, h: u32, layers: &[omsi_ui::Layer], draws: &[Draw], bg: wgpu::Color) -> Option<image::RgbaImage> {
+        let r = self.renderer.as_mut()?;
+        let gpu = self.gpu.as_mut()?;
+        let tex = r.device.create_texture(&wgpu::TextureDescriptor { label: Some("launcher shot"), size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: r.format(), usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC, view_formats: &[] });
+        let view = tex.create_view(&Default::default());
+        let mut enc = r.device.create_command_encoder(&Default::default());
+        gpu.render(&r.device, &r.queue, &mut enc, &view, (w, h), Some(bg), layers, draws);
+        let stride = (w * 4).div_ceil(256) * 256;
+        let buf = r.device.create_buffer(&wgpu::BufferDescriptor { label: None, size: (stride * h) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        enc.copy_texture_to_buffer(tex.as_image_copy(), wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(stride), rows_per_image: None } }, wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 });
+        r.queue.submit([enc.finish()]);
+        buf.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        r.device.poll(wgpu::PollType::wait_indefinitely()).ok();
+        let data = buf.slice(..).get_mapped_range();
+        let bgra = matches!(r.format(), wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm);
+        let mut img = image::RgbaImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let i = (y * stride + x * 4) as usize;
+                let (r_, g, b) = if bgra { (data[i + 2], data[i + 1], data[i]) } else { (data[i], data[i + 1], data[i + 2]) };
+                img.put_pixel(x, y, image::Rgba([r_, g, b, 255]));
+            }
+        }
+        Some(img)
+    }
+
+    fn draw_ui(&mut self) {
+        let size = self.ui.size;
+        self.rail();
+        self.page_anim = (self.page_anim + self.ui.dt / 0.15).min(1.0);
+        // (no wider than a page reads well: on a wide screen the rest is margin, the page
+        // in the middle — the panels stretched across 2000 px with their text at one end)
+        let avail = size.x - RAIL_W - 64.0;
+        let w = avail.min(1760.0);
+        let content = Rect::new(RAIL_W + 32.0 + (avail - w) * 0.5, 28.0, w, size.y - 28.0 - 40.0);
+        let e = 1.0 - (1.0 - self.page_anim).powi(3);
+        let content = Rect::new(content.x + 8.0 * (1.0 - e), content.y, content.w, content.h);
+        match self.page {
+            Page::Drive => drive::draw(self, content),
+            Page::Multiplayer => multiplayer::draw(self, content),
+            Page::Profile => pages::profile(self, content),
+            Page::Settings => pages::settings(self, content),
+            Page::Controls => pages::controls(self, content),
+            Page::Sessions => pages::sessions(self, content),
+            Page::Mods => pages::mods(self, content),
+            Page::Tutorials => pages::tutorials(self, content),
+            Page::Timetable => timetable::draw(self, content),
+            Page::Setup => pages::setup(self, content),
+        }
+        self.status_bar();
+    }
+
+    /// The bus preview in `r`: the game's picture of it, or a word while it loads. The mouse
+    /// dragged on it turns the bus, the wheel zooms.
+    pub fn preview(&mut self, r: Rect) {
+        self.preview_rect = Some(r);
+        self.ui.solid(r);
+        self.ui.p().rounded(r, RADIUS, FIELD);
+        match (self.preview_tex, self.showroom.has_picture()) {
+            (Some(tex), true) => self.ui.image(r, tex, RADIUS),
+            _ => {
+                let t = if self.showroom.error.is_some() { "No preview" } else { "Loading…" };
+                self.ui.text_in(t, r, 13.0, Weight::Regular, TEXT_FAINT, Align::Center);
+            }
+        }
+        if self.showroom.busy && self.showroom.has_picture() {
+            let c = Vec2::new(r.right() - 16.0, r.y + 16.0);
+            let a = self.ui.time * 5.0;
+            self.ui.p().arc(c, 6.0, 8.0, a, a + 4.2, TEXT_SOFT);
+        }
+        if self.ui.hover(r) && self.ui.input.wheel.y.abs() > 0.0 {
+            self.showroom.zoom_by((1.0 - self.ui.input.wheel.y * 0.08).clamp(0.8, 1.25));
+        }
+        if self.ui.hover(r) {
+            self.ui.cursor = winit::window::CursorIcon::Grab;
+        }
+    }
+
+    pub fn go(&mut self, p: Page) {
+        if self.page != p {
+            self.page = p;
+            self.page_anim = 0.0;
+            match p {
+                Page::Profile => self.state.load_profile(),
+                Page::Mods => self.state.load_mods(),
+                Page::Sessions => self.state.poll_now(),
+                _ => {}
+            }
+        }
+    }
+
+    fn rail(&mut self) {
+        let size = self.ui.size;
+        let rail = Rect::new(0.0, 0.0, RAIL_W, size.y);
+        self.ui.solid(rail);
+        self.ui.p().rect(rail, RAIL);
+        self.ui.p().rect(Rect::new(RAIL_W - 1.0, 0.0, 1.0, size.y), EDGE);
+        self.ui.text("openOMSI", Vec2::new(24.0, 46.0), 20.0, Weight::Bold, TEXT, Align::Left);
+        self.ui.text(crate::startup::VERSION, Vec2::new(24.0, 64.0), 12.0, Weight::Regular, TEXT_DIM, Align::Left);
+        let mut y = 96.0;
+        let running = self.state.instances.iter().filter(|i| i.running).count();
+        let jobs = self.state.jobs.iter().filter(|j| j.finished.is_none()).count();
+        for (p, name, icon) in PAGES {
+            let r = Rect::new(12.0, y, RAIL_W - 24.0, 38.0);
+            let id = ui::id_of(&format!("nav-{name}"));
+            let (h, _, clicked) = self.ui.interact(id, r);
+            if clicked {
+                self.go(p);
+            }
+            let sel = self.page == p;
+            if sel {
+                self.ui.p().rounded(r, 6.0, SELECTED);
+                self.ui.p().rounded(Rect::new(r.x, r.y + 10.0, 2.0, r.h - 20.0), 1.0, ACCENT);
+            } else if h {
+                self.ui.p().rounded(r, 6.0, HOVER);
+            }
+            let c = if sel { TEXT } else if h { TEXT_SOFT } else { TEXT_DIM };
+            self.ui.icon(icon, Vec2::new(r.x + 20.0, r.center().y), 18.0, c);
+            self.ui.text_in(name, Rect::new(r.x + 40.0, r.y, r.w - 70.0, r.h), 13.5, if sel { Weight::Medium } else { Weight::Regular }, c, Align::Left);
+            let count = match p {
+                Page::Sessions => running,
+                Page::Mods => jobs,
+                _ => 0,
+            };
+            if count > 0 {
+                self.ui.text_in(&count.to_string(), Rect::new(r.right() - 30.0, r.y, 20.0, r.h), 12.0, Weight::Bold, if p == Page::Sessions { OK } else { ACCENT }, Align::Right);
+            }
+            y += 42.0;
+        }
+        // the driver, quietly at the bottom
+        let card = Rect::new(12.0, size.y - 64.0, RAIL_W - 24.0, 48.0);
+        let id = ui::id_of("rail-profile");
+        let (h, _, clicked) = self.ui.interact(id, card);
+        if clicked {
+            self.go(Page::Profile);
+        }
+        if h {
+            self.ui.p().rounded(card, 6.0, HOVER);
+        }
+        let (level, name) = match &self.state.profile {
+            Some(p) => (p.level, p.name.clone()),
+            None => (1, self.state.config.profile.clone()),
+        };
+        self.ui.icon("account_circle", Vec2::new(card.x + 22.0, card.center().y), 24.0, TEXT_DIM);
+        self.ui.text_in(if name.is_empty() { "No driver" } else { &name }, Rect::new(card.x + 42.0, card.y + 6.0, card.w - 48.0, 18.0), 13.0, Weight::Medium, TEXT, Align::Left);
+        self.ui.text_in(&format!("Level {level}"), Rect::new(card.x + 42.0, card.y + 24.0, card.w - 48.0, 16.0), 11.5, Weight::Regular, TEXT_DIM, Align::Left);
+    }
+
+    fn status_bar(&mut self) {
+        let (text, err, at) = self.state.status.clone();
+        if text.is_empty() {
+            return;
+        }
+        let fade = if err { 1.0 } else { (1.0 - (at.elapsed().as_secs_f32() - 6.0) / 1.5).clamp(0.0, 1.0) };
+        if fade <= 0.0 {
+            return;
+        }
+        let size = self.ui.size;
+        let first = text.lines().next().unwrap_or("").to_string();
+        let r = Rect::new(RAIL_W + 32.0, size.y - 34.0, size.x - RAIL_W - 64.0, 24.0);
+        let c = if err { DANGER } else { TEXT_DIM };
+        self.ui.text_in(&first, r, 12.0, Weight::Regular, c.alpha(fade), Align::Left);
+        self.ui.tooltip(r, &text);
+    }
+
+    /// A page's title and what it is for.
+    pub fn page_title(&mut self, r: Rect, title: &str, sub: &str) -> Rect {
+        self.ui.text(title, Vec2::new(r.x, r.y + 22.0), 22.0, Weight::Bold, TEXT, Align::Left);
+        if !sub.is_empty() {
+            self.ui.text(sub, Vec2::new(r.x, r.y + 44.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
+        }
+        Rect::new(r.x, r.y + 64.0, r.w, (r.h - 64.0).max(0.0))
+    }
+}
+
+
+/// The showroom's renderer: a bus on a floor needs none of the game's costly passes — no
+/// ambient occlusion, a small shadow map, 4x MSAA for the edges whatever the game uses.
+fn showroom_options(settings: &crate::settings::Settings) -> omsi_render::RenderOptions {
+    omsi_render::RenderOptions { msaa: 4, ssao: false, shadow_size: 1024, render_scale: 1.0, ..settings.render_options() }
+}

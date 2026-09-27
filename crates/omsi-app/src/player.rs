@@ -1,0 +1,1410 @@
+//! The player: their bus, its controls and cameras.
+
+use super::*;
+
+/// Everything about the spawned player vehicle.
+pub(crate) struct Player {
+    /// Which vehicle this is, for as long as the session runs (the people riding in one
+    /// the player left know it by this, see `Humans::player_bus_swapped`).
+    pub(crate) uid: u64,
+    pub(crate) vehicle: omsi_sim::VehicleInstance,
+    pub(crate) render: scene::VehicleRender,
+    /// Renders of the coupled parts, parallel to `vehicle.trailers`.
+    pub(crate) trailer_renders: Vec<scene::VehicleRender>,
+    pub(crate) axes: omsi_sim::KeyboardAxes,
+    /// A game controller's pedals and steering this frame (they win over the keys).
+    pub(crate) analog: crate::controllers::Analog,
+    /// The interior cameras chosen (OMSI's `view_toggle_viewpoint`,
+    /// `view_interiorcam_minus`/`_plus`): the driver's and the passengers' camera numbers.
+    pub(crate) cam_choice: (usize, usize),
+    /// (scan code, modifier bits) → action name, from `Inputs/keyboard.cfg` `[vehicles]`.
+    pub(crate) bindings: Vec<omsi_content::KeyBinding>,
+    pub(crate) sounds: Option<omsi_audio::SoundSet>,
+    /// Mesh index currently pressed with the mouse (its `[mouseevent]` gets `_off` on release).
+    pub(crate) pressed_mesh: Option<usize>,
+    /// Coupled-part mesh currently pressed.  Articulated buses keep the rear controls in
+    /// the trailer model, while their mouse events are still handled by the lead vehicle.
+    pub(crate) pressed_trailer_mesh: Option<(usize, usize)>,
+    /// The press on `pressed_mesh`: whether the script has a trigger for the click itself,
+    /// and how far the mouse has been dragged since (px).
+    pub(crate) press_info: (bool, f32),
+    /// A control worked only by dragging (the NL/NG driver's door: `cp_Fahrertuer_drag`
+    /// and no click trigger) that was clicked: it is dragged over to its other end.
+    pub(crate) auto_drag: Option<AutoDrag>,
+    /// Running auto-start (Shift+U).
+    pub(crate) startup: Option<omsi_sim::startup::StartUp>,
+    /// The ticket key was pressed this frame (sell the requested ticket).
+    pub(crate) give_ticket: bool,
+    /// OMSI's `change_give` / `change_take` keys (Omsi.exe sub_7e614c): hand the passenger
+    /// at the desk all the change owed at once / take back what lies on the change tray.
+    pub(crate) give_change: bool,
+    /// Parts at the end of the train coupled by hand (they can be uncoupled; an articulated
+    /// bus's own rear section cannot).
+    pub(crate) hand_coupled: usize,
+    /// Bound to the rails (see `rail_drive`), and where on them once it is placed.
+    pub(crate) rail_bound: bool,
+    pub(crate) rail: Option<crate::rail_drive::RailDrive>,
+    /// The driver camera chosen before the timetable or ticket desk camera took over.
+    pub(crate) cam_before_special: Option<usize>,
+    /// The actions a key started, by its scan code: its release lets go of the same ones,
+    /// whatever modifier is held by then (L pressed, Ctrl held, L let go: the release went
+    /// to Ctrl+L and the L action stayed held).
+    pub(crate) held_keys: hashbrown::HashMap<i32, Vec<String>>,
+    /// Where the driver's head is thrown by the bus's accelerations (vehicle frame, m):
+    /// OMSI's `[driverview_moving]`.
+    pub(crate) head: Vec3,
+    pub(crate) take_change: bool,
+    /// Keys whose `_toggle` this bus does as `_up`/`_down` (see `action`): turned up last.
+    pub(crate) toggled_up: hashbrown::HashSet<String>,
+    /// L switched the side lights on with the headlights (see
+    /// [`Player::headlights_with_side_lights`]).
+    pub(crate) side_lights_by_l: bool,
+    /// The driver figure at the wheel (see `driver.rs`).
+    pub(crate) driver: Option<crate::driver::DriverFigure>,
+    /// The duty's trip to type into the IBIS once the auto-start has the electrics on:
+    /// (line, terminus, first stop, the stop the bus is at: its index and name).
+    pub(crate) ibis_duty: Option<(String, String, Option<String>, (usize, String))>,
+    /// The IBIS being typed, with the line and terminus it is typed for.
+    pub(crate) ibis_typist: Option<(omsi_sim::ibis::Typist, String, String)>,
+    /// The duty is typed into the IBIS by itself (after Shift+U or `--autostart`): a new
+    /// trip of the duty is typed too.
+    pub(crate) duty_typed: bool,
+    /// The IBIS typing looks for its keys on a worker thread (in the window: the trials
+    /// would hold a frame up to a second and a half; an offscreen run waits for them).
+    pub(crate) ibis_background: bool,
+    /// The outside camera's arm (how far out it is swung right now).
+    pub(crate) arm: camera_arm::SpringArm,
+    /// What `Z`/`X`/`C` last turned on, so a repeat press of the same key turns it back off
+    /// (real OMSI's Z/X/C and Shift+numpad 4/6/5 are toggles, not one-shot "set" buttons):
+    /// 0 = nothing, 1 = left, 2 = right, 3 = hazard.
+    pub(crate) blinker_key_state: u8,
+}
+
+// Putting a bus into service (Shift+U, `--autostart`) is `omsi_sim::startup`: it presses
+// whatever the vehicle's scripts use to switch the electrics on and to crank the engine
+// (found in the compiled scripts, the keys of `Inputs/keyboard.cfg` first) and watches the
+// result, so a mod whose ignition key turns one notch per press of E starts as well as the
+// stock buses. What is already done is left alone: pressed again (or after `--autostart`)
+// the battery toggle used to switch the electrics off and every display went dead. No gear
+// is selected at the end: the bus spawns in N anyway, and a D pressed while the auto-start
+// was still running was thrown back to N by it.
+
+/// OMSI's own layout drives the bus with Shift and the numpad (throttle Shift+Num 8, brake
+/// Shift+Num 2, steering Shift+Num 4/6). A laptop or a Mac keyboard has no numpad at all, so
+/// the arrow keys drive as well; all they do in OMSI is step through the interior cameras.
+///
+/// W, A, S and D drive as well, because that is what everybody reaches for — but
+/// `Inputs/keyboard.cfg` gives W the wipers, S the viewpoint and **D the D of the automatic
+/// gearbox**, so those three are reached by holding shift (Shift+D selects D), and the bus
+/// can still be put into gear. `--drive-keys arrows` leaves W/A/S/D to OMSI entirely.
+/// The driving keys of a control preset (`drive_keys` in the settings):
+/// `omsi` — only the original layout of Inputs/keyboard.cfg (Shift + numpad), nothing extra;
+/// `simple` — W/S/A/D and the arrow keys both drive; `wasd` — W/S/A/D only;
+/// `arrows` — the arrow keys only (W/S/D keep their OMSI meaning: wipers, viewpoint, gear).
+pub(crate) fn fallback_action(code: KeyCode, preset: &str) -> Option<omsi_sim::EngineAction> {
+    use omsi_sim::EngineAction as A;
+    let preset = preset.to_ascii_lowercase();
+    let (wasd, arrows) = match preset.as_str() {
+        "omsi" | "original" => (false, false),
+        "wasd" => (true, false),
+        "arrows" => (false, true),
+        _ => (true, true), // "simple" and anything unknown
+    };
+    Some(match code {
+        KeyCode::ArrowUp if arrows => A::Throttle,
+        KeyCode::ArrowDown if arrows => A::Brake,
+        KeyCode::ArrowLeft if arrows => A::SteeringLeft,
+        KeyCode::ArrowRight if arrows => A::SteeringRight,
+        KeyCode::KeyW if wasd => A::Throttle,
+        KeyCode::KeyS if wasd => A::Brake,
+        KeyCode::KeyA if wasd => A::SteeringLeft,
+        KeyCode::KeyD if wasd => A::SteeringRight,
+        _ => return None,
+    })
+}
+
+/// Keyboard actions of `Inputs/keyboard.cfg` that no vehicle script handles under that
+/// name: the original translates them into the triggers the scripts do define (the
+/// indicators are `kw_blinker_*` in every stock bus, while the key file says
+/// `blinker_left_set`). Each action lists the trigger names tried in turn.
+pub(crate) const ACTION_ALIASES: &[(&str, &[&str])] = &[
+    (
+        "blinker_left_set",
+        &["kw_blinker_links", "blinker_links", "cp_blinker_links"],
+    ),
+    (
+        "blinker_right_set",
+        &["kw_blinker_rechts", "blinker_rechts", "cp_blinker_rechts"],
+    ),
+    (
+        "blinker_off",
+        &["kw_blinker_aus", "blinker_aus", "cp_blinker_aus"],
+    ),
+    (
+        "blinker_warn_toggle",
+        &["kw_blinker_warn", "blinker_warn", "cp_warnblinker_toggle"],
+    ),
+    (
+        "parking_brake_toggle",
+        &["parking_brake_mouse", "cp_feststellbremse_toggle"],
+    ),
+];
+
+/// Every door of a bus, `Shift+1` first: the stock scripts name a door `bus_doorfront<n>`
+/// (the SD200/SD202/EN92 have two, both leaves of the one front door) and the aft one
+/// `bus_dooraft` (which is also the stop brake release); a low-floor mod with three or four
+/// independent doors, like the O530 Facelift, just has more `bus_doorfront<n>` triggers.
+/// The keyboard names the passenger door, not each of its leaves.  Most stock and
+/// add-on buses expose the two leaves as consecutive `bus_doorfront<n>` triggers.
+/// A few older scripts use the second trigger as a *close* command instead; do not
+/// combine that one with the opener (A3/BR275 are examples).
+/// Sorted by `n` with `bus_dooraft` last. Consecutive leaves are grouped into one physical
+/// doorway unless the script clearly names the second trigger as a close command.
+pub(crate) fn door_trigger_groups(program: &omsi_script::Program) -> Vec<Vec<String>> {
+    let mut fronts: Vec<(u32, String)> = program
+        .triggers
+        .keys()
+        .filter_map(|n| {
+            n.strip_prefix("bus_doorfront")
+                .and_then(|rest| rest.parse::<u32>().ok())
+                .map(|i| (i, n.clone()))
+        })
+        .collect();
+    fronts.sort_by_key(|(i, _)| *i);
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < fronts.len() {
+        let mut group = vec![fronts[i].1.clone()];
+        if let Some((next, name)) = fronts.get(i + 1) {
+            if *next == fronts[i].0 + 1 && !door_trigger_closes(program, name) {
+                group.push(name.clone());
+                i += 1;
+            }
+        }
+        out.push(group);
+        i += 1;
+    }
+    if program.trigger("bus_dooraft").is_some() {
+        out.push(vec!["bus_dooraft".to_string()]);
+    }
+    out
+}
+
+pub(crate) fn door_trigger_closes(program: &omsi_script::Program, name: &str) -> bool {
+    fn block_closes(
+        program: &omsi_script::Program,
+        block: omsi_script::BlockId,
+        seen: &mut hashbrown::HashSet<omsi_script::BlockId>,
+    ) -> bool {
+        if !seen.insert(block) {
+            return false;
+        }
+        let Some(b) = program.blocks.get(block as usize) else {
+            return false;
+        };
+        b.ops.iter().any(|op| match op {
+            omsi_script::Op::Store(id) | omsi_script::Op::Load(id) => {
+                let n = program
+                    .var_names
+                    .get(*id as usize)
+                    .map(String::as_str)
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                ["close", "closing", "schliess", "schließ"]
+                    .iter()
+                    .any(|x| n.contains(x))
+            }
+            omsi_script::Op::Macro(m) => block_closes(program, *m, seen),
+            _ => false,
+        })
+    }
+    program
+        .trigger(name)
+        .map(|b| block_closes(program, b, &mut hashbrown::HashSet::new()))
+        .unwrap_or(false)
+}
+
+/// The variable a door trigger toggles to say where the leaf is going (`doorTarget_0` of
+/// the stock door scripts: the trigger's macros store it), if it has one.
+pub(crate) fn door_trigger_target(program: &omsi_script::Program, name: &str) -> Option<omsi_script::VarId> {
+    fn find(program: &omsi_script::Program, block: omsi_script::BlockId, seen: &mut hashbrown::HashSet<omsi_script::BlockId>) -> Option<omsi_script::VarId> {
+        if !seen.insert(block) {
+            return None;
+        }
+        let b = program.blocks.get(block as usize)?;
+        for op in &b.ops {
+            match op {
+                omsi_script::Op::Store(id) => {
+                    let n = program.var_names.get(*id as usize).map(|n| n.to_ascii_lowercase()).unwrap_or_default();
+                    if n.contains("target") || n.contains("soll") {
+                        return Some(*id);
+                    }
+                }
+                omsi_script::Op::Macro(m) => {
+                    if let Some(v) = find(program, *m, seen) {
+                        return Some(v);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+    program.trigger(name).and_then(|b| find(program, b, &mut hashbrown::HashSet::new()))
+}
+
+/// Which triggers of a door key's group to fire so that its leaves end up together: when
+/// any is open (by its target), only the open ones (to close them), else all. Toggling
+/// every leaf of a group made a closed leaf open while an open one closed.
+pub(crate) fn door_group_to_fire(v: &omsi_sim::VehicleInstance, group: &[String]) -> Vec<String> {
+    let states: Vec<Option<bool>> = group
+        .iter()
+        .map(|n| door_trigger_target(&v.ty.program, n).and_then(|id| v.state.vars.get(id as usize).copied()).map(|x| x > 0.5))
+        .collect();
+    if group.len() < 2 || states.iter().any(|s| s.is_none()) {
+        return group.to_vec();
+    }
+    let any_open = states.iter().any(|s| *s == Some(true));
+    group.iter().zip(&states).filter(|(_, s)| !any_open || **s == Some(true)).map(|(n, _)| n.clone()).collect()
+}
+
+/// `Digit1`..`Digit9` as 1..9 (`Digit0` and the numpad digits are left for whatever
+/// `Inputs/keyboard.cfg` already puts on them).
+pub(crate) fn digit_of(code: KeyCode) -> Option<usize> {
+    Some(match code {
+        KeyCode::Digit1 => 1,
+        KeyCode::Digit2 => 2,
+        KeyCode::Digit3 => 3,
+        KeyCode::Digit4 => 4,
+        KeyCode::Digit5 => 5,
+        KeyCode::Digit6 => 6,
+        KeyCode::Digit7 => 7,
+        KeyCode::Digit8 => 8,
+        KeyCode::Digit9 => 9,
+        _ => return None,
+    })
+}
+
+impl Player {
+    /// Some stock roller-blind scripts keep a ratchet position with `max`.  The original
+    /// engine resets that ratchet while the hand is moving; without that small engine-side
+    /// detail a blind lowered once is immediately snapped back down on every frame.
+    pub(crate) fn repair_roller_blind(&mut self, event: &str) {
+        let e = event.to_ascii_lowercase();
+        if !e.contains("rollo") {
+            return;
+        }
+        if e.ends_with("retract") {
+            self.vehicle.set_var("cp_rollo_rastpos", 0.0);
+        } else if e.ends_with("drag") {
+            if let Some(pos) = self.vehicle.var("cp_rollo_pos") {
+                self.vehicle.set_var("cp_rollo_rastpos", pos);
+            }
+        }
+    }
+
+    /// Fire a keyboard action as a script trigger, falling back to the names the stock
+    /// scripts use for it. Returns whether any script block ran.
+    pub(crate) fn action(&mut self, name: &str, pressed: bool) -> bool {
+        let suffix = if pressed { "" } else { "_off" };
+        // the ticket key of Inputs/keyboard.cfg (T): sell the ticket the passenger at the
+        // desk asked for, on buses whose script has no ticket printer
+        if name.eq_ignore_ascii_case("ticket_give") {
+            if pressed {
+                self.give_ticket = true;
+            }
+            return true;
+        }
+        if name.eq_ignore_ascii_case("change_give") || name.eq_ignore_ascii_case("change_take") {
+            if pressed {
+                if name.eq_ignore_ascii_case("change_give") {
+                    self.give_change = true;
+                } else {
+                    self.take_change = true;
+                }
+            }
+            // the bus's own script may know the key too (a change machine)
+            self.vehicle.trigger(&format!("{name}{suffix}"));
+            return true;
+        }
+        let headlights = pressed && name.eq_ignore_ascii_case("kw_scheinwerfer_toggle");
+        let lamps_before = if headlights { self.outside_lamps_lit() } else { 0 };
+        if self.vehicle.trigger(&format!("{name}{suffix}")) {
+            self.repair_roller_blind(&format!("{name}{suffix}"));
+            if headlights {
+                self.headlights_with_side_lights(lamps_before);
+            }
+            return true;
+        }
+        let Some((_, aliases)) = ACTION_ALIASES
+            .iter()
+            .find(|(a, _)| a.eq_ignore_ascii_case(name))
+        else {
+            return false;
+        };
+        for alias in *aliases {
+            if self.vehicle.trigger(&format!("{alias}{suffix}")) {
+                self.repair_roller_blind(&format!("{alias}{suffix}"));
+                return true;
+            }
+        }
+        self.toggle_as_steps(name, pressed)
+    }
+
+    /// The I key: all saloon light circuits on, or all off. OMSI binds one key to each
+    /// circuit (Inputs/keyboard.cfg: 7 `cp_licht_untenrechts_toggle`, 8
+    /// `cp_licht_oberdeck_toggle`, 9 `cp_licht_unterdeck_toggle`) and the buses wire them
+    /// differently: the stock MANs light the saloon with all three, the LiAZ 5292 with the
+    /// first two and nothing on the third — a shortcut that only threw
+    /// `cp_licht_unterdeck` never lit the LiAZ. Every saloon switch the keyboard knows is
+    /// pressed, and taken back when it moved the model's `[interiorlight]` lamps the
+    /// wrong way (see [`Player::set_saloon_lights`]).
+    pub(crate) fn toggle_saloon_lights(&mut self) -> String {
+        let on = self.saloon_lamps_lit() == 0;
+        let done = self.set_saloon_lights(on);
+        log::info!("saloon lights {} ({})", if on { "on" } else { "off" }, done.join(", "));
+        if self.vehicle.ty.model.interior_lights.is_empty() {
+            "This bus has no saloon lights".into()
+        } else if !done.is_empty() {
+            format!("Saloon lights {}", if on { "on" } else { "off" })
+        } else if on {
+            // the switches are thrown, but the lamps stay dark: no current
+            "Saloon light switches on — no power (battery off?)".into()
+        } else {
+            "Saloon lights off".into()
+        }
+    }
+
+    /// How many of the model's `[interiorlight]` lamps are lit now.
+    fn saloon_lamps_lit(&self) -> usize {
+        self.vehicle
+            .ty
+            .model
+            .interior_lights
+            .iter()
+            .filter(|l| self.vehicle.var(&l.variable).unwrap_or(0.0) > 0.5)
+            .count()
+    }
+
+    /// Switch the saloon lights on or off: every saloon light switch `Inputs/keyboard.cfg`
+    /// knows (`cp_…licht…`/`…light…`, not the driver's lamp) is pressed once and taken
+    /// back (the variables restored) when the scripts moved the lamps the other way. Returns the
+    /// switches that did what was asked.
+    pub(crate) fn set_saloon_lights(&mut self, on: bool) -> Vec<String> {
+        let mut switches: Vec<String> = self
+            .bound_actions()
+            .into_iter()
+            .filter(|a| {
+                let a = a.to_ascii_lowercase();
+                (a.contains("licht") || a.contains("light"))
+                    && a.starts_with("cp_")
+                    && !a.contains("fahrer")
+                    && !a.contains("driver")
+            })
+            .collect();
+        for extra in ["interior_light_toggle", "interiorlight_toggle"] {
+            if self.vehicle.ty.program.triggers.contains_key(extra) {
+                switches.push(extra.to_string());
+            }
+        }
+        let total = self.vehicle.ty.model.interior_lights.len();
+        let mut done = Vec::new();
+        for sw in switches {
+            let before = self.saloon_lamps_lit();
+            if (on && before == total) || (!on && before == 0) {
+                break;
+            }
+            let saved = self.vehicle.state.vars.clone();
+            if !self.action(&sw, true) {
+                continue;
+            }
+            self.action(&sw, false);
+            // the scripts set the lamp variables from the switches in their frame
+            self.vehicle.update_scripts_only(0.0);
+            let after = self.saloon_lamps_lit();
+            if (on && after < before) || (!on && after > before) {
+                self.vehicle.state.vars = saved;
+            } else if after != before {
+                done.push(sw);
+            }
+        }
+        done
+    }
+
+    /// How many of the model's outside lamps (`[light_enh]`, `[light_enh_2]`) are lit now.
+    fn outside_lamps_lit(&self) -> usize {
+        let v = &self.vehicle;
+        v.ty.model
+            .meshes
+            .iter()
+            .flat_map(|m| {
+                m.light_enh
+                    .iter()
+                    .map(|l| l.variable.as_str())
+                    .chain(m.light_enh_2.iter().map(|l| l.variable.as_str()))
+            })
+            .filter(|n| !n.is_empty() && v.var(n).unwrap_or(0.0) > 0.5)
+            .count()
+    }
+
+    /// L (`kw_scheinwerfer_toggle`) on a bus whose side and tail lights have a switch of
+    /// their own (Ctrl+L, `kw_standlicht_toggle`): switching the headlights on puts those on
+    /// too, and switching them off puts them out again when L put them on. The LiAZ 5292's
+    /// L lit the two dipped beams and nothing else — no marker lamps on the roof, no tail
+    /// lights — and nobody finds Ctrl+L. A bus whose L already lights everything (the stock
+    /// MANs' rotary switch) is left as it is: pressing its side-light key would only take
+    /// lamps away, and that press is undone.
+    fn headlights_with_side_lights(&mut self, before: usize) {
+        if !self.vehicle.ty.program.triggers.contains_key("kw_standlicht_toggle") {
+            return;
+        }
+        self.vehicle.update_scripts_only(0.0);
+        let after = self.outside_lamps_lit();
+        // a press that did not do what was wanted is taken back by restoring the variables
+        // as they were: pressing again is no way back on a rotary switch (the EN92's key
+        // goes headlights -> side lights -> off)
+        let try_press = |p: &mut Player, better: &dyn Fn(usize) -> bool| -> bool {
+            let saved = p.vehicle.state.vars.clone();
+            p.vehicle.trigger("kw_standlicht_toggle");
+            p.vehicle.trigger("kw_standlicht_toggle_off");
+            p.vehicle.update_scripts_only(0.0);
+            if better(p.outside_lamps_lit()) {
+                true
+            } else {
+                p.vehicle.state.vars = saved;
+                false
+            }
+        };
+        if after > before && !self.side_lights_by_l {
+            self.side_lights_by_l = try_press(self, &|n| n > after);
+        } else if after < before && after > 0 {
+            // (switching the headlights off leaves the side lights on only when they were on
+            // before the headlights; the lights stayed on for good when that was not known)
+            if try_press(self, &|n| n < after) {
+                self.side_lights_by_l = false;
+            }
+        }
+    }
+
+    /// A key OMSI binds to a `<switch>_toggle` on a bus whose switch only turns in steps
+    /// (`<switch>_up` / `<switch>_down`): the Procity's light switch has
+    /// `kw_scheinwerfer_up`/`_down` and nothing answered L (`kw_scheinwerfer_toggle`), so its
+    /// headlights could not be switched on from the keyboard. Such a key turns the switch up
+    /// two steps (side lights, then headlights) and, the next time, back down.
+    pub(crate) fn toggle_as_steps(&mut self, name: &str, pressed: bool) -> bool {
+        let Some(base) = name.strip_suffix("_toggle") else {
+            return false;
+        };
+        let (up, down) = (format!("{base}_up"), format!("{base}_down"));
+        let has = |v: &omsi_sim::VehicleInstance, t: &str| v.ty.program.triggers.contains_key(&t.to_ascii_lowercase());
+        if !has(&self.vehicle, &up) || !has(&self.vehicle, &down) {
+            return false;
+        }
+        if !pressed {
+            return true;
+        }
+        let key = base.to_ascii_lowercase();
+        // up when nothing is lit, down when something is (a switch moved by the mouse, or lit
+        // from the start, went on up for ever: the lights could not be switched off again)
+        let lit = self.outside_lamps_lit() > 0;
+        let going_up = if base.to_ascii_lowercase().contains("schein") || base.to_ascii_lowercase().contains("licht") || base.to_ascii_lowercase().contains("light") { !lit } else { !self.toggled_up.contains(&key) };
+        let step = if going_up { &up } else { &down };
+        for _ in 0..2 {
+            self.vehicle.trigger(step);
+            self.vehicle.trigger(&format!("{step}_off"));
+        }
+        if going_up {
+            self.toggled_up.insert(key);
+        } else {
+            self.toggled_up.remove(&key);
+        }
+        true
+    }
+
+    /// Handle a key: engine actions change the axes, everything else fires script triggers.
+    pub(crate) fn key(&mut self, scan: i32, modifiers: i32, pressed: bool) {
+        let names: Vec<String> = if pressed {
+            let n: Vec<String> = self
+                .bindings
+                .iter()
+                .filter(|b| b.scan_code == scan && b.modifier == modifiers)
+                .map(|b| b.action.clone())
+                .collect();
+            self.held_keys.insert(scan, n.clone());
+            n
+        } else {
+            match self.held_keys.remove(&scan) {
+                Some(n) => n,
+                None => self
+                    .bindings
+                    .iter()
+                    .filter(|b| b.scan_code == scan && b.modifier == modifiers)
+                    .map(|b| b.action.clone())
+                    .collect(),
+            }
+        };
+        for name in names {
+            if let Some(a) = omsi_sim::engine_action(&name) {
+                self.axes.set(a, pressed);
+            } else {
+                self.action(&name, pressed);
+            }
+        }
+    }
+
+    /// Start the whole bus by itself (Shift+U): everything a driver does to put it into
+    /// service. Returns what to show in the HUD.
+    pub(crate) fn start_up(&mut self) -> String {
+        if let Some(s) = self.startup.as_ref() {
+            return if s.shutting_down() { "Switching the vehicle off ..." } else { "Putting the vehicle into service ..." }.to_string();
+        }
+        let shutting_down = omsi_sim::startup::power_on(&self.vehicle)
+            || omsi_sim::startup::engine_running(&self.vehicle);
+        let bound = self.bound_actions();
+        self.startup = Some(omsi_sim::startup::StartUp::new(&self.vehicle, &bound));
+        if shutting_down {
+            "Switching the vehicle off ...".to_string()
+        } else {
+            "Putting the vehicle into service ...".to_string()
+        }
+    }
+
+    /// The vehicle actions `Inputs/keyboard.cfg` puts on keys.
+    pub(crate) fn bound_actions(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for b in &self.bindings {
+            if !names.iter().any(|n| n.eq_ignore_ascii_case(&b.action)) {
+                names.push(b.action.clone());
+            }
+        }
+        names
+    }
+
+    /// Advance a running auto-start, then the IBIS typing; true while the auto-start is
+    /// still going.
+    pub(crate) fn tick_startup(&mut self, dt: f32) -> bool {
+        self.tick_ibis(dt);
+        let Some(mut s) = self.startup.take() else {
+            return false;
+        };
+        let bound = self.bound_actions();
+        if s.tick(&mut self.vehicle, &bound, dt) {
+            self.startup = Some(s);
+            return true;
+        }
+        log::info!(
+            "auto-start finished: {} (engine_n={:?})",
+            if s.report.is_empty() {
+                "nothing to do".to_string()
+            } else {
+                s.report.join(", ")
+            },
+            self.vehicle.var("engine_n")
+        );
+        if omsi_sim::startup::power_on(&self.vehicle) {
+            self.saloon_lights_after_dark();
+        }
+        if let Some((line, terminus, first, stop)) = self.ibis_duty.take() {
+            self.type_destination(&line, &terminus, first.as_deref(), (stop.0, &stop.1));
+        }
+        false
+    }
+
+    /// After dark a bus put into service (Shift+U) has its saloon lit, as a driver switches it
+    /// on before the first stop: every key `Inputs/keyboard.cfg` gives a saloon light switch
+    /// is pressed once, and pressed again when that put out more of the model's
+    /// `[interiorlight]` lamps than it lit. Before, the saloon stayed dark until the
+    /// switches were found (the LiAZ has two, on 7 and 8).
+    fn saloon_lights_after_dark(&mut self) {
+        let light_out = !omsi_sim::Daylight::compute(&self.vehicle.host.clock, None).lamps_on;
+        if light_out {
+            return;
+        }
+        // the headlights as well (the bus was put into service at night with its saloon
+        // lit and its headlights off): the light switch key once, where the headlights are
+        // off (`Spot_Select` < 0, the stock scripts' "no spotlight")
+        let headlights_off = self.vehicle.var("Spot_Select").is_some_and(|s| s < 0.0);
+        if headlights_off && self.vehicle.ty.program.trigger("kw_scheinwerfer_toggle").is_some() {
+            self.action("kw_scheinwerfer_toggle", true);
+            self.action("kw_scheinwerfer_toggle", false);
+            log::info!("auto-start: headlights switched on after dark");
+        }
+        if self.vehicle.ty.model.interior_lights.is_empty() {
+            return;
+        }
+        let done = self.set_saloon_lights(true);
+        if !done.is_empty() {
+            log::info!("auto-start: saloon lights switched on after dark ({})", done.join(", "));
+        }
+    }
+
+    /// Type on into the IBIS; when the typing could not be done, the IBIS variables are
+    /// written directly.
+    pub(crate) fn tick_ibis(&mut self, dt: f32) {
+        let Some((mut typist, line, terminus)) = self.ibis_typist.take() else {
+            return;
+        };
+        if typist.tick(&mut self.vehicle, dt) {
+            self.ibis_typist = Some((typist, line, terminus));
+            return;
+        }
+        match typist.outcome() {
+            Some(Ok(what)) => log::info!("IBIS set to line {line} terminus {terminus}: {what}"),
+            other => {
+                log::info!(
+                    "IBIS: {}; line {line} terminus {terminus} set directly",
+                    other
+                        .and_then(|o| o.as_ref().err())
+                        .cloned()
+                        .unwrap_or_default()
+                );
+                let hof = self.vehicle.host.hof.clone();
+                schedule::set_player_destination_directly(
+                    &mut self.vehicle,
+                    hof.as_deref(),
+                    &line,
+                    &terminus,
+                );
+            }
+        }
+    }
+
+    /// Put the duty's trip on the IBIS, at the stop the bus is at: now, or when the running
+    /// auto-start is done.
+    pub(crate) fn set_duty_destination(&mut self, trip: &schedule::PlannedTrip, stop: usize) {
+        self.duty_typed = true;
+        let first = trip.stops.first().map(|s| s.name.clone());
+        let name = trip
+            .stops
+            .get(stop)
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
+        if self.startup.is_some() {
+            self.ibis_duty = Some((
+                trip.line.clone(),
+                trip.terminus.clone(),
+                first,
+                (stop, name),
+            ));
+        } else {
+            self.type_destination(&trip.line, &trip.terminus, first.as_deref(), (stop, &name));
+        }
+    }
+
+    pub(crate) fn type_destination(
+        &mut self,
+        line: &str,
+        terminus: &str,
+        first_stop: Option<&str>,
+        stop: (usize, &str),
+    ) {
+        if let Some((mut old, ..)) = self.ibis_typist.take() {
+            old.abandon(&mut self.vehicle);
+        }
+        let hof = self.vehicle.host.hof.clone();
+        // the keys a driver reaches: the cockpit's clickable switches and the keyboard's
+        let mut keys: hashbrown::HashSet<String> = self
+            .vehicle
+            .ty
+            .model
+            .meshes
+            .iter()
+            .filter_map(|m| m.mouse_event.as_ref())
+            .map(|e| e.trim().to_ascii_lowercase())
+            .collect();
+        keys.extend(
+            self.bound_actions()
+                .iter()
+                .map(|a| a.trim().to_ascii_lowercase()),
+        );
+        let operable = |name: &str| keys.contains(&name.trim().to_ascii_lowercase());
+        match schedule::player_ibis(
+            &mut self.vehicle,
+            hof.as_deref(),
+            line,
+            terminus,
+            first_stop,
+            Some(stop),
+            &operable,
+            self.ibis_background,
+        ) {
+            Some(typist) => {
+                self.ibis_typist = Some((typist, line.to_string(), terminus.to_string()))
+            }
+            None => log::info!("IBIS: nothing to type for line {line} terminus {terminus}"),
+        }
+    }
+
+    /// The driver's head follows the bus's accelerations a little late, as a body does:
+    /// forward when braking, out of a bend, down over a bump (OMSI's head movement).
+    pub(crate) fn move_head(&mut self, dt: f32, enabled: bool) {
+        let a = self.vehicle.physics.accel;
+        let target = if enabled {
+            Vec3::new(-a.x * 0.010, -a.y * 0.012, -(a.z - 9.81) * 0.006).clamp(Vec3::splat(-0.07), Vec3::splat(0.07))
+        } else {
+            Vec3::ZERO
+        };
+        let k = 1.0 - (-dt.max(0.0) * 7.0).exp();
+        self.head += (target - self.head) * k;
+    }
+
+    pub(crate) fn tick(&mut self, dt: f32, audio: Option<&omsi_audio::AudioEngine>, inside: bool) {
+        self.tick_startup(dt);
+        self.tick_auto_drag(dt);
+        self.axes.speed_kmh = self.vehicle.physics.velocity_kmh();
+        self.axes.update(dt);
+        let a = self.analog;
+        self.vehicle.set_controls(omsi_sim::Controls {
+            throttle: a.throttle.unwrap_or(self.axes.throttle).max(self.axes.throttle),
+            brake: a.brake.unwrap_or(self.axes.brake).max(self.axes.brake),
+            clutch: a.clutch.unwrap_or(self.axes.clutch).max(self.axes.clutch),
+            // (a wheel at rest does not hold against the keys)
+            steering: match a.steering {
+                Some(s) if s.abs() > 0.02 || self.axes.steering == 0.0 => s,
+                _ => self.axes.steering,
+            },
+        });
+        self.vehicle.update(dt);
+        // OMSI_SUSP_TRACE_WINDOW=<csv>: each wheel's travel every frame of a window run
+        // (the offscreen run has OMSI_SUSP_TRACE)
+        if let Some(path) = omsi_cfg::env::var_os("OMSI_SUSP_TRACE_WINDOW") {
+            use std::io::Write;
+            static TRACE: std::sync::Mutex<Option<(std::fs::File, f64)>> = std::sync::Mutex::new(None);
+            let mut g = TRACE.lock().unwrap_or_else(|e| e.into_inner());
+            if g.is_none() {
+                if let Ok(mut f) = std::fs::File::create(&path) {
+                    let _ = writeln!(f, "t,dt,z,kmh,wheel,compression,rate,load,ground_z");
+                    *g = Some((f, 0.0));
+                }
+            }
+            if let (Some((f, t)), Some(rb)) = (g.as_mut(), self.vehicle.rigid.as_ref()) {
+                *t += dt as f64;
+                for (k, w) in rb.wheels.iter().enumerate() {
+                    let _ = writeln!(f, "{:.4},{:.4},{:.4},{:.1},{k},{:.4},{:.3},{:.0},{:.4}", t, dt, rb.position.z, self.vehicle.physics.velocity_kmh(), w.compression, w.compression_rate, w.load, w.ground_z);
+                }
+            }
+        }
+        let fired: Vec<String> = std::mem::take(&mut self.vehicle.host.fired_triggers);
+        let fired_files: Vec<(String, String)> =
+            std::mem::take(&mut self.vehicle.host.fired_file_triggers);
+        for (t, f) in &fired_files {
+            log::info!("announcement: {t} -> {f}");
+        }
+        if let (Some(a), Some(ss)) = (audio, self.sounds.as_mut()) {
+            let xf = self.vehicle.world_transform();
+            let v = &self.vehicle;
+            // the camera decides which `[viewpoint]` entries are heard (the exterior engine
+            // samples outside, the rain on the roof in the cab)
+            ss.set_inside(inside);
+            ss.set_muffled(inside);
+            // how open the bus is to the outside (doors, driver's window) for every outside
+            // sound heard in it — this bus's own and the traffic's
+            omsi_audio::soundset::set_outside_open(if inside { v.var("Snd_OutsideVol") } else { None });
+            ss.update(a, &|n| v.var(n), &xf, &fired);
+            ss.update_parts(
+                a,
+                &|n| v.var(n),
+                &|i| v.trailers.get(i).map(|t| t.world_transform()),
+                &fired,
+            );
+            for (t, f) in &fired_files {
+                ss.play_file_trigger(a, t, f, &|n| v.var(n), &xf);
+            }
+            if let Some(every) = debug_sound_every() {
+                static LAST: std::sync::atomic::AtomicU32 =
+                    std::sync::atomic::AtomicU32::new(u32::MAX);
+                let bucket = (v.host.clock.time / every as f64) as u32;
+                if LAST.swap(bucket, std::sync::atomic::Ordering::Relaxed) != bucket {
+                    log::info!(
+                        "sound: the player's bus ({} entries, {})",
+                        ss.len(),
+                        if inside { "inside" } else { "outside" }
+                    );
+                    for line in ss.report(a, &|n| v.var(n)) {
+                        log::info!("  {line}");
+                    }
+                    for (i, part) in &ss.parts {
+                        log::info!("sound: coupled part {i} ({} entries)", part.len());
+                        for line in part.report(a, &|n| v.var(n)) {
+                            log::info!("  {line}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Attach the vehicle's sound configuration.
+    pub(crate) fn load_sounds(&mut self, audio: &omsi_audio::AudioEngine) {
+        let def = &self.vehicle.ty.def;
+        if let Some(rel) = &def.sound {
+            let path = omsi_cfg::resolve_path(def.dir(), rel);
+            match omsi_vehicle::SoundCfg::load(&path) {
+                Ok(cfg) => {
+                    // the bus's own `[next_random]` sounds, chosen by its fleet number
+                    let number = self.vehicle.number();
+                    let all = cfg.sounds.len();
+                    let cfg = cfg.chosen_for(&number);
+                    let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+                    let mut ss = omsi_audio::SoundSet::new(audio, &cfg, &dir);
+                    log::info!(
+                        "sound config {}: {} sounds ({} of {all} for fleet number '{number}')",
+                        path.display(),
+                        cfg.sounds.len(),
+                        cfg.sounds.len()
+                    );
+                    // the coupled parts' own sound configurations (the engine of a pusher
+                    // articulated bus is in its rear section's)
+                    for (i, t) in self.vehicle.trailers.iter().enumerate() {
+                        let Some(rel) = &t.ty.def.sound else { continue };
+                        let path = omsi_cfg::resolve_path(t.ty.def.dir(), rel);
+                        match omsi_vehicle::SoundCfg::load(&path) {
+                            Ok(cfg) => {
+                                let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+                                log::info!(
+                                    "sound config of coupled part {i} {}: {} sounds",
+                                    path.display(),
+                                    cfg.sounds.len()
+                                );
+                                ss.add_part(i, omsi_audio::SoundSet::new(audio, &cfg.chosen_for(&number), &dir));
+                            }
+                            Err(e) => log::warn!("{e}"),
+                        }
+                    }
+                    self.sounds = Some(ss);
+                }
+                Err(e) => log::warn!("{e}"),
+            }
+        }
+    }
+
+    /// The switch under a ray, if any: the `[mouseevent]` mesh the cursor points at.
+    ///
+    /// The ray through the cursor decides on its own wherever it hits something; only when
+    /// it hits nothing are rings of rays around it tried, so that a switch a couple of
+    /// pixels wide can still be caught. Letting the ring win over the middle ray (which is
+    /// what happened before) meant a switch standing slightly closer than the one actually
+    /// under the cursor took the click — the neighbouring toggle flipped instead.
+    ///
+    /// `spread` is the half-angle of those rings in radians; the window passes the angle
+    /// six pixels subtend, so aiming is equally forgiving at any resolution.
+    pub(crate) fn pick(&self, origin: DVec3, dir: Vec3, spread: f32) -> Option<usize> {
+        pick_in(&self.vehicle, origin, dir, spread)
+    }
+
+    /// The same forgiving pick as `pick`, for the coupled sections of an articulated bus.
+    pub(crate) fn pick_trailer(&self, origin: DVec3, dir: Vec3, spread: f32) -> Option<(usize, usize)> {
+        pick_trailer_in(&self.vehicle, origin, dir, spread)
+    }
+
+    /// The part of the bus under a ray, switch or not: `(name, operable)`. Without this the
+    /// HUD stayed empty over everything that is not a switch, and there was no way to tell
+    /// "this is not a control" from "the cursor is not hitting anything".
+    pub(crate) fn hovered_part(&self, origin: DVec3, dir: Vec3, spread: f32) -> Option<(String, bool)> {
+        if let Some(i) = self.pick(origin, dir, spread) {
+            let def = &self.vehicle.ty.model.meshes[self.vehicle.ty.meshes[i].def_index];
+            if let Some(ev) = def.mouse_event.clone() {
+                // a whole panel that can be dragged into place (the VDV dashboard's
+                // `VDV_position`) is no switch to name: its name covered the whole cockpit
+                let big = self.vehicle.ty.mesh_bounds.get(i).map(|b| b.1 > 0.45).unwrap_or(false);
+                if big {
+                    return None;
+                }
+                return Some((ev, true));
+            }
+        }
+        if let Some((ti, i)) = self.pick_trailer(origin, dir, spread) {
+            let trailer = &self.vehicle.trailers[ti];
+            let def = &trailer.ty.model.meshes[trailer.ty.meshes[i].def_index];
+            if let Some(ev) = def.mouse_event.clone() {
+                return Some((ev, true));
+            }
+        }
+        let o = (origin - self.vehicle.position).as_vec3();
+        let mut best: Option<(f32, usize)> = None;
+        for (i, vm) in self.vehicle.ty.meshes.iter().enumerate() {
+            if !self.vehicle.mesh_props[i].visible {
+                continue;
+            }
+            let xf = self.vehicle.mesh_local_transform(i);
+            if !ray_may_hit(&self.vehicle.ty, i, &xf, o, dir, 0.0) {
+                continue;
+            }
+            if let Some(t) = omsi_geometry::ray_mesh(o, dir, &vm.data, &xf) {
+                if best.map(|(bt, _)| t < bt).unwrap_or(true) {
+                    best = Some((t, i));
+                }
+            }
+        }
+        let (_, i) = best?;
+        let def = &self.vehicle.ty.model.meshes[self.vehicle.ty.meshes[i].def_index];
+        let name = std::path::Path::new(&def.file.replace('\\', "/"))
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| def.file.clone());
+        Some((name, false))
+    }
+
+    pub(crate) fn click(&mut self, origin: DVec3, dir: Vec3, spread: f32) -> Option<usize> {
+        self.release();
+        if let Some(i) = self.pick(origin, dir, spread) {
+            let ev = self.vehicle.ty.model.meshes[self.vehicle.ty.meshes[i].def_index]
+                .mouse_event
+                .clone()
+                .unwrap();
+            log::info!("mouse event {ev}");
+            let plain = self.vehicle.trigger(&ev);
+            self.repair_roller_blind(&ev);
+            self.pressed_mesh = Some(i);
+            self.press_info = (plain, 0.0);
+            self.auto_drag = None;
+            return Some(i);
+        }
+        let (ti, i) = self.pick_trailer(origin, dir, spread)?;
+        let ev = self.vehicle.trailers[ti].ty.model.meshes
+            [self.vehicle.trailers[ti].ty.meshes[i].def_index]
+            .mouse_event
+            .clone()
+            .unwrap();
+        log::info!("trailer mouse event {ev} (part {ti})");
+        self.vehicle.trigger(&ev);
+        self.repair_roller_blind(&ev);
+        self.pressed_trailer_mesh = Some((ti, i));
+        Some(i)
+    }
+
+    /// Mouse moved with the button down on a switch: OMSI fires `<event>_drag` with the
+    /// movement in `mouse_x` / `mouse_y`, which is how the rotary knobs, the sun blind, the
+    /// driver's window and the ignition key are operated.
+    pub(crate) fn drag(&mut self, dx: f32, dy: f32) {
+        let (ev, trailer) = if let Some(i) = self.pressed_mesh {
+            let Some(ev) = self.vehicle.ty.model.meshes[self.vehicle.ty.meshes[i].def_index]
+                .mouse_event
+                .clone()
+            else {
+                return;
+            };
+            (ev, false)
+        } else if let Some((ti, i)) = self.pressed_trailer_mesh {
+            let Some(ev) = self.vehicle.trailers[ti].ty.model.meshes
+                [self.vehicle.trailers[ti].ty.meshes[i].def_index]
+                .mouse_event
+                .clone()
+            else {
+                return;
+            };
+            (ev, true)
+        } else {
+            return;
+        };
+        let name = format!("{ev}_drag");
+        self.press_info.1 += dx.abs() + dy.abs();
+        self.vehicle.host.mouse = (dx, dy);
+        self.vehicle.trigger(&name);
+        self.repair_roller_blind(&name);
+        self.vehicle.host.mouse = (0.0, 0.0);
+        let _ = trailer;
+    }
+
+    /// One notch of the mouse wheel over a switch: `<event>_drag` with the notch as the
+    /// movement, and the `_off` the script expects when the hand lets go again.
+    pub(crate) fn wheel(&mut self, origin: DVec3, dir: Vec3, spread: f32, amount: f32) {
+        let Some(i) = self.pick(origin, dir, spread) else {
+            return;
+        };
+        let Some(ev) = self.vehicle.ty.model.meshes[self.vehicle.ty.meshes[i].def_index]
+            .mouse_event
+            .clone()
+        else {
+            return;
+        };
+        // vertical, like the wheel itself: that is the axis the knobs, the sun blind and
+        // the ignition key read (mouse_x belongs to the driver's window and the light
+        // rotary, which stay a drag)
+        self.vehicle.host.mouse = (0.0, amount);
+        self.vehicle.trigger(&format!("{ev}_drag"));
+        self.repair_roller_blind(&format!("{ev}_drag"));
+        self.vehicle.host.mouse = (0.0, 0.0);
+        self.vehicle.trigger(&format!("{ev}_off"));
+    }
+
+    pub(crate) fn release(&mut self) {
+        if let Some(i) = self.pressed_mesh.take() {
+            let ty = self.vehicle.ty.clone();
+            let def = &ty.model.meshes[ty.meshes[i].def_index];
+            if let Some(ev) = def.mouse_event.clone() {
+                self.vehicle.trigger(&format!("{ev}_off"));
+                // a plain click on a control the scripts only know as a drag: dragged to its
+                // other end (a click opened the NL/NG driver's door by the mouse's jitter
+                // and a second click never shut it again)
+                let anim = def.animations.first().map(|a| a.variable.clone()).filter(|v| !v.trim().is_empty() && v.trim().parse::<f32>().is_err());
+                if let (false, true, Some(var)) = (self.press_info.0, self.press_info.1 < 4.0, anim) {
+                    let now = self.vehicle.var(&var).unwrap_or(0.0);
+                    let target = if now > 0.5 { 0.0 } else { 1.0 };
+                    log::info!("mouse event {ev}: a click on a drag control, {var} {now:.2} -> {target}");
+                    self.auto_drag = Some(AutoDrag { ev, var, target, axis: 0, sign: if target > now { -1.0 } else { 1.0 }, last: now, stalled: 0, t: 0.0 });
+                }
+            }
+        }
+        if let Some((ti, i)) = self.pressed_trailer_mesh.take() {
+            if let Some(ev) = self.vehicle.trailers[ti].ty.model.meshes
+                [self.vehicle.trailers[ti].ty.meshes[i].def_index]
+                .mouse_event
+                .clone()
+            {
+                self.vehicle.trigger(&format!("{ev}_off"));
+            }
+        }
+    }
+}
+
+/// See `Player::auto_drag`.
+#[derive(Debug, Clone)]
+pub(crate) struct AutoDrag {
+    ev: String,
+    var: String,
+    target: f32,
+    /// The mouse axis (0 x, 1 y) and direction that move it towards the target.
+    axis: usize,
+    sign: f32,
+    last: f32,
+    stalled: u32,
+    t: f32,
+}
+
+impl Player {
+    /// Drag a clicked drag-only control (see `auto_drag`) a step towards its other end.
+    pub(crate) fn tick_auto_drag(&mut self, dt: f32) {
+        let Some(mut a) = self.auto_drag.take() else { return };
+        let now = self.vehicle.var(&a.var).unwrap_or(a.last);
+        a.t += dt;
+        if (now - a.target).abs() < 0.03 || a.t > 2.5 {
+            self.vehicle.trigger(&format!("{}_off", a.ev));
+            return;
+        }
+        // moved away from the target, or not at all: another direction, then the other axis
+        let towards = (a.target - a.last).signum();
+        let moved = now - a.last;
+        if a.t > 0.05 {
+            if moved * towards < -1e-4 {
+                a.sign = -a.sign;
+            } else if moved.abs() < 1e-4 {
+                a.stalled += 1;
+                if a.stalled == 3 {
+                    a.sign = -a.sign;
+                } else if a.stalled == 6 {
+                    a.axis = 1 - a.axis;
+                } else if a.stalled == 9 {
+                    a.sign = -a.sign;
+                } else if a.stalled > 12 {
+                    self.vehicle.trigger(&format!("{}_off", a.ev));
+                    return;
+                }
+            } else {
+                a.stalled = 0;
+            }
+        }
+        a.last = now;
+        let step = 900.0 * dt.min(0.05) * a.sign;
+        self.vehicle.host.mouse = if a.axis == 0 { (step, 0.0) } else { (0.0, step) };
+        let exists = self.vehicle.trigger(&format!("{}_drag", a.ev));
+        self.vehicle.host.mouse = (0.0, 0.0);
+        if exists {
+            self.auto_drag = Some(a);
+        }
+    }
+
+    /// `inside`: the camera is one of the vehicle's interior cameras. `[viewpoint]` bits:
+    /// 1 = visible from outside, 2 = visible from inside, 4 = visible on AI vehicles; 0 = always.
+    pub(crate) fn sync_transforms(&mut self, renderer: &Renderer, scene: &mut Scene, inside: bool) {
+        sync_vehicle_transforms(renderer, scene, &mut self.vehicle, &mut self.render, &mut self.trailer_renders, inside);
+    }
+
+    /// Pose and place the driver at the wheel; `show` false hides the figure (the `driver`
+    /// setting off), `mirror_only` keeps it to the mirrors (the cab view).
+    pub(crate) fn sync_driver(&mut self, renderer: &Renderer, scene: &mut Scene, dt: f32, show: bool, mirror_only: bool) {
+        if let Some(d) = self.driver.as_mut() {
+            d.update(renderer, scene, &self.vehicle, dt, show, mirror_only);
+        }
+    }
+
+    pub(crate) fn camera(&self, view: &str, fallback: &Camera) -> Camera {
+        self.camera_look(view, fallback, (0.0, 0.0), ORBIT_DEFAULT)
+    }
+
+    /// The outside camera must not go through walls or under the road: it stands short of
+    /// the first building, wall or canopy between it and the point it orbits, and above the
+    /// ground (see `camera_arm`). `dt` 0 is a single picture: the arm is where it would
+    /// settle, without easing.
+    pub(crate) fn camera_clipped(
+        &mut self,
+        mut cam: Camera,
+        world: &scene::World,
+        dist: f32,
+        dt: f32,
+    ) -> Camera {
+        let def = &self.vehicle.ty.def;
+        let c = def.camera_outside_center;
+        let centre = self.vehicle.position
+            + self
+                .vehicle
+                .body_rotation()
+                .transform_point3(Vec3::new(c[0], c[1], c[2]))
+                .as_dvec3();
+        let want = dist.clamp(ORBIT_MIN, ORBIT_MAX);
+        let back = -cam.forward().as_dvec3().normalize_or_zero();
+        if back.length_squared() < 0.5 {
+            return cam;
+        }
+        let right = cam.right().as_dvec3().normalize_or_zero();
+        let up = back.cross(right).normalize_or_zero();
+        let t0 = Instant::now();
+        let free = camera_arm::free_length(world, centre, back, right, up, want as f64) as f32;
+        let len = if dt <= 0.0 {
+            self.arm.reset();
+            free
+        } else {
+            self.arm.update(want, free, centre, dt)
+        };
+        if camera_arm::debug_level() >= 2 {
+            log::info!(
+                "camera arm: yaw {:.1} want {want:.2} free {free:.2} arm {len:.2} ({:.3} ms)",
+                cam.yaw,
+                t0.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        cam.position = centre + back * len as f64;
+        cam
+    }
+
+    /// `look`: yaw/pitch the player has turned the head (or the orbit) by; `dist`: how far
+    /// the outside camera sits from the vehicle.
+    pub(crate) fn camera_look(&self, view: &str, fallback: &Camera, look: (f32, f32), dist: f32) -> Camera {
+        let def = &self.vehicle.ty.def;
+        let cam = match view {
+            "driver" => {
+                let n = def.cameras_driver.len().max(1);
+                def.cameras_driver
+                    .get((def.camera_std + self.cam_choice.0) % n)
+                    .or(def.cameras_driver.first())
+            }
+            "pax" => def.cameras_pax.get(self.cam_choice.1 % def.cameras_pax.len().max(1)),
+            _ => None,
+        };
+        match cam {
+            Some(c) => {
+                // inside: the head turns, the seat does not move
+                let (eye, yaw, pitch) = self.vehicle.camera_world(c);
+                let eye = if view == "driver" { eye + self.vehicle.body_rotation().transform_vector3(self.head).as_dvec3() } else { eye };
+                // near 0.25 rather than 0.1: the depth buffer has to reach 6 km, and the
+                // nearer the near plane the coarser it gets out there — the flicker between
+                // the road and the ground at a distance is that precision running out
+                Camera {
+                    position: eye,
+                    yaw: yaw + look.0,
+                    pitch: (pitch + look.1).clamp(-89.0, 89.0),
+                    fov_deg: c.fov,
+                    near: 0.25,
+                    far: 6000.0,
+                }
+            }
+            None => {
+                // outside view: an orbit around the vehicle
+                let c = def.camera_outside_center;
+                let center = self.vehicle.position
+                    + self
+                        .vehicle
+                        .body_rotation()
+                        .transform_point3(Vec3::new(c[0], c[1], c[2]))
+                        .as_dvec3();
+                let mut cam = Camera {
+                    position: center,
+                    yaw: self.vehicle.heading as f32 - 35.0 + look.0,
+                    pitch: (-15.0 + look.1).clamp(-85.0, 85.0),
+                    fov_deg: fallback.fov_deg,
+                    near: 0.3,
+                    far: 6000.0,
+                };
+                cam.position =
+                    center - (cam.forward() * dist.clamp(ORBIT_MIN, ORBIT_MAX)).as_dvec3();
+                cam
+            }
+        }
+    }
+}
+
+/// Put a vehicle's meshes where its state says (animations, visibility, lights, the
+/// matrix textures) — the player's bus, and the launcher's showroom bus.
+pub(crate) fn sync_vehicle_transforms(
+    renderer: &Renderer,
+    scene: &mut Scene,
+    vehicle: &mut omsi_sim::VehicleInstance,
+    render: &mut scene::VehicleRender,
+    trailer_renders: &mut [scene::VehicleRender],
+    inside: bool,
+) {
+    scene::sync_vehicle_materials(renderer, scene, vehicle, render);
+    scene::sync_skinned(
+        renderer,
+        scene,
+        vehicle,
+        render,
+        trailer_renders,
+    );
+    for (i, inst) in render.instances.iter().enumerate() {
+        renderer.set_transform(
+            scene,
+            *inst,
+            vehicle.position,
+            vehicle.mesh_local_transform(i),
+        );
+        let p = &vehicle.mesh_props[i];
+        let def = &vehicle.ty.model.meshes[vehicle.ty.meshes[i].def_index];
+        let vp = def.viewpoint;
+        let vp_ok = vp == 0 || (inside && vp & 2 != 0) || (!inside && vp & 1 != 0);
+        let mut alpha = p.slot_alpha.clone();
+        for (slot, mat) in scene.instances[*inst].materials.iter().enumerate() {
+            if scene
+                .materials
+                .get(*mat)
+                .is_some_and(|m| m.alpha == omsi_render::AlphaMode::Opaque)
+            {
+                if let Some(a) = alpha.get_mut(slot) {
+                    *a = 1.0;
+                }
+            }
+        }
+        // (a shadow blob is left out by the renderer while it draws the sun's shadows)
+        renderer.set_params(scene, *inst, &alpha, p.visible && vp_ok, &p.slot_uv);
+        renderer.set_slot_light(scene, *inst, &p.slot_light);
+        renderer.set_slot_night(scene, *inst, &p.slot_night);
+        renderer.set_interior(scene, *inst, p.interior);
+    }
+    for (t, r) in vehicle.trailers.iter().zip(trailer_renders.iter()) {
+        for (i, inst) in r.instances.iter().enumerate() {
+            renderer.set_transform(scene, *inst, t.position, t.mesh_local_transform(i));
+            let p = &t.mesh_props[i];
+            let def = &t.ty.model.meshes[t.ty.meshes[i].def_index];
+            let vp = def.viewpoint;
+            let vp_ok = vp == 0 || (inside && vp & 2 != 0) || (!inside && vp & 1 != 0);
+            let mut alpha = p.slot_alpha.clone();
+            for (slot, mat) in scene.instances[*inst].materials.iter().enumerate() {
+                if scene
+                    .materials
+                    .get(*mat)
+                    .is_some_and(|m| m.alpha == omsi_render::AlphaMode::Opaque)
+                {
+                    if let Some(a) = alpha.get_mut(slot) {
+                        *a = 1.0;
+                    }
+                }
+            }
+            renderer.set_params(scene, *inst, &alpha, p.visible && vp_ok, &p.slot_uv);
+            renderer.set_slot_light(scene, *inst, &p.slot_light);
+            renderer.set_slot_night(scene, *inst, &p.slot_night);
+            renderer.set_interior(scene, *inst, p.interior);
+        }
+    }
+    scene::sync_vehicle_textures(renderer, scene, vehicle, render);
+    let mut trailers = std::mem::take(&mut vehicle.trailers);
+    for (t, r) in trailers.iter_mut().zip(trailer_renders.iter_mut()) {
+        scene::sync_vehicle_part(renderer, scene, &vehicle, t, r);
+    }
+    vehicle.trailers = trailers;
+}
+
+pub(crate) fn pick_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: Vec3, spread: f32) -> Option<usize> {
+    let o = (origin - vehicle.position).as_vec3();
+    let right = Vec3::new(-dir.y, dir.x, 0.0).normalize_or_zero();
+    let up = dir.cross(right).normalize_or_zero();
+    let mut rings: Vec<Vec<Vec3>> = vec![vec![dir]];
+    if spread > 0.0 {
+        for ring in 1..=2 {
+            let r = spread * ring as f32;
+            let n = 8 * ring;
+            rings.push(
+                (0..n)
+                    .map(|k| {
+                        let a = k as f32 / n as f32 * std::f32::consts::TAU;
+                        (dir + right * (a.cos() * r) + up * (a.sin() * r)).normalize()
+                    })
+                    .collect(),
+            );
+        }
+    }
+    for dirs in &rings {
+        let mut best: Option<(f32, usize)> = None;
+        for (i, vm) in vehicle.ty.meshes.iter().enumerate() {
+            let def = &vehicle.ty.model.meshes[vm.def_index];
+            if def.mouse_event.is_none() || !vehicle.mesh_props[i].visible {
+                continue;
+            }
+            let xf = vehicle.mesh_local_transform(i);
+            if !ray_may_hit(&vehicle.ty, i, &xf, o, dir, spread * 2.2) {
+                continue;
+            }
+            for d in dirs {
+                if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
+                    if best.map(|(bt, _)| t < bt).unwrap_or(true) {
+                        best = Some((t, i));
+                    }
+                }
+            }
+        }
+        if let Some((_, i)) = best {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// The same forgiving pick as `pick`, but for the coupled sections of an articulated
+/// bus.  The old picker only searched the lead vehicle, so GN92's rear door opener and
+/// every other button in the second section could never receive a click.
+pub(crate) fn pick_trailer_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: Vec3, spread: f32) -> Option<(usize, usize)> {
+    let right = Vec3::new(-dir.y, dir.x, 0.0).normalize_or_zero();
+    let up = dir.cross(right).normalize_or_zero();
+    let mut rings: Vec<Vec<Vec3>> = vec![vec![dir]];
+    if spread > 0.0 {
+        for ring in 1..=2 {
+            let r = spread * ring as f32;
+            let n = 8 * ring;
+            rings.push(
+                (0..n)
+                    .map(|k| {
+                        let a = k as f32 / n as f32 * std::f32::consts::TAU;
+                        (dir + right * (a.cos() * r) + up * (a.sin() * r)).normalize()
+                    })
+                    .collect(),
+            );
+        }
+    }
+    for dirs in &rings {
+        let mut best: Option<(f32, usize, usize)> = None;
+        for (ti, trailer) in vehicle.trailers.iter().enumerate() {
+            let o = (origin - trailer.position).as_vec3();
+            for (i, vm) in trailer.ty.meshes.iter().enumerate() {
+                let def = &trailer.ty.model.meshes[vm.def_index];
+                if def.mouse_event.is_none() || !trailer.mesh_props[i].visible {
+                    continue;
+                }
+                let xf = trailer.mesh_local_transform(i);
+                if !ray_may_hit(&trailer.ty, i, &xf, o, dir, spread * 2.2) {
+                    continue;
+                }
+                for d in dirs {
+                    if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
+                        if best.map(|(bt, _, _)| t < bt).unwrap_or(true) {
+                            best = Some((t, ti, i));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some((_, ti, i)) = best {
+            return Some((ti, i));
+        }
+    }
+    None
+}
+

@@ -1,0 +1,11 @@
+# build output (releases are built by GitHub Actions, see .github/workflows)
+/target
+/dist
+**/*.rs.bk
+
+# local tools and editors
+.DS_Store
+.claude/
+.idea/
+.vscode/
+node_modules/

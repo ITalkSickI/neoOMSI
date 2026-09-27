@@ -1,0 +1,145 @@
+# Builds openOMSI for Windows, macOS and Linux (plus the dedicated server) on every push to
+# main and publishes them as the release v<MAJOR.MINOR.COMMIT>; see docs/VERSIONING.md.
+# Pull requests run the same builds without publishing.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: v
+        run: echo "version=$(sh scripts/version.sh)" >> "$GITHUB_OUTPUT"
+      - run: echo "### openOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      OPENOMSI_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        shell: cmd
+        run: scripts\build-windows.cmd
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "openOMSI-$env:OPENOMSI_VERSION-windows-x64"
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item README.md, LICENSE dist/windows/
+          Compress-Archive -Path dist/windows/* -DestinationPath "out/$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*.zip
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      OPENOMSI_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: scripts/build-macos.sh
+      - name: Package
+        run: |
+          mkdir -p out
+          cp README.md LICENSE dist/macos/
+          cd dist/macos && ditto -c -k --sequesterRsrc . "../../out/openOMSI-$OPENOMSI_VERSION-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/*.zip
+
+  linux:
+    needs: version
+    runs-on: ubuntu-22.04
+    env:
+      OPENOMSI_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libasound2-dev libudev-dev \
+            libgtk-3-dev libxkbcommon-dev libwayland-dev libssl-dev
+      - name: Build the game
+        run: scripts/build-linux.sh
+      - name: Build the server
+        run: scripts/build-server.sh
+      - name: Validate shaders
+        run: cargo test --locked --release -p omsi-render shaders_validate_and_match_the_uniforms
+      - name: Package
+        run: |
+          mkdir -p out
+          cp README.md LICENSE dist/linux/
+          cp LICENSE dist/server/
+          (cd dist/linux && zip -qr "../../out/openOMSI-$OPENOMSI_VERSION-linux-x64.zip" .)
+          (cd dist/server && zip -qr "../../out/openOMSI-$OPENOMSI_VERSION-server-linux-x64.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: out/*.zip
+
+  release:
+    if: github.event_name != 'pull_request'
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish v${{ needs.version.outputs.version }}
+        run: |
+          ls -l out
+          cat > notes.md <<NOTES
+          **openOMSI $VERSION** — built from ${GITHUB_SHA::7}.
+
+          > openOMSI needs an original OMSI 2 installation to run; it contains no game content.
+
+          | Platform | Download |
+          | --- | --- |
+          | Windows x64 | \`openOMSI-$VERSION-windows-x64.zip\` |
+          | macOS (Apple silicon) | \`openOMSI-$VERSION-macos-arm64.zip\` |
+          | Linux x64 | \`openOMSI-$VERSION-linux-x64.zip\` |
+          | Dedicated server | \`openOMSI-$VERSION-server-linux-x64.zip\` |
+          NOTES
+          gh release create "v$VERSION" out/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "openOMSI $VERSION" \
+            --notes-file notes.md \
+            --generate-notes

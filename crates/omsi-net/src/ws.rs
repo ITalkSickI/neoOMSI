@@ -1,0 +1,596 @@
+//! The session's datagrams over a WebSocket, for the ways in that carry nothing but HTTP: a
+//! Cloudflare tunnel (`cloudflared tunnel --url …` gives a free `https://….trycloudflare.com`
+//! address and passes WebSockets, never UDP), a reverse proxy in front of a server.
+//!
+//! Nothing of the game protocol changes: each side keeps talking UDP to a socket on its own
+//! machine and the bridge carries every datagram as one binary WebSocket message.
+//!
+//! * [`WsGateway`] (the host's or the server's side) listens for HTTP on a TCP port. A
+//!   WebSocket there gets a UDP socket of its own on 127.0.0.1, so the session sees every
+//!   player coming in this way as an address of its own. The same port answers
+//!   `GET /status` (a small JSON object about the server, for the launcher's list) and
+//!   `GET /icon.png`.
+//! * [`WsClient`] (a joining game) connects to `wss://…/ws`, binds a UDP socket on
+//!   127.0.0.1 and gives its address to `LanSession::join`; whatever the game sends there
+//!   goes over the WebSocket and back.
+
+use std::io::{ErrorKind, Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tungstenite::{Message, WebSocket};
+
+/// What a server tells about itself (`GET /status`, and the launcher's list).
+#[derive(Debug, Clone, Default)]
+pub struct ServerInfo {
+    pub name: String,
+    pub motd: String,
+    pub map: String,
+    pub players: usize,
+    pub max_players: usize,
+    pub version: String,
+    /// A PNG (64x64 like a Minecraft server's), empty for none.
+    pub icon: Vec<u8>,
+    /// The time of day and weather the world has now (for the list).
+    pub time: String,
+    pub weather: String,
+    pub password: bool,
+    /// The buses that may be driven there (vehicle files, `Vehicles/…/….bus`): what the
+    /// host has installed, or a server's own list. Empty: not said (an older game).
+    pub vehicles: Vec<String>,
+}
+
+impl ServerInfo {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"motd\":{},\"map\":{},\"players\":{},\"max_players\":{},\"version\":{},\"icon\":{},\"time\":{},\"weather\":{},\"password\":{},\"protocol\":{},\"vehicles\":{}}}",
+            json_str(&self.name),
+            json_str(&self.motd),
+            json_str(&self.map),
+            self.players,
+            self.max_players,
+            json_str(&self.version),
+            !self.icon.is_empty(),
+            json_str(&self.time),
+            json_str(&self.weather),
+            self.password,
+            crate::PROTOCOL,
+            json_str(&self.vehicles.join(";"))
+        )
+    }
+
+    /// Read what `to_json` wrote (the launcher asking a server).
+    pub fn from_json(s: &str) -> Option<ServerInfo> {
+        let text = |k: &str| json_value(s, k).map(|v| v.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(&v).to_string().replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n"));
+        let num = |k: &str| json_value(s, k).and_then(|v| v.trim().parse::<usize>().ok());
+        Some(ServerInfo {
+            name: text("name")?,
+            motd: text("motd").unwrap_or_default(),
+            map: text("map").unwrap_or_default(),
+            players: num("players").unwrap_or(0),
+            max_players: num("max_players").unwrap_or(0),
+            version: text("version").unwrap_or_default(),
+            icon: if json_value(s, "icon").map(|v| v.trim() == "true").unwrap_or(false) { vec![1] } else { Vec::new() },
+            time: text("time").unwrap_or_default(),
+            weather: text("weather").unwrap_or_default(),
+            password: json_value(s, "password").map(|v| v.trim() == "true").unwrap_or(false),
+            vehicles: text("vehicles").map(|v| v.split(';').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()).unwrap_or_default(),
+        })
+    }
+}
+
+fn json_str(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            c if c.is_control() => {}
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+/// The raw value of `key` in a flat JSON object (a string with its quotes, or a number).
+fn json_value(s: &str, key: &str) -> Option<String> {
+    let pat = format!("\"{key}\":");
+    let start = s.find(&pat)? + pat.len();
+    let rest = s[start..].trim_start();
+    if let Some(r) = rest.strip_prefix('"') {
+        let mut out = String::from("\"");
+        let mut esc = false;
+        for c in r.chars() {
+            if esc {
+                out.push('\\');
+                out.push(c);
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                out.push('"');
+                return Some(out);
+            } else {
+                out.push(c);
+            }
+        }
+        None
+    } else {
+        let end = rest.find([',', '}']).unwrap_or(rest.len());
+        Some(rest[..end].to_string())
+    }
+}
+
+/// A WebSocket address for what a player typed: `https://x` → `wss://x/ws`, `http://x` →
+/// `ws://x/ws`, `ws(s)://…` as it is. None for anything else (an address or a code).
+pub fn ws_url(target: &str) -> Option<String> {
+    let t = target.trim();
+    let (scheme, rest) = if let Some(r) = t.strip_prefix("https://") {
+        ("wss://", r)
+    } else if let Some(r) = t.strip_prefix("http://") {
+        ("ws://", r)
+    } else if t.starts_with("wss://") || t.starts_with("ws://") {
+        return Some(t.to_string());
+    } else if t.ends_with(".trycloudflare.com") || t.contains(".trycloudflare.com/") {
+        ("wss://", t)
+    } else {
+        return None;
+    };
+    let rest = rest.trim_end_matches('/');
+    Some(if rest.ends_with("/ws") { format!("{scheme}{rest}") } else { format!("{scheme}{rest}/ws") })
+}
+
+/// The `https://` base of a server address (for `/status` and `/icon.png`).
+pub fn http_base(target: &str) -> Option<String> {
+    let u = ws_url(target)?;
+    let u = u.strip_suffix("/ws").unwrap_or(&u).to_string();
+    Some(u.replacen("wss://", "https://", 1).replacen("ws://", "http://", 1))
+}
+
+/// Ask a server (by its address as typed) about itself: its status and its icon.
+pub fn query(target: &str, with_icon: bool) -> Result<ServerInfo, String> {
+    let base = http_base(target).ok_or_else(|| "not a server address (https://…)".to_string())?;
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(6)).user_agent("openOMSI").build();
+    let body = agent.get(&format!("{base}/status")).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string())?;
+    let mut info = ServerInfo::from_json(&body).ok_or_else(|| "the answer is not an openOMSI server's".to_string())?;
+    if with_icon && !info.icon.is_empty() {
+        info.icon.clear();
+        if let Ok(r) = agent.get(&format!("{base}/icon.png")).call() {
+            let mut buf = Vec::new();
+            if r.into_reader().take(512 * 1024).read_to_end(&mut buf).is_ok() && buf.starts_with(b"\x89PNG") {
+                info.icon = buf;
+            }
+        }
+    }
+    Ok(info)
+}
+
+/// Connections the gateway serves at once (players, status requests, mod streams).
+const MAX_CONNECTIONS: usize = 64;
+
+/// The host's or server's side (see the module).
+pub struct WsGateway {
+    pub addr: SocketAddr,
+    pub info: Arc<Mutex<ServerInfo>>,
+    /// Players connected over WebSockets now.
+    pub connected: Arc<AtomicUsize>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Drop for WsGateway {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+impl WsGateway {
+    /// Listen on `listen` (TCP) and carry WebSockets to the session at `target` (UDP).
+    pub fn start(listen: SocketAddr, target: SocketAddr, info: ServerInfo) -> std::io::Result<WsGateway> {
+        let listener = TcpListener::bind(listen)?;
+        let addr = listener.local_addr()?;
+        listener.set_nonblocking(true)?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let info = Arc::new(Mutex::new(info));
+        let connected = Arc::new(AtomicUsize::new(0));
+        let (st, inf, conn) = (stop.clone(), info.clone(), connected.clone());
+        std::thread::Builder::new().name("ws gateway".into()).spawn(move || {
+            // connections served at once (each its own thread): more are closed at once
+            let open = Arc::new(AtomicUsize::new(0));
+            while !st.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((stream, peer)) => {
+                        if open.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
+                            log::debug!("ws gateway: {peer}: {MAX_CONNECTIONS} connections open already; closed");
+                            drop(stream);
+                            continue;
+                        }
+                        open.fetch_add(1, Ordering::Relaxed);
+                        let (st, inf, conn, held) = (st.clone(), inf.clone(), conn.clone(), open.clone());
+                        let spawned = std::thread::Builder::new().name("ws player".into()).spawn(move || {
+                            if let Err(e) = serve(stream, target, &inf, &st, &conn) {
+                                log::debug!("ws gateway: {peer}: {e}");
+                            }
+                            held.fetch_sub(1, Ordering::Relaxed);
+                        });
+                        if spawned.is_err() {
+                            open.fetch_sub(1, Ordering::Relaxed);
+                        }
+                    }
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(40)),
+                    Err(e) => {
+                        log::warn!("ws gateway: accept: {e}");
+                        std::thread::sleep(Duration::from_millis(200));
+                    }
+                }
+            }
+        })?;
+        log::info!("ws gateway: WebSockets on {addr} carry the session at {target} (GET /status, /icon.png)");
+        Ok(WsGateway { addr, info, connected, stop })
+    }
+}
+
+/// One TCP connection to the gateway: a status request, the icon, or a player's WebSocket.
+fn serve(stream: TcpStream, target: SocketAddr, info: &Mutex<ServerInfo>, stop: &AtomicBool, connected: &AtomicUsize) -> Result<(), String> {
+    stream.set_nonblocking(false).map_err(|e| e.to_string())?;
+    stream.set_read_timeout(Some(Duration::from_secs(10))).map_err(|e| e.to_string())?;
+    let mut head = [0u8; 2048];
+    let n = stream.peek(&mut head).map_err(|e| e.to_string())?;
+    let req = String::from_utf8_lossy(&head[..n]).to_string();
+    let path = req.split_whitespace().nth(1).unwrap_or("/").to_string();
+    let upgrade = req.to_ascii_lowercase().contains("upgrade: websocket");
+    if !upgrade {
+        let mut s = stream;
+        // (the request is read off the socket before the answer: some proxies wait)
+        let _ = s.read(&mut head);
+        let (status, ctype, body): (&str, &str, Vec<u8>) = match path.as_str() {
+            "/status" | "/status.json" => ("200 OK", "application/json", info.lock().unwrap_or_else(|e| e.into_inner()).to_json().into_bytes()),
+            "/icon.png" => {
+                let icon = info.lock().unwrap_or_else(|e| e.into_inner()).icon.clone();
+                if icon.is_empty() {
+                    ("404 Not Found", "text/plain", b"no icon".to_vec())
+                } else {
+                    ("200 OK", "image/png", icon)
+                }
+            }
+            _ => {
+                let i = info.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let page = format!("<!doctype html><meta charset=utf-8><title>{0}</title><body style=\"font-family:sans-serif;background:#16181c;color:#eee;padding:40px\"><h1>{0}</h1><p>{1}</p><p>Map: {2} &middot; {3}/{4} players</p><p>Add this address in openOMSI &rarr; Multiplayer &rarr; Servers.</p>", html(&i.name), html(&i.motd), html(&i.map), i.players, i.max_players);
+                ("200 OK", "text/html; charset=utf-8", page.into_bytes())
+            }
+        };
+        let hdr = format!("HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", body.len());
+        s.write_all(hdr.as_bytes()).map_err(|e| e.to_string())?;
+        s.write_all(&body).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    if path.starts_with("/tcp") {
+        // a byte stream to the session's TCP port (the host's mods): the way the files go
+        // where only HTTP gets through
+        let mut ws = tungstenite::accept(stream).map_err(|e| e.to_string())?;
+        // (the 10 s of the request's read held every chunk that long)
+        ws.get_mut().set_read_timeout(Some(Duration::from_millis(5))).map_err(|e| e.to_string())?;
+        let tcp = TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], target.port()))).map_err(|e| e.to_string())?;
+        return pump_tcp(&mut ws, tcp, stop);
+    }
+    let mut ws = tungstenite::accept(stream).map_err(|e| e.to_string())?;
+    let udp = UdpSocket::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    udp.set_nonblocking(true).map_err(|e| e.to_string())?;
+    ws.get_mut().set_read_timeout(Some(Duration::from_millis(5))).map_err(|e| e.to_string())?;
+    connected.fetch_add(1, Ordering::Relaxed);
+    let r = pump(&mut ws, &udp, |u, d| u.send_to(d, target).map(|_| ()), stop);
+    connected.fetch_sub(1, Ordering::Relaxed);
+    r
+}
+
+fn html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Carry datagrams both ways between a WebSocket and a UDP socket until either side goes.
+/// `send` hands a message from the WebSocket to the UDP side.
+fn pump<S: Read + Write>(ws: &mut WebSocket<S>, udp: &UdpSocket, mut send: impl FnMut(&UdpSocket, &[u8]) -> std::io::Result<()>, stop: &AtomicBool) -> Result<(), String> {
+    let mut buf = vec![0u8; 2048];
+    let mut last_in = Instant::now();
+    let mut last_ping = Instant::now();
+    while !stop.load(Ordering::Relaxed) {
+        let mut idle = true;
+        // WebSocket → UDP
+        loop {
+            match ws.read() {
+                Ok(Message::Binary(d)) => {
+                    last_in = Instant::now();
+                    idle = false;
+                    let _ = send(udp, &d);
+                }
+                Ok(Message::Close(_)) => return Ok(()),
+                Ok(_) => last_in = Instant::now(),
+                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => break,
+                Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => return Ok(()),
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        // UDP → WebSocket
+        loop {
+            match udp.recv_from(&mut buf) {
+                Ok((n, _)) => {
+                    idle = false;
+                    if let Err(e) = ws.send(Message::Binary(buf[..n].to_vec().into())) {
+                        if !matches!(&e, tungstenite::Error::Io(io) if io.kind() == ErrorKind::WouldBlock) {
+                            return Err(e.to_string());
+                        }
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == ErrorKind::ConnectionReset => break,
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        let _ = ws.flush();
+        // (proxies close a WebSocket that stays quiet for a minute or two)
+        if last_ping.elapsed() > Duration::from_secs(20) {
+            last_ping = Instant::now();
+            let _ = ws.send(Message::Ping(Vec::new().into()));
+        }
+        if last_in.elapsed() > Duration::from_secs(90) {
+            return Err("nothing heard for 90 s".into());
+        }
+        if idle {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    let _ = ws.close(None);
+    Ok(())
+}
+
+/// Carry a TCP stream both ways over a WebSocket until either side closes.
+fn pump_tcp<S: Read + Write>(ws: &mut WebSocket<S>, mut tcp: TcpStream, stop: &AtomicBool) -> Result<(), String> {
+    tcp.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut last = Instant::now();
+    while !stop.load(Ordering::Relaxed) {
+        let mut idle = true;
+        loop {
+            match ws.read() {
+                Ok(Message::Binary(d)) => {
+                    idle = false;
+                    last = Instant::now();
+                    tcp.set_nonblocking(false).ok();
+                    let r = tcp.write_all(&d);
+                    tcp.set_nonblocking(true).ok();
+                    r.map_err(|e| e.to_string())?;
+                }
+                Ok(Message::Close(_)) => return Ok(()),
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => break,
+                Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => return Ok(()),
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        // (up to 2 MB of what the TCP side has before the WebSocket is looked at again: one
+        // chunk per turn held a download to a few hundred kB/s)
+        for _ in 0..32 {
+            match tcp.read(&mut buf) {
+                Ok(0) => {
+                    let _ = ws.close(None);
+                    let _ = ws.flush();
+                    return Ok(());
+                }
+                Ok(n) => {
+                    idle = false;
+                    last = Instant::now();
+                    ws.write(Message::Binary(buf[..n].to_vec().into())).map_err(|e| e.to_string())?;
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        let _ = ws.flush();
+        if last.elapsed() > Duration::from_secs(120) {
+            return Err("stream idle for 2 min".into());
+        }
+        if idle {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    Ok(())
+}
+
+/// A local TCP port whose connections go over WebSockets to `url` (`wss://…/tcp`): the
+/// host's mods fetched through its tunnel.
+pub fn tcp_forward(url: &str) -> std::io::Result<SocketAddr> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let addr = listener.local_addr()?;
+    let url = url.to_string();
+    std::thread::Builder::new().name("ws tcp forward".into()).spawn(move || {
+        for conn in listener.incoming().flatten() {
+            let url = url.clone();
+            std::thread::spawn(move || {
+                let r = (|| -> Result<(), String> {
+                    let (mut ws, _) = tungstenite::connect(&url).map_err(|e| format!("{url}: {e}"))?;
+                    match ws.get_mut() {
+                        tungstenite::stream::MaybeTlsStream::Plain(s) => s.set_read_timeout(Some(Duration::from_millis(5))),
+                        tungstenite::stream::MaybeTlsStream::Rustls(s) => s.get_mut().set_read_timeout(Some(Duration::from_millis(5))),
+                        _ => Ok(()),
+                    }
+                    .map_err(|e| e.to_string())?;
+                    pump_tcp(&mut ws, conn, &AtomicBool::new(false))
+                })();
+                if let Err(e) = r {
+                    log::warn!("ws tcp forward: {e}");
+                }
+            });
+        }
+    })?;
+    Ok(addr)
+}
+
+/// A joining game's side (see the module).
+pub struct WsClient {
+    /// Where the game sends its datagrams (the session "host" as the game sees it).
+    pub local: SocketAddr,
+    stop: Arc<AtomicBool>,
+    pub alive: Arc<AtomicBool>,
+}
+
+impl Drop for WsClient {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+impl WsClient {
+    /// Connect to `url` (`wss://…/ws`) and give the local address to join.
+    pub fn connect(url: &str) -> Result<WsClient, String> {
+        // (a dead tunnel must not hold the game's start for ever)
+        let (tx, rx) = std::sync::mpsc::channel();
+        let u = url.to_string();
+        std::thread::spawn(move || {
+            let _ = tx.send(tungstenite::connect(&u).map(|x| x.0).map_err(|e| format!("{u}: {e}")));
+        });
+        let mut ws = rx.recv_timeout(Duration::from_secs(12)).map_err(|_| format!("{url}: no answer within 12 s"))??;
+        match ws.get_mut() {
+            tungstenite::stream::MaybeTlsStream::Plain(s) => s.set_read_timeout(Some(Duration::from_millis(5))),
+            tungstenite::stream::MaybeTlsStream::Rustls(s) => s.get_mut().set_read_timeout(Some(Duration::from_millis(5))),
+            _ => Ok(()),
+        }
+        .map_err(|e| e.to_string())?;
+        let udp = UdpSocket::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+        udp.set_nonblocking(true).map_err(|e| e.to_string())?;
+        let local = udp.local_addr().map_err(|e| e.to_string())?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let alive = Arc::new(AtomicBool::new(true));
+        let (st, al) = (stop.clone(), alive.clone());
+        let url = url.to_string();
+        std::thread::Builder::new()
+            .name("ws client".into())
+            .spawn(move || {
+                // the game's own socket: replies go to wherever it sent from
+                let game: Arc<Mutex<Option<SocketAddr>>> = Arc::new(Mutex::new(None));
+                let udp2 = udp.try_clone().expect("udp clone");
+                let g2 = game.clone();
+                // (the game's datagrams are read in `pump`'s UDP half; the address they came
+                // from is where the WebSocket's answers go)
+                let mut buf = vec![0u8; 2048];
+                let mut last_in = Instant::now();
+                let mut last_ping = Instant::now();
+                let r: Result<(), String> = (|| {
+                    while !st.load(Ordering::Relaxed) {
+                        let mut idle = true;
+                        loop {
+                            match ws.read() {
+                                Ok(Message::Binary(d)) => {
+                                    last_in = Instant::now();
+                                    idle = false;
+                                    if let Some(to) = *g2.lock().unwrap_or_else(|e| e.into_inner()) {
+                                        let _ = udp2.send_to(&d, to);
+                                    }
+                                }
+                                Ok(Message::Close(_)) => return Ok(()),
+                                Ok(_) => last_in = Instant::now(),
+                                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => break,
+                                Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => return Ok(()),
+                                Err(e) => return Err(e.to_string()),
+                            }
+                        }
+                        loop {
+                            match udp.recv_from(&mut buf) {
+                                Ok((n, from)) => {
+                                    idle = false;
+                                    *game.lock().unwrap_or_else(|e| e.into_inner()) = Some(from);
+                                    if let Err(e) = ws.send(Message::Binary(buf[..n].to_vec().into())) {
+                                        if !matches!(&e, tungstenite::Error::Io(io) if io.kind() == ErrorKind::WouldBlock) {
+                                            return Err(e.to_string());
+                                        }
+                                    }
+                                }
+                                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                                Err(e) if e.kind() == ErrorKind::ConnectionReset => break,
+                                Err(e) => return Err(e.to_string()),
+                            }
+                        }
+                        let _ = ws.flush();
+                        if last_ping.elapsed() > Duration::from_secs(20) {
+                            last_ping = Instant::now();
+                            let _ = ws.send(Message::Ping(Vec::new().into()));
+                        }
+                        if last_in.elapsed() > Duration::from_secs(90) {
+                            return Err("the server has been silent for 90 s".into());
+                        }
+                        if idle {
+                            std::thread::sleep(Duration::from_millis(2));
+                        }
+                    }
+                    let _ = ws.close(None);
+                    Ok(())
+                })();
+                if let Err(e) = r {
+                    log::warn!("ws client {url}: {e}");
+                }
+                al.store(false, Ordering::Relaxed);
+            })
+            .map_err(|e| e.to_string())?;
+        log::info!("ws client: the session is reached through {local}");
+        Ok(WsClient { local, stop, alive })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn urls() {
+        assert_eq!(ws_url("https://abc.trycloudflare.com").as_deref(), Some("wss://abc.trycloudflare.com/ws"));
+        assert_eq!(ws_url("abc.trycloudflare.com").as_deref(), Some("wss://abc.trycloudflare.com/ws"));
+        assert_eq!(ws_url("http://10.0.0.2:27025/").as_deref(), Some("ws://10.0.0.2:27025/ws"));
+        assert_eq!(ws_url("192.168.1.4:27015"), None);
+        assert_eq!(http_base("https://abc.trycloudflare.com").as_deref(), Some("https://abc.trycloudflare.com"));
+    }
+
+    #[test]
+    fn status_round_trip() {
+        let i = ServerInfo { name: "Spandau \"1\"".into(), motd: "hi".into(), map: "maps/Berlin-Spandau/global.cfg".into(), players: 2, max_players: 16, version: "0.1".into(), icon: vec![1, 2], time: "08:00".into(), weather: "Sommerlich".into(), password: false, vehicles: vec!["Vehicles/MAN_SD202/SD202.bus".into()] };
+        let j = i.to_json();
+        let b = ServerInfo::from_json(&j).unwrap();
+        assert_eq!(b.name, i.name);
+        assert_eq!(b.vehicles, i.vehicles);
+        assert_eq!(b.players, 2);
+        assert_eq!(b.max_players, 16);
+        assert!(!b.icon.is_empty());
+    }
+
+    #[test]
+    fn datagrams_go_both_ways() {
+        // a stand-in session: echoes every datagram
+        let echo = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let target = echo.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let mut b = [0u8; 2048];
+            loop {
+                if let Ok((n, from)) = echo.recv_from(&mut b) {
+                    let _ = echo.send_to(&b[..n], from);
+                }
+            }
+        });
+        let gw = WsGateway::start("127.0.0.1:0".parse().unwrap(), target, ServerInfo { name: "t".into(), ..Default::default() }).unwrap();
+        let client = WsClient::connect(&format!("ws://{}/ws", gw.addr)).unwrap();
+        let game = UdpSocket::bind("127.0.0.1:0").unwrap();
+        game.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let mut got = [0u8; 64];
+        let mut ok = false;
+        for _ in 0..30 {
+            game.send_to(b"HELLO", client.local).unwrap();
+            if let Ok((n, _)) = game.recv_from(&mut got) {
+                ok = &got[..n] == b"HELLO";
+                break;
+            }
+        }
+        assert!(ok, "the datagram came back through the WebSocket");
+        let st = query(&format!("http://{}", gw.addr), false).unwrap();
+        assert_eq!(st.name, "t");
+    }
+}

@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/omsi-cfg",
+    "crates/omsi-script",
+    "crates/omsi-o3d",
+    "crates/omsi-model",
+    "crates/omsi-scenery",
+    "crates/omsi-map",
+    "crates/omsi-vehicle",
+    "crates/omsi-timetable",
+    "crates/omsi-content",
+    "crates/omsi-texture",
+    "crates/omsi-geometry",
+    "crates/omsi-render",
+    "crates/omsi-sim",
+    "crates/omsi-audio",
+    "crates/omsi-net",
+    "crates/omsi-plugin",
+    "crates/omsi-plugin/demo",
+    "crates/omsi-ui",
+    "crates/omsi-launcher-core",
+    "crates/omsi-app",
+    "tools/omsi-check",
+    "tools/omsi-re",
+]
+exclude = ["launcher/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+encoding_rs = "0.8"
+glam = "0.30"
+rayon = "1.10"
+walkdir = "2"
+clap = { version = "4", features = ["derive"] }
+hashbrown = "0.15"
+smallvec = "1"
+parking_lot = "0.12"
+rand = "0.9"
+wgpu = { version = "29", default-features = false, features = ["std", "parking_lot", "metal", "vulkan", "wgsl", "noop"] }
+winit = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "bmp", "tga", "dds", "jpeg"] }
+
+[profile.release]
+opt-level = 3
+debug = 1
+codegen-units = 4
+lto = "thin"
+
+[profile.dev]
+opt-level = 1

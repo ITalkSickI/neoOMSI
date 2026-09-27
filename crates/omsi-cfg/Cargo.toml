@@ -1,0 +1,13 @@
+[package]
+name = "omsi-cfg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reader for OMSI's line-oriented [keyword] configuration format and its text encodings"
+
+[dependencies]
+encoding_rs.workspace = true
+thiserror.workspace = true
+log.workspace = true
+flate2 = "1"
+unicode-normalization = "0.1"

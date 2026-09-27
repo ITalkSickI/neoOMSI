@@ -1,0 +1,2182 @@
+//! The launcher's data side: what the window asks for (maps, buses, lines, tours, the
+//! roadbook, weather, profiles, settings) and how a duty is turned into a command line for
+//! the game. Everything here is plain functions over the OMSI content crates; the window
+//! (the game binary's `launcher` module, drawn with wgpu) calls them directly, and
+//! `cli()` exposes the same functions to a terminal (`omsi-launcher --cli ...`).
+//!
+//! `install` runs mod installs as background jobs, `index` caches the content lists and
+//! tells the page when they changed, `instances` keeps track of the games started.
+
+pub mod index;
+pub mod install;
+pub mod instances;
+
+use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+
+// ---------------------------------------------------------------------------------------
+// configuration: where the game and the OMSI content are
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Config {
+    /// The OMSI 2 folder (maps, Vehicles, ...).
+    pub root: String,
+    /// The `omsi` game binary.
+    pub game: String,
+    /// The current profile name.
+    pub profile: String,
+}
+
+fn home() -> PathBuf {
+    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).unwrap_or_default()
+}
+
+pub fn data_dir() -> PathBuf {
+    let d = home().join(".openomsi");
+    let _ = std::fs::create_dir_all(&d);
+    d
+}
+
+fn config_path() -> PathBuf {
+    data_dir().join("launcher.json")
+}
+
+/// A complete installation of the original OMSI 2 (the same test the game makes: it refuses
+/// to start on anything else).
+fn is_omsi_root(p: &Path) -> bool {
+    omsi_cfg::missing_original_essentials(p).is_empty()
+}
+
+/// Where the game binary is: the configured path, next to the launcher, or the
+/// development build in the source tree.
+fn find_game(configured: &str) -> Option<PathBuf> {
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if !configured.trim().is_empty() {
+        cands.push(PathBuf::from(configured.trim()));
+    }
+    if let Some(p) = std::env::var_os("OPENOMSI_BIN") {
+        cands.push(PathBuf::from(p));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for a in exe.ancestors().skip(1).take(7) {
+            cands.push(a.join("openomsi"));
+            cands.push(a.join("openomsi.exe"));
+            cands.push(a.join("target").join("release").join("openomsi"));
+            cands.push(a.join("target").join("release").join("openomsi.exe"));
+            cands.push(a.join("Resources").join("openomsi"));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        for a in cwd.ancestors().take(4) {
+            cands.push(a.join("target").join("release").join("openomsi"));
+        }
+    }
+    cands.push(data_dir().join("openomsi"));
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// The OMSI folder: configured, remembered by the game, or found in any usual place
+/// (beside the program, Steam libraries, Wine bottles, the user's folders).
+fn find_root(configured: &str) -> Option<PathBuf> {
+    let mut first: Vec<PathBuf> = Vec::new();
+    if !configured.trim().is_empty() {
+        first.push(PathBuf::from(configured.trim()));
+    }
+    if let Some(p) = std::env::var_os("OMSI_ROOT") {
+        first.push(PathBuf::from(p));
+    }
+    if let Ok(t) = std::fs::read_to_string(home().join(".openomsi-root")) {
+        first.push(PathBuf::from(t.trim()));
+    }
+    // searching the disk costs a moment: once per process is enough
+    static FOUND: std::sync::Mutex<Option<(Vec<PathBuf>, Option<PathBuf>)>> = std::sync::Mutex::new(None);
+    let mut g = FOUND.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((k, v)) = g.as_ref() {
+        if *k == first && v.as_ref().map(|p| is_omsi_root(p)).unwrap_or(true) {
+            return v.clone();
+        }
+    }
+    let r = omsi_cfg::find_original_install(&first);
+    if let Some(p) = &r {
+        // the game finds it the same way next time
+        let _ = std::fs::write(home().join(".openomsi-root"), p.to_string_lossy().as_bytes());
+    }
+    *g = Some((first, r.clone()));
+    r
+}
+
+pub fn load_config() -> Config {
+    let mut c: Config = std::fs::read_to_string(config_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    if let Some(r) = find_root(&c.root) {
+        c.root = r.to_string_lossy().to_string();
+    }
+    if let Some(g) = find_game(&c.game) {
+        c.game = g.to_string_lossy().to_string();
+    }
+    if c.profile.trim().is_empty() {
+        // a first start takes the driver OMSI 2 had last ([last_driver] of its options.cfg)
+        c.profile = Path::new(&c.root)
+            .is_dir()
+            .then(|| omsi_options(Path::new(&c.root)))
+            .flatten()
+            .and_then(|o| o.last_driver)
+            .unwrap_or_else(|| "Driver".into());
+    }
+    c
+}
+
+/// What the player's own OMSI 2 remembers in its `options.cfg`: the settings in the
+/// launcher's keys, the map and the driver played last.
+pub struct OmsiOptions {
+    pub settings: Value,
+    /// `maps/<name>/global.cfg`, as the launcher names maps.
+    pub last_map: Option<String>,
+    /// The personnel file's name without `.odr`.
+    pub last_driver: Option<String>,
+}
+
+/// Read the original's `options.cfg` (never written: the game keeps its own settings).
+pub fn omsi_options(root: &Path) -> Option<OmsiOptions> {
+    let o = omsi_content::options::Options::load(&root.join("options.cfg")).ok()?;
+    let mut v = json!({});
+    let num = |k: &str| o.str(k).and_then(|x| x.trim().replace(',', ".").parse::<f64>().ok()).filter(|x| x.is_finite());
+    if let Some(x) = num("maxfps") {
+        v["max_fps"] = json!(x.max(0.0) as i64);
+    }
+    if let Some(x) = num("performance_minobjsize") {
+        v["min_obj_size"] = json!(x.clamp(0.0, 0.2));
+    }
+    if let Some(x) = num("performance_maxobjdist") {
+        v["max_obj_dist"] = json!((x.round() as i64).max(0).to_string());
+    }
+    if let Some(af) = o.values.get("texfilter").and_then(|x| x.get(1)).and_then(|x| x.trim().parse::<i64>().ok()) {
+        v["anisotropy"] = json!(af.clamp(1, 16));
+    }
+    if let Some(x) = num("texmemlimit").filter(|x| *x > 0.0) {
+        v["texture_memory"] = json!(x as i64);
+    }
+    if let Some(x) = num("performance_refltexsize") {
+        v["mirror_size"] = json!(1i64 << (x as i64).clamp(6, 11));
+    }
+    if let Some(x) = num("sound_vol_master") {
+        v["volume"] = json!(x.clamp(0.0, 1.0));
+    }
+    if let Some(d) = o.str("sound_doppler") {
+        v["doppler"] = json!(!d.trim().eq_ignore_ascii_case("off"));
+    }
+    if let Some(l) = o.str("language").filter(|l| !l.trim().is_empty()) {
+        v["language"] = json!(language_code(l));
+    }
+    if let Some(x) = num("wear_lifespan") {
+        v["maintenance"] = json!((x as i64).clamp(0, 4));
+    }
+    if let Some(x) = num("aiunschedfactor") {
+        v["ai_unsched_factor"] = json!((x as i64).clamp(0, 300));
+    }
+    if let Some(x) = num("aimaxcountscheduled") {
+        v["ai_max_scheduled"] = json!((x as i64).max(0));
+    }
+    if let Some(x) = num("aimaxcountparked") {
+        v["ai_max_parked"] = json!((x as i64).max(0));
+    }
+    if let Some(x) = num("aipassfactor") {
+        v["pax_density"] = json!((x / 100.0).clamp(0.0, 3.0));
+    }
+    // flags: present or not
+    v["head_movement"] = json!(o.flag("driverview_moving"));
+    v["collision_vehicles"] = json!(!o.flag("no_collision_vehtoveh"));
+    v["driver"] = json!(o.flag("see_own_driver"));
+    if let Some(x) = num("ticketselling") {
+        v["boarding"] = json!(if x > 0.5 { "pay" } else { "auto" });
+    }
+    let file_stem = |p: &str| Path::new(&p.replace('\\', "/")).file_stem().map(|s| s.to_string_lossy().to_string());
+    Some(OmsiOptions {
+        settings: v,
+        last_map: o.str("last_map").map(|m| m.trim().replace('\\', "/")).filter(|m| !m.is_empty()),
+        last_driver: o.str("last_driver").and_then(file_stem).filter(|d| !d.is_empty()),
+    })
+}
+
+pub fn save_config(c: &Config) -> Result<()> {
+    std::fs::write(config_path(), serde_json::to_vec_pretty(c)?)?;
+    Ok(())
+}
+
+fn root() -> Result<PathBuf> {
+    let c = load_config();
+    let r = PathBuf::from(&c.root);
+    if c.root.trim().is_empty() {
+        return Err(anyhow!("no OMSI 2 folder configured (set it under Setup)"));
+    }
+    let missing = omsi_cfg::missing_original_essentials(&r);
+    if !missing.is_empty() {
+        return Err(anyhow!(
+            "{} is not a complete OMSI 2 installation (missing: {}); choose the original game's folder under Setup",
+            r.display(),
+            missing.join(", ")
+        ));
+    }
+    Ok(r)
+}
+
+/// The game's own content folder: the folder of the game binary, laid out like OMSI 2
+/// (Vehicles, maps, Sceneryobjects ...). Installed mods live here; the game searches it
+/// before the original installation.
+pub fn content_dir() -> Option<PathBuf> {
+    // the same rules as the game: $OMSI_CONTENT, else the folder of the game binary (beside
+    // the bundle when the binary sits inside a macOS .app)
+    let dir = match std::env::var_os("OMSI_CONTENT") {
+        Some(d) => PathBuf::from(d),
+        None => {
+            let c = load_config_raw();
+            let game = find_game(&c.game)?;
+            let dir = game.parent()?.to_path_buf();
+            if dir.ends_with("Contents/MacOS") {
+                dir.parent()?.parent()?.parent()?.to_path_buf()
+            } else {
+                dir
+            }
+        }
+    };
+    let _ = omsi_cfg::ensure_content_layout(&dir);
+    register_roots(&dir);
+    Some(dir)
+}
+
+/// Tell the OMSI readers about the content folder, the archives used in place in its
+/// `Archives` folder and the OMSI folder (in that order, as the game has them), so that a
+/// path inside one is also looked for in the others (a repaint's `.cti` in the content
+/// folder's copy of a stock bus folder, a map inside an archive).
+fn register_roots(content: &Path) {
+    static DONE: std::sync::Once = std::sync::Once::new();
+    let content = content.to_path_buf();
+    DONE.call_once(|| {
+        omsi_cfg::add_content_root(content.clone());
+        if let Some(r) = find_root(&load_config_raw().root) {
+            omsi_cfg::add_content_root(r);
+        }
+        mount_archives(&content);
+    });
+}
+
+/// Mount the archives in `<content>/Archives` that are not mounted yet (an install may
+/// have put one there, or the user did), each as a content root in front of the OMSI
+/// folder. Archives that went away stay mounted until the launcher restarts.
+fn mount_archives(content: &Path) {
+    let dir = content.join(install::ARCHIVES);
+    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    let mut zips: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().map(|e| e.eq_ignore_ascii_case("zip")).unwrap_or(false)).collect();
+    zips.sort();
+    let mounted: Vec<PathBuf> = omsi_cfg::vfs::mounts().iter().map(|m| m.path().to_path_buf()).collect();
+    for z in zips.into_iter().filter(|z| !mounted.contains(z)) {
+        mount_archive(&z);
+    }
+}
+
+/// Mount one archive of the content folder for the lists.
+pub(crate) fn mount_archive(zip: &Path) {
+    match omsi_cfg::vfs::mount_zip(zip) {
+        Ok(m) => match find_root(&load_config_raw().root) {
+            Some(r) => omsi_cfg::add_content_root_before(m, &r),
+            None => omsi_cfg::add_content_root(m),
+        },
+        Err(e) => {
+            log_to_file(&format!("archive {}: {e}", zip.display()));
+        }
+    }
+}
+
+/// The archives of the content folder that are mounted, in name order.
+fn archive_roots(content: &Path) -> Vec<PathBuf> {
+    let dir = content.join(install::ARCHIVES);
+    let mut v: Vec<PathBuf> = omsi_cfg::vfs::mounts().iter().map(|m| m.path().to_path_buf()).filter(|p| p.starts_with(&dir) && p.exists()).collect();
+    v.sort();
+    v
+}
+
+fn load_config_raw() -> Config {
+    std::fs::read_to_string(config_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// `rel` (a path as the game takes it, `Vehicles/Foo/foo.bus`) in the content folder if it
+/// is there, else in the OMSI folder.
+fn resolve_content(rel: &str) -> Result<PathBuf> {
+    let root = root()?;
+    for b in bases() {
+        if b == root {
+            continue;
+        }
+        let p = omsi_cfg::resolve_path(&b, rel);
+        if omsi_cfg::vfs::exists(&p) {
+            return Ok(p);
+        }
+    }
+    Ok(omsi_cfg::resolve_path(&root, rel))
+}
+
+/// The folders the lists are made of: the content folder first, then the archives used in
+/// place (mounted as folders), then the OMSI folder.
+fn bases() -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Some(c) = content_dir() {
+        mount_archives(&c);
+        v.push(c.clone());
+        v.extend(archive_roots(&c));
+    }
+    if let Ok(r) = root() {
+        v.push(r);
+    }
+    v
+}
+
+/// Entries of `rel` (e.g. "Vehicles") across the content folder and the OMSI 2 folder;
+/// a name in the content folder hides the same name in the installation.
+fn merged_entries(rel: &str) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let dirs: Vec<PathBuf> = bases().iter().map(|b| b.join(rel)).collect();
+    for d in dirs {
+        for (name, _) in omsi_cfg::vfs::list_dir(&d).unwrap_or_default() {
+            if seen.insert(name.to_string_lossy().to_ascii_lowercase()) {
+                out.push(d.join(name));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Folders of `rel` by name across the content folder and the OMSI folder: each name with
+/// all its copies, the content folder's first (a mod may add files to a stock folder).
+fn merged_folders(rel: &str) -> Vec<(String, Vec<PathBuf>)> {
+    let mut out: Vec<(String, Vec<PathBuf>)> = Vec::new();
+    for base in bases() {
+        let dir = base.join(rel);
+        let Some(list) = omsi_cfg::vfs::list_dir(&dir) else { continue };
+        let mut names: Vec<PathBuf> = list.into_iter().filter(|(_, is_dir)| *is_dir).map(|(n, _)| dir.join(n)).collect();
+        names.sort();
+        for p in names {
+            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            match out.iter_mut().find(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+                Some((_, dirs)) => dirs.push(p),
+                None => out.push((name, vec![p])),
+            }
+        }
+    }
+    out.sort_by(|a, b| a.0.to_ascii_lowercase().cmp(&b.0.to_ascii_lowercase()));
+    out
+}
+
+/// Is `p` in the content folder (a mod) rather than the OMSI folder?
+/// (An archive used in place lies in the content folder's `Archives` too.)
+fn in_content(p: &Path) -> bool {
+    content_dir().map(|c| p.starts_with(c)).unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------------------
+// mods: sorting a mod's folders into the content folder, the way it would be copied into
+// an OMSI 2 installation by hand
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ModsStatus {
+    pub content_dir: String,
+    /// (folder, number of entries)
+    pub folders: Vec<(String, usize)>,
+    pub inbox: String,
+    /// What lies in the inbox now.
+    pub inbox_items: Vec<String>,
+    /// Packs waiting in Mods/waiting for the bus they belong to.
+    pub waiting: Vec<String>,
+    /// Archives used in place (in `<content>/Archives`): (name, size in bytes).
+    pub archives: Vec<(String, u64)>,
+    /// Free space on the content folder's disk (bytes).
+    pub free_bytes: u64,
+    /// What an earlier, interrupted install left and was removed now.
+    pub cleaned: Vec<String>,
+    pub jobs: Vec<install::Progress>,
+}
+
+/// Start installing the mod at `src` (a folder, or a .zip) into the content folder in the
+/// background; `mode` is "auto" (unpack, or use a .zip in place when it does not fit),
+/// "extract" or "inplace".
+pub fn start_install(src: &Path, mode: &str) -> Result<install::Progress> {
+    let content = content_dir().ok_or_else(|| anyhow!("no game binary configured, so no content folder"))?;
+    if !src.exists() {
+        return Err(anyhow!("{} does not exist", src.display()));
+    }
+    let from_inbox = src.starts_with(content.join("Mods"));
+    let job = install::start(content, root().ok(), src.to_path_buf(), install::InstallMode::parse(mode), from_inbox);
+    Ok(job.snapshot())
+}
+
+/// How big the mod at `src` is unpacked, what is free, and whether it can be used in place.
+pub fn inspect_mod(src: &Path) -> Result<install::SourceInfo> {
+    let content = content_dir().ok_or_else(|| anyhow!("no game binary configured, so no content folder"))?;
+    install::inspect(&content, root().ok().as_deref(), src)
+}
+
+/// Install the mod at `src` and wait for it (the terminal), printing the progress.
+pub fn install_mod_blocking(src: &Path, mode: &str, cancel_after_ms: Option<u64>) -> Result<install::Progress> {
+    let content = content_dir().ok_or_else(|| anyhow!("no game binary configured, so no content folder"))?;
+    Ok(install::run_blocking(content, root().ok(), src.to_path_buf(), install::InstallMode::parse(mode), cancel_after_ms.map(std::time::Duration::from_millis), true))
+}
+
+fn inbox_entries(content: &Path) -> Vec<PathBuf> {
+    let inbox = content.join("Mods");
+    let Ok(rd) = std::fs::read_dir(&inbox) else { return Vec::new() };
+    let mut v: Vec<PathBuf> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            !(name.starts_with('.') || name.eq_ignore_ascii_case("installed") || name.eq_ignore_ascii_case(install::WAITING) || name.eq_ignore_ascii_case(install::PLUGINS_HELD) || name.eq_ignore_ascii_case("README.txt"))
+                && (p.is_dir() || p.extension().map(|x| x.eq_ignore_ascii_case("zip")).unwrap_or(false))
+        })
+        .collect();
+    v.sort();
+    v
+}
+
+/// (size, newest time, files) of a file or a folder tree.
+fn tree_signature(p: &Path) -> (u64, u64, u64) {
+    let Ok(md) = std::fs::symlink_metadata(p) else { return (0, 0, 0) };
+    let t = md.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0);
+    if !md.is_dir() {
+        return (md.len(), t, 1);
+    }
+    let mut acc = (0, t, 0);
+    if let Ok(rd) = std::fs::read_dir(p) {
+        for e in rd.flatten() {
+            let (s, m, n) = tree_signature(&e.path());
+            acc = (acc.0 + s, acc.1.max(m), acc.2 + n);
+        }
+    }
+    acc
+}
+
+/// The inbox watcher: something dropped into Mods/ is installed once it has stopped
+/// growing (the same size and time on two looks at least two seconds apart); packs in
+/// Mods/waiting are installed once their bus is. Returns the sources of the jobs started.
+fn watch_inbox(content: &Path) -> Vec<String> {
+    struct Seen {
+        sig: (u64, u64, u64),
+        at: std::time::Instant,
+        started: bool,
+        /// When the signature was last read (a big folder whose install failed is looked
+        /// at again only now and then).
+        checked: std::time::Instant,
+    }
+    static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Seen>>> = std::sync::Mutex::new(None);
+    let mut started = Vec::new();
+    let mut guard = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+    let seen = guard.get_or_insert_with(Default::default);
+    let waiting_dir = content.join("Mods").join(install::WAITING);
+    let items = inbox_entries(content);
+    seen.retain(|p, _| items.contains(p) || (p.starts_with(&waiting_dir) && p.exists()));
+    for p in items {
+        if install::is_busy(&p) {
+            continue;
+        }
+        let now = std::time::Instant::now();
+        if seen.get(&p).map(|s| s.started && now.duration_since(s.checked) < std::time::Duration::from_secs(30)).unwrap_or(false) {
+            continue;
+        }
+        let sig = tree_signature(&p);
+        if let Some(s) = seen.get_mut(&p) {
+            s.checked = now;
+        }
+        match seen.get_mut(&p) {
+            Some(s) if s.sig == sig => {
+                if !s.started && now.duration_since(s.at) >= std::time::Duration::from_secs(2) {
+                    s.started = true;
+                    install::start(content.to_path_buf(), root().ok(), p.clone(), install::InstallMode::Auto, true);
+                    started.push(p.to_string_lossy().to_string());
+                }
+            }
+            // new, still growing (a copy in progress), or changed after a failed try
+            _ => {
+                seen.insert(p.clone(), Seen { sig, at: now, started: false, checked: now });
+            }
+        }
+    }
+    let busy = install::jobs().iter().any(|j| j.finished.is_none());
+    if !busy {
+        for p in install::waiting_ready(content, root().ok().as_deref()) {
+            let sig = tree_signature(&p);
+            if seen.get(&p).map(|s| s.started && s.sig == sig).unwrap_or(false) {
+                continue;
+            }
+            seen.insert(p.clone(), Seen { sig, at: std::time::Instant::now(), started: true, checked: std::time::Instant::now() });
+            install::start(content.to_path_buf(), root().ok(), p.clone(), install::InstallMode::Extract, true);
+            started.push(p.to_string_lossy().to_string());
+        }
+    }
+    started
+}
+
+/// Install everything in the inbox (and the waiting packs whose bus is there) now, and
+/// wait (the terminal's `mods`).
+pub fn install_inbox_blocking() -> Vec<install::Progress> {
+    let Some(content) = content_dir() else { return Vec::new() };
+    let mut out = Vec::new();
+    for p in inbox_entries(&content).into_iter().chain(install::waiting_ready(&content, root().ok().as_deref())) {
+        let job = install::start(content.clone(), root().ok(), p, install::InstallMode::Auto, true);
+        while job.snapshot().finished.is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        out.push(job.snapshot());
+    }
+    out
+}
+
+pub fn mods_status() -> Result<ModsStatus> {
+    let content = content_dir().ok_or_else(|| anyhow!("no game binary configured, so no content folder"))?;
+    let cleaned = install::cleanup_stale(&data_dir(), Some(&content));
+    let folders = omsi_cfg::CONTENT_FOLDERS
+        .iter()
+        .map(|f| {
+            let n = std::fs::read_dir(content.join(f)).map(|rd| rd.flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count()).unwrap_or(0);
+            (f.to_string(), n)
+        })
+        .collect();
+    let names = |v: Vec<PathBuf>| v.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect::<Vec<_>>();
+    let waiting: Vec<PathBuf> = std::fs::read_dir(content.join("Mods").join(install::WAITING)).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    let mut archives: Vec<(String, u64)> = std::fs::read_dir(content.join(install::ARCHIVES))
+        .map(|rd| rd.flatten().filter(|e| e.path().extension().map(|x| x.eq_ignore_ascii_case("zip")).unwrap_or(false)).map(|e| (e.file_name().to_string_lossy().to_string(), e.metadata().map(|m| m.len()).unwrap_or(0))).collect())
+        .unwrap_or_default();
+    archives.sort();
+    Ok(ModsStatus {
+        content_dir: content.to_string_lossy().to_string(),
+        folders,
+        inbox: content.join("Mods").to_string_lossy().to_string(),
+        inbox_items: names(inbox_entries(&content)),
+        waiting: names(waiting),
+        archives,
+        free_bytes: install::free_space(&content).unwrap_or(0),
+        cleaned,
+        jobs: install::jobs(),
+    })
+}
+
+/// What the page asks every few seconds: whether the content changed (then it asks for the
+/// lists again), the install jobs and the running games. It also starts the inbox installs.
+#[derive(Serialize, Clone, Debug)]
+pub struct Poll {
+    pub stamp: String,
+    pub jobs: Vec<install::Progress>,
+    pub instances: Vec<instances::Instance>,
+    /// Inbox items whose install started with this poll.
+    pub started: Vec<String>,
+}
+
+pub fn poll() -> Result<Poll> {
+    let content = content_dir();
+    let started = content.as_deref().map(watch_inbox).unwrap_or_default();
+    let stamp = index::content_stamp(&bases(), content.as_ref().map(|c| c.join("Mods")).as_deref());
+    Ok(Poll { stamp, jobs: install::jobs(), instances: instances::list(), started })
+}
+
+// ---------------------------------------------------------------------------------------
+// content lists
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MapInfo {
+    pub name: String,
+    pub friendly: String,
+    pub file: String,
+    pub description: String,
+    pub entry_points: Vec<EntryInfo>,
+    /// The depot file (`.hof` name) the map's own buses use, from ailists.cfg.
+    pub hof: String,
+    /// Installed as a mod (in the content folder).
+    #[serde(default)]
+    pub installed: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EntryInfo {
+    pub index: i32,
+    pub name: String,
+}
+
+pub fn list_maps() -> Result<Vec<MapInfo>> {
+    root()?;
+    let lang = content_language();
+    let mut out = Vec::new();
+    let mut keys = Vec::new();
+    for (folder, dirs) in merged_folders("maps") {
+        // a map is one folder: the first copy that has a global.cfg
+        let Some(d) = dirs.into_iter().find(|d| omsi_cfg::vfs::is_file(&d.join("global.cfg"))) else { continue };
+        let key = format!("map|{lang}|{}", d.display());
+        let mut stamped = vec![d.clone(), d.join("global.cfg"), d.join("ailists.cfg")];
+        stamped.extend(dsc_candidates(&d.join("global.cfg"), lang));
+        let stamp = index::files_stamp(&stamped);
+        keys.push(key.clone());
+        let info: Option<MapInfo> = index::cached(&key, stamp, || (read_map(&d, &folder, lang), Vec::new()));
+        out.extend(info);
+    }
+    index::save("map|", Some(&keys));
+    Ok(out)
+}
+
+fn read_map(d: &Path, folder: &str, lang: &str) -> Option<MapInfo> {
+    let g = omsi_map::GlobalCfg::load(&d.join("global.cfg")).ok()?;
+    // `global_ENG.dsc` (the language of the settings) names and describes the map
+    let dsc = find_dsc(&d.join("global.cfg"), lang);
+    let friendly = dsc.as_ref().and_then(|x| x.name.first().cloned()).unwrap_or_else(|| g.friendly_name.trim().to_string());
+    let description = dsc.map(|x| x.description).filter(|t| !t.is_empty()).unwrap_or_else(|| g.description.trim().to_string());
+    let mut entries: Vec<EntryInfo> = g.entry_points.iter().map(|e| EntryInfo { index: e.index, name: e.name.trim().to_string() }).collect();
+    // the game's --entry is the position in the list, not the index field; several
+    // entries often share a name (one per stop position), so number them
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let total: std::collections::HashMap<String, usize> = entries.iter().fold(std::collections::HashMap::new(), |mut m, e| {
+        *m.entry(e.name.clone()).or_default() += 1;
+        m
+    });
+    for (i, e) in entries.iter_mut().enumerate() {
+        e.index = i as i32;
+        let n = seen.entry(e.name.clone()).or_default();
+        *n += 1;
+        if total.get(&e.name).copied().unwrap_or(0) > 1 {
+            e.name = format!("{} ({})", e.name, n);
+        }
+    }
+    // (the depot groups' first: a plain car group's name line is no depot)
+    let hof = omsi_map::ailists::AiLists::load(&d.join("ailists.cfg")).ok().and_then(|l| l.groups.iter().filter(|g| g.is_depot).chain(l.groups.iter()).find_map(|g| g.hof.clone())).unwrap_or_default();
+    Some(MapInfo { name: if g.name.trim().is_empty() { folder.to_string() } else { g.name.trim().to_string() }, friendly, file: format!("maps/{folder}/global.cfg"), description, entry_points: entries, hof, installed: in_content(d) })
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VehicleInfo {
+    pub name: String,
+    pub manufacturer: String,
+    pub type_name: String,
+    pub file: String,
+    pub folder: String,
+    pub description: String,
+    pub paints: Vec<String>,
+    pub hofs: Vec<String>,
+    /// Installed as a mod (the bus file is in the content folder).
+    #[serde(default)]
+    pub installed: bool,
+    /// Vehicle packs this bus borrows parts from that are not installed (the Ahlheim
+    /// Citaro's dashboard, steering wheel and ticket machine come from `Urbino_II`): it
+    /// drives, but with holes in the cockpit, as it would in OMSI.
+    #[serde(default)]
+    pub missing_packs: Vec<String>,
+}
+
+/// The vehicle packs whose parts a model file names and that are installed nowhere.
+fn missing_packs_of(model: &Path) -> Vec<String> {
+    let Ok(text) = omsi_cfg::vfs::read(model) else { return Vec::new() };
+    let text = omsi_cfg::codepage::decode(&text);
+    let dir = model.parent().unwrap_or(Path::new("."));
+    let mut out: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let l = line.trim();
+        if !l.starts_with("..") {
+            continue;
+        }
+        let p = omsi_cfg::resolve_path(dir, l);
+        if omsi_cfg::vfs::is_file(&p) {
+            continue;
+        }
+        if let Some(pack) = omsi_cfg::missing_vehicle_pack(&p) {
+            if !out.contains(&pack) {
+                out.push(pack);
+            }
+        }
+    }
+    out
+}
+
+/// `[item]` names of every `.cti` in the model's `[CTC]` folders (in every content root):
+/// the paint schemes, and the folders they were read from.
+fn paint_schemes(vehicle: &omsi_vehicle::Vehicle) -> (Vec<String>, Vec<PathBuf>) {
+    let mut names: Vec<String> = Vec::new();
+    let mut dirs_read: Vec<PathBuf> = Vec::new();
+    let Some(model_rel) = vehicle.model.as_ref() else { return (names, dirs_read) };
+    let model_path = omsi_cfg::resolve_path(vehicle.dir(), model_rel);
+    let Ok(model) = omsi_model::Model::load(&model_path) else { return (names, dirs_read) };
+    for c in &model.ctc {
+        let dir = omsi_cfg::resolve_path(vehicle.dir(), &c.path);
+        let mut files: Vec<PathBuf> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut copies = omsi_cfg::mirrored_dirs(&dir);
+        if !copies.contains(&dir) {
+            copies.push(dir.clone());
+        }
+        for d in copies {
+            dirs_read.push(d.clone());
+            let Some(list) = omsi_cfg::vfs::list_dir(&d) else { continue };
+            let mut here: Vec<PathBuf> = list.into_iter().map(|(n, _)| d.join(n)).filter(|p| p.extension().map(|e| e.eq_ignore_ascii_case("cti")).unwrap_or(false)).collect();
+            here.sort();
+            for f in here {
+                if seen.insert(f.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase()) {
+                    files.push(f);
+                }
+            }
+        }
+        for f in files {
+            let Ok(cfg) = omsi_cfg::CfgFile::read(&f) else { continue };
+            let mut r = cfg.reader();
+            while let Some(k) = r.next_keyword() {
+                if k == "item" {
+                    let name = r.str().trim().to_string();
+                    if !name.is_empty() && !names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+                        names.push(name);
+                    }
+                }
+            }
+        }
+    }
+    dirs_read.sort();
+    dirs_read.dedup();
+    (names, dirs_read)
+}
+
+/// One line into ~/.openomsi/launcher.log.
+fn log_line(line: &str) {
+    use std::io::Write;
+    let p = data_dir().join("launcher.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let _ = writeln!(f, "{now} {line}");
+    }
+}
+
+pub fn list_vehicles() -> Result<Vec<VehicleInfo>> {
+    root()?;
+    let lang = content_language();
+    let mut out = Vec::new();
+    let mut keys = Vec::new();
+    for (folder, dirs) in merged_folders("Vehicles") {
+        // the stamp covers every copy of the folder and their direct entries (Model/,
+        // Texture/ ...); the paint folders the entry read are its dependencies
+        let mut stamped: Vec<PathBuf> = dirs.clone();
+        for d in &dirs {
+            if let Some(list) = omsi_cfg::vfs::list_dir(d) {
+                let mut subs: Vec<PathBuf> = list.into_iter().filter(|(_, is_dir)| *is_dir).map(|(n, _)| d.join(n)).collect();
+                subs.sort();
+                stamped.extend(subs);
+            }
+        }
+        let key = format!("bus2|{lang}|{}", dirs.iter().map(|d| d.to_string_lossy()).collect::<Vec<_>>().join("|"));
+        keys.push(key.clone());
+        let list: Vec<VehicleInfo> = index::cached(&key, index::folder_stamp(&stamped), || read_vehicle_folder(&folder, &dirs, lang));
+        out.extend(list);
+    }
+    index::save("bus2|", Some(&keys));
+    Ok(out)
+}
+
+/// The buses of one vehicle folder (all its copies; a bus file in the content folder hides
+/// the one of the same name in the OMSI folder), and the folders read besides its own.
+fn read_vehicle_folder(folder: &str, dirs: &[PathBuf], lang: &str) -> (Vec<VehicleInfo>, Vec<PathBuf>) {
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for d in dirs {
+        let mut here: Vec<PathBuf> = omsi_cfg::vfs::list_dir(d).unwrap_or_default().into_iter().filter(|(_, is_dir)| !*is_dir).map(|(n, _)| d.join(n)).collect();
+        here.sort();
+        for f in here {
+            if seen.insert(f.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase()) {
+                files.push(f);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut deps = Vec::new();
+    if !files.iter().any(|f| f.extension().map(|e| e.eq_ignore_ascii_case("bus") || e.eq_ignore_ascii_case("ovh")).unwrap_or(false)) {
+        // textures, or a repaint for a bus that is not installed: nothing to drive
+        log_line(&format!("vehicles: Vehicles/{folder} has no .bus file (a repaint or textures for a bus that is not installed?) - not listed"));
+        return (out, deps);
+    }
+    let hofs: Vec<String> = files.iter().filter(|f| f.extension().map(|e| e.eq_ignore_ascii_case("hof")).unwrap_or(false)).filter_map(|f| omsi_vehicle::Hof::load(f).ok().map(|h| h.name.trim().to_string())).collect();
+    // OMSI offers what has a [friendlyname]: never the rear section of an articulated bus
+    // (its front brings it along), an AI-only variant or a car
+    for (f, v) in omsi_vehicle::vehicle::offered_vehicles(&files) {
+        let f = &f;
+        let stem = f.file_stem().unwrap().to_string_lossy().to_ascii_lowercase();
+        // a vehicle file whose model is not there would load as nothing
+        let model = v.model.as_ref().map(|m| omsi_cfg::resolve_path(v.dir(), m));
+        if !model.as_ref().map(|m| omsi_cfg::vfs::is_file(m)).unwrap_or(false) {
+            log_line(&format!("vehicles: {} - its model {} is missing, not listed", f.display(), model.map(|m| m.display().to_string()).unwrap_or_else(|| "(none)".into())));
+            continue;
+        }
+        let rel = format!("Vehicles/{}/{}", folder, f.file_name().unwrap().to_string_lossy());
+        let name = format!("{} {}", v.manufacturer.trim(), v.type_name.trim()).trim().to_string();
+        let (paints, paint_dirs) = paint_schemes(&v);
+        deps.extend(paint_dirs);
+        // `<bus>_ENG.dsc` beside the bus file (the language of the settings) describes it
+        let description = find_dsc(f, lang).map(|x| x.description).filter(|t| !t.is_empty()).unwrap_or_else(|| v.description.trim().to_string());
+        let missing_packs = model.as_deref().map(missing_packs_of).unwrap_or_default();
+        if !missing_packs.is_empty() {
+            log_line(&format!("vehicles: {} borrows parts from packs that are not installed: {}", f.display(), missing_packs.join(", ")));
+        }
+        out.push(VehicleInfo { name: if name.is_empty() { stem.clone() } else { name }, manufacturer: v.manufacturer.trim().to_string(), type_name: v.type_name.trim().to_string(), file: rel, folder: folder.to_string(), description: description.chars().take(600).collect(), paints, hofs: hofs.clone(), installed: in_content(f), missing_packs });
+    }
+    deps.sort();
+    deps.dedup();
+    // the folders themselves are stamped by the caller
+    deps.retain(|d| !dirs.contains(d));
+    (out, deps)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WeatherInfo {
+    pub name: String,
+    pub file: String,
+    pub description: String,
+    pub fog_m: f32,
+    pub temp: f32,
+    pub clouds: String,
+    pub precip: String,
+    pub snow: bool,
+    #[serde(default)]
+    pub installed: bool,
+}
+
+pub fn list_weather() -> Result<Vec<WeatherInfo>> {
+    root()?;
+    let mut out = Vec::new();
+    let mut keys = Vec::new();
+    let lang = content_language();
+    let mut files: Vec<PathBuf> = merged_entries("Weather").into_iter().filter(|p| p.extension().map(|e| e.eq_ignore_ascii_case("owt")).unwrap_or(false)).collect();
+    files.sort();
+    for f in files {
+        // the description in the settings' language lives in `<name>_ENG.dsc`
+        let mut stamped = vec![f.clone()];
+        stamped.extend(dsc_candidates(&f, lang));
+        let key = format!("wx|{lang}|{}", f.display());
+        keys.push(key.clone());
+        let info: Option<WeatherInfo> = index::cached(&key, index::files_stamp(&stamped), || (read_weather(&f, lang), Vec::new()));
+        out.extend(info);
+    }
+    index::save("wx|", Some(&keys));
+    Ok(out)
+}
+
+fn read_weather(f: &Path, lang: &str) -> Option<WeatherInfo> {
+    let w = omsi_content::weather::Weather::load(f).ok()?;
+    let stem = f.file_stem().unwrap().to_string_lossy().to_string();
+    // (the `[name]` of the file is not part of the description: "Ground Fog Heavy ground fog ...")
+    let description = find_dsc(f, lang).map(|x| x.description.replace('\n', " ")).filter(|t| !t.is_empty()).unwrap_or_else(|| w.description.replace('\n', " "));
+    let precip = match w.precip.first().copied().unwrap_or(0.0) as i32 {
+        1 => format!("rain {:.0}%", w.precip.get(1).copied().unwrap_or(0.0) / 255.0 * 100.0),
+        2 => format!("snow {:.0}%", w.precip.get(1).copied().unwrap_or(0.0) / 255.0 * 100.0),
+        _ => "dry".into(),
+    };
+    Some(WeatherInfo { name: stem.trim_start_matches('#').to_string(), file: format!("Weather/{}", f.file_name().unwrap().to_string_lossy()), description, fog_m: w.fog.0, temp: w.temp.0, clouds: if w.clouds.0.trim().starts_with("-1") { "clear".into() } else { w.clouds.0.trim().to_string() }, precip, snow: w.snow, installed: in_content(f) })
+}
+
+/// The content language of the settings (`language=`, English by default): which
+/// `<file>_<LANG>.dsc` names and describes maps, buses and weathers.
+fn content_language() -> &'static str {
+    let text = std::fs::read_to_string(data_dir().join("settings.cfg")).ok();
+    language_code(settings_from_text(text.as_deref())["language"].as_str().unwrap_or("ENG"))
+}
+
+/// The description files OMSI reads for `file` (`global.cfg` -> `global_ENG.dsc`), in the
+/// order they are tried: the language itself, then English for a language that has none
+/// (German is the files' own language, so German falls back to the file itself).
+fn dsc_candidates(file: &Path, lang: &str) -> Vec<PathBuf> {
+    let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let mut langs = vec![lang];
+    if lang != "DEU" && lang != "ENG" {
+        langs.push("ENG");
+    }
+    langs.into_iter().map(|l| file.with_file_name(format!("{stem}_{l}.dsc"))).collect()
+}
+
+/// A `.dsc` file: the `[name]` / `[friendlyname]` lines and the `[description]` text.
+struct Dsc {
+    name: Vec<String>,
+    description: String,
+}
+
+fn parse_dsc(text: &str) -> Dsc {
+    let mut name = Vec::new();
+    let mut desc: Vec<&str> = Vec::new();
+    let mut section = "";
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            section = if t.eq_ignore_ascii_case("[name]") || t.eq_ignore_ascii_case("[friendlyname]") {
+                "name"
+            } else if t.eq_ignore_ascii_case("[description]") {
+                "description"
+            } else {
+                ""
+            };
+            continue;
+        }
+        match section {
+            "name" if !t.is_empty() => name.push(t.to_string()),
+            "name" => section = "",
+            "description" => desc.push(line.trim_end()),
+            _ => {}
+        }
+    }
+    Dsc { name, description: desc.join("\n").trim().to_string() }
+}
+
+fn find_dsc(file: &Path, lang: &str) -> Option<Dsc> {
+    dsc_candidates(file, lang).iter().find_map(|p| omsi_cfg::vfs::read(p).ok()).map(|b| parse_dsc(&encoding_latin1(&b)))
+}
+
+/// OMSI's text files are Latin-1, except that some description files were saved as
+/// UTF-16 with a byte-order mark.
+fn encoding_latin1(b: &[u8]) -> String {
+    if b.len() >= 2 && b[0] == 0xFF && b[1] == 0xFE {
+        let u: Vec<u16> = b[2..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        return String::from_utf16_lossy(&u);
+    }
+    if b.len() >= 2 && b[0] == 0xFE && b[1] == 0xFF {
+        let u: Vec<u16> = b[2..].chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        return String::from_utf16_lossy(&u);
+    }
+    b.iter().map(|&c| c as char).collect()
+}
+
+// ---------------------------------------------------------------------------------------
+// timetable: lines, tours, trips and the roadbook
+
+#[derive(Serialize, Clone, Debug)]
+pub struct StopInfo {
+    pub name: String,
+    pub arr: f64,
+    pub dep: f64,
+}
+
+/// One trip of a tour, as OMSI's timetable dialog lists it: when it leaves, from where to
+/// where, on which line, and the trip's (route's) own name.
+#[derive(Serialize, Clone, Debug)]
+pub struct TripInfo {
+    /// The trip file's name ("4 Liman-ZS"): the name the map gives the route.
+    pub name: String,
+    /// Its place in the tour, 1 = the first (what `--trip` takes, as does its departure).
+    pub index: usize,
+    /// The line its displays show (a depot run has none).
+    pub line: String,
+    /// First and last stop.
+    pub from: String,
+    pub terminus: String,
+    pub departure: f64,
+    pub arrival: f64,
+    pub stops: Vec<StopInfo>,
+    pub km: f64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct TourInfo {
+    pub number: String,
+    pub ai_group: String,
+    pub first: f64,
+    pub last: f64,
+    /// The days it runs, in words ("Mon-Fri", "Sat", "daily", ...), from its validity mask.
+    pub days: String,
+    /// It runs on the date asked for (the game's timetable has only these tours that day).
+    pub runs: bool,
+    /// The first date from the one asked for on which it runs (`YYYY-MM-DD`): the game's
+    /// timetable dialog lists only the tours of the chosen day (Omsi.exe sub_67f268), so a
+    /// tour of another day is picked by moving the date to it.
+    pub next_run: Option<String>,
+    pub trips: Vec<TripInfo>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct LineInfo {
+    pub name: String,
+    pub user_allowed: bool,
+    pub termini: Vec<String>,
+    pub tours: Vec<TourInfo>,
+}
+
+/// The date the game starts on without `--date` (its clock's default, day 150 of 1989), and
+/// the launcher's own default date.
+pub const DEFAULT_DATE: &str = "1989-05-30";
+
+/// The lines of a map's timetable on `date` (`YYYY-MM-DD`, the game's default when empty):
+/// the chrono folders active that day add their lines and take theirs off, as the game does
+/// — Spandau's 1991 timetable change replaces line "5 & 5N" and sixteen others.
+pub fn list_lines(map: &str, date: &str) -> Result<Vec<LineInfo>> {
+    let map_dir = resolve_content(map)?.parent().map(|p| p.to_path_buf()).context("map folder")?;
+    lines_on(&map_dir, date)
+}
+
+fn lines_on(map_dir: &Path, date: &str) -> Result<Vec<LineInfo>> {
+    let date = if date.trim().is_empty() { DEFAULT_DATE } else { date.trim() };
+    let code = omsi_map::date_code(date).with_context(|| format!("'{date}' is not a date (YYYY-MM-DD)"))?;
+    let chrono = omsi_map::active_chrono_dirs(map_dir, code);
+    let off = omsi_map::chrono_deactivated_lines(&chrono);
+    let data = omsi_timetable::TimetableData::load_with_chrono(map_dir, &chrono, &off);
+    // which tours run that day: the tour's mask as the game reads it (bits 0-6 Monday to
+    // Sunday, 7 a public holiday, 8 school holidays, 9 school days: Omsi.exe sub_73bc00)
+    let calendar = omsi_map::Calendar::load(&map_dir.join("Holidays.txt")).unwrap_or_default();
+    let day_bit = if calendar.is_holiday(code) { 1 << 7 } else { 1 << weekday(code) };
+    let school_bit = if calendar.in_holiday_range(code) { 1 << 8 } else { 1 << 9 };
+    let mut out = Vec::new();
+    for l in &data.lines {
+        let mut termini: Vec<String> = Vec::new();
+        let mut tours = Vec::new();
+        for t in &l.tours {
+            let mask = t.extra.trim().parse::<i32>().unwrap_or(1023);
+            let runs_on = |c: i32| {
+                let day = if calendar.is_holiday(c) { 1 << 7 } else { 1 << weekday(c) };
+                let school = if calendar.in_holiday_range(c) { 1 << 8 } else { 1 << 9 };
+                mask & day != 0 && mask & school != 0
+            };
+            let runs = mask & day_bit != 0 && mask & school_bit != 0;
+            let next_run = (0..400).map(|k| add_days(code, k)).find(|c| runs_on(*c)).map(|c| format!("{:04}-{:02}-{:02}", c / 10000, c / 100 % 100, c % 100));
+            let mut trips = Vec::new();
+            for tt in &t.trips {
+                let Some(trip) = data.trips.iter().find(|x| x.name.eq_ignore_ascii_case(&tt.trip)) else { continue };
+                let departure = tt.departure as f64 * 60.0;
+                let duration = trip.profiles.get(tt.profile.max(0) as usize).or(trip.profiles.first()).map(|p| p.factor as f64 * 60.0).filter(|d| *d > 0.0).unwrap_or(600.0);
+                // its stations: [station_typ2] objects, or the [station] records of a type-1
+                // trip (all of Novi Sad), which carry their stop's name themselves
+                let legacy: Vec<(i64, String)> = trip
+                    .stations_legacy
+                    .iter()
+                    .filter_map(|r| Some((r.first()?.trim().parse::<i64>().ok()?, r.get(2).map(|n| n.trim().to_string()).unwrap_or_default())))
+                    .collect();
+                let stations: Vec<i64> = if trip.stations.is_empty() { legacy.iter().map(|x| x.0).collect() } else { trip.stations.clone() };
+                let mut lens = Vec::new();
+                for w in stations.windows(2) {
+                    lens.push(data.stn_links.iter().find(|k| k.from_id == w[0] && k.to_id == w[1]).map(|k| k.length.max(1.0)).unwrap_or(500.0));
+                }
+                let total: f64 = lens.iter().sum::<f64>().max(1.0);
+                let mut acc = 0.0;
+                let mut stops = Vec::new();
+                for (i, id) in stations.iter().enumerate() {
+                    let t_at = departure + duration * acc / total;
+                    let name = data
+                        .bus_stops
+                        .iter()
+                        .find(|b| b.object_id == *id)
+                        .map(|b| b.name.trim().to_string())
+                        .or_else(|| legacy.iter().find(|x| x.0 == *id).map(|x| x.1.clone()).filter(|n| !n.is_empty()))
+                        .unwrap_or_else(|| format!("stop {id}"));
+                    stops.push(StopInfo { name, arr: t_at, dep: if i == 0 { departure } else { t_at } });
+                    if i < lens.len() {
+                        acc += lens[i];
+                    }
+                }
+                if !trip.terminus.trim().is_empty() && !termini.iter().any(|x| x == trip.terminus.trim()) {
+                    termini.push(trip.terminus.trim().to_string());
+                }
+                let from = stops.first().map(|s| s.name.clone()).unwrap_or_default();
+                let index = trips.len() + 1;
+                trips.push(TripInfo { name: trip.name.clone(), index, line: trip.line.trim().to_string(), from, terminus: trip.terminus.trim().to_string(), departure, arrival: departure + duration, stops, km: total / 1000.0 });
+            }
+            // (a tour with no trip the timetable knows cannot be driven: not offered)
+            if trips.is_empty() {
+                continue;
+            }
+            let first = trips.first().map(|t| t.departure).unwrap_or(0.0);
+            let last = trips.last().map(|t| t.arrival).unwrap_or(0.0);
+            tours.push(TourInfo { number: t.number.clone(), ai_group: t.ai_group.clone(), first, last, days: days_of(mask), runs, next_run, trips });
+        }
+        tours.sort_by(|a, b| a.first.total_cmp(&b.first));
+        out.push(LineInfo { name: l.name.clone(), user_allowed: l.user_allowed, termini, tours });
+    }
+    out.sort_by(|a, b| natural_key(&a.name).cmp(&natural_key(&b.name)));
+    Ok(out)
+}
+
+/// A date code (YYYYMMDD) `k` days later.
+fn add_days(code: i32, k: i32) -> i32 {
+    let (mut y, mut m, mut d) = (code / 10000, code / 100 % 100, code % 100 + k);
+    let len = |y: i32, m: i32| match m {
+        2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    while d > len(y, m) {
+        d -= len(y, m);
+        m += 1;
+        if m > 12 {
+            m = 1;
+            y += 1;
+        }
+    }
+    y * 10000 + m * 100 + d
+}
+
+/// Day of the week of a date code (YYYYMMDD): 0 = Monday … 6 = Sunday, as the game's clock.
+fn weekday(code: i32) -> i32 {
+    let (mut y, m, d) = (code / 10000, code / 100 % 100, code % 100);
+    // Sakamoto's method (0 = Sunday)
+    let t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    if m < 3 {
+        y -= 1;
+    }
+    let sunday0 = (y + y / 4 - y / 100 + y / 400 + t[((m - 1).clamp(0, 11)) as usize] + d).rem_euclid(7);
+    (sunday0 + 6) % 7
+}
+
+/// A tour's validity mask in words: "Mon-Fri", "Sat", "Sun", "daily", ...
+fn days_of(mask: i32) -> String {
+    let week = mask & 0x7f;
+    let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    let mut out = match week {
+        0x7f => "daily".to_string(),
+        0x1f => "Mon-Fri".to_string(),
+        0x3f => "Mon-Sat".to_string(),
+        0x60 => "Sat-Sun".to_string(),
+        0 => String::new(),
+        w => (0..7).filter(|i| w & (1 << i) != 0).map(|i| names[i]).collect::<Vec<_>>().join(", "),
+    };
+    if mask & (1 << 7) != 0 && week != 0x7f {
+        out.push_str(if out.is_empty() { "holidays" } else { " & holidays" });
+    }
+    match (mask & (1 << 8) != 0, mask & (1 << 9) != 0) {
+        (true, false) => out.push_str(", school holidays"),
+        (false, true) => out.push_str(", school days"),
+        _ => {}
+    }
+    out
+}
+
+fn natural_key(s: &str) -> (u64, String) {
+    let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
+    (digits.parse().unwrap_or(u64::MAX), s.to_ascii_lowercase())
+}
+
+/// What the driver types into the IBIS for a line, from the bus's depot file: the line
+/// code, and for each destination the route code and the terminus code.
+#[derive(Serialize, Clone, Debug)]
+pub struct IbisInfo {
+    pub hof: String,
+    pub line_code: String,
+    pub routes: Vec<IbisRoute>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct IbisRoute {
+    pub code: String,
+    pub route: String,
+    pub name: String,
+    pub terminus_code: i32,
+    pub terminus: String,
+}
+
+pub fn ibis_info(bus: &str, hof_name: &str, line: &str) -> Result<IbisInfo> {
+    let bus_path = resolve_content(bus)?;
+    let dir = bus_path.parent().context("bus folder")?;
+    // the bus's own depot file of that name (every content root's copy of its folder), else
+    // the one another bus brings (the game borrows it the same way), else the bus's first
+    let hof = omsi_vehicle::hof::depot_in(dir, hof_name)
+        .or_else(|| omsi_vehicle::hof::depot_anywhere(hof_name))
+        .or_else(|| omsi_vehicle::hof::depot_files(dir).iter().find_map(|f| omsi_vehicle::Hof::load(f).ok()))
+        .context("no depot file next to the bus")?;
+    let hof = &hof;
+    let line_digits: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let mut routes = Vec::new();
+    for t in &hof.info_trips {
+        let matches = t.line.trim().eq_ignore_ascii_case(line.trim()) || (!line_digits.is_empty() && t.code.trim_start_matches('0').starts_with(line_digits.trim_start_matches('0')) && t.code.len() >= line_digits.len());
+        if !matches {
+            continue;
+        }
+        let code = omsi_cfg::parse_i32(&t.route);
+        let terminus = hof.termini.iter().find(|x| x.code == code).and_then(|x| x.strings.first().cloned()).unwrap_or_default();
+        routes.push(IbisRoute { code: t.code.clone(), route: t.route.clone(), name: t.name.clone(), terminus_code: code, terminus });
+    }
+    Ok(IbisInfo { hof: hof.name.clone(), line_code: line_digits, routes })
+}
+
+// ---------------------------------------------------------------------------------------
+// profiles: the driver's personnel file plus the sessions the game writes
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+pub struct Session {
+    pub time: u64,
+    pub driver: String,
+    pub map: String,
+    pub bus: String,
+    pub line: Option<String>,
+    pub tour: Option<String>,
+    pub seconds: f64,
+    pub metres: f64,
+    pub stops: i32,
+    pub early: i32,
+    pub late: i32,
+    pub tickets: i32,
+    pub cash: f64,
+    pub crashes: i32,
+    pub hurt: i32,
+    pub jolts: i32,
+    pub driving: f64,
+    pub comfort: f64,
+    pub ticketing: f64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Profile {
+    pub name: String,
+    pub file: String,
+    pub hours: f64,
+    pub km: f64,
+    pub xp: i64,
+    pub level: i64,
+    pub next_level_xp: i64,
+    pub stops: i32,
+    pub early: i32,
+    pub late: i32,
+    pub tickets: f64,
+    pub cash: f64,
+    pub crashes: i32,
+    pub hurt: i32,
+    pub rating_driving: f64,
+    pub rating_comfort: f64,
+    pub rating_tickets: f64,
+    pub sessions: Vec<Session>,
+    pub exists: bool,
+}
+
+fn sessions() -> Vec<Session> {
+    let dir = data_dir().join("sessions");
+    let mut out: Vec<Session> = std::fs::read_dir(&dir).map(|rd| rd.flatten().filter_map(|e| std::fs::read_to_string(e.path()).ok()).filter_map(|t| serde_json::from_str::<Session>(&t).ok()).collect()).unwrap_or_default();
+    out.sort_by(|a, b| b.time.cmp(&a.time));
+    out
+}
+
+/// Experience: a point per hundred metres, five per stop served on time, two per ticket,
+/// minus twenty per crash and fifty per pedestrian; the level grows with the square root.
+fn xp_of(s: &Session) -> i64 {
+    let on_time = (s.stops - s.early - s.late).max(0) as i64;
+    let xp = (s.metres / 100.0) as i64 + on_time * 5 + s.tickets as i64 * 2 + (s.seconds / 60.0) as i64 - s.crashes as i64 * 20 - s.hurt as i64 * 50 - s.jolts as i64;
+    xp.max(0)
+}
+
+fn level_of(xp: i64) -> (i64, i64) {
+    let level = ((xp as f64 / 250.0).sqrt().floor() as i64) + 1;
+    let next = (level * level) as i64 * 250;
+    (level, next)
+}
+
+/// Where a driver's personnel file is written: the content folder's `Drivers` (the
+/// original installation is only ever read).
+fn driver_write_path(root: &Path, name: &str) -> PathBuf {
+    content_dir().unwrap_or_else(|| root.to_path_buf()).join("Drivers").join(format!("{name}.odr"))
+}
+
+/// Where a driver's personnel file is read: the content folder's copy once the game has
+/// written one, else the original installation's (the stock `OMSI-Fan.odr`).
+fn driver_read_path(root: &Path, name: &str) -> PathBuf {
+    let own = driver_write_path(root, name);
+    if own.exists() {
+        own
+    } else {
+        root.join("Drivers").join(format!("{name}.odr"))
+    }
+}
+
+pub fn list_profiles() -> Result<Vec<String>> {
+    let root = root()?;
+    let odr_names = |dir: PathBuf| -> Vec<String> { std::fs::read_dir(dir).map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.extension().map(|e| e.eq_ignore_ascii_case("odr")).unwrap_or(false)).filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string())).collect()).unwrap_or_default() };
+    let mut names = odr_names(root.join("Drivers"));
+    if let Some(c) = content_dir() {
+        names.extend(odr_names(c.join("Drivers")));
+    }
+    for s in sessions() {
+        if !names.iter().any(|n| n.eq_ignore_ascii_case(&s.driver)) {
+            names.push(s.driver.clone());
+        }
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+pub fn get_profile(name: &str) -> Result<Profile> {
+    let root = root()?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(anyhow!("a profile needs a name"));
+    }
+    let file = driver_read_path(&root, name);
+    let driver = omsi_content::driver::Driver::load(&file).ok();
+    let mine: Vec<Session> = sessions().into_iter().filter(|s| s.driver.eq_ignore_ascii_case(name)).collect();
+    let xp: i64 = mine.iter().map(xp_of).sum();
+    let (level, next) = level_of(xp);
+    let hours = mine.iter().map(|s| s.seconds).sum::<f64>() / 3600.0;
+    let (km, stops, early, late, tickets, cash, crashes, hurt, rating) = match &driver {
+        Some(d) => (d.hektom / 10.0, d.bus_stops[0], d.bus_stops[1], d.bus_stops[2], d.tickets[0], d.tickets[1], d.crashes[0], d.crashes[1], [d.driving_percent(), d.comfort_percent().unwrap_or(100.0), d.ticket_percent().unwrap_or(100.0)]),
+        None => {
+            let km = mine.iter().map(|s| s.metres).sum::<f64>() / 1000.0;
+            let n = mine.len().max(1) as f64;
+            (km, mine.iter().map(|s| s.stops).sum(), mine.iter().map(|s| s.early).sum(), mine.iter().map(|s| s.late).sum(), mine.iter().map(|s| s.tickets as f64).sum(), mine.iter().map(|s| s.cash).sum(), mine.iter().map(|s| s.crashes).sum(), mine.iter().map(|s| s.hurt).sum(), [mine.iter().map(|s| s.driving).sum::<f64>() / n, mine.iter().map(|s| s.comfort).sum::<f64>() / n, mine.iter().map(|s| s.ticketing).sum::<f64>() / n])
+        }
+    };
+    Ok(Profile { name: name.to_string(), file: format!("Drivers/{name}.odr"), hours, km, xp, level, next_level_xp: next, stops, early, late, tickets, cash, crashes, hurt, rating_driving: rating[0], rating_comfort: rating[1], rating_tickets: rating[2], sessions: mine.into_iter().take(40).collect(), exists: driver.is_some() })
+}
+
+/// Create the personnel file for a new driver (OMSI's own `.odr` format), so that the game
+/// can add every run to it.
+pub fn create_profile(name: &str, sex: &str) -> Result<Profile> {
+    let root = root()?;
+    let name = name.trim();
+    if name.is_empty() || name.contains(['/', '\\', ':']) {
+        return Err(anyhow!("the name must be a plain file name"));
+    }
+    let file = driver_write_path(&root, name);
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    if !file.exists() && !driver_read_path(&root, name).exists() {
+        let d = omsi_content::driver::Driver { path: file.clone(), name: name.to_string(), sex: if sex.trim().is_empty() { "M".into() } else { sex.trim().to_string() }, ..Default::default() };
+        d.save(&file)?;
+    }
+    let mut c = load_config();
+    c.profile = name.to_string();
+    save_config(&c)?;
+    get_profile(name)
+}
+
+/// Delete a driver's personnel file from the content folder. A driver who exists only in
+/// the original installation is left there: the original is never written.
+pub fn delete_profile(name: &str) -> Result<()> {
+    let root = root()?;
+    let file = driver_write_path(&root, name.trim());
+    if file.exists() {
+        std::fs::remove_file(&file)?;
+    } else if root.join("Drivers").join(format!("{}.odr", name.trim())).exists() {
+        return Err(anyhow!("'{}' belongs to the original OMSI 2 installation, which is not changed", name.trim()));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------------------
+// key bindings: the content folder's Inputs/keyboard.cfg once the page has saved one (the
+// game reads that first), else the original installation's, which is never written
+
+fn keyboard_cfg_write_path() -> Result<PathBuf> {
+    Ok(content_dir().unwrap_or(root()?).join("Inputs").join("keyboard.cfg"))
+}
+
+fn keyboard_cfg_read_path() -> Result<PathBuf> {
+    let own = keyboard_cfg_write_path()?;
+    Ok(if own.exists() { own } else { root()?.join("Inputs").join("keyboard.cfg") })
+}
+
+fn binding_to_json(b: &omsi_content::input::KeyBinding) -> Value {
+    json!({ "action": b.action, "scan_code": b.scan_code, "modifier": b.modifier })
+}
+
+fn binding_from_json(v: &Value) -> Option<omsi_content::input::KeyBinding> {
+    Some(omsi_content::input::KeyBinding {
+        action: v.get("action")?.as_str()?.to_string(),
+        scan_code: v.get("scan_code")?.as_i64()? as i32,
+        modifier: v.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+    })
+}
+
+pub fn get_keybindings() -> Result<Value> {
+    let path = keyboard_cfg_read_path()?;
+    let k = omsi_content::input::KeyboardCfg::load(&path)?;
+    Ok(json!({ "game": k.game.iter().map(binding_to_json).collect::<Vec<_>>(), "vehicles": k.vehicles.iter().map(binding_to_json).collect::<Vec<_>>() }))
+}
+
+/// Replace the bindings with the page's list. Written to a temp file and read back through
+/// the same loader the game uses before it replaces the real file, so a page bug never
+/// leaves the player with a `keyboard.cfg` the game itself cannot parse.
+pub fn save_keybindings(v: &Value) -> Result<()> {
+    let list = |k: &str| -> Vec<omsi_content::input::KeyBinding> { v.get(k).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(binding_from_json).collect()).unwrap_or_default() };
+    let k = omsi_content::input::KeyboardCfg { game: list("game"), vehicles: list("vehicles") };
+    let path = keyboard_cfg_write_path()?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("cfg.tmp");
+    k.save(&tmp)?;
+    omsi_content::input::KeyboardCfg::load(&tmp)?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------------------
+// settings (the game's ~/.openomsi/settings.cfg)
+
+pub fn get_settings() -> Result<Value> {
+    let text = std::fs::read_to_string(data_dir().join("settings.cfg")).ok();
+    let mut v = settings_from_text(text.as_deref());
+    // no settings of our own yet: start from what the player set in OMSI 2
+    if text.is_none() {
+        if let Some(o) = root().ok().and_then(|r| omsi_options(&r)) {
+            if let (Some(dst), Some(src)) = (v.as_object_mut(), o.settings.as_object()) {
+                for (k, x) in src {
+                    dst.insert(k.clone(), x.clone());
+                }
+            }
+            v["imported_from_omsi"] = json!(true);
+        }
+    }
+    // what "automatic" texture memory is on this machine (the game takes an eighth of it)
+    v["texture_memory_auto"] = json!(physical_memory().map(|m| m / 8 / 1_000_000).unwrap_or(2000));
+    Ok(v)
+}
+
+/// Other spellings the game reads for a key the launcher writes: they are read here too and
+/// dropped when the file is written again (the game takes the last line of them, so a kept
+/// `texmemlimit=` would undo the page's `texture_memory=`).
+const SETTING_ALIASES: &[(&str, &str)] = &[("af", "anisotropy"), ("ambient_occlusion", "ssao"), ("fractal", "detail_textures"), ("lang", "language"), ("texmemlimit", "texture_memory")];
+
+fn setting_key(k: &str) -> String {
+    let k = k.trim().to_ascii_lowercase();
+    SETTING_ALIASES.iter().find(|(alias, _)| *alias == k).map(|(_, key)| key.to_string()).unwrap_or(k)
+}
+
+/// `ENG` / `DEU` / `FRA` from any spelling the game accepts (as its `describe::language_code`).
+fn language_code(s: &str) -> &'static str {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "de" | "deu" | "ger" | "german" | "deutsch" => "DEU",
+        "fr" | "fra" | "fre" | "french" | "francais" | "français" => "FRA",
+        "ru" | "rus" | "russian" | "русский" => "RUS",
+        _ => "ENG",
+    }
+}
+
+/// `vanilla` (as OMSI 2), `vanilla_plus` or `enhanced`, from the ways a file may spell them
+/// (as the game's `settings::graphics_mode`).
+pub fn graphics_mode(v: &str) -> &'static str {
+    match v.trim().to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
+        "enhanced" | "1" => "enhanced",
+        "vanilla" | "classic" | "original" | "omsi" | "omsi2" | "omsi_2" => "vanilla",
+        _ => "vanilla_plus",
+    }
+}
+
+/// The page's view of a `settings.cfg` text (None: no file yet, the game's defaults).
+pub fn settings_from_text(text: Option<&str>) -> Value {
+    let mut v = json!({ "msaa": 4, "anisotropy": 8, "ssao": true, "shadows": true, "shadow_size": 2048, "navigator": true, "navigator_opacity": 0.85, "navigator_corner": "bottom-left", "boarding": "auto", "detail_textures": true, "exact_fare": true, "enhanced": false, "graphics": "vanilla_plus", "fullscreen": false, "vsync": true, "volume": 0.6, "drive_keys": "simple", "render_scale": "auto", "view_distance": "auto", "language": "ENG", "texture_memory": 0, "texture_compression": true, "chat": true, "tooltips": true, "name_tags": true, "show_fps": false, "clouds": true, "pax_density": 1.0, "vol_ai": 1.0, "vol_scenery": 1.0, "mirror_size": 256, "doppler": true, "driver": true, "max_fps": 0, "min_obj_size": 0.013, "max_obj_dist": "auto" });
+    // OMSI's own options
+    for (k, d) in [("maintenance", json!(0)), ("ai_unsched_factor", json!(100)), ("ai_max_scheduled", json!(0)), ("ai_max_parked", json!(0)), ("use_real_time", json!(false)), ("use_real_date", json!(false)), ("use_real_year", json!(false)), ("collision_vehicles", json!(true)), ("collision_pedestrians", json!(true)), ("head_movement", json!(true))] {
+        v[k] = d;
+    }
+    // openOMSI's own: what passengers say, OMSI's route arrows, getting up from the seat
+    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all"))] {
+        v[k] = d;
+    }
+    let Some(t) = text else { return v };
+    let mut version = 0;
+    let mut graphics: Option<&str> = None;
+    for line in t.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        let Some((k, val)) = line.split_once('=') else { continue };
+        let (k, val) = (setting_key(k), val.trim());
+        let b = |x: &str| matches!(x.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes");
+        match k.as_str() {
+            "anisotropy" => v[&k] = json!(val.parse::<i64>().unwrap_or(8).clamp(1, 8)),
+            "msaa" | "shadow_size" => v[&k] = json!(val.parse::<i64>().unwrap_or(0)),
+            "navigator_opacity" | "volume" | "vol_ai" | "vol_scenery" | "min_obj_size" => v[&k] = json!(val.parse::<f64>().unwrap_or(0.0)),
+            "pax_density" => v[&k] = json!(val.trim_end_matches('%').parse::<f64>().map(|x| if x > 5.0 { x / 100.0 } else { x }).unwrap_or(1.0)),
+            "mirror_size" | "max_fps" => v[&k] = json!(val.parse::<f64>().map(|x| x as i64).unwrap_or(0)),
+            "max_obj_dist" => v[&k] = if val.eq_ignore_ascii_case("auto") { json!("auto") } else { json!(val.parse::<f64>().map(|m| (m.round() as i64).to_string()).unwrap_or_else(|_| "auto".into())) },
+            "ssao" | "shadows" | "navigator" | "enhanced" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_pedestrians" | "head_movement" => v[&k] = json!(b(val)),
+            "maintenance" | "ai_unsched_factor" | "ai_max_scheduled" | "ai_max_parked" => v[&k] = json!(val.trim_end_matches('%').parse::<f64>().map(|x| x.max(0.0) as i64).unwrap_or(0)),
+            "drive_keys" | "navigator_corner" | "boarding" | "render_scale" | "pax_voices" => v[&k] = json!(val),
+            "shadow_casters" => v[&k] = json!(if val.eq_ignore_ascii_case("omsi") { "omsi" } else { "all" }),
+            "ctrl_deadzone" => v[&k] = json!(val.parse::<f64>().unwrap_or(0.0).clamp(0.0, 0.3)),
+            "nav_arrows" | "get_up" | "machine_translation" => v[&k] = json!(b(val)),
+            "time_speed" => v[&k] = json!(val.trim_start_matches(['x', 'X']).parse::<f64>().map(|x| x.clamp(1.0, 30.0)).map(|x| if x.fract() == 0.0 { format!("{}", x as i64) } else { x.to_string() }).unwrap_or_else(|_| "1".into())),
+            "language" => v[&k] = json!(language_code(val)),
+            "graphics" | "renderer" => graphics = Some(graphics_mode(val)),
+            // whole metres, as the page's select has them ("1500"); anything else (auto) is
+            // the game's default
+            "view_distance" => {
+                v[&k] = match val.parse::<f64>() {
+                    Ok(m) if m > 0.0 => json!((m.round() as i64).to_string()),
+                    _ => json!("auto"),
+                }
+            }
+            // MB, 0 = automatic (a fraction written by hand is cut, as the game does)
+            "texture_memory" => {
+                if let Ok(mb) = val.parse::<f64>() {
+                    v[&k] = json!(mb.max(0.0) as i64);
+                }
+            }
+            "version" => version = val.parse::<i64>().unwrap_or(0),
+            _ => {}
+        }
+    }
+    // a file without `graphics` (older builds) says only `enhanced`; its vanilla renderer is
+    // what is now Vanilla+
+    let g = graphics.unwrap_or(if v["enhanced"] == json!(true) { "enhanced" } else { "vanilla_plus" });
+    v["graphics"] = json!(g);
+    v["enhanced"] = json!(g == "enhanced");
+    // before version 2 the launcher wrote its old default `boarding=pay` for everybody
+    // (passengers then waited at the cash desk for the driver): the game reads that as auto
+    if version < 2 && v["boarding"] == "pay" {
+        v["boarding"] = json!("auto");
+    }
+    v
+}
+
+/// OMSI's tutorials (`Tutorials/menu_<n>_<LANG>.html`): per lesson its title and what
+/// it teaches, in the settings' language.
+pub fn tutorials() -> Vec<(usize, String, String)> {
+    let Ok(r) = root() else { return Vec::new() };
+    let lang = content_language();
+    let mut out = Vec::new();
+    for n in 1..=4usize {
+        let p = [lang, "ENG", "DEU"].iter().map(|l| r.join("Tutorials").join(format!("menu_{n}_{l}.html"))).find(|p| p.is_file());
+        let Some(p) = p else { continue };
+        let Ok(bytes) = std::fs::read(&p) else { continue };
+        let html = omsi_cfg::codepage::decode(&bytes);
+        let body = html.split_once("</style>").map(|x| x.1).unwrap_or(&html);
+        let mut text = String::new();
+        let mut tag = false;
+        for c in body.replace("</p>", "\n").replace("<br>", "\n").replace("</h2>", "\n").replace("<li>", "\n• ").chars() {
+            match c {
+                '<' => tag = true,
+                '>' => tag = false,
+                _ if !tag => text.push(c),
+                _ => {}
+            }
+        }
+        let text = text.replace("&quot;", "\"").replace("&amp;", "&").replace("&nbsp;", " ");
+        let mut lines = text.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|l| !l.is_empty());
+        let title = lines.next().unwrap_or_default();
+        let rest: Vec<String> = lines.collect();
+        out.push((n, title, rest.join("\n")));
+    }
+    out
+}
+
+/// OMSI's option presets (`option_presets/*.oop`): their names and what they say, in the
+/// settings' own keys (maxFPS, performance_minObjSize/maxObjDist, texFilter, texmemlimit,
+/// performance_reflTexSize).
+pub fn option_presets() -> Vec<(String, Value)> {
+    let Ok(r) = root() else { return Vec::new() };
+    let mut out = Vec::new();
+    let Ok(dir) = std::fs::read_dir(r.join("option_presets")) else { return out };
+    let mut files: Vec<PathBuf> = dir.flatten().map(|e| e.path()).filter(|p| p.extension().map(|e| e.eq_ignore_ascii_case("oop")).unwrap_or(false)).collect();
+    files.sort();
+    for f in files {
+        let Ok(o) = omsi_content::options::Options::load(&f) else { continue };
+        let name = f.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let mut v = json!({});
+        v["max_fps"] = json!(o.i32("maxfps", 0).max(0));
+        v["min_obj_size"] = json!(o.f32("performance_minobjsize", 0.013) as f64);
+        v["max_obj_dist"] = json!((o.f32("performance_maxobjdist", 900.0).round() as i64).to_string());
+        if let Some(af) = o.values.get("texfilter").and_then(|x| x.get(1)).and_then(|x| x.parse::<i64>().ok()) {
+            v["anisotropy"] = json!(af.clamp(1, 8));
+        }
+        let mem = o.f32("texmemlimit", 0.0);
+        if mem > 0.0 {
+            v["texture_memory"] = json!(mem as i64);
+        }
+        let refl = o.i32("performance_refltexsize", 8);
+        v["mirror_size"] = json!(1i64 << refl.clamp(6, 11));
+        out.push((name, v));
+    }
+    out
+}
+
+/// The machine's memory in bytes.
+#[cfg(unix)]
+fn physical_memory() -> Option<u64> {
+    // SAFETY: sysconf only reads system values
+    let (pages, size) = unsafe { (libc::sysconf(libc::_SC_PHYS_PAGES), libc::sysconf(libc::_SC_PAGESIZE)) };
+    (pages > 0 && size > 0).then(|| pages as u64 * size as u64)
+}
+
+#[cfg(not(unix))]
+fn physical_memory() -> Option<u64> {
+    None
+}
+
+pub fn save_settings(v: &Value) -> Result<()> {
+    let p = data_dir().join("settings.cfg");
+    let old = std::fs::read_to_string(&p).ok();
+    std::fs::write(p, settings_to_text(v, old.as_deref()))?;
+    Ok(())
+}
+
+/// The `settings.cfg` text for the page's values `v`; the lines of the `old` file that the
+/// page does not manage (keys of newer games, hand-written switches) are kept.
+pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
+    let b = |k: &str, d: bool| v.get(k).and_then(|x| x.as_bool()).unwrap_or(d) as u8;
+    // a number, also as the string a select gives
+    let n = |k: &str, d: i64| v.get(k).and_then(|x| x.as_i64().or_else(|| x.as_f64().or_else(|| x.as_str().and_then(|s| s.trim().parse::<f64>().ok())).map(|f| f as i64))).unwrap_or(d);
+    let f = |k: &str, d: f64| v.get(k).and_then(|x| x.as_f64()).unwrap_or(d);
+    let text = format!(
+        "# openOMSI settings (written by the launcher)\nversion=2\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nnavigator={}\nnavigator_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nfullscreen={}\nvsync={}\nvolume={}\ndrive_keys={}\nrender_scale={}\nview_distance={}\nlanguage={}\ntexture_memory={}\ntexture_compression={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\ndoppler={}\ndriver={}\nmax_fps={}\nmin_obj_size={}\nmax_obj_dist={}\n",
+        n("msaa", 4),
+        n("anisotropy", 8),
+        b("ssao", true),
+        b("shadows", true),
+        n("shadow_size", 2048),
+        b("navigator", true),
+        f("navigator_opacity", 0.85),
+        v.get("navigator_corner").and_then(|x| x.as_str()).unwrap_or("bottom-left"),
+        v.get("boarding").and_then(|x| x.as_str()).unwrap_or("auto"),
+        b("detail_textures", true),
+        b("exact_fare", true),
+        (graphics_mode(v.get("graphics").and_then(|x| x.as_str()).unwrap_or("vanilla_plus")) == "enhanced") as u8,
+        graphics_mode(v.get("graphics").and_then(|x| x.as_str()).unwrap_or("vanilla_plus")),
+        b("fullscreen", false),
+        b("vsync", true),
+        f("volume", 0.6),
+        v.get("drive_keys").and_then(|x| x.as_str()).unwrap_or("simple"),
+        // "auto" or a fraction, as a string (the page's select) or a number
+        match v.get("render_scale") {
+            Some(Value::String(s)) if !s.trim().is_empty() => s.trim().to_string(),
+            Some(Value::Number(x)) => x.to_string(),
+            _ => "auto".to_string(),
+        },
+        // metres, or "auto" (the game's 1200 m)
+        match v.get("view_distance") {
+            Some(Value::String(s)) if s.trim().parse::<f64>().map(|m| m > 0.0).unwrap_or(false) => s.trim().to_string(),
+            Some(Value::Number(x)) if x.as_f64().map(|m| m > 0.0).unwrap_or(false) => x.to_string(),
+            _ => "auto".to_string(),
+        },
+        language_code(v.get("language").and_then(|x| x.as_str()).unwrap_or("ENG")),
+        n("texture_memory", 0).max(0),
+        b("texture_compression", true),
+        b("chat", true),
+        b("tooltips", true),
+        b("name_tags", true),
+        b("show_fps", false),
+        b("clouds", true),
+        f("pax_density", 1.0),
+        f("vol_ai", 1.0),
+        f("vol_scenery", 1.0),
+        n("mirror_size", 256).clamp(64, 2048),
+        b("doppler", true),
+        b("driver", true),
+        n("max_fps", 0).max(0),
+        f("min_obj_size", 0.013),
+        match v.get("max_obj_dist") {
+            Some(Value::String(s)) if s.trim().parse::<f64>().is_ok() => s.trim().to_string(),
+            Some(Value::Number(x)) => x.to_string(),
+            _ => "auto".to_string(),
+        },
+    );
+    // OMSI's own options (options.cfg): maintenance ([wear_lifespan]), the AI counts and
+    // the share of random traffic, the real clock and calendar, collisions, head movement
+    let text = format!(
+        "{text}maintenance={}\nai_unsched_factor={}\nai_max_scheduled={}\nai_max_parked={}\nuse_real_time={}\nuse_real_date={}\nuse_real_year={}\ncollision_vehicles={}\ncollision_pedestrians={}\nhead_movement={}\n",
+        n("maintenance", 0).clamp(0, 4),
+        n("ai_unsched_factor", 100).clamp(0, 300),
+        n("ai_max_scheduled", 0).max(0),
+        n("ai_max_parked", 0).max(0),
+        b("use_real_time", false),
+        b("use_real_date", false),
+        b("use_real_year", false),
+        b("collision_vehicles", true),
+        b("collision_pedestrians", true),
+        b("head_movement", true),
+    );
+    let text = format!(
+        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\n",
+        match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
+            "tickets" => "tickets",
+            "off" => "off",
+            _ => "all",
+        },
+        b("nav_arrows", false),
+        b("get_up", false),
+        match v.get("time_speed") {
+            Some(Value::String(x)) => x.trim().parse::<f64>().map(|x| x.clamp(1.0, 30.0)).unwrap_or(1.0),
+            Some(Value::Number(x)) => x.as_f64().unwrap_or(1.0).clamp(1.0, 30.0),
+            _ => 1.0,
+        },
+        b("machine_translation", false),
+        if v.get("shadow_casters").and_then(|x| x.as_str()) == Some("omsi") { "omsi" } else { "all" },
+        f("ctrl_deadzone", 0.0).clamp(0.0, 0.3),
+    );
+    // what the page does not manage (keys of newer games, hand-written ones) stays as it
+    // was in the file; other spellings of the keys just written go
+    let mut text = text;
+    let written: Vec<String> = text.lines().filter_map(|l| l.split_once('=')).map(|(k, _)| k.trim().to_ascii_lowercase()).collect();
+    for line in old.unwrap_or("").lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') || t.starts_with(';') {
+            continue;
+        }
+        match t.split_once('=') {
+            Some((k, _)) if !written.contains(&setting_key(k)) => {
+                text.push_str(t);
+                text.push('\n');
+            }
+            _ => {}
+        }
+    }
+    text
+}
+
+// ---------------------------------------------------------------------------------------
+// the 3D preview and launching the game
+
+/// Ask the game to write the bus as glTF (cached by bus and paint) and return the path.
+pub fn bus_preview(bus: &str, paint: &str) -> Result<String> {
+    let c = load_config();
+    let game = find_game(&c.game).context("the game binary was not found (set it under Setup)")?;
+    let root = root()?;
+    let key: String = format!("{bus}|{paint}").chars().map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' }).collect();
+    let out = data_dir().join("cache").join(format!("{key}.glb"));
+    let bus_path = resolve_content(bus)?;
+    // a bus inside an archive used in place changes with the archive
+    let bus_path = omsi_cfg::vfs::archive_of(&bus_path).unwrap_or(bus_path);
+    let newest_input = [&bus_path, &game].iter().filter_map(|p| p.metadata().and_then(|m| m.modified()).ok()).max();
+    let fresh = out.metadata().and_then(|m| m.modified()).ok().zip(newest_input).map(|(o, b)| o >= b).unwrap_or(false);
+    if !fresh {
+        let mut cmd = std::process::Command::new(&game);
+        cmd.arg("--root").arg(&root).arg("--bus").arg(bus).arg("--export-glb").arg(&out);
+        if !paint.trim().is_empty() {
+            cmd.arg("--paint").arg(paint.trim());
+        }
+        let status = cmd.env("RUST_LOG", "warn").status().context("running the game for the preview")?;
+        if !status.success() || !out.exists() {
+            return Err(anyhow!("the game could not export {bus}"));
+        }
+    }
+    Ok(out.to_string_lossy().to_string())
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+pub struct Duty {
+    pub map: String,
+    pub bus: String,
+    pub paint: Option<String>,
+    pub hof: Option<String>,
+    pub entry: Option<i32>,
+    pub line: Option<String>,
+    pub tour: Option<String>,
+    /// The trip of the tour to start with: its departure (HH:MM) or its place in the tour.
+    #[serde(default)]
+    pub trip: Option<String>,
+    /// HH:MM
+    pub time: String,
+    /// YYYY-MM-DD
+    pub date: Option<String>,
+    pub weather: Option<String>,
+    pub traffic: Option<u32>,
+    pub passengers: Option<bool>,
+    pub schedule: Option<bool>,
+    pub autostart: Option<bool>,
+    /// Start as a pedestrian beside the bus (which is then left out): a bus is placed or
+    /// taken over from the game menu later.
+    #[serde(default)]
+    pub on_foot: Option<bool>,
+    pub profile: Option<String>,
+    /// LAN play: "host", or "join:<session code | ip[:port] | port | empty = search>".
+    pub lan: Option<String>,
+    /// The name the other LAN players see (default: the profile).
+    pub lan_name: Option<String>,
+    /// Season override: spring / summer / autumn / winter (empty = by date).
+    pub season: Option<String>,
+    /// One of OMSI's tutorials (1..4): its own situation, nothing else of the duty.
+    #[serde(default)]
+    pub tutorial: Option<usize>,
+    /// A situation file to continue (the map's `laststn.osn`): nothing else of the duty.
+    #[serde(default)]
+    pub situation: Option<String>,
+}
+
+/// The situation the game left on `map` last (`laststn.osn` in the map's folder: the
+/// content folder's copy first, then OMSI 2's own), if there is one.
+pub fn last_situation(map: &str) -> Option<PathBuf> {
+    let dir = Path::new(&map.replace('\\', "/")).parent()?.to_path_buf();
+    content_dir()
+        .map(|c| c.join(&dir).join("laststn.osn"))
+        .into_iter()
+        .chain(root().ok().map(|r| r.join(&dir).join("laststn.osn")))
+        .find(|p| p.is_file())
+}
+
+/// The command line a duty becomes.
+pub fn duty_args(d: &Duty) -> Result<Vec<String>> {
+    let root = root()?;
+    if let Some(t) = d.tutorial {
+        return Ok(vec!["--root".into(), root.to_string_lossy().to_string(), "--no-menu".into(), "--tutorial".into(), t.to_string()]);
+    }
+    if let Some(sit) = d.situation.as_deref().filter(|s| !s.trim().is_empty()) {
+        let mut a = vec!["--root".into(), root.to_string_lossy().to_string(), "--no-menu".into(), "--situation".into(), sit.to_string()];
+        if let Some(p) = d.profile.as_deref().filter(|p| !p.trim().is_empty()) {
+            a.extend(["--driver".into(), format!("Drivers/{}.odr", p.trim())]);
+        }
+        return Ok(a);
+    }
+    let mut a: Vec<String> = vec!["--root".into(), root.to_string_lossy().to_string(), "--no-menu".into(), "--map".into(), d.map.clone(), "--bus".into(), d.bus.clone(), "--time".into(), if d.time.trim().is_empty() { "09:00".into() } else { d.time.trim().to_string() }];
+    if let Some(p) = d.paint.as_deref().filter(|p| !p.trim().is_empty()) {
+        a.extend(["--paint".into(), p.trim().to_string()]);
+    }
+    // (a vehicle file taken for a depot from a broken ailists.cfg by older launchers is none)
+    if let Some(h) = d.hof.as_deref().filter(|h| !h.trim().is_empty() && !h.to_ascii_lowercase().contains(".bus") && !h.to_ascii_lowercase().contains(".ovh")) {
+        a.extend(["--hof".into(), h.trim().to_string()]);
+    }
+    // the entry point's place in the map's list; -1: the one nearest to the duty's first
+    // stop (a free drive takes the list's first then)
+    match d.entry {
+        Some(e) if e < 0 => {
+            if d.line.as_deref().map(|l| !l.trim().is_empty()).unwrap_or(false) {
+                a.push("--auto-entry".into());
+            }
+        }
+        Some(e) => a.extend(["--entry".into(), e.to_string()]),
+        None => {}
+    }
+    // OMSI's [useActTime] / [useActDate] / [useActYear]: the machine's clock and calendar
+    // instead of the duty's (the year only on its own switch — a map's timetable is for
+    // its years)
+    let st = get_settings().unwrap_or_default();
+    let on = |k: &str| st.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+    let now = local_now();
+    if let (true, Some((_, _, _, h, m))) = (on("use_real_time"), now) {
+        if let Some(i) = a.iter().position(|x| x == "--time") {
+            a[i + 1] = format!("{h:02}:{m:02}");
+        }
+    }
+    let mut date = d.date.as_deref().map(|x| x.trim().to_string()).filter(|x| !x.is_empty());
+    if let (true, Some((y, mo, dd, _, _))) = (on("use_real_date"), now) {
+        let year = if on("use_real_year") { y } else { date.as_deref().and_then(|x| x.split('-').next()?.parse::<i32>().ok()).unwrap_or(y) };
+        date = Some(format!("{year:04}-{mo:02}-{dd:02}"));
+    }
+    if let Some(dt) = date {
+        a.extend(["--date".into(), dt]);
+    }
+    if let Some(w) = d.weather.as_deref().filter(|x| !x.trim().is_empty()) {
+        a.extend(["--weather".into(), w.trim().to_string()]);
+    }
+    a.extend(["--traffic".into(), d.traffic.unwrap_or(30).to_string()]);
+    if d.passengers.unwrap_or(true) {
+        a.push("--passengers".into());
+    }
+    let schedule = d.schedule.unwrap_or(true) || d.line.is_some();
+    if schedule {
+        a.push("--schedule".into());
+    }
+    if let (Some(l), true) = (d.line.as_deref().filter(|x| !x.trim().is_empty()), schedule) {
+        a.extend(["--line".into(), l.trim().to_string()]);
+        if let Some(t) = d.tour.as_deref().filter(|x| !x.trim().is_empty()) {
+            a.extend(["--tour".into(), t.trim().to_string()]);
+            if let Some(tr) = d.trip.as_deref().filter(|x| !x.trim().is_empty()) {
+                a.extend(["--trip".into(), tr.trim().to_string()]);
+            }
+        }
+    }
+    if d.autostart.unwrap_or(false) {
+        a.push("--autostart".into());
+    }
+    if d.on_foot.unwrap_or(false) {
+        a.push("--on-foot".into());
+    }
+    let profile = d.profile.clone().filter(|p| !p.trim().is_empty()).unwrap_or_else(|| load_config().profile);
+    if let Some(season) = d.season.as_deref().map(str::trim).filter(|x| !x.is_empty() && !x.eq_ignore_ascii_case("auto")) {
+        a.extend(["--season".into(), season.to_ascii_lowercase()]);
+    }
+    if let Some(lan) = d.lan.as_deref().map(str::trim).filter(|l| !l.is_empty() && !l.eq_ignore_ascii_case("off")) {
+        if lan.eq_ignore_ascii_case("host") {
+            // 0: the default port, or the next free one when a session runs here already
+            a.extend(["--lan-host".into(), "0".into()]);
+        } else if let Some(target) = lan.strip_prefix("join:") {
+            let target = target.trim();
+            omsi_net::describe_join(target).map_err(|e| anyhow!("LAN join: {e}"))?;
+            a.extend(["--lan-join".into(), if target.is_empty() { "auto".into() } else { target.to_string() }]);
+        } else {
+            return Err(anyhow!("LAN play: '{lan}' is neither host nor join:<code or address>"));
+        }
+        let name = d.lan_name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| profile.clone());
+        if !name.trim().is_empty() {
+            a.extend(["--lan-name".into(), name.trim().to_string()]);
+        }
+    }
+    if !profile.trim().is_empty() {
+        a.extend(["--driver".into(), format!("Drivers/{}.odr", profile.trim())]);
+    }
+    Ok(a)
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Launched {
+    pub pid: u32,
+    pub log: String,
+    pub command: String,
+    /// Games that were running already (and keep running).
+    pub others: usize,
+}
+
+/// Start a game for the duty. Any number may run at once; each writes its own log.
+pub fn launch(d: &Duty) -> Result<Launched> {
+    let c = load_config();
+    let game = find_game(&c.game).context("the game binary was not found (set it under Setup)")?;
+    let args = duty_args(d)?;
+    let profile = d.profile.clone().filter(|p| !p.trim().is_empty()).unwrap_or(c.profile);
+    let s = instances::start(&game, &args, d, &profile)?;
+    Ok(Launched { pid: s.pid, log: s.log.to_string_lossy().to_string(), command: s.command, others: s.others })
+}
+
+/// What a LAN join field means (or what is wrong with it), and the sessions hosted here.
+pub fn check_join(text: &str) -> Value {
+    match omsi_net::describe_join(text) {
+        Ok(d) => json!({ "ok": true, "text": d, "local": instances::local_hosts() }),
+        Err(e) => json!({ "ok": false, "text": e, "local": instances::local_hosts() }),
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// small services for the window
+
+/// A line into ~/.openomsi/launcher.log.
+pub fn log_to_file(line: &str) {
+    use std::io::Write;
+    let p = data_dir().join("launcher.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let _ = writeln!(f, "{now} {line}");
+    }
+}
+
+/// What interrupted installs left behind (and the old unzip folder): cleaned up once when
+/// the launcher opens.
+pub fn cleanup() {
+    for line in install::cleanup_stale(&data_dir(), content_dir().as_deref()) {
+        log_to_file(&format!("cleanup: {line}"));
+    }
+}
+
+/// Native folder / file picker (Finder, Explorer, the GTK dialog) for a mod. Must run on
+/// the main thread.
+pub fn pick_mod(zip: bool) -> Option<PathBuf> {
+    if zip {
+        rfd::FileDialog::new().set_title("Choose a mod archive").add_filter("Mod archive", &["zip"]).pick_file()
+    } else {
+        rfd::FileDialog::new().set_title("Choose the mod folder").pick_folder()
+    }
+}
+
+/// Folder picker (Setup: the OMSI 2 folder).
+pub fn pick_folder(title: &str) -> Option<PathBuf> {
+    rfd::FileDialog::new().set_title(title).pick_folder()
+}
+
+pub use instances::{list as list_instances, log_tail, stop as stop_instance, Instance};
+
+/// Terminal access to the same functions: `--cli lines '{"map":"maps/Grundorf/global.cfg"}'`.
+pub fn cli(cmd: &str, arg: &str) -> Result<Value> {
+    let a: Value = serde_json::from_str(arg).unwrap_or(json!({}));
+    let s = |k: &str| a.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    Ok(match cmd {
+        "config" => serde_json::to_value(load_config())?,
+        "maps" => serde_json::to_value(list_maps()?)?,
+        "vehicles" => serde_json::to_value(list_vehicles()?)?,
+        "weather" => serde_json::to_value(list_weather()?)?,
+        "lines" => serde_json::to_value(list_lines(&s("map"), &s("date"))?)?,
+        "ibis" => serde_json::to_value(ibis_info(&s("bus"), &s("hof"), &s("line"))?)?,
+        "profiles" => serde_json::to_value(list_profiles()?)?,
+        "profile" => serde_json::to_value(get_profile(&s("name"))?)?,
+        "mods" => {
+            // the inbox is installed right away here (there is no page to follow it)
+            let done = install_inbox_blocking();
+            let mut v = serde_json::to_value(mods_status()?)?;
+            v["installed_now"] = serde_json::to_value(done)?;
+            v
+        }
+        "install" => {
+            let cancel = a.get("cancel_after_ms").and_then(|v| v.as_u64());
+            let mode = s("mode");
+            let p = install_mod_blocking(Path::new(&s("path")), if mode.is_empty() { "auto" } else { mode.as_str() }, cancel)?;
+            if p.state == "failed" {
+                return Err(anyhow!("{}", p.message));
+            }
+            serde_json::to_value(p)?
+        }
+        "modinfo" => serde_json::to_value(inspect_mod(Path::new(&s("path")))?)?,
+        "stamp" => json!(poll()?.stamp),
+        "poll" => {
+            // {"watch": seconds}: keep polling like the page does (the inbox watcher needs
+            // two looks), then wait for the installs it started
+            let watch = a.get("watch").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let t0 = std::time::Instant::now();
+            let mut stamps = vec![poll()?.stamp];
+            let mut started = Vec::new();
+            while t0.elapsed().as_secs_f64() < watch || install::jobs().iter().any(|j| j.finished.is_none()) {
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                let p = poll()?;
+                started.extend(p.started);
+                if stamps.last() != Some(&p.stamp) {
+                    stamps.push(p.stamp);
+                }
+            }
+            let mut v = serde_json::to_value(poll()?)?;
+            v["started"] = json!(started);
+            v["stamps"] = json!(stamps);
+            v
+        }
+        "instances" => serde_json::to_value(instances::list())?,
+        "stop" => {
+            let by_itself = instances::stop(a.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32)?;
+            json!({ "stopped": true, "ended_by_itself": by_itself })
+        }
+        "log" => json!(instances::log_tail(a.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32, a.get("lines").and_then(|v| v.as_u64()).unwrap_or(40) as usize)?),
+        "join" => check_join(&s("text")),
+        "settings" => get_settings()?,
+        // what the page's Save does: `--cli save_settings '{"view_distance":"1500"}'` (the
+        // other values from the file as it is)
+        "save_settings" => {
+            let mut v = get_settings()?;
+            if let (Some(v), Some(changes)) = (v.as_object_mut(), a.as_object()) {
+                v.extend(changes.clone());
+            }
+            save_settings(&v)?;
+            get_settings()?
+        }
+        "keybindings" => get_keybindings()?,
+        // `--cli save_keybindings '{"game":[...],"vehicles":[...]}'`: the whole list, as
+        // `keybindings` returns it — a partial update reads the current file first
+        "save_keybindings" => {
+            save_keybindings(&a)?;
+            get_keybindings()?
+        }
+        "preview" => json!(bus_preview(&s("bus"), &s("paint"))?),
+        "args" => json!(duty_args(&serde_json::from_value(a.clone())?)?),
+        "launch" => serde_json::to_value(launch(&serde_json::from_value(a.clone())?)?)?,
+        _ => return Err(anyhow!("unknown command {cmd}")),
+    })
+}
+
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dsc_files_give_name_and_description() {
+        let d = super::parse_dsc("\r\n[friendlyname]\r\nMAN\r\nNL202 - EN92\r\nBeige\r\n\r\n[description]\r\nAlthough the BVG did not purchase\r\n\r\n-Technical specifications-\r\n[end]\r\n");
+        assert_eq!(d.name, vec!["MAN", "NL202 - EN92", "Beige"]);
+        assert_eq!(d.description, "Although the BVG did not purchase\n\n-Technical specifications-");
+        let w = super::parse_dsc("[name]\r\nGround Fog\r\n\r\n[description]\r\nHeavy ground fog limits the maximum visibility dangerously!\r\n[end]\r\n");
+        assert_eq!(w.name, vec!["Ground Fog"]);
+        assert_eq!(w.description, "Heavy ground fog limits the maximum visibility dangerously!");
+        let p = std::path::Path::new("/x/maps/Spandau/global.cfg");
+        assert_eq!(super::dsc_candidates(p, "ENG"), vec![std::path::PathBuf::from("/x/maps/Spandau/global_ENG.dsc")]);
+        assert_eq!(super::dsc_candidates(p, "FRA").len(), 2);
+        assert_eq!(super::dsc_candidates(std::path::Path::new("/v/MAN_EN92_main.bus"), "DEU"), vec![std::path::PathBuf::from("/v/MAN_EN92_main_DEU.dsc")]);
+    }
+
+    use super::*;
+
+    #[test]
+    fn settings_keep_what_the_page_does_not_manage() {
+        // the user's file: a key of a newer game, a hand-written one, and the game's other
+        // spellings of keys the page writes
+        let old = "# mine\nversion=2\nmsaa=1\nview_distance=1500\nlang=de\ntexmemlimit=401.0\nfuture_switch=7\nOMSI_Thing = on\nfractal=0\n";
+        let v = settings_from_text(Some(old));
+        assert_eq!(v["msaa"], 1);
+        assert_eq!(v["view_distance"], "1500");
+        assert_eq!(v["language"], "DEU");
+        assert_eq!(v["texture_memory"], 401);
+        assert_eq!(v["texture_compression"], true);
+        assert_eq!(v["detail_textures"], false);
+        // the page changes a few things (its selects give strings) and saves
+        let mut page = v.clone();
+        page["view_distance"] = json!("2000");
+        page["language"] = json!("FRA");
+        page["texture_memory"] = json!("3000");
+        page["texture_compression"] = json!(false);
+        page["texture_memory_auto"] = json!(2000);
+        let text = settings_to_text(&page, Some(old));
+        for line in ["view_distance=2000", "language=FRA", "texture_memory=3000", "texture_compression=0", "detail_textures=0", "future_switch=7", "OMSI_Thing = on"] {
+            assert!(text.lines().any(|l| l == line), "{line} missing in\n{text}");
+        }
+        // the old spellings would override what was just written: gone, and nothing twice
+        for gone in ["lang=", "texmemlimit=", "fractal=", "texture_memory_auto", "view_distance=1500"] {
+            assert!(!text.contains(gone), "{gone} kept in\n{text}");
+        }
+        let keys: Vec<&str> = text.lines().filter_map(|l| l.split_once('=')).map(|(k, _)| k.trim()).collect();
+        let mut unique = keys.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(keys.len(), unique.len(), "a key written twice:\n{text}");
+        // and it reads back as saved
+        let back = settings_from_text(Some(&text));
+        assert_eq!(back["view_distance"], "2000");
+        assert_eq!(back["language"], "FRA");
+        assert_eq!(back["texture_memory"], 3000);
+        assert_eq!(back["texture_compression"], false);
+    }
+
+    /// The lines follow the date as the game's do: Spandau's 1991 timetable change takes
+    /// "5 & 5N" off and brings "130 & N30"; without a date it is the game's default day.
+    #[test]
+    fn lines_follow_the_chrono_date() {
+        let root = std::env::var_os("OMSI_ROOT").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
+        let map = root.join("maps/Berlin-Spandau");
+        if !map.join("TTData").is_dir() {
+            eprintln!("skipped: no {}", map.display());
+            return;
+        }
+        let names = |date: &str| lines_on(&map, date).unwrap().into_iter().map(|l| l.name).collect::<Vec<_>>();
+        let (then, now) = (names(""), names("2026-09-17"));
+        assert_eq!(then, names(DEFAULT_DATE));
+        assert!(then.iter().any(|l| l == "5 & 5N") && !then.iter().any(|l| l == "130 & N30"), "{then:?}");
+        assert!(!now.iter().any(|l| l == "5 & 5N") && now.iter().any(|l| l == "130 & N30"), "{now:?}");
+        assert!(names("1991-06-01").iter().any(|l| l == "5 & 5N") && !names("1991-06-02").iter().any(|l| l == "5 & 5N"));
+        assert!(lines_on(&map, "someday").is_err());
+    }
+
+    #[test]
+    fn settings_defaults_and_automatic_values() {
+        let v = settings_from_text(None);
+        assert_eq!(v["view_distance"], "auto");
+        assert_eq!(v["language"], "ENG");
+        assert_eq!(v["texture_memory"], 0);
+        let text = settings_to_text(&v, None);
+        for line in ["view_distance=auto", "language=ENG", "texture_memory=0", "texture_compression=1", "render_scale=auto"] {
+            assert!(text.lines().any(|l| l == line), "{line} missing in\n{text}");
+        }
+        // nonsense from a hand-edited file falls back to the defaults
+        let v = settings_from_text(Some("view_distance=far\nview_distance=-5\nlanguage=Klingon\ntexture_memory=lots\n"));
+        assert_eq!((v["view_distance"].as_str(), v["language"].as_str(), v["texture_memory"].as_i64()), (Some("auto"), Some("ENG"), Some(0)));
+        // a number from a script instead of the select's string
+        let text = settings_to_text(&json!({ "view_distance": 900, "texture_memory": 1500.0 }), None);
+        assert!(text.contains("\nview_distance=900\n") && text.contains("\ntexture_memory=1500\n"), "{text}");
+        #[cfg(unix)]
+        assert!(physical_memory().unwrap_or(0) > 256_000_000, "the machine's memory is read");
+    }
+}
+
+/// The machine's local date and time: (year, month, day, hour, minute).
+#[cfg(unix)]
+pub fn local_now() -> Option<(i32, i32, i32, i32, i32)> {
+    // SAFETY: time and localtime_r only write the struct handed to them
+    unsafe {
+        let t = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&t, &mut tm).is_null() {
+            return None;
+        }
+        Some((tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min))
+    }
+}
+
+#[cfg(not(unix))]
+pub fn local_now() -> Option<(i32, i32, i32, i32, i32)> {
+    None
+}
+
+#[cfg(test)]
+mod omsi_options_tests {
+    #[test]
+    fn the_originals_options_are_read() {
+        let root = std::path::Path::new("../../OMSI 2 Original");
+        let Some(o) = super::omsi_options(root) else { return };
+        assert_eq!(o.last_map.as_deref(), Some("maps/Berlin-Spandau/global.cfg"));
+        assert_eq!(o.last_driver.as_deref(), Some("OMSI-Fan"));
+        assert_eq!(o.settings["max_fps"], 30);
+        assert_eq!(o.settings["mirror_size"], 512);
+        assert_eq!(o.settings["language"], "ENG");
+        assert_eq!(o.settings["head_movement"], true);
+        assert_eq!(o.settings["collision_vehicles"], false);
+    }
+}
