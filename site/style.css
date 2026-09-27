@@ -101,6 +101,7 @@ main { margin-left: var(--drawer-w); padding-top: 64px; min-height: 100vh; displ
   display: inline-flex; align-items: center; gap: 6px; margin-top: 24px; padding: 4px 12px 4px 8px;
   border-radius: 16px; background: rgba(255,255,255,.12); font-size: 14px;
 }
+.chip-warn { margin-right: 8px; background: rgba(244,127,48,.22); }
 .chip .material-icons { font-size: 18px; color: var(--primary); }
 
 /* buttons */

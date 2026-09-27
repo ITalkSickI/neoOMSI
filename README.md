@@ -12,8 +12,13 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/turbo-devv/openOMSI?style=for-the-badge"></a>
 </p>
 
+> [!WARNING]
+> **Early release. Expect bugs.** openOMSI is in an early stage of development: things may be
+> missing, broken or change between versions. Please report problems in
+> [Issues](https://github.com/turbo-devv/openOMSI/issues).
+
 **openOMSI** is a from-scratch recreation of the bus simulator **OMSI 2**, written in Rust:
-64-bit, multithreaded, with a modern renderer (Metal / Vulkan / DirectX 12 through wgpu) -
+64-bit, multithreaded, with a modern renderer (Metal / Vulkan / DirectX 12 through wgpu),
 and fully compatible with the existing maps, buses, scenery and mods.
 
 > [!IMPORTANT]
@@ -36,8 +41,6 @@ Every commit to `main` is built by GitHub Actions and published on the
 Start the game, point the launcher to your OMSI 2 folder once, pick a map, a bus and a duty,
 and drive. Mods go into the folder next to the game (or through the launcher's **Mods**
 page); the original installation is never written to.
-
-> macOS: the app is not notarized. The first time, right-click `openOMSI.app` → **Open**.
 
 ## Goals
 

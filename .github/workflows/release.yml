@@ -131,7 +131,7 @@ jobs:
           cat > notes.md <<NOTES
           **openOMSI $VERSION** - built from ${GITHUB_SHA::7}.
 
-          > openOMSI needs an original OMSI 2 installation to run; it contains no game content.
+          > **Early release, expect bugs.** openOMSI needs an original OMSI 2 installation to run; it contains no game content.
 
           | Platform | Download |
           | --- | --- |
