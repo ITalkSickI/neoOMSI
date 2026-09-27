@@ -87,9 +87,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: System libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libasound2-dev libudev-dev \
-            libgtk-3-dev libxkbcommon-dev libwayland-dev libssl-dev
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y build-essential pkg-config libasound2-dev \
+              libudev-dev libgtk-3-dev libxkbcommon-dev libwayland-dev libssl-dev zip && break
+            sleep 20
+          done
       - name: Build the game
         run: scripts/build-linux.sh
       - name: Build the server
@@ -138,8 +140,10 @@ jobs:
           | Linux x64 | \`openOMSI-$VERSION-linux-x64.zip\` |
           | Dedicated server | \`openOMSI-$VERSION-server-linux-x64.zip\` |
           NOTES
+          git tag -f "v$VERSION" "$GITHUB_SHA"
+          git push -f origin "v$VERSION"
           gh release create "v$VERSION" out/*.zip \
-            --target "$GITHUB_SHA" \
+            --verify-tag \
             --title "openOMSI $VERSION" \
             --notes-file notes.md \
             --generate-notes
