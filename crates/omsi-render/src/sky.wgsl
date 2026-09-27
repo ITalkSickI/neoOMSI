@@ -137,7 +137,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let cover = mix(smoothstep(0.0, 1.0, c.x), 1.0, closed) * clamp((d.z - 0.01) * 7.0, 0.0, 1.0);
         // lit by the same light as the scene (envir.cfg's sun and ambient at this sun
         // height): white by day, warm at sunrise, and at night barely lighter than the night
-        // sky — never the pale blots a fixed twilight colour made at night; a little grey in
+        // sky - never the pale blots a fixed twilight colour made at night; a little grey in
         // the thick middle of a big cloud
         let core = 1.0 - 0.2 * smoothstep(0.45, 1.0, c.x) * (0.5 + 0.5 * c.y);
         let sun_up = clamp(camera.sun_dir.z * 4.0 + 0.3, 0.0, 1.0);

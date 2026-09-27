@@ -4,7 +4,7 @@
 //! pixel space `width.x` is pixels. In world space `width` is (metres, pixels) and the
 //! larger of the two at the point's depth is used, so a road keeps its true width near
 //! the camera and never thins below a few pixels far away, a marker can be sized in
-//! pixels and still stand on its spot — without rebuilding anything when the view zooms.
+//! pixels and still stand on its spot - without rebuilding anything when the view zooms.
 
 use glam::{Vec2, Vec3};
 
@@ -270,7 +270,7 @@ impl Painter {
     }
 
     /// A ring between `r0` and `r1`, from angle `a0` to `a1` (radians, 0 = right,
-    /// clockwise on screen) — a full circle for 0..TAU.
+    /// clockwise on screen) - a full circle for 0..TAU.
     pub fn arc(&mut self, center: Vec2, r0: f32, r1: f32, a0: f32, a1: f32, c: Color) {
         let n = (((a1 - a0).abs() * r1 * 0.35) as usize).clamp(6, 96);
         for k in 0..n {

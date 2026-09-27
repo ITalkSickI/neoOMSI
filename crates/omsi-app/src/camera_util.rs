@@ -40,8 +40,8 @@ pub(crate) fn default_camera(world: &World) -> Camera {
 
 /// Can the ray from `o` along `dir` (vehicle frame) come near mesh `i` of the type, posed
 /// by `xf`? `widen` is the extra angle (radians) of the rays spread around it. The hover
-/// test cast a ray at every triangle of the whole bus each frame — 0.7 ms of the main
-/// thread on a fast machine, three times that on a slow one — while the mouse was over
+/// test cast a ray at every triangle of the whole bus each frame - 0.7 ms of the main
+/// thread on a fast machine, three times that on a slow one - while the mouse was over
 /// nothing; a sphere per mesh passes most of them by.
 pub(crate) fn ray_may_hit(
     ty: &omsi_sim::VehicleType,
@@ -244,7 +244,7 @@ pub(crate) fn follow_camera(traffic: Option<&traffic::Traffic>, id: u64) -> Opti
 
 /// How much of the plain light a mirror loses at full night in enhanced graphics (see
 /// `render_mirrors`): measured in the window at 23:30, the mirrors' street, the bus's own
-/// flank and the sky then match the enhanced picture beside them (0.45 left them 2–3 times
+/// flank and the sky then match the enhanced picture beside them (0.45 left them 2-3 times
 /// as bright).
 const MIRROR_NIGHT_DIM: f32 = 0.8;
 

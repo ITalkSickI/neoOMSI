@@ -1,4 +1,4 @@
-//! Every triangle of one material with its corners and UVs — `uvtris <file> <material>`.
+//! Every triangle of one material with its corners and UVs - `uvtris <file> <material>`.
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let m = omsi_o3d::load_mesh(std::path::Path::new(&a[0])).unwrap();

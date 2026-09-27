@@ -398,7 +398,7 @@ impl<'a> Compiler<'a> {
     fn compile_file(&mut self, f: &CfgFile) {
         let mut cur: Option<(Vec<BlockKind>, Block, Vec<(usize, bool)>)> = None; // kinds (aliases), block, if-stack: (jump op index, has_else)
         // `{else}` without an open `{if}` (a stray `{endif}` closed it early): in OMSI a
-        // reached `{else}` skips to the next `{endif}`, so it jumps there here too — the
+        // reached `{else}` skips to the next `{endif}`, so it jumps there here too - the
         // Procity's dashboard blanked its odometer every frame through such an `{else}`
         let mut orphan_elses: Vec<usize> = Vec::new();
         for (ln, raw) in f.lines.iter().enumerate() {
@@ -422,7 +422,7 @@ impl<'a> Compiler<'a> {
                                 };
                                 match cur.as_mut() {
                                     // A block header directly after another header (no code yet)
-                                    // makes both names refer to the same body — stock scripts
+                                    // makes both names refer to the same body - stock scripts
                                     // stack `{trigger:a}` `{trigger:b}` this way.
                                     Some((kinds, block, _)) if block.ops.is_empty() => kinds.push(kind),
                                     Some(_) => {
@@ -601,8 +601,8 @@ impl<'a> Compiler<'a> {
                     None
                 }
             },
-            // (Omsi.exe `sub_5d1db8` knows only L, S and $ in the third place: anything
-            // else there — (L.M.x) too — is a system variable; OMSI has no map variables)
+            // (the original knows only L, S and $ in the third place: anything
+            // else there - (L.M.x) too - is a system variable; OMSI has no map variables)
             (b'L', b'S' | b'M') => match SysVar::from_name(name) {
                 Some(v) => Some(Op::LoadSys(v)),
                 None => {
@@ -708,7 +708,7 @@ impl<'a> Compiler<'a> {
             };
             return Some(op);
         }
-        // a number as Delphi reads one: digits, a point, an exponent — never "inf" or "nan",
+        // a number as Delphi reads one: digits, a point, an exponent - never "inf" or "nan",
         // and nothing beyond the range of a float
         let numeric = w.trim_start_matches(['-', '+']).starts_with(|c: char| c.is_ascii_digit() || c == '.');
         if let Some(v) = w.parse::<f32>().ok().filter(|v| numeric && v.is_finite()) {

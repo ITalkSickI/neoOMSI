@@ -1,7 +1,7 @@
 //! `--only fleet`: every vehicle loaded the way the game loads it, with a per-vehicle
-//! report of what is missing or unsupported — the files it names (across all content
+//! report of what is missing or unsupported - the files it names (across all content
 //! roots), script errors, callbacks and fonts the scripts ask for, textures and sounds,
-//! its coupled parts — and whether it can be put into service by itself.
+//! its coupled parts - and whether it can be put into service by itself.
 
 use omsi_cfg::resolve_path;
 use rayon::prelude::*;
@@ -47,7 +47,7 @@ fn vehicles_dir(root: &Path) -> Option<PathBuf> {
 /// mounted as content roots included), highest-priority root first. A vehicle folder name
 /// that exists under more than one root (a mod repacking a stock bus under its own name) is
 /// only the first root's, the way the game's own content layering would only ever load one
-/// of them — otherwise a report taken with `--content <mods>` double-counted it.
+/// of them - otherwise a report taken with `--content <mods>` double-counted it.
 pub fn vehicle_files(dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut seen_folders: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -398,7 +398,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
             // a blank file name is a real `[sound]` block, not a broken reference: it is
             // how a sound is deliberately silenced (the MB_C2 gearbox script's neutral
             // sound, several stock `[sound]` blocks) and `VehicleHost::sound_trigger_file`
-            // already treats it as "play nothing" at run time — counting it here only
+            // already treats it as "play nothing" at run time - counting it here only
             // buried the genuinely missing files in noise
             let bad: Vec<String> = cfg
                 .sounds
@@ -650,7 +650,7 @@ fn cause_of(problem: &str) -> &'static str {
         // almost always a stock train/tram `.ovh` shipped without the front section that
         // would couple it (trains couple through `Trains/`, not `[couple_back]`): counting
         // it with the real problems buried them under the size of the rolling-stock fleet
-        _ if p.starts_with("rear section that no vehicle couples") => "not driveable alone (no [couple_back] found for it — almost always unfinished stock rolling stock, not a mod problem)",
+        _ if p.starts_with("rear section that no vehicle couples") => "not driveable alone (no [couple_back] found for it - almost always unfinished stock rolling stock, not a mod problem)",
         _ if p.starts_with("displays a mesh shows") => "displays that stay blank with the IBIS set",
         _ if p.contains("textures not found") => "textures not found",
         _ if p.contains("meshes missing") => "meshes missing or unreadable",
@@ -663,7 +663,7 @@ fn cause_of(problem: &str) -> &'static str {
 
 /// The compatibility report: which causes keep third-party content from working and how
 /// much of the fleet each of them touches, worst offenders first. Counting the causes is
-/// what says where to look next — one mod with 40 script errors is a mod's own bug, a
+/// what says where to look next - one mod with 40 script errors is a mod's own bug, a
 /// cause that touches half the fleet is ours.
 fn report_causes(results: &[(PathBuf, Vec<String>, Vec<String>)], dirs: &[PathBuf]) {
     let mut by_cause: std::collections::BTreeMap<&str, (usize, usize)> = Default::default();
@@ -684,7 +684,7 @@ fn report_causes(results: &[(PathBuf, Vec<String>, Vec<String>)], dirs: &[PathBu
     if !causes.is_empty() {
         println!("  by cause (vehicles affected, problems):");
         for (c, (n, v)) in &causes {
-            println!("    {v:4} vehicles, {n:5} problems — {c}");
+            println!("    {v:4} vehicles, {n:5} problems - {c}");
         }
     }
     let mut worst: Vec<(&PathBuf, usize)> = results
@@ -700,7 +700,7 @@ fn report_causes(results: &[(PathBuf, Vec<String>, Vec<String>)], dirs: &[PathBu
                 .iter()
                 .find_map(|d| f.strip_prefix(d).ok())
                 .unwrap_or(f);
-            println!("    {n:3} problems — {}", rel.display());
+            println!("    {n:3} problems - {}", rel.display());
         }
     }
 }
@@ -769,7 +769,7 @@ pub fn check_fleet(
                 .iter()
                 .any(|x| has_vehicle(x));
             println!(
-                "  Vehicles/{name}/ — no vehicle file: {}",
+                "  Vehicles/{name}/ - no vehicle file: {}",
                 if elsewhere {
                     "textures/repaints for the bus of another content root"
                 } else {
@@ -784,7 +784,7 @@ pub fn check_fleet(
             .find_map(|d| f.strip_prefix(d).ok())
             .unwrap_or(f);
         println!(
-            "  {} — {}",
+            "  {} - {}",
             rel.display(),
             if problems.is_empty() {
                 "ok".to_string()

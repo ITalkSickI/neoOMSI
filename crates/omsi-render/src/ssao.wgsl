@@ -43,7 +43,7 @@ fn lin(d: f32) -> f32 {
 // A 4x4 ordered pattern rather than white noise: every 4x4 block of pixels holds the same
 // sixteen sample rotations, so the 5x5 blur that follows averages them out completely.
 // White noise per pixel left a grain that stood still on the screen while the world moved
-// under it — a faint film of static in front of the eyes.
+// under it - a faint film of static in front of the eyes.
 fn hash(v: vec2<f32>) -> f32 {
     let p = vec2<i32>(i32(v.x) & 3, i32(v.y) & 3);
     let bayer = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
@@ -91,7 +91,7 @@ fn fs_ssao(in: VsOut) -> @location(0) vec4<f32> {
         let sp = pos + (t * s.x + b * s.y + n * s.z) * radius * scale;
         // back to the screen
         // project: we only have inv_proj, so search the depth at the sample's screen position
-        // using the perspective relation x_ndc = x / (-z * tan) — reconstruct from two points
+        // using the perspective relation x_ndc = x / (-z * tan) - reconstruct from two points
         let q = project(sp);
         if (q.x < 0.0 || q.y < 0.0 || q.x >= p.params.z || q.y >= p.params.w) {
             continue;

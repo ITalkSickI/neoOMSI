@@ -109,7 +109,7 @@ pub struct SplineAttachment {
     /// Text-texture strings (street names, line numbers).
     pub strings: Vec<String>,
     /// `[splineAttachement_repeater]`: (index of the master's tile in global.cfg's `[map]`
-    /// list — counting the tiles whose files are missing — and index of the first object of
+    /// list - counting the tiles whose files are missing - and index of the first object of
     /// the row that lies on this spline).
     pub repeater: Option<(usize, usize)>,
     pub var_parent: Option<i64>,
@@ -449,7 +449,7 @@ impl Tile {
                 }
                 "rule" | "kill_rule" => {
                     // A rule belongs to whatever came before it. Most of a map's rules follow
-                    // an `[object]` — a junction — not a spline; giving them all to the last
+                    // an `[object]` - a junction - not a spline; giving them all to the last
                     // spline put speed limits and no_cars on roads that never had them and
                     // left the junctions unrestricted.
                     let rule = read_rule(&mut r, k == "kill_rule");
@@ -517,7 +517,7 @@ impl Tile {
 
     /// Apply a chrono patch tile. The patch's own splines, objects and attachments are added
     /// first (its spline attachments count their spline in the combined list), then the
-    /// `[selobject]` / `[selspline]` changes are applied to whatever carries that id —
+    /// `[selobject]` / `[selspline]` changes are applied to whatever carries that id -
     /// objects added by an earlier chrono folder included. Returns how many selections named
     /// nothing in this tile.
     pub fn apply_chrono(&mut self, patch: &Tile) -> usize {

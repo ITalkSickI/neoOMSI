@@ -379,7 +379,7 @@ impl State {
         self.join = (true, format!("the server {}", info.name));
         self.join_checked = address.to_string();
         self.touched();
-        self.set_status(format!("Joined {} — choose your bus and duty, then Start the duty", info.name), false);
+        self.set_status(format!("Joined {} - choose your bus and duty, then Start the duty", info.name), false);
     }
 
     /// Back to playing alone (the Drive page's "Leave Server").
@@ -596,7 +596,7 @@ impl State {
                         if let Some(line) = self.choice.line.clone() {
                             match self.lines.iter().find(|x| x.name == line) {
                                 None => {
-                                    note = format!(" — line {line} does not run on {}", self.choice.date);
+                                    note = format!(" - line {line} does not run on {}", self.choice.date);
                                     self.choice.line = None;
                                     self.choice.tour = None;
                                 }
@@ -604,7 +604,7 @@ impl State {
                                     if let Some(t) = &self.choice.tour {
                                         match l.tours.iter().find(|x| &x.number == t) {
                                             None => self.choice.tour = None,
-                                            Some(t) if !t.runs => note = format!(" — tour {} of line {line} does not run that day ({})", t.number, t.days),
+                                            Some(t) if !t.runs => note = format!(" - tour {} of line {line} does not run that day ({})", t.number, t.days),
                                             _ => {}
                                         }
                                     }
@@ -686,7 +686,7 @@ impl State {
             }
             Msg::Launched(Ok(l)) => {
                 core::log_to_file(&format!("launched pid {} ({} other game(s) running): {}", l.pid, l.others, l.command));
-                self.set_status(format!("Game started (process {}), log {}{}", l.pid, l.log, if l.others > 0 { format!(" — {} other game(s) keep running", l.others) } else { String::new() }), false);
+                self.set_status(format!("Game started (process {}), log {}{}", l.pid, l.log, if l.others > 0 { format!(" - {} other game(s) keep running", l.others) } else { String::new() }), false);
                 self.poll_now();
             }
             Msg::Launched(Err(e)) => self.set_status(e, true),
@@ -694,7 +694,7 @@ impl State {
                 self.stopping.remove(&pid);
                 match result {
                     Ok(true) => self.set_status(format!("Game {pid} ended by itself."), false),
-                    Ok(false) => self.set_status(format!("Game {pid} did not end by itself and was killed — this run is not saved."), true),
+                    Ok(false) => self.set_status(format!("Game {pid} did not end by itself and was killed - this run is not saved."), true),
                     Err(e) => self.set_status(e, true),
                 }
                 self.poll_now();

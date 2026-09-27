@@ -1,6 +1,6 @@
-//! The enhanced renderer's light: a physically based atmosphere — Rayleigh and Mie single
+//! The enhanced renderer's light: a physically based atmosphere - Rayleigh and Mie single
 //! scattering over a spherical Earth with ozone absorption and an isotropic estimate of
-//! the higher orders — evaluated on the CPU whenever the sun or the weather has moved on.
+//! the higher orders - evaluated on the CPU whenever the sun or the weather has moved on.
 //! It yields the sun's colour and strength at the ground, the sky's radiance as a small
 //! table the sky dome and the reflection probe read, the light the sky and the ground
 //! throw on a surface of any orientation (spherical harmonics), and the exposure that
@@ -259,7 +259,7 @@ pub fn sh_irradiance(sh: &[Vec3; 9], n: Vec3) -> Vec3 {
 }
 
 /// The camera's white: the colour of the noon daylight on a white sheet (sun at 60° and
-/// a clear sky), which the whole model is divided by — a camera set to daylight.
+/// a clear sky), which the whole model is divided by - a camera set to daylight.
 fn daylight_white() -> Vec3 {
     static WHITE: std::sync::OnceLock<Vec3> = std::sync::OnceLock::new();
     *WHITE.get_or_init(|| {
@@ -317,7 +317,7 @@ impl SkyState {
             }
         }
         // The SH of the upper half as a street sees it: the lowest part of the sky is hidden
-        // behind houses and trees, which throw back what the sun and the sky give them —
+        // behind houses and trees, which throw back what the sun and the sky give them -
         // warm where they face the sun, dim where they turn away from it. Taken as open sky,
         // the shade was as blue as the sky and a low sun lit it from all round.
         let ground_e = sun * s.z.max(0.0) + sky_horizontal;
@@ -462,7 +462,7 @@ fn ground_sh(l: Vec3) -> [Vec3; 9] {
 }
 
 /// Pre-exposure for a reference irradiance: full exposure by day, only part of the way
-/// up at night (a street at night still looks dark — the eye does not adapt completely).
+/// up at night (a street at night still looks dark - the eye does not adapt completely).
 pub fn exposure_for(e_ref: f32) -> f32 {
     const ADAPT: f32 = 0.8;
     // a quarter of a stop over "mid grey in full light = 0.18": the tone curve's shoulder

@@ -6,12 +6,12 @@
 //!
 //! Ride height. A `.bus` file has no height for its axles: OMSI hangs each wheel so that
 //! its spring is *unloaded* when the tyre stands on the model's ground plane (z = 0), and
-//! the body then sinks by what the load compresses the springs — mass share over
+//! the body then sinks by what the load compresses the springs - mass share over
 //! `achse_feder` times the scripts' `Axle_Springfactor`. That sag is the `ai_deltaheight`
 //! the same files give for their AI copies (-0.10 m for the SD202 and the NL202, whose
-//! springs take 22–28 kN at 240–280 kN/m; -0.15 m for the F90 lorry, 55 kN at 370 kN/m),
+//! springs take 22-28 kN at 240-280 kN/m; -0.15 m for the F90 lorry, 55 kN at 370 kN/m),
 //! and it is what `Axle_Suspension` reports: the model lifts the wheel into its arch by the
-//! compression. Every vehicle therefore sits at its own height, set by its own data — the
+//! compression. Every vehicle therefore sits at its own height, set by its own data - the
 //! NL202's level control even pumps its bellows until the compression reads 0.105 m.
 
 use crate::collision::Obb;
@@ -23,10 +23,10 @@ pub const DROOP: f32 = 0.15;
 /// Compression at which the bump stop takes over (m). A deflated air suspension rests on it.
 pub const BUMP: f32 = 0.24;
 /// The wheel between the road and the strut: its share of the corner's mass (axle, hub,
-/// brake, tyre — about an eighth on a bus), and the tyre's vertical stiffness (N/m) and
+/// brake, tyre - about an eighth on a bus), and the tyre's vertical stiffness (N/m) and
 /// damping (N s/m). Taken as massless, the wheel stood wherever the road put it: a bump
 /// shoved it into the arch within a substep, the strut's damper kicked the body into the
-/// air, and the wheel then dropped to its full droop at once — the bus hopped over a
+/// air, and the wheel then dropped to its full droop at once - the bus hopped over a
 /// manhole cover with its wheels flicking in and out of the body.
 const UNSPRUNG: f32 = 0.12;
 const TYRE_K: f32 = 900_000.0;
@@ -85,7 +85,7 @@ pub trait Ground: Send + Sync {
     /// The faces at world (x, y): the highest at or below `top` and the lowest above it.
     fn probe(&self, x: f64, y: f64, top: f64) -> GroundProbe;
 
-    /// A prober for one step of one vehicle — many points close together. It may keep what
+    /// A prober for one step of one vehicle - many points close together. It may keep what
     /// it looked up (the tiles under the vehicle) until it is dropped.
     fn session(&self) -> Box<dyn Fn(f64, f64, f64) -> GroundProbe + '_> {
         Box::new(move |x, y, top| self.probe(x, y, top))
@@ -124,7 +124,7 @@ impl WallFace {
 
 #[derive(Debug, Clone)]
 pub struct RigidWheel {
-    /// The wheel's own turning (rad/s) and its state as Omsi.exe keeps it (sub_7e2574):
+    /// The wheel's own turning (rad/s) and its state as OMSI keeps it:
     /// gripping (turning with the ground), slipping (spinning or skidding: the tyre passes on
     /// the sliding friction and the wheel turns by its own torques), locked (a brake that
     /// stopped it). `inertia_inv`: the axle's `achse_inertia_inv` (0.002 when not given).
@@ -180,7 +180,7 @@ fn sign(x: f32) -> f32 {
 }
 
 impl RigidWheel {
-    /// One substep of the wheel's turning (Omsi.exe sub_7e2574, in openOMSI's forces):
+    /// One substep of the wheel's turning:
     /// a gripping wheel turns with the ground and starts to slip when what it has to pass
     /// on (`f_long`, before the friction circle cut it) is more than the road takes; a
     /// slipping one turns by its drive, its brake and the sliding friction, locks when the
@@ -190,7 +190,7 @@ impl RigidWheel {
         let ground = c.v_long / r;
         let mu_n = friction * c.grip;
         // (`OMSI_NO_WHEEL_SLIP=1`: every wheel grips, as before the wheels had a turning of
-        // their own — for comparison)
+        // their own - for comparison)
         let no_slip = omsi_cfg::env::var_os("OMSI_NO_WHEEL_SLIP").is_some();
         if no_slip {
             self.slipping = false;
@@ -226,7 +226,7 @@ impl RigidWheel {
             }
             let slide_after = self.spin * r - c.v_long;
             // gripping again: the wheel's speed crossed the ground's (or both stand)
-            // (a slide that only now begins — zero before — has crossed nothing)
+            // (a slide that only now begins - zero before - has crossed nothing)
             if sign(slide_after) * sign(slide_before) < 0.0 || (c.v_long.abs() < STANDING && self.spin.abs() * r < STANDING && c.drive.abs() <= c.brake.max(mu_n)) {
                 self.slipping = false;
                 self.locked = false;
@@ -283,7 +283,7 @@ struct Contact {
     wheel: Option<usize>,
 }
 
-/// `achse_inertia_inv` where a `[newachse]` does not say (Omsi.exe LoadFromFile: 0.002).
+/// `achse_inertia_inv` where a `[newachse]` does not say (OMSI LoadFromFile: 0.002).
 pub const DEFAULT_INERTIA_INV: f32 = 0.002;
 
 /// Below this speed (m/s) at the contact a tyre stands and its brake holds statically.
@@ -309,8 +309,8 @@ pub struct Impact {
 
 /// A part towed behind the body (the rear section of an articulated bus). The parts follow
 /// kinematically, so what acts on them along their length arrives at the joint: the drive
-/// of a driven axle — the O530G/GL Facelift and the stock GN92 are pushers, whose front
-/// sections roll free —, the brakes and rolling resistance, the weight on a grade and the
+/// of a driven axle - the O530G/GL Facelift and the stock GN92 are pushers, whose front
+/// sections roll free -, the brakes and rolling resistance, the weight on a grade and the
 /// mass. The body takes the part of it along its own axis (cosine of the articulation
 /// angle); the side part is what a pusher's joint damping and the rear section's tyres
 /// hold. Handed on whole, it turned a pusher standing against its brakes round on the spot
@@ -523,7 +523,7 @@ impl RigidBody {
         let target = steer.clamp(-1.0, 1.0) * self.max_steer_deg;
         let rate = self.max_steer_deg * 2.5 * dt;
         self.steer_deg += (target - self.steer_deg).clamp(-rate, rate);
-        // (substeps of at most ~4 ms whatever the frame: a frame held up by loading — 50 ms —
+        // (substeps of at most ~4 ms whatever the frame: a frame held up by loading - 50 ms -
         // made 12 ms substeps, too long for the stiff tyres, and the body hopped on its
         // springs for no reason the driver could see)
         let substeps = ((dt / 0.0042).ceil() as usize).clamp(4, 16);
@@ -594,7 +594,7 @@ impl RigidBody {
             }
             // A face stops the hub at once: whatever would close on it within the substep is
             // taken away by an impulse at the hub, as the body's own collisions do (and it is
-            // a crash like theirs). A spring alone gave way — a front wheel met at 30 km/h
+            // a crash like theirs). A spring alone gave way - a front wheel met at 30 km/h
             // went through a platform's face, and once the hub was over the face nothing
             // pushed at all.
             for _ in 0..2 {
@@ -656,7 +656,7 @@ impl RigidBody {
                 // a step along its envelope, never steeper than 2.4 (see CLIMB). A reading
                 // that leaps higher (a kerb's edge or a surface object's rim caught for one
                 // substep: +25 cm under the Urbino's front wheel at a Spandau kerb) is
-                // climbed at that pace — taken at once it struck the wheel with 260 kN and
+                // climbed at that pace - taken at once it struck the wheel with 260 kN and
                 // threw it into its arch.
                 let v_along = (self.velocity + omega_world.cross((hub - self.position).as_vec3())).dot(fwd_h).abs();
                 let max_rise = (v_along.max(0.5) * 2.4 + 0.3) * h;
@@ -693,7 +693,7 @@ impl RigidBody {
                 let n = (k * c.max(0.0) + w.damper * rate_c + bump).clamp(-w.max_force * 0.5, cap);
                 // the wheel moves against the body, which is itself accelerated by what holds
                 // it up (`accel_body.z`, 9.81 m/s² standing, 0 in the air: a wheel off a kerb
-                // drops, a wheel of a body in the air does not) — semi-implicit Euler, stable
+                // drops, a wheel of a body in the air does not) - semi-implicit Euler, stable
                 // with the stiff tyre at these steps
                 w.compression_rate += ((tyre_f - n) / m_w - self.accel_body.z) * h;
                 w.compression += w.compression_rate * h;
@@ -728,7 +728,7 @@ impl RigidBody {
                 // the body's up axis, and the rest pushes the wheel back up a kerb (or on
                 // down an edge). Measured against the body, a slope the bus stands on
                 // already leans with it and adds nothing; the tyre's static load does the
-                // pushing — the damping kick as the tyre meets the edge is taken by the
+                // pushing - the damping kick as the tyre meets the edge is taken by the
                 // wheel's own mass.
                 let normal = (Vec3::Z - fwd_h * slope).normalize();
                 let along_up = normal.dot(up).max(0.3);
@@ -781,7 +781,7 @@ impl RigidBody {
                 });
             }
             // Tyre forces. A rolling tyre slips: the brake opposes its motion and the side
-            // force follows the slip angle. Tyres that stand hold like static friction — but
+            // force follows the slip angle. Tyres that stand hold like static friction - but
             // together: they take up everything else that pushes the body (gravity on a
             // slope, the drive, the rolling ones) and what is left of its speed, shared by
             // what each brake can bear. One wheel at a time, each cancelling only its quarter
@@ -877,15 +877,15 @@ impl RigidBody {
     /// Keep the body's `[boundingbox]` out of the obstacles and answer each hit with an
     /// impulse at the point of contact: the closing speed goes (a fifth of it comes back),
     /// sliding along the obstacle is braked by friction, and an off-centre blow turns the
-    /// body. Nothing is frozen — the vehicle can drive off or reverse at once.
+    /// body. Nothing is frozen - the vehicle can drive off or reverse at once.
     ///
     /// `skip(i)`: obstacles already broken off. `dt` is the frame, to tell a hit from a box
     /// the vehicle has been standing in all along (spawned in a depot hall's box): that one
     /// is deeper than any frame of motion could have taken it, and never pushes.
     ///
     /// Each obstacle is answered once per call (up to four of them, deepest first). A car
-    /// that drives into the bus is still there after its answer — the bus only steps a
-    /// millimetre out of its way and takes none of its speed — and was taken as the same
+    /// that drives into the bus is still there after its answer - the bus only steps a
+    /// millimetre out of its way and takes none of its speed - and was taken as the same
     /// crash four times over.
     pub fn collide(&mut self, bb: [f32; 6], obstacles: &[Obb], skip: &dyn Fn(usize) -> bool, dt: f32) -> Vec<Impact> {
         let mut impacts: Vec<Impact> = Vec::new();
@@ -932,7 +932,7 @@ impl RigidBody {
             let before = self.kinetic_energy();
             // The scripts are told where the bodies meet, low down where the bumpers are
             // (the stock buses damage their rear engine only below 1.10 m), not where the
-            // blow is taken: at the centre of gravity every wall and car read 1.2–1.3 m.
+            // blow is taken: at the centre of gravity every wall and car read 1.2-1.3 m.
             let seen = DVec3::new(c.point.x, c.point.y, crate::collision::impact_height(c.z0, c.z1));
             let point = self.orientation.inverse().mul_vec3((seen - self.position).as_vec3()) + self.cog;
             if let Some((mass_t, load_kn)) = o.pole.filter(|_| vn < 0.0) {
@@ -947,7 +947,7 @@ impl RigidBody {
                     continue;
                 }
             }
-            // out of the obstacle along the shortest way, a millimetre clear — out of a moving
+            // out of the obstacle along the shortest way, a millimetre clear - out of a moving
             // one only as far as the body itself ran into it this frame: a standing car is not
             // ploughed through, and one that drives into the bus does not drag it along
             let out = if o.mass > 0.0 { (c.depth as f32).min((-vn).max(0.0) * dt + 0.001) } else { c.depth as f32 + 0.001 };
@@ -1306,7 +1306,7 @@ mod tests {
         }
     }
 
-    /// The NL202 sits about 0.10 m below its unloaded height — its own `ai_deltaheight` —
+    /// The NL202 sits about 0.10 m below its unloaded height - its own `ai_deltaheight` -
     /// with the wheels exactly on the road.
     #[test]
     fn sags_by_its_own_springs() {
@@ -1515,8 +1515,8 @@ mod tests {
     }
 
     /// A kerb running along under the tread lifts the hub by the share of the tread over
-    /// it, smoothly as the edge passes under the tyre — not all at once as the edge passes
-    /// the middle — and lets it down the same way from the other side.
+    /// it, smoothly as the edge passes under the tyre - not all at once as the edge passes
+    /// the middle - and lets it down the same way from the other side.
     #[test]
     fn kerb_along_the_tread_lifts_smoothly() {
         let r = 0.47f32;
@@ -1546,7 +1546,7 @@ mod tests {
 
     /// On a uniform grade of any steepness the tyre reports the grade itself and stands where
     /// the envelope touches the ramp, with no more probes than on the flat. The old comb read
-    /// every grade over 6.4 % as a run of kerbs: 0.043 for 6.5–9 %, 0.13 for 10–15 %, and 73
+    /// every grade over 6.4 % as a run of kerbs: 0.043 for 6.5-9 %, 0.13 for 10-15 %, and 73
     /// probes a wheel.
     #[test]
     fn tyre_reads_any_grade_as_a_grade() {
@@ -1615,8 +1615,8 @@ mod tests {
         }
     }
 
-    /// A step asks the ground for a few points per tyre — the lattice and a look to either
-    /// side — on the flat and on any grade alike (the comb read every grade over 6.4 % as a
+    /// A step asks the ground for a few points per tyre - the lattice and a look to either
+    /// side - on the flat and on any grade alike (the comb read every grade over 6.4 % as a
     /// run of kerbs and asked for 73 per tyre).
     #[test]
     fn a_step_asks_for_few_points() {
@@ -1920,7 +1920,7 @@ mod tests {
         assert!(hits[0].energy < 100_000.0, "{hits:?}");
     }
 
-    /// The scripts hear where the bodies meet — low down at the bumpers — not the height of
+    /// The scripts hear where the bodies meet - low down at the bumpers - not the height of
     /// the centre of gravity: reversing into a wall or a car is below 1.10 m and behind
     /// -4.70 m, where the stock buses damage their engine; a high beam is hit high.
     #[test]

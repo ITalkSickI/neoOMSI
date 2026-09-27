@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the dedicated server (Linux, or any Unix) into dist/server — or into the folder
+# Build the dedicated server (Linux, or any Unix) into dist/server - or into the folder
 # given as the first argument. The server is the game binary started with --server; the
 # folder gets start.sh and, on the first start, server.cfg with its defaults.
 set -eu

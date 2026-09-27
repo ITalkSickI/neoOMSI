@@ -1,7 +1,7 @@
 //! Machine translation of the interface (the `machine_translation` setting): every text the
 //! translation tables (`locales/app.yml`) and OMSI's language files do not have is
-//! translated on this machine by Meta's NLLB-200 model (600M, int8) run with CTranslate2 —
-//! what the `trad` crate does — and kept in `~/.openomsi/cache/mt-<lang>.json`, so a
+//! translated on this machine by Meta's NLLB-200 model (600M, int8) run with CTranslate2 -
+//! what the `trad` crate does - and kept in `~/.openomsi/cache/mt-<lang>.json`, so a
 //! text is translated once and then read from there.
 //!
 //! Nothing waits for it: `omsi_ui::tr` asks `lookup`, which answers from the cache or puts

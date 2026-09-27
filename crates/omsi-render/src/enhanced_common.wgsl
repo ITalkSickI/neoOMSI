@@ -1,4 +1,4 @@
-// Enhanced graphics: what the enhanced main pass, the sky and the coronas share — the
+// Enhanced graphics: what the enhanced main pass, the sky and the coronas share - the
 // light of the physically based sky (see atmosphere.rs), in its units (1 = 10 000 lux),
 // and the air between the camera and what it sees. The scene is drawn pre-exposed:
 // radiance times `enh.exposure.x`, so that the half-float target keeps its precision by

@@ -36,7 +36,7 @@ pub(crate) fn physical_memory() -> Option<u64> {
 }
 
 /// The texture budget in bytes: `OMSI_TEXTURE_MEMORY` (MB), else the setting, else an
-/// eighth of the machine's memory (2 GB on a 16 GB Mac — Ahlheim's main station needs
+/// eighth of the machine's memory (2 GB on a 16 GB Mac - Ahlheim's main station needs
 /// about 1.5).
 pub(crate) fn texture_budget(settings: &settings::Settings) -> u64 {
     let mb = omsi_cfg::env::var("OMSI_TEXTURE_MEMORY")

@@ -1,4 +1,4 @@
-//! Start menu: map, vehicle, time, traffic, passengers, schedule — keyboard driven,
+//! Start menu: map, vehicle, time, traffic, passengers, schedule - keyboard driven,
 //! drawn as HUD text before the world is loaded.
 
 use std::path::{Path, PathBuf};
@@ -47,7 +47,7 @@ impl Menu {
             maps.push((name, format!("maps/{}/global.cfg", d.file_name().unwrap().to_string_lossy())));
         }
         // every content root's vehicle folders (installed mods too), and of their files only
-        // what OMSI offers: those with a [friendlyname] — never an articulated bus's rear
+        // what OMSI offers: those with a [friendlyname] - never an articulated bus's rear
         // section, which comes with its front
         let mut vehicles = Vec::new();
         for d in merged("Vehicles") {

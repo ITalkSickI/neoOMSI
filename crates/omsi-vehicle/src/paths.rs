@@ -1,4 +1,4 @@
-//! `paths.cfg` — passenger walking paths inside a vehicle.
+//! `paths.cfg` - passenger walking paths inside a vehicle.
 
 use omsi_cfg::CfgFile;
 use std::path::Path;

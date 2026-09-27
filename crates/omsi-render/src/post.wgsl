@@ -1,5 +1,5 @@
 // Enhanced graphics: what happens to the pre-exposed high-range picture before it reaches
-// the screen — nothing that paints over it. A glow that only real highlights produce
+// the screen - nothing that paints over it. A glow that only real highlights produce
 // (a wide blur of the picture mixed in at a few per cent: a lamp a hundred times brighter
 // than white spreads, a white wall does not), automatic exposure that meters the picture
 // and follows it slowly within a narrow range, the shoulder of the Khronos PBR Neutral
@@ -43,7 +43,7 @@ fn luma(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
-// A pixel that is not a finite number (a NaN or an infinity from the scene) as black —
+// A pixel that is not a finite number (a NaN or an infinity from the scene) as black -
 // tested on the bits, which fast maths cannot drop. Unguarded, the glow's down- and
 // up-sampling spread one such pixel over the picture as half and fully black squares
 // (Vulkan and Direct3D keep NaNs, Metal's fast maths happened to hide them).

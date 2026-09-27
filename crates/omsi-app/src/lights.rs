@@ -11,7 +11,7 @@ use omsi_sim::{Daylight, VehicleInstance};
 /// `[maplight]` core (`PointLight::intensity`): some 1 100 cd. The stock spots point 17°
 /// down, so the axis meets the road a few metres ahead of the bumper; a real low beam's
 /// 20 000 cd there would be a floodlight. (At 20 the road ahead at night came out barely
-/// brighter with the lights on than off — 11 → 19 of 255 on Novi Sad's asphalt — where
+/// brighter with the lights on than off - 11 → 19 of 255 on Novi Sad's asphalt - where
 /// OMSI's buses throw a clear pool.)
 const HEADLIGHT_INTENSITY: f32 = 45.0;
 
@@ -66,7 +66,7 @@ pub fn apply_weather(
     // rain and snow take some light and thicken the air
     // heavy rain by day is dark: the sun is gone, the sky light drops by a third and
     // everything, the bus included, sits in the same grey. The gloom also brings the
-    // night factor up a little, so interior lights and nightmaps start to show — by
+    // night factor up a little, so interior lights and nightmaps start to show - by
     // day in a downpour you do want the saloon lights on.
     let rain = if precip_kind != 0 {
         precip.clamp(0.0, 1.0)
@@ -163,7 +163,7 @@ pub fn vehicle_lights(
                         ..Default::default()
                     });
                 }
-                // enhanced: the real spot, as D3D's [spotlight] describes it — inner and
+                // enhanced: the real spot, as D3D's [spotlight] describes it - inner and
                 // outer cone as full angles (values 10 and 11), the range (clamped to what
                 // the light grid carries), falling off with the square of the distance from
                 // a one-metre core
@@ -334,7 +334,7 @@ pub fn collect(
             particle_sprites(&t.particles, &mut scene.smoke, &mut scene.coronas);
         }
     }
-    // the lamps' cones in fog (Omsi.exe sub_5a0068): drawn only while the visibility is
+    // the lamps' cones in fog: drawn only while the visibility is
     // under 2 km, the fan's radius 2 m times 3 sqrt(100 / visibility) times the glow's
     // strength ((1 - ambient)^2 + 0.8) 0.6 brightness and the light's size; its colour the
     // light's times 0.3 (the viewing angle and the distance take their share in the shader,
@@ -431,7 +431,7 @@ pub fn particle_sprites(set: &omsi_sim::particles::ParticleSet, smoke: &mut Vec<
     }
 }
 
-/// Omsi.exe's picture for every `[smoke]` particle: `Texture\rauch.tga` of the game folder.
+/// OMSI's picture for every `[smoke]` particle: `Texture\rauch.tga` of the game folder.
 pub fn load_smoke_texture(renderer: &mut omsi_render::Renderer, root: &std::path::Path) {
     let path = omsi_cfg::resolve_path(root, "Texture/rauch.tga");
     match omsi_texture::decode_file(&path) {
@@ -496,7 +496,7 @@ pub fn corona_texture_id(model_dir: &std::path::Path, name: &str) -> u16 {
 /// One of the game's own light pictures in `Texture\` (0, the built-in glow, if missing).
 fn stock_texture_id(name: &str) -> u16 {
     // (asked for every light of every vehicle every frame: the file is looked up once per
-    // game folder, not each time — the lookups were a fifth of a frame's CPU time)
+    // game folder, not each time - the lookups were a fifth of a frame's CPU time)
     static KNOWN: std::sync::Mutex<Option<std::collections::HashMap<(std::path::PathBuf, String), u16>>> = std::sync::Mutex::new(None);
     let root = CORONA_TEXTURES.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|t| t.root.clone()).unwrap_or_default();
     let key = (root, name.to_string());
@@ -515,7 +515,7 @@ pub fn cone_texture_id() -> u16 {
 }
 
 /// A light's glow when it names no bitmap of its own, and the halo round it in fog
-/// (`Texture\licht.bmp`, Omsi.exe sub_59fbbc).
+/// (`Texture\licht.bmp`, the original).
 pub fn glow_texture_id() -> u16 {
     stock_texture_id("licht.bmp")
 }

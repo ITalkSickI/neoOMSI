@@ -3,8 +3,8 @@
 //! "Automatic" (`--auto-entry`) picks the one with the shortest way by road to the first
 //! stop of the trip the duty starts with. (Putting the bus onto the trip's route in front of
 //! the stop instead left it in the middle of a junction on line 31 at Maulbeerallee.)
-//! A first stop no entry point leads to — Spandau's line 13 enters the map 6 m before
-//! Zitadellenweg, at the end of the road — is left out: the duty starts at the next one.
+//! A first stop no entry point leads to - Spandau's line 13 enters the map 6 m before
+//! Zitadellenweg, at the end of the road - is left out: the duty starts at the next one.
 
 use super::*;
 
@@ -125,7 +125,7 @@ pub(crate) fn place_on_duty(args: &mut Args) {
             // A start long before the tour's first trip (a duty picked at 00:00 whose first
             // bus leaves at 04:30) left the driver 270 minutes early, with nothing to do but
             // wait: the clock goes on to when the bus has to leave the entry point for the
-            // stop — at town speed, with ten minutes to start the bus and set the IBIS.
+            // stop - at town speed, with ten minutes to start the bus and set the IBIS.
             // (Not for a joining player: the clock is the host's.)
             let leave = stop.arr.max(trip.departure) - way / 7.0 - 600.0;
             if args.lan_join.is_none() && leave - now > 15.0 * 60.0 {

@@ -77,8 +77,8 @@ pub fn builtin_str_vars(root: &Path) -> Vec<String> {
 }
 
 /// A bone of a `[smoothskin]` mesh: the model mesh whose animation moves it (`[setbone]
-/// name id`, the id counting the meshes of the model's first level of detail — the GN92's and
-/// the O530G's joint dummies `Gelenk_A`–`D` are its first four) and the weights of the o3d
+/// name id`, the id counting the meshes of the model's first level of detail - the GN92's and
+/// the O530G's joint dummies `Gelenk_A`-`D` are its first four) and the weights of the o3d
 /// bone of that name.
 #[derive(Debug, Clone, Default)]
 pub struct SkinBone {
@@ -218,7 +218,7 @@ impl VehicleType {
         Self::load_with(root, bus_file, true)
     }
 
-    /// A type for AI copies: its meshes are measured (the tyres) and let go — nothing but
+    /// A type for AI copies: its meshes are measured (the tyres) and let go - nothing but
     /// the upload to the GPU needs them, and a timetable fleet kept half a gigabyte of
     /// vertices on the CPU. [`VehicleType::mesh_data`] reads a mesh again.
     pub fn load_ai(root: &Path, bus_file: &Path) -> Result<VehicleType> {
@@ -312,7 +312,7 @@ impl VehicleType {
         }
         for (pack, n) in &missing_packs {
             log::warn!(
-                "{}: {n} meshes come from the vehicle pack 'Vehicles/{pack}', which is not installed — install it for the parts this bus borrows from it (displays, ticket machine, dashboard)",
+                "{}: {n} meshes come from the vehicle pack 'Vehicles/{pack}', which is not installed - install it for the parts this bus borrows from it (displays, ticket machine, dashboard)",
                 bus_file.display()
             );
         }
@@ -359,7 +359,7 @@ impl VehicleType {
             // a `[smoothskin]` mesh (the bellows of an articulated bus, `[setbone]`-bound to
             // the joint's dummies) keeps its vertices and its bones even for an AI copy: it
             // is reshaped as the joint turns (`scene::own_skinned_meshes`), which needs the
-            // rest pose and the bone weights this would otherwise throw away — an AI-loaded
+            // rest pose and the bone weights this would otherwise throw away - an AI-loaded
             // GN92 or O530G kept its bellows perfectly straight through every bend because
             // there was nothing left to skin it from. There are only ever one or two such
             // meshes in a model, so keeping them costs nothing like the half gigabyte this
@@ -417,7 +417,7 @@ impl VehicleType {
 
     /// Unloaded hub height per axle for the physics: the model's wheel centre, raised by what
     /// the `.bus` tyre is larger than the modelled one. The tyre then touches the road exactly
-    /// where the physics puts the contact — the stock SD202's wheels are modelled 1.6 cm
+    /// where the physics puts the contact - the stock SD202's wheels are modelled 1.6 cm
     /// below the model's ground plane and stood that much in the asphalt. A model that says
     /// something implausible (more than 8 cm off the tyre radius) keeps the radius.
     ///
@@ -474,7 +474,7 @@ impl VehicleType {
     /// livery, but a `[CTCTexture]` whose own texture is a flat, colourless placeholder
     /// takes the first scheme's. The BMC Procity's destination display is lit through its
     /// CTC texture `afisaj`: the model's own `vmatrix_voll_LCD.dds` is plain grey and every
-    /// repaint brings the orange of the LEDs — with the model's own textures the display
+    /// repaint brings the orange of the LEDs - with the model's own textures the display
     /// shone white. A body texture is never a flat colour, so the livery stays the model's.
     /// Values are full paths.
     pub fn default_substitutions(&self, root: &Path) -> HashMap<String, String> {
@@ -590,8 +590,8 @@ fn flat_placeholder(p: &Path) -> bool {
     spread < 40.0 && chroma < 20.0
 }
 
-/// The tyres of a model — every mesh turned by `Wheel_Rotation_<n>_*`, with its centre and
-/// its radius about the axle — and the axle numbers it moves with `Axle_Suspension_<n>_*`.
+/// The tyres of a model - every mesh turned by `Wheel_Rotation_<n>_*`, with its centre and
+/// its radius about the axle - and the axle numbers it moves with `Axle_Suspension_<n>_*`.
 fn wheel_meshes(
     model: &Model,
     meshes: &[VehicleMesh],
@@ -796,7 +796,7 @@ pub struct VehicleInstance {
     v_throttle: Option<omsi_script::VarId>,
     v_brake: Option<omsi_script::VarId>,
     /// `Brakeforce`: the scripts' brake force for the whole vehicle (N), shared out over its
-    /// wheels besides each wheel's own `Axle_Brakeforce_*` (Omsi.exe sub_7e2574).
+    /// wheels besides each wheel's own `Axle_Brakeforce_*`.
     v_brakeforce: Option<omsi_script::VarId>,
     v_clutch: Option<omsi_script::VarId>,
     v_accel: [Option<omsi_script::VarId>; 3],
@@ -843,7 +843,7 @@ impl VehicleInstance {
         }
         // `wearlifespan` (varlist_roadvehicle.txt, written by the engine from the
         // difficulty settings): every random part lifetime the scripts draw at {init} is
-        // multiplied by it — the rear-door automatic, bulbs, the matrix display. Left at 0
+        // multiplied by it - the rear-door automatic, bulbs, the matrix display. Left at 0
         // the SD200's rear door was worn out on its first closing and reopened by itself,
         // with the opening sound, from then on; the matrix "spinnt" for the same reason.
         if let Some(i) = var_index.get("wearlifespan") {
@@ -1042,8 +1042,8 @@ impl VehicleInstance {
     /// Re-render changed text textures; returns the indices with a pending image.
     pub fn update_text_textures(&mut self) -> Vec<usize> {
         let mut changed = Vec::new();
-        // `Refresh_Strings`: a one-shot request to draw every text texture again (Omsi.exe
-        // sub_5fd5a0 → sub_5fbbcc, then the variable back to 0); changed strings are drawn
+        // `Refresh_Strings`: a one-shot request to draw every text texture again (OMSI
+        // the original → the original, then the variable back to 0); changed strings are drawn
         // anyway
         if let Some(id) = self.ty.program.var("Refresh_Strings") {
             if self.state.vars[id as usize] != 0.0 {
@@ -1063,7 +1063,7 @@ impl VehicleInstance {
         changed
     }
 
-    /// `Driver_Seat_VertTransl`: the sprung driver's seat, as Omsi.exe moves it (sub_7e2110):
+    /// `Driver_Seat_VertTransl`: the sprung driver's seat, as OMSI moves it:
     /// the body's vertical acceleration and its roll and pitch at the seat's place (the
     /// driver's camera) push a spring (3000) and damper (2000) on 150 kg; ±10 cm at most.
     fn update_driver_seat(&mut self, dt: f32) {
@@ -1093,9 +1093,9 @@ impl VehicleInstance {
         self.state.vars[id as usize] = x;
     }
 
-    /// The variables a paint scheme sets: its `[setvar]` lines, and `Colorscheme` — the
-    /// scheme's index in the `.cti` list, −1 for the model's own textures (Omsi.exe
-    /// `sub_70a174` at the spawn; `sub_5fd5a0` reads it back as the index).
+    /// The variables a paint scheme sets: its `[setvar]` lines, and `Colorscheme` - the
+    /// scheme's index in the `.cti` list, −1 for the model's own textures (OMSI
+    /// the original at the spawn; the original reads it back as the index).
     pub fn apply_paint_vars(&mut self, scheme: Option<usize>) {
         let scheme = scheme.filter(|i| *i < self.ty.paint_schemes.len());
         self.set_var("Colorscheme", scheme.map(|i| i as f32).unwrap_or(-1.0));
@@ -1318,7 +1318,7 @@ impl VehicleInstance {
         // Wheel_Rotation_* and Axle_Steering_* are radians in the original: the stock
         // model.cfg turns a wheel with anim_rot ... 57.29577951308232 (180/pi) and the
         // steering wheel with 1450 (SD200) or 1680 (SD202), roughly two and a half turns
-        // from lock to lock. Positive is to the right, as here — checked by looking
+        // from lock to lock. Positive is to the right, as here - checked by looking
         // straight down on the front wheel alone (OMSI_ONLY_MESH=SD_Rad_VL) and at the
         // steering wheel in the cab, which turn together with this sign.
         let steer = self.physics.steer_deg.to_radians();
@@ -1437,7 +1437,7 @@ impl VehicleInstance {
             }
         }
         // Obstacles: the static boxes around the vehicle and the moving ones, answered with
-        // impulses. The old answer — put the bus back where it was and take its speed — held
+        // impulses. The old answer - put the bus back where it was and take its speed - held
         // it against whatever it touched: it could not slide along a wall or turn away, and
         // every frame of pushing counted as another crash.
         if let Some(bb) = self.ty.def.bounding_box {
@@ -1506,7 +1506,7 @@ impl VehicleInstance {
                 );
             }
             // `coll_energy` is in kJ: the stock and mod collision scripts compare it with
-            // 100–1000 for the electrics and 1–10 for a lamp — in joules a bump at
+            // 100-1000 for the electrics and 1-10 for a lamp - in joules a bump at
             // walking pace took the electrics out
             self.host.coll_pos = hit.point.to_array();
             self.host.coll_energy += energy / 1000.0;
@@ -1558,7 +1558,7 @@ impl VehicleInstance {
                     // the SD200's front wheel). A compressed spring means the body has
                     // come down towards the wheel, i.e. the wheel sits *up* in its arch:
                     // the value is minus the compression. Handing over the compression
-                    // itself pushed every wheel down by twice its travel — into the road
+                    // itself pushed every wheel down by twice its travel - into the road
                     // under braking, with the body riding high above the arches.
                     self.put(w[3], -rw.compression);
                     if let Some(ws) = self.physics.wheels.get_mut(ai).and_then(|a| a.get_mut(si)) {
@@ -1598,7 +1598,7 @@ impl VehicleInstance {
 
     /// Variables the engine feeds the model directly (`Dirt_Norm`, `AI`, …): OMSI's
     /// varlists rarely declare them, and an undeclared `[alphascale]` variable used to
-    /// read as 1.0 — every bus wore its dirt film at full strength from the first frame.
+    /// read as 1.0 - every bus wore its dirt film at full strength from the first frame.
     pub fn set_engine_var(&mut self, name: &str, v: f32) {
         if !self.set_var(name, v) {
             let id = self.state.vars.len() as omsi_script::VarId;
@@ -1631,7 +1631,7 @@ impl VehicleInstance {
         // Snow does not run down a pane and the cab is warm: the flakes that land on the
         // glass melt and leave a light haze, nothing like the film a shower leaves, so the
         // rate is steered towards that haze instead of driving the layer to full strength
-        // (`rain.osc` only ever adds `PrecipRate * Timegap` and clamps at 1 — it never asks
+        // (`rain.osc` only ever adds `PrecipRate * Timegap` and clamps at 1 - it never asks
         // what is falling, which is why the original shows raindrops in a snowstorm).
         let rate = if self.host.precip_type as i32 == 2 {
             let film = self.var("Rain_Window_Norm_Wetness").unwrap_or(0.0);
@@ -1656,11 +1656,11 @@ impl VehicleInstance {
         }
     }
 
-    /// The engine's own vehicle variables that Omsi.exe binds to fields of the vehicle
-    /// (`TRoadVehicle.virtual_00` registers them, `sub_7cffb8` points each at its field, and
-    /// `sub_7d5124` keeps the fields up to date): the odometer (`kmcounter_km` whole
+    /// The engine's own vehicle variables that OMSI binds to fields of the vehicle
+    /// (`TRoadVehicle.virtual_00` registers them, the original points each at its field, and
+    /// the original keeps the fields up to date): the odometer (`kmcounter_km` whole
     /// kilometres, `kmcounter_m` the metres of the fractions), the people aboard, whether a
-    /// timetable is driven, the precipitation type, and the cabin air — kept within reach of
+    /// timetable is driven, the precipitation type, and the cabin air - kept within reach of
     /// the weather (never more than 10 °C from the air outside and pulled towards 18..25 °C
     /// as a heated/ventilated bus is; the absolute humidity follows the outside air).
     fn update_engine_vars(&mut self, dt: f32) {
@@ -1675,7 +1675,7 @@ impl VehicleInstance {
         // A bus whose scripts keep their own cabin air (`heizung.osc` of the stock buses and
         // their descendants: they integrate the temperature from heat flows) is left to
         // them; only the relative humidity comes from their temperature and humidity. An
-        // engine model on top of theirs broke that balance — the Sprinter 312D's cabin
+        // engine model on top of theirs broke that balance - the Sprinter 312D's cabin
         // went to infinity within a second, and its engine with it.
         let owns = |name: &str| self.ty.program.var(name).is_some_and(|v| self.ty.program.stores(v));
         if owns("Cabinair_Temp") {
@@ -1798,7 +1798,7 @@ impl VehicleInstance {
     }
 
     /// The saloon lamps' light at a point of the model frame (0..1): each lit
-    /// `[interiorlight]` as the Direct3D point light Omsi.exe makes of it (full within its
+    /// `[interiorlight]` as the Direct3D point light OMSI makes of it (full within its
     /// range, falling with the square of the distance beyond), summed and saturated. Unlike
     /// [`Self::interior_light`] a lamp at the far end of the saloon hardly reaches the point,
     /// and a lamp that is off gives nothing.
@@ -1959,7 +1959,7 @@ impl VehicleInstance {
         // ambulance script sounds the siren whenever `AI` is 0 and the car rolls, which is
         // why every spawn came with an ambulance nobody could see
         // `AI_Scheduled_AtStation`: 1 while the bus serves a stop (the door scripts open the
-        // doors), then -1 when it wants to leave — the stock `door_X10_AI.osc` closes the
+        // doors), then -1 when it wants to leave - the stock `door_X10_AI.osc` closes the
         // doors on -1, releases the stop brake and only then writes 0, which is the signal
         // that the bus may move (`VehicleInstance::station_released`). Writing 0 straight
         // away left every timetable bus driving off with its doors open. A frame that says
@@ -1979,7 +1979,7 @@ impl VehicleInstance {
             ("AI_Brakelight", ai.brake as i32 as f32),
             ("AI_Light", ai.lights as i32 as f32),
             // (the engine's field +0x638: an AI bus lights its saloon when it drives with
-            // its lights on — the LiAZ's `lights_AI` switches both saloon circuits on it)
+            // its lights on - the LiAZ's `lights_AI` switches both saloon circuits on it)
             ("AI_Interiorlight", ai.lights as i32 as f32),
             ("AI_Engine", 1.0),
             ("AI_Scheduled_AtStation", station),
@@ -2038,9 +2038,9 @@ impl VehicleInstance {
     }
 
     /// Seat the drawn tyres on the hubs the physics has: a model whose suspension
-    /// animation lifts its wheels by less (or more) than the spring is compressed — the
+    /// animation lifts its wheels by less (or more) than the spring is compressed - the
     /// LiAZ 5292 turns them about pivots across the bus, and at rest they stood 4 cm in the
-    /// asphalt, like flat tyres — has each tyre mesh moved up or down to where its hub is.
+    /// asphalt, like flat tyres - has each tyre mesh moved up or down to where its hub is.
     /// Only small corrections (under 8 cm) and only axles the model moves with
     /// `Axle_Suspension`: a larger mismatch is the model's own business.
     fn seat_wheels(&mut self) {
@@ -2296,7 +2296,7 @@ impl VehicleInstance {
     /// its wheels touch (m) and the `Axle_Suspension` that goes with it. OMSI sets an AI copy
     /// `[ai_deltaheight]` lower than its model origin and lifts the wheels by as much through
     /// `Axle_Suspension` (every stock AI road model animates it), so it stands exactly like a
-    /// driven one that has settled on its springs — the delta is that sag; left at zero the
+    /// driven one that has settled on its springs - the delta is that sag; left at zero the
     /// AI buses rode 10 cm high. On top of it, the model's wheel geometry (see `ai_lift`).
     /// `AiBody` adds its own travel on its springs, which is zero at rest.
     pub fn ai_rest_offset(&self) -> (f32, f32) {
@@ -2310,7 +2310,7 @@ impl VehicleInstance {
 
     /// Where the wheel meshes turn (`OMSI_DEBUG_WHEELS`): for every mesh animated by a
     /// `Wheel_Rotation_*` or `Axle_Steering_*` variable, how far the centre of its vertices
-    /// moves when that variable alone is set — a wheel spinning or steering about its own
+    /// moves when that variable alone is set - a wheel spinning or steering about its own
     /// centre does not move at all, one with an offset pivot swings around. An AI type keeps
     /// no vertices on the CPU (`VehicleType::load_ai`), so the mesh is read again here.
     pub fn wheel_pivot_report(&self) -> Vec<String> {
@@ -2534,7 +2534,7 @@ struct MeshPlan {
 
 /// `compute_mesh_props` resolved once per vehicle: every frame it looked each variable up
 /// by name (a lower-cased copy of the name each time), matched material slots by texture
-/// name and allocated four vectors per mesh — for every mesh of every AI car, which made
+/// name and allocated four vectors per mesh - for every mesh of every AI car, which made
 /// the mesh properties the costliest part of the traffic's frame.
 #[derive(Debug, Clone, Default)]
 struct PropsPlan {
@@ -2746,7 +2746,7 @@ pub struct TrailerPart {
     odometer: f32,
     pub reversed: bool,
     /// Per axle of this part: tyre radius less the unloaded hub height, the static load per
-    /// wheel and the spring rate — it sits down on its springs like the part it follows.
+    /// wheel and the spring rate - it sits down on its springs like the part it follows.
     rest: Vec<(f32, f32, f32)>,
     /// `Axle_Brakeforce_<axle>_L/R` of this part's axles, in the leading vehicle's scripts.
     v_brakes: Vec<Option<omsi_script::VarId>>,
@@ -3122,8 +3122,8 @@ impl TrailerPart {
         let rot = self.body_rotation();
         self.position = c - rot.transform_point3(self.coupling_front).as_dvec3();
         // The joint's angles (degrees) for its plates and bellows and for the scripts: alpha
-        // about the vertical axis — the stock articulation.osc's jackknife protection brakes
-        // at |alpha| > 47° — and beta about the transverse axis. (The horizontal angle went
+        // about the vertical axis - the stock articulation.osc's jackknife protection brakes
+        // at |alpha| > 47° - and beta about the transverse axis. (The horizontal angle went
         // to beta: the protection never engaged, the bellows turned in the wrong plane.)
         // The part in front is drawn pitched, this one level: beta is that difference.
         // (the pitch of the part in front as it travels, read off its rotation: forward along
@@ -3204,7 +3204,7 @@ impl VehicleInstance {
     }
 
     /// World transform of the vehicle body (f32; for local computations such as sound
-    /// positions — use `body_rotation` + `position` for rendering).
+    /// positions - use `body_rotation` + `position` for rendering).
     pub fn world_transform(&self) -> Mat4 {
         Mat4::from_translation(self.position.as_vec3()) * self.body_rotation()
     }
@@ -3212,7 +3212,7 @@ impl VehicleInstance {
     /// Transform for mesh `i` relative to the vehicle position (rotation + animation). A
     /// flat shadow blob (`[isshadow]`, drawn `[matl_noZcheck]` in the original, i.e. over the
     /// road whatever the depth) is put onto the plane the wheels stand on: in the model it
-    /// lies at z = 0, which the springs' sag takes 10–16 cm under the road, where no depth
+    /// lies at z = 0, which the springs' sag takes 10-16 cm under the road, where no depth
     /// bias brings it through.
     pub fn mesh_local_transform(&self, i: usize) -> Mat4 {
         if is_shadow_mesh(&self.ty, i) {
@@ -3442,8 +3442,8 @@ mod tests {
     }
 
     /// The articulated GN92 turning right: the angle goes to `articulation_0_alpha` (the
-    /// jackknife protection's), and the joint's last dummy — the bone the bellows' rear end
-    /// hangs on — turns with it onto the rear section's line.
+    /// jackknife protection's), and the joint's last dummy - the bone the bellows' rear end
+    /// hangs on - turns with it onto the rear section's line.
     #[test]
     fn articulation_alpha_turns_the_joint_onto_the_rear_section() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
@@ -3543,7 +3543,7 @@ mod tests {
     }
 
     /// A timetable duty and a random traffic car load their bus with `VehicleType::load_ai`,
-    /// which lets the vertices of every mesh go to save memory — except a `[smoothskin]`
+    /// which lets the vertices of every mesh go to save memory - except a `[smoothskin]`
     /// mesh (the bellows) has to keep its own, or there is nothing left to bend it from and
     /// every AI articulated bus (and the rear-section trailer of a `.zug` train) drove with
     /// its bellows frozen in the rest pose through every corner.
@@ -3613,7 +3613,7 @@ mod tests {
     /// user's overlay by default): a third-party model with its own bone names
     /// (`Armature_Gelenk_A-D` on `18m_main\bellows_out.o3d` / `bellows_in.o3d`, against the
     /// stock GN92's `Gelenk_A-D` on its own files) still bends, both loaded normally and
-    /// loaded as an AI copy — the fix is generic over `[setbone]` names, not tied to MAN's.
+    /// loaded as an AI copy - the fix is generic over `[setbone]` names, not tied to MAN's.
     #[test]
     fn o530g_mod_bellows_bend_and_survive_an_ai_load() {
         let content = omsi_cfg::env::var_os("OMSI_CONTENT")
@@ -3704,7 +3704,7 @@ mod tests {
 }
 
 /// The relative humidity (a fraction, 1 = saturated) of air at `t` °C holding `abs_hum` g/m³,
-/// as Omsi.exe computes `Cabinair_relHum` (`sub_752738`, Magnus over water with 7.5/237.3,
+/// as OMSI computes `Cabinair_relHum` (the original, Magnus over water with 7.5/237.3,
 /// over ice with 7.6/240.7 below 0 °C). It was written as a percentage: 100 times what the
 /// scripts and the passengers (a humid saloon at over 0.9) expect.
 pub fn relative_humidity(t: f32, abs_hum: f32) -> f32 {
@@ -3720,7 +3720,7 @@ pub fn relative_humidity(t: f32, abs_hum: f32) -> f32 {
 /// The tyres' friction coefficient on the road under them: `street_cond` as the weather sets
 /// it (0 dry … 1 wet, 1 … 2 snow from packed to fresh) and the air temperature (°C), below
 /// which a wet road freezes (the stock "Ueberfrierende Naesse" weather). Dry asphalt 0.85,
-/// wet 0.6, snow 0.3, black ice 0.12 — textbook values for truck tyres; Omsi.exe keeps its
+/// wet 0.6, snow 0.3, black ice 0.12 - textbook values for truck tyres; OMSI keeps its
 /// friction inside ode.dll and only hands `StreetCond` to the scripts, so these are not
 /// read off it.
 pub fn road_grip(street_cond: f32, temperature: f32) -> f32 {

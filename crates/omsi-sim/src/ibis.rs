@@ -7,7 +7,7 @@
 //! wants the driver's card, number and PIN, takes line, suffix, course and route as one
 //! number after its L/S/K key (modes 102/103), makes the driver wait (104) and confirm the
 //! destination (105), the first stop (106) and then the whole new route twice before the
-//! IBIS shows it — typed the stock way, nothing of that happened and the destination had to
+//! IBIS shows it - typed the stock way, nothing of that happened and the destination had to
 //! be written into the variables directly.
 //!
 //! So nothing here knows a unit. The compiled scripts say which triggers are the number
@@ -18,7 +18,7 @@
 //! keys out on copies of the bus's script state with the scripts' own frames running in
 //! between: a key is pressed when it has an effect (a unit that is still booting or shows
 //! "please wait" is waited for), the typed codes are tried in the layouts the digit
-//! keys take, and entries are confirmed for as long as the unit asks — until the IBIS
+//! keys take, and entries are confirmed for as long as the unit asks - until the IBIS
 //! variables show the duty. The plan is then played on the bus at a driver's pace,
 //! checking on the way that the unit is where the trial run was.
 
@@ -222,7 +222,7 @@ impl Unit {
         }
         let digit_keys: HashSet<String> = u.keypads.iter().flat_map(|k| k.1.iter().cloned()).collect();
         // what the number keys type into: written by them (not by letting go) and read by
-        // an entry key — or by the number keys themselves, like the count of digits typed
+        // an entry key - or by the number keys themselves, like the count of digits typed
         // (a leading 0 changes nothing else)
         let mut typed = (HashSet::new(), HashSet::new());
         let mut digit_reads = (HashSet::new(), HashSet::new());
@@ -461,7 +461,7 @@ thread_local! {
 
 /// How long the search for a way to type may take. The stock units need a tenth of a
 /// second, a unit that boots and wants a log-in a second or two; the Atron RBL of the
-/// Citaro C2 (Ahlheim) — a menu the trials cannot find their way through — kept a worker
+/// Citaro C2 (Ahlheim) - a menu the trials cannot find their way through - kept a worker
 /// busy for two and a half minutes, and the displays stayed blank until the duty was set
 /// directly after that. `OMSI_IBIS_BUDGET` (seconds) changes it.
 fn trial_budget() -> std::time::Duration {
@@ -530,7 +530,7 @@ impl Sim {
     }
 }
 
-/// Whether two trial states differ in the given variables — in any variable when none are
+/// Whether two trial states differ in the given variables - in any variable when none are
 /// given: a unit whose keys only store a key code (`IBIS_Taste`) that its frame macro reads
 /// (Krüger's IBIS, the Procity's) says nothing statically about what typing moves.
 fn differs(a: &Sim, b: &Sim, vars: &[VarId], strs: &[u32]) -> bool {
@@ -597,7 +597,7 @@ impl Typist {
     /// type it. `operable` says whether a trigger is a key the driver can reach. The trial
     /// runs take from a tenth of a second (the stock IBIS) to a second and a half (a unit
     /// that boots, wants a log-in and asks twice): in `background` they run on a worker
-    /// thread and the typing starts when they are done — the keys come a little later than
+    /// thread and the typing starts when they are done - the keys come a little later than
     /// the trial had them, which only finds the unit further along.
     pub fn new(v: &VehicleInstance, target: Target, operable: &dyn Fn(&str) -> bool, background: bool) -> Typist {
         let p = v.ty.program.clone();
@@ -970,7 +970,7 @@ fn entry(u: &Unit, t: &Target, s: &Sim, digits: &[String], enter: &str, depth: u
         }
         let key: Option<String> = (!prefix.is_empty()).then(|| prefix.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(" "));
         let key = key.as_ref();
-        // a unit learnt by trial: what the number keys type into on this screen — the
+        // a unit learnt by trial: what the number keys type into on this screen - the
         // string that a press of 1 makes end in a 1
         let probed;
         let u: &Unit = if u.dynamic {

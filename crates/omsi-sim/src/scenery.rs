@@ -75,8 +75,8 @@ impl SceneryInstance {
         let mut state = State::new(&program);
         let mut vm = Vm::new();
         let mut host = VehicleHost::new(clock);
-        // `Colorscheme`: the object's paint scheme, −1 for its own textures (Omsi.exe
-        // sub_79c8b8 draws one only for objects placed at random; placed ones show theirs)
+        // `Colorscheme`: the object's paint scheme, −1 for its own textures (OMSI
+        // the original draws one only for objects placed at random; placed ones show theirs)
         if let Some(id) = program.var("Colorscheme") {
             state.vars[id as usize] = -1.0;
         }

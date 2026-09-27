@@ -57,7 +57,7 @@ fn to_cube(d: vec3<f32>) -> vec3<f32> {
 // 12-sample search changed the penumbra radius, producing checkerboard patches and
 // camera-driven strips. The offsets are fixed in shadow-map space, so the only thing that
 // can change is the actual caster. `thin`: foliage, whose normals OMSI points up for even
-// lighting — no receiver plane can be taken from them, a leaf compares at its own depth.
+// lighting - no receiver plane can be taken from them, a leaf compares at its own depth.
 fn sun_shadow_soft(world_in: vec3<f32>, n: vec3<f32>, thin: bool) -> f32 {
     if (camera.shadow.x < 0.5) {
         return 1.0;
@@ -335,7 +335,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     let outside = weather_outside_n(in.world, safe_normal(in.normal), terrain, in.params2.w);
     // the normal as the content gives it: never turned towards the viewer (Direct3D does
     // not either, and OMSI's foliage points every leaf's normal up so the whole crown is lit
-    // evenly — turned round, the crown went dark above the horizon line)
+    // evenly - turned round, the crown went dark above the horizon line)
     var n = safe_normal(in.normal);
     // leaves and fences: thin, cut out by their texture
     let thin = mode > 0.5 && mode < 1.5;
@@ -408,7 +408,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         f0 = vec3<f32>(clamp(0.06 + 0.2 * min(material.params2.y, 1.0), 0.08, 0.26));
     } else if (reflective_env) {
         // Paint reflects its few per cent through a smooth clear coat; much more than a few
-        // per cent is polished metal — but only where the model says so with a mask of its
+        // per cent is polished metal - but only where the model says so with a mask of its
         // own ([matl_envmap_mask]). Nearly every car body carries `[matl_envmap] … 1` with
         // no mask, which OMSI takes as "reflect the sphere map fully" and not as chrome:
         // read as metalness it made a Golf's bonnet a mirror, in which the envmap photo's
@@ -462,11 +462,11 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         // as the road dries; a puddle goes glass-flat and mirrors what is above it. While it
         // is actually raining rather than merely wet, and never while it is snow settling
         // instead (`enh.weather.z` is fed by any precipitation, `.y` singles snow back out),
-        // concentric rings cross a puddle where drops land, fading as they widen — the other
+        // concentric rings cross a puddle where drops land, fading as they widen - the other
         // half of the wheel splashes in `puddles.rs`.
         let pattern_xy = world_pattern_xy(in.world);
         let pn = vnoise_f(pattern_xy, 0.22, vec2<f32>(17.3, -9.1)) * 0.65 + vnoise_f(pattern_xy, 0.9, vec2<f32>(-4.0, 8.0)) * 0.35;
-        // OMSI's own rule (Omsi.exe sub_7fc58c): the puddle map is alpha-tested against
+        // OMSI's own rule: the puddle map is alpha-tested against
         // 255 * (1 - wetness), so the pools spread from the lowest spots as the road soaks
         // and a road that is wet through is one sheet of water (the old threshold never
         // passed three quarters of the carriageway, leaving dry islands in a downpour).
@@ -540,7 +540,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         let e_sun = enh.sun.rgb * shadow;
         if (thin) {
             // foliage: a crown of leaves facing every way, whose normals OMSI points up
-            // only to light it evenly — lit by the sun from any side (the shadow map
+            // only to light it evenly - lit by the sun from any side (the shadow map
             // darkens its far side), a little through the leaves as well
             direct = e_sun * (0.3 + 0.4 * max(nl, 0.0) + 0.1 * max(-nl, 0.0)) * sf.albedo / PI;
         } else if (nl > 0.0) {
@@ -571,7 +571,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     // cabin's own walls: less of it, and neither as blue nor as directional as the sky's
     let in_cab = 1.0 - outside;
     // The cab's light is one even ambient already (cab_e below); the screen-space occlusion
-    // on top of it went black in the hollow under the windscreen — the steering wheel and
+    // on top of it went black in the hollow under the windscreen - the steering wheel and
     // the dashboard stood dark beside a brightly lit cash desk. Inside the cab it is taken
     // at a third of its strength.
     ao = mix(ao, 1.0 - (1.0 - ao) * 0.35, in_cab);
@@ -594,7 +594,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     let surround = enh.fog_color.rgb * (0.25 / 0.9);
     let open = smoothstep(-0.05, 0.35, r.z);
     env = mix(surround, env, mix(open, 1.0, select(0.25, 0.5, reflective_env)));
-    // the cabin reflects the cabin, not the sky — and so does the bus's own glass seen
+    // the cabin reflects the cabin, not the sky - and so does the bus's own glass seen
     // from the driver's seat
     let cab_view = max(in_cab, near_player_vehicle(in.world) * inside_vehicle(camera.cam_pos.xyz));
     // From inside the player bus the pane is near the cabin, but it must still show the
@@ -615,7 +615,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         // houses, the street), the probe its light
         // Looked up by the reflection's direction in the world, not in the camera's frame
         // as Direct3D's sphere map does: taken from the camera, what a standing bus
-        // mirrored changed whenever the view turned — one picture from one angle,
+        // mirrored changed whenever the view turned - one picture from one angle,
         // another from the next, trees sliding in from nowhere. Height gives the photo's
         // rows (sky, the horizon's trees and houses, the ground), the compass direction
         // a gentle drift across it that stays put in the world.
@@ -643,7 +643,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         let outside_env = 1.0 - cab_view;
         // ... and not in a fog: there is nothing sharp out there to mirror. The photo's
         // trees stood as flat grey silhouettes on every pane in fog, in front of the real
-        // (fogged) trees behind the glass — outlines of trees that are not there
+        // (fogged) trees behind the glass - outlines of trees that are not there
         let clear_air = exp(-enh.fog.x * 150.0);
         env = env * mix(vec3<f32>(1.0), ratio, band * 0.65 * mix(0.25, 1.0, sharpness) * outside_env * clear_air * enh.debug.z);
     }
@@ -673,7 +673,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     var emit = tex.rgb * material.emissive.rgb * max(enh.exposure.z * 2.0, 0.8);
     // (the tile light map on the splines and [LightMapMapping] objects is the vanilla
     // path's: here the map's lamps light them, tinted from that map, as they light every
-    // other surface — added on top it lit the roads twice, with a hard edge where a road
+    // other surface - added on top it lit the roads twice, with a hard edge where a road
     // met a square that is an object)
     if (material.extra.w > 0.5) {
         let nuv = select(duv, vec2<f32>(in.uv.x, 1.0 - in.uv.y), terrain);

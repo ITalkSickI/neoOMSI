@@ -259,7 +259,7 @@ pub(crate) fn run_offscreen(
         t.populate(&world, &renderer, &mut scene, center);
     }
     // LAN in an offscreen run too, so that one game's view of another can be rendered
-    // (`OMSI_LAN_AUDIO=1`: with the other buses' sounds, heard at the camera — for the logs)
+    // (`OMSI_LAN_AUDIO=1`: with the other buses' sounds, heard at the camera - for the logs)
     let lan_audio = (lan_off.is_some() && omsi_cfg::env::var_os("OMSI_LAN_AUDIO").is_some())
         .then(omsi_audio::AudioEngine::new);
     if let (Some(l), Some(p)) = (lan_off.as_mut(), player.as_mut()) {
@@ -368,7 +368,7 @@ pub(crate) fn run_offscreen(
                 t.sync(&world, &renderer, &mut scene);
                 // `OMSI_POPULATION_SHOTS=1` (with OMSI_DEBUG_POPULATION): a picture from the
                 // viewer whenever a car was put inside its frustum (behind something), with
-                // where on the picture it stands — to see that it really is hidden
+                // where on the picture it stands - to see that it really is hidden
                 let framed = std::mem::take(&mut t.framed_spawns);
                 if !framed.is_empty() && omsi_cfg::env::var_os("OMSI_POPULATION_SHOTS").is_some() {
                     t.sync(&world, &renderer, &mut scene);
@@ -608,7 +608,7 @@ pub(crate) fn run_offscreen(
                     log_physics(&player.vehicle, t_s + dt);
                 }
                 // `OMSI_TRACE_VARS=a,b,$c`: the listed variables every half second of the run
-                // (a leading `$` reads a string variable) — how a start-up sequence unfolds
+                // (a leading `$` reads a string variable) - how a start-up sequence unfolds
                 if i % 15 == 0 {
                     if let Ok(list) = omsi_cfg::env::var("OMSI_TRACE_VARS") {
                         let vals: Vec<String> = list
@@ -830,7 +830,7 @@ pub(crate) fn run_offscreen(
                     h.sync(&renderer, &mut scene, cam.position);
                 }
                 // the time of day of this moment, and its lights: street lamps by night and
-                // the vehicles' own (indicators, brake and tail lights) as they are now —
+                // the vehicles' own (indicators, brake and tail lights) as they are now -
                 // without them a snapshot showed no vehicle light at all
                 let snap_clock = {
                     let mut c = start_clock(args);
@@ -1599,7 +1599,7 @@ pub(crate) fn run_offscreen(
         );
     }
     // OMSI_CHECK_OBSTACLES: sweep a bus-sized box along every driving lane and list the
-    // obstacle boxes it runs into — the "invisible walls" a player meets on an open road
+    // obstacle boxes it runs into - the "invisible walls" a player meets on an open road
     if omsi_cfg::env::var_os("OMSI_CHECK_OBSTACLES").is_some() {
         if let Some(t) = traffic.as_ref() {
             let boxes = world.collision.lock().clone();
@@ -2209,7 +2209,7 @@ pub(crate) fn run_offscreen(
             let mut points: Vec<DVec3> = Vec::new();
             let mut headings: Vec<f64> = Vec::new();
             // OMSI_ROAD_PHOTO_SLANT=<m>: from a driver's eye that far back along the lane
-            // (2.6 m up) instead of from above — terrain a few millimetres over the road
+            // (2.6 m up) instead of from above - terrain a few millimetres over the road
             // shows only at a slant
             let slant: Option<f64> = omsi_cfg::env::var("OMSI_ROAD_PHOTO_SLANT").ok().and_then(|v| v.parse().ok());
             for l in t
@@ -2298,7 +2298,7 @@ pub(crate) fn run_offscreen(
     }
     // OMSI_BENCH=n: the final picture drawn n more times as a window frame would be (one
     // mirror, then the view), with the median CPU time of the drawing calls and of the wait
-    // for the GPU — medians shrug off what else the machine is doing
+    // for the GPU - medians shrug off what else the machine is doing
     if let Some(n) = omsi_cfg::env::var("OMSI_BENCH")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -2363,7 +2363,7 @@ pub(crate) fn run_offscreen(
     // the textures compressed on the workers are in the picture, as in a window after its
     // first seconds; OMSI_TEXTURE_MEMORY=<MB> applies a texture budget first
     // (OMSI_BUDGET_FROM=x,y[,MB]: the budget is met from there first, as if the camera had
-    // been there, then — with the budget raised to MB — the textures that come near again
+    // been there, then - with the budget raised to MB - the textures that come near again
     // with the camera are read back)
     if omsi_cfg::env::var_os("OMSI_TEXTURE_MEMORY").is_some() {
         world.set_texture_budget(texture_budget(&settings));
@@ -2420,7 +2420,7 @@ fn tyre_lows(v: &omsi_sim::VehicleInstance, world: &World) -> Vec<(DVec3, f64)> 
 }
 
 /// `OMSI_CAM_VEHICLE=x,y,z,yaw,pitch[,fov]`: a camera in the bus's own frame (x right,
-/// y forward, z up; yaw relative to the bus) for close-ups of displays and switches — the
+/// y forward, z up; yaw relative to the bus) for close-ups of displays and switches - the
 /// final picture and every `--snapshots` one.
 fn vehicle_camera(player: &Player, camera: &mut Camera) {
     let Ok(spec) = omsi_cfg::env::var("OMSI_CAM_VEHICLE") else { return };

@@ -2,7 +2,7 @@
 //! Guerrilla's Horizon Zero Dawn clouds as bevy-volumetric-clouds (MIT, evroon) and
 //! Frostbite's TileableVolumeNoise build it.
 //!
-//! * the **shape map** (2-D, tiling): R a Perlin fbm cut by Worley cells — where the heaps
+//! * the **shape map** (2-D, tiling): R a Perlin fbm cut by Worley cells - where the heaps
 //!   stand and how dense they are; G the coverage the heap needs before it appears there
 //!   (three octaves of Worley, stored + 1); B how much its top is rounded off;
 //! * the **detail volume** (3-D, tiling): Worley noise of three frequencies that eats the

@@ -6,7 +6,7 @@
 /// The 4-character Annax line matrix of the LiAZ 5292 (a rewrite of the stock 3-character
 /// `Matrix_D.osc`): a line number of one digit is first padded to four characters
 /// (`4 $SetLengthL` → `"5   "`) and then cut to its last three (`3 $SetLengthR`, which
-/// keeps the right end in OMSI too — see FORMATS.md), so line 5 came out blank and 5E as
+/// keeps the right end in OMSI too - see FORMATS.md), so line 5 came out blank and 5E as
 /// `"   E"`. The number is written with three digits instead (`005E`, `051E`, `123E`), which
 /// is what a three-digits-and-a-letter display shows.
 ///

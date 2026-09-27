@@ -9,7 +9,7 @@
 //! * A rendezvous: the host posts its addresses under a topic named after the session id on
 //!   a public message relay (ntfy.sh); a joining game posts its own under the topic's
 //!   `-c` twin and reads the host's. The host then sends a few datagrams to the joining
-//!   game's public address while the latter says hello to the host's — the two routers
+//!   game's public address while the latter says hello to the host's - the two routers
 //!   see traffic both ways and let it through (UDP hole punching). Only who wants to meet
 //!   whom goes over the relay: addresses, never the game.
 //!

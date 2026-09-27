@@ -38,7 +38,7 @@ impl Money {
     }
 
     /// Every coin and note of the currency as (index, value): the coins first, then the
-    /// notes (index `coins.len() + k`). The passengers had only ever paid in coins — a
+    /// notes (index `coins.len() + k`). The passengers had only ever paid in coins - a
     /// Novi Sad fare of 65 dinars was always 20 + 20 + 20 + 5, never a 100 note.
     fn denominations(&self) -> Vec<(usize, f32)> {
         let Some(c) = &self.currency else { return Vec::new() };

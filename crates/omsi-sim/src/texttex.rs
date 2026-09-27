@@ -100,7 +100,7 @@ impl FontLibrary {
         self.index().iter().any(|f| f.name.trim().eq_ignore_ascii_case(wanted))
     }
 
-    /// The font called `name`, or — when there is none — one of the same family and size in
+    /// The font called `name`, or - when there is none - one of the same family and size in
     /// another weight: mods ask for weights their packs never shipped (the Citaro pack's
     /// Krüger matrix wants "churafont++ Numeric 26x11 Bold" and "churafont++ 32x8 Bold";
     /// the fonts are "churafont++ Numeric 26x11" and "churafont++ 32x8"), and without it
@@ -116,7 +116,7 @@ impl FontLibrary {
             return Some(f.clone());
         }
         let family = family_of(wanted);
-        // the plain weight first, then the others in file order — but only a font of the same
+        // the plain weight first, then the others in file order - but only a font of the same
         // size. A dot-matrix display (the Krüger matrix asks for eight sizes by name, from
         // "Krueger 7x4" to "Krueger 16x9") draws its letters cell by cell: substituting
         // another size there does not make the text wider or narrower, it makes it a soup of

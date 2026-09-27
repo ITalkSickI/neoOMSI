@@ -3,7 +3,7 @@
 //!
 //! It is a window of the game binary itself, drawn with wgpu: the chosen bus stands in a
 //! picture drawn by the game's renderer (see `showroom`) whenever it changes, and the
-//! interface — flat and dark, every control custom — is drawn with `omsi-ui` straight
+//! interface - flat and dark, every control custom - is drawn with `omsi-ui` straight
 //! onto the window. The data side (content
 //! lists, timetables, profiles, installs, running games) is `omsi-launcher-core`, the same
 //! functions `omsi-launcher --cli` offers a terminal.
@@ -360,7 +360,7 @@ impl Launcher {
         let dpi = w.scale_factor() as f32;
         let s = w.inner_size();
         let (lw, lh) = (s.width as f32 / dpi, s.height as f32 / dpi);
-        // (the height counts a little less: on a wide, low screen — 2560 x 1080 — the text
+        // (the height counts a little less: on a wide, low screen - 2560 x 1080 - the text
         // stayed the size of a 1440 x 880 window's, tiny across the width; the pages scroll or
         // keep their width, see `draw_ui`)
         dpi * (lw / 1440.0).min(lh / 820.0).clamp(0.8, 2.2)
@@ -552,7 +552,7 @@ impl Launcher {
         self.rail();
         self.page_anim = (self.page_anim + self.ui.dt / 0.15).min(1.0);
         // (no wider than a page reads well: on a wide screen the rest is margin, the page
-        // in the middle — the panels stretched across 2000 px with their text at one end)
+        // in the middle - the panels stretched across 2000 px with their text at one end)
         let avail = size.x - RAIL_W - 64.0;
         let w = avail.min(1760.0);
         let content = Rect::new(RAIL_W + 32.0 + (avail - w) * 0.5, 28.0, w, size.y - 28.0 - 40.0);
@@ -697,7 +697,7 @@ impl Launcher {
 }
 
 
-/// The showroom's renderer: a bus on a floor needs none of the game's costly passes — no
+/// The showroom's renderer: a bus on a floor needs none of the game's costly passes - no
 /// ambient occlusion, a small shadow map, 4x MSAA for the edges whatever the game uses.
 fn showroom_options(settings: &crate::settings::Settings) -> omsi_render::RenderOptions {
     omsi_render::RenderOptions { msaa: 4, ssao: false, shadow_size: 1024, render_scale: 1.0, ..settings.render_options() }

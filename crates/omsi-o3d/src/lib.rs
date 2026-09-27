@@ -1,7 +1,7 @@
 //! OMSI mesh files.
 //!
-//! * `.o3d` – OMSI's own binary format (unit `mc_o3dfiles`), see `docs/FORMATS.md`.
-//! * `.x`   – DirectX text meshes, still used by a handful of stock objects and the helper meshes.
+//! * `.o3d` - OMSI's own binary format (unit `mc_o3dfiles`), see `docs/FORMATS.md`.
+//! * `.x`   - DirectX text meshes, still used by a handful of stock objects and the helper meshes.
 //!
 //! Both produce the same [`Mesh`]. Coordinates are OMSI's: X right, Y forward, Z up, metres.
 

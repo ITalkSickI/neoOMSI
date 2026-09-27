@@ -1,4 +1,4 @@
-//! `Holidays.txt` and `timezone.txt` (`TMap.loadGlobalFile` – "Load Calendar").
+//! `Holidays.txt` and `timezone.txt` (`TMap.loadGlobalFile` - "Load Calendar").
 
 use omsi_cfg::CfgFile;
 use std::path::Path;
@@ -22,7 +22,7 @@ pub struct Dst {
     pub start: i32,
     pub end: i32,
     /// The hour summer time starts on `start` and ends on `end`, and the hours the clocks
-    /// go forward (Omsi.exe keeps them as floats).
+    /// go forward (OMSI keeps them as floats).
     pub params: [f32; 3],
 }
 

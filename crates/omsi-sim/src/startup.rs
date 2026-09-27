@@ -7,7 +7,7 @@
 //! (`cp_batterietrennschalter_toggle`: key in, electrics, ignition, starter while held) and
 //! M turns it back, so the stock sequence (E, then M held) pulled the key out again. The
 //! start-up therefore asks the compiled scripts which triggers can write those variables,
-//! presses them one at a time and watches what happens — a toggle is pressed until the
+//! presses them one at a time and watches what happens - a toggle is pressed until the
 //! electrics are on, a starter is held once it cranks and let go when the engine runs.
 
 use crate::VehicleInstance;
@@ -311,7 +311,7 @@ pub fn engine_running(v: &VehicleInstance) -> bool {
 }
 
 /// The engine has come to rest: by its speed where the bus has one (the flags of some
-/// scripts drop for a frame the moment the fuel is cut, while the engine still turns — the
+/// scripts drop for a frame the moment the fuel is cut, while the engine still turns - the
 /// D86's stop button was let go then and the engine ran on; let go at 150 rpm, its script
 /// fired it up again: it is 0 only under 100 with the fuel still cut), else by the flags.
 fn engine_dead(v: &VehicleInstance) -> bool {
@@ -525,9 +525,9 @@ impl StartUp {
                 &["engine_start", "enginestart", "engine_starter", "starter", "anlass", "anlasser", "motor_start", "motorstart", "start_stop"],
             ),
             // Shutting down: what stops the engine (a stop button, where a bus has one),
-            // then what switches the electrics off — the very toggles that switched them on
+            // then what switches the electrics off - the very toggles that switched them on
             // (the stock buses and most mods stop the engine with the battery switch or the
-            // key) — then an ignition switch. Pressing the starter's `_off` half, as before,
+            // key) - then an ignition switch. Pressing the starter's `_off` half, as before,
             // only let go of a starter nobody held: the engine ran on, and the next Shift+U
             // said "shutting down" again.
             Step::Shutdown => {

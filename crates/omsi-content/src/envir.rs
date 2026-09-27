@@ -1,4 +1,4 @@
-//! `envir.cfg` — sky textures, twilight, light colours (unit `mc_himmel`).
+//! `envir.cfg` - sky textures, twilight, light colours (unit `mc_himmel`).
 
 use omsi_cfg::CfgFile;
 use std::path::Path;

@@ -1,4 +1,4 @@
-//! `maps/<map>/TTData/*` — bus stops, station links, trips, tracks and lines.
+//! `maps/<map>/TTData/*` - bus stops, station links, trips, tracks and lines.
 
 use omsi_cfg::CfgFile;
 use std::path::{Path, PathBuf};
@@ -42,9 +42,9 @@ pub struct TripProfile {
 pub struct Trip {
     pub path: PathBuf,
     pub name: String,
-    /// First `[trip]` line: the track (`.ttr`) the trip runs on, for a trip that has one —
+    /// First `[trip]` line: the track (`.ttr`) the trip runs on, for a trip that has one -
     /// the trains, and the type-1 trips of mod maps whose `[station]` records point into
-    /// it — else empty (a bus trip goes by its station links).
+    /// it - else empty (a bus trip goes by its station links).
     pub display_name: String,
     pub terminus: String,
     pub line: String,
@@ -286,8 +286,8 @@ impl Line {
 }
 
 impl CarUse {
-    /// Whether the record is in force on `date` (yyyymmdd): Omsi.exe (`sub_72c834`) keeps
-    /// only a `[valid]` whose start is not after its end, and `sub_73cd50` applies it
+    /// Whether the record is in force on `date` (yyyymmdd): OMSI keeps
+    /// only a `[valid]` whose start is not after its end, and the original applies it
     /// from its start to its end day, both inclusive.
     pub fn valid_on(&self, date: i32) -> bool {
         let (a, b) = self.valid;
@@ -366,7 +366,7 @@ impl TimetableData {
     }
 
     /// Load `TTData` of a map plus the active chrono folders' (in the game's order), as
-    /// Omsi.exe sub_72d330 does: stops, links, trips and tracks of a later folder replace
+    /// the original does: stops, links, trips and tracks of a later folder replace
     /// those of the same name; a line (`<name>.ttl`) is taken from the last folder that has
     /// it, unless a scenario after that folder takes it off with `[deactivate_lines]`
     /// (`deactivated`: line and the chrono folder saying so). A scenario can so replace a

@@ -56,7 +56,7 @@ struct CameraUniform {
 }
 
 /// The period the sky's cloud patterns repeat with (m): 5 x the cloud field (14 km), 8 x
-/// its billow detail (8.75 km) and 28 x the high layer's (2.5 km) — the render origin is
+/// its billow detail (8.75 km) and 28 x the high layer's (2.5 km) - the render origin is
 /// taken modulo this for them, which keeps centimetres of precision in 32 bits.
 const CLOUD_ORIGIN_PERIOD: f64 = 70000.0;
 
@@ -316,7 +316,7 @@ pub struct Corona {
     /// and inner half angles (radians), `beam_width` the fog's visibility (m).
     pub beam: bool,
     pub beam_width: f32,
-    /// The halo round a light in fog (Omsi.exe sub_5a0068): a billboard of `size`, pulled
+    /// The halo round a light in fog: a billboard of `size`, pulled
     /// towards the viewer, seen from in front of the light; the angles and the visibility
     /// travel as for a cone.
     pub halo: bool,
@@ -412,7 +412,7 @@ impl Camera {
         // Reversed Z (near and far swapped): the depth buffer then spends its float
         // precision where the scene is far away instead of where it is close, which is what
         // stops distant roads, kerbs and painted ground from flickering against each other
-        // — with a plain 0..1 depth the resolution at a kilometre is a good quarter of a
+        // - with a plain 0..1 depth the resolution at a kilometre is a good quarter of a
         // metre, less than the gap between a road surface and the ground under it.
         let proj = Mat4::perspective_rh(self.fov_deg.to_radians(), aspect, self.far, self.near);
         proj * view
@@ -465,14 +465,14 @@ pub struct Lighting {
     /// Enhanced graphics: the physically based high-range renderer (enhanced.wgsl) with its
     /// computed sky, automatic exposure, glow and tone mapping (post.wgsl).
     pub enhanced: bool,
-    /// Vanilla graphics — the picture as OMSI 2 draws it: none of the extras the
+    /// Vanilla graphics - the picture as OMSI 2 draws it: none of the extras the
     /// rewrite's own vanilla renderer (Vanilla+) adds (snow laid on the surfaces, rain drops
     /// running down the panes). Shadows, ambient occlusion and the detail grain are switched off by the settings.
     pub classic: bool,
     /// The player's vehicle (origin, heading in degrees, `[boundingbox]` w l h cx cy cz):
     /// no rain sheen or snow cover is shaded inside it.
     pub inside: Option<(DVec3, f64, [f32; 6])>,
-    /// Procedural (fractal) detail texturing of the ground and roads up close — the
+    /// Procedural (fractal) detail texturing of the ground and roads up close - the
     /// `detail_textures` setting; independent of `enhanced`.
     pub detail: bool,
     /// Enhanced path: how closed the cloud cover is (0..1; `sun_intensity` already says
@@ -604,10 +604,10 @@ pub struct Material {
     pub color: [f32; 4],
     pub unlit: bool,
     /// `[matl_noZwrite]`: a blended surface (glass, rain film, dirt) that must not write
-    /// depth, or everything blended behind it is thrown away — which is what punched holes
+    /// depth, or everything blended behind it is thrown away - which is what punched holes
     /// into the world seen through a window or a mirror.
     pub no_z_write: bool,
-    /// `[matl_noZcheck]`: a decal drawn over the surface it lies on — blended, without
+    /// `[matl_noZcheck]`: a decal drawn over the surface it lies on - blended, without
     /// depth write, with the surfaces' depth bias (see the blended draw items).
     pub no_z_check: bool,
     /// `[matl_Zbias]`: a positive bias pulls a decal in front of the coplanar surface
@@ -673,7 +673,7 @@ pub struct MaterialExtra {
     /// The film of water on a window (`[alphascale] Rain_Window_…`): drawn as drops that sit,
     /// gather and run down the glass instead of the texture sliding down as a whole.
     pub rain_film: bool,
-    /// `[nomaplighting]`: the map's lamps (`[maplight]`) do not light it — a street lamp
+    /// `[nomaplighting]`: the map's lamps (`[maplight]`) do not light it - a street lamp
     /// is not lit by its own light.
     pub no_map_lights: bool,
     /// 1 when the texture's `.cfg` sidecar carries `[moisture]`/`[puddles]`: the road of a
@@ -729,7 +729,7 @@ pub struct Instance {
     pub lod: (f32, f32),
     /// A vehicle's flat shadow blob (`[isshadow]`, a surface). It is drawn always, as OMSI
     /// draws it: it stood in for the sun shadow map only while that was off, and with the
-    /// map on (the usual case, Enhanced always) no bus had anything under it — the sun's
+    /// map on (the usual case, Enhanced always) no bus had anything under it - the sun's
     /// shadow falls beside the bus at any but a noon sun, while the blob is the sky light
     /// the body keeps off the road, which no shadow map and no screen-space AO supplies.
     pub blob: bool,
@@ -750,11 +750,11 @@ pub struct Instance {
     /// picture: the driver at the wheel while the player looks from the driver's seat (the
     /// figure would fill the view, but the mirrors show him as OMSI does).
     pub mirror_only: bool,
-    /// The model marks the mesh `[shadow]`: one Omsi.exe casts a shadow from (with the
+    /// The model marks the mesh `[shadow]`: one OMSI casts a shadow from (with the
     /// option `omsi_shadow_casters` only these do).
     pub omsi_caster: bool,
     /// Part of a vehicle whose roof lies this high over its origin (model frame): what faces
-    /// up under the roof (the floor, the seats) is out of the weather — no snow nor wet on
+    /// up under the roof (the floor, the seats) is out of the weather - no snow nor wet on
     /// it. (Only the vehicle the camera is in was spared, by its box; every other bus showed
     /// its saloon under snow through the windows.)
     pub roof: Option<f32>,
@@ -1063,7 +1063,7 @@ pub struct Renderer {
     profiling: bool,
     /// Vertex data of changed meshes (skinned people, the driver) waiting for the next
     /// picture: (mesh, bytes). Written with one staging buffer and a copy each at the start
-    /// of the frame — a `write_buffer` per mesh made wgpu create a staging buffer for every
+    /// of the frame - a `write_buffer` per mesh made wgpu create a staging buffer for every
     /// one of them, forty a frame with a crowd at a stop.
     pending_meshes: std::cell::RefCell<Vec<(MeshId, Vec<u8>)>>,
     /// What a freed mesh and a freed material hold (see `free_mesh`), made once.
@@ -1137,8 +1137,8 @@ impl Default for RenderOptions {
 }
 
 /// Automatic render scale: a window of up to this many pixels is drawn at full size (the
-/// default 1600x900 window and a 2560x1080 screen are); a bigger one — a Retina window has
-/// four times the pixels of its size in points — gets a 3D picture of about this many
+/// default 1600x900 window and a 2560x1080 screen are); a bigger one - a Retina window has
+/// four times the pixels of its size in points - gets a 3D picture of about this many
 /// pixels, scaled up. The HUD is always drawn at full size.
 pub const AUTO_SCALE_PIXELS: f32 = 2_800_000.0;
 /// Half size of the area around the camera covered by the near shadow cascade (m).
@@ -1179,7 +1179,7 @@ impl Renderer {
             .map_err(|e| anyhow!("no compatible Metal/Vulkan graphics adapter (on Windows, install the GPU vendor driver with Vulkan support): {e}"))?;
         let info = adapter.get_info();
         // What the textures may take on this adapter (wgpu does not tell a card's memory):
-        // a discrete card is taken for one of 2–4 GB, whose rest the pictures (the render
+        // a discrete card is taken for one of 2-4 GB, whose rest the pictures (the render
         // targets, the shadow maps) and the driver need; an integrated one shares the
         // system's memory, Apple's generously
         let guess_mb: u64 = match info.device_type {
@@ -1316,7 +1316,7 @@ impl Renderer {
             shadow_size,
             // (at most 8x: at 16x the sharper mip the filter picks far down a road let the
             // dashes of a lane line alias into two blurred streaks running apart like an
-            // arrow — one line near, two further off, seen on every long straight)
+            // arrow - one line near, two further off, seen on every long straight)
             anisotropy: options.anisotropy.clamp(1, 8),
             ..options
         };
@@ -2033,7 +2033,7 @@ impl Renderer {
             ..Default::default()
         });
         // [matl_texadress_clamp]: a number plate is a small quad whose texture must not
-        // repeat beyond its edge — repeated, the plate text tiled the whole rear of the bus
+        // repeat beyond its edge - repeated, the plate text tiled the whole rear of the bus
         let clamp_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -3650,7 +3650,7 @@ impl Renderer {
         scene.pbr_maps.insert(diffuse, PbrMaps { normal, orm, flags: set.flags });
     }
 
-    /// The device takes BC1–3 (DXT) textures.
+    /// The device takes BC1-3 (DXT) textures.
     pub fn supports_bc(&self) -> bool {
         self.device
             .features()
@@ -4851,9 +4851,9 @@ impl Renderer {
     }
 
     /// Judge this mesh as part of a whole object, the way the original does: the object is
-    /// drawn or left out as one — by its screen size against `performance_minObjSize` times
+    /// drawn or left out as one - by its screen size against `performance_minObjSize` times
     /// its `[detail_factor]`, and beyond `performance_maxObjDist` unless it says
-    /// `[noDistanceCheck]` — and its `[LOD]` level is chosen by the object's size, not by
+    /// `[noDistanceCheck]` - and its `[LOD]` level is chosen by the object's size, not by
     /// each mesh's own. `radius` (m, in the instance's own scale) holds the whole object
     /// about the instance's origin. Judged mesh by mesh, the small parts of a bus (mirrors,
     /// wipers, lamps) went missing at a distance while its body was still there, and the
@@ -5532,7 +5532,7 @@ impl Renderer {
                 if let (Some(buf), Some(pbuf)) = (&scene.model_buf, &scene.params_buf) {
                     let ro = scene.render_origin;
                     // The changed entries go into the CPU copy; the ranges they span are
-                    // uploaded merged — the meshes of one vehicle or person sit next to each
+                    // uploaded merged - the meshes of one vehicle or person sit next to each
                     // other, and neighbouring vehicles are sent together with whatever lies
                     // between them when that is not much.
                     const MERGE_GAP: u32 = 4096;
@@ -6092,7 +6092,7 @@ impl Renderer {
         self.corona_textures[i] = Some(bg);
     }
 
-    /// The picture of a smoke particle: the game's `Texture/rauch.tga` (Omsi.exe's default
+    /// The picture of a smoke particle: the game's `Texture/rauch.tga` (OMSI's default
     /// for every `[smoke]`), alpha as its mask.
     pub fn set_smoke_texture(&mut self, img: &omsi_texture::Image) {
         let t = upload_texture(&self.device, &self.queue, img, true);
@@ -6129,7 +6129,7 @@ impl Renderer {
                 let b = if c.cone_cos < -1.5 || c.beam || c.halo {
                     c.brightness
                 } else {
-                    // Omsi.exe sub_5a0068: ((1 - ambient)^2 + 0.8) 0.6 times the light's
+                    // the original: ((1 - ambient)^2 + 0.8) 0.6 times the light's
                     // brightness (the shader takes the viewing angle and clamps it to 1)
                     c.brightness * (night * night + 0.8) * 0.6
                 };
@@ -6402,8 +6402,8 @@ impl Renderer {
         };
         // The near cascade (140 m, 4096 texels at the top setting: the costliest shadow
         // pass, a third of it the trees' leaf cards) is drawn every other frame and kept
-        // for the next, with the light matrix it was drawn with; the close one — the bus
-        // and everything within 30 m — every frame. Redrawn at once when the camera has
+        // for the next, with the light matrix it was drawn with; the close one - the bus
+        // and everything within 30 m - every frame. Redrawn at once when the camera has
         // jumped, the sun has moved or the render origin has (its matrix is relative to it).
         let near_wanted = light_matrix(SHADOW_RANGE);
         let (near_m, near_age, near_origin, near_sun) = self.shadow_near_cache.get();
@@ -6563,7 +6563,7 @@ impl Renderer {
         };
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&cu));
-        // (a mirror takes the window's light — its own call would move the exposure on —
+        // (a mirror takes the window's light - its own call would move the exposure on -
         // unless it comes before the window's first frame)
         let probe_redraw = enhanced
             && (with_overlays || self.sky_state.is_none())
@@ -6744,7 +6744,7 @@ impl Renderer {
         // 1e-4 (the clear air there is the sky model's, kilometres deep), and above it a
         // layer that thins out with height (`layer_depth` in enhanced_common.wgsl, 300 m
         // scale height over the fog's base). Culled by the vanilla density, whatever stood
-        // in thin fog went missing in plain sight — most of all seen from above, with the
+        // in thin fog went missing in plain sight - most of all seen from above, with the
         // camera zoomed out.
         let fog_far = if enhanced_frame {
             if lighting.fog_density > 1e-4 {
@@ -6820,7 +6820,7 @@ impl Renderer {
                     // The screen size: the diameter over the distance to the camera (not the
                     // depth along the view: that is largest in the middle of the picture, so
                     // a pole looked at straight on shrank below the limit and vanished while
-                    // it stayed at the edge), as a share of the vertical field of view —
+                    // it stayed at the edge), as a share of the vertical field of view -
                     // of the whole object when the mesh belongs to one (see
                     // `set_object_culling`), else of the mesh alone. Surfaces and terrain
                     // are never dropped for it.
@@ -6883,7 +6883,7 @@ impl Renderer {
                     }
                     // (the top level runs to f32::MAX, and a camera inside the object's sphere
                     // measures it as f32::MAX: `>=` left out both levels of every object one
-                    // stood next to — the parked cars, lamps and houses that vanished close by)
+                    // stood next to - the parked cars, lamps and houses that vanished close by)
                     if (inst.lod.0 > 0.0 || inst.lod.1 < f32::MAX)
                         && (size < inst.lod.0 || (inst.lod.1 < f32::MAX && size >= inst.lod.1))
                     {
@@ -6907,7 +6907,7 @@ impl Renderer {
             *self.cull_drawn.borrow_mut() = bits;
         }
         // OMSI_DEBUG_FLICKER: a near instance in view in two frames running that is drawn in
-        // one and not in the other — the objects blinking in and out as the view moves
+        // one and not in the other - the objects blinking in and out as the view moves
         if with_overlays && omsi_cfg::env::var_os("OMSI_DEBUG_FLICKER").is_some() {
             let drawn: std::collections::HashSet<usize> = visible.iter().map(|v| v.0).collect();
             let mut prev = self.flicker.borrow_mut();
@@ -6989,7 +6989,7 @@ impl Renderer {
         // far to near (`pipe` 4..7: surface, no depth write). The blended draws must not
         // be split into ground and surfaces: the painted ground of a tile is a blended
         // surface and the bus's windscreen is a blended mesh, and with the surfaces
-        // drawn last the glass had already written its depth over them — the painted
+        // drawn last the glass had already written its depth over them - the painted
         // road ahead was there from outside the bus and gone from the driver's seat.
         let mut main_batches: Vec<Batch> = Vec::new();
         let mut main_draws = [0usize; 2];
@@ -7027,15 +7027,15 @@ impl Renderer {
             main_draws[0] = items.len();
             batch_items(scene, &mut items, true, &mut list, &mut main_batches);
             // Blended draws: objects far to near by the distance of their nearest blended
-            // mesh (see `near_by_origin` below — not the single local origin all of an
-            // object's meshes share), and within an object in creation order — the
+            // mesh (see `near_by_origin` below - not the single local origin all of an
+            // object's meshes share), and within an object in creation order - the
             // model.cfg mesh order, which is what the original relies on (windows are
             // listed last).
             //
             // An object the camera is inside of (the bus seen from the driver's
             // seat) comes after everything outside it, and the player's own vehicle
-            // last of all. By its origin alone the bus — whose origin is 4.6 m
-            // behind the driver's eye on the NL202 — sorted as farther away than a
+            // last of all. By its origin alone the bus - whose origin is 4.6 m
+            // behind the driver's eye on the NL202 - sorted as farther away than a
             // car right beside the driver's window, so the car was drawn after the
             // bus's window layers (rain film, dirt, door glass), which write depth:
             // its blended body failed the depth test and only the opaque wheels
@@ -7055,8 +7055,8 @@ impl Renderer {
             // An object's *nearest* blended mesh to the camera, not the single point its
             // meshes all share (`inst.origin`): a long vehicle's own origin can sit well
             // behind (or ahead of) its nearest window, so ranking the whole object by that
-            // one point against a much smaller nearby object — a car passing level with the
-            // middle of a stopped bus — picked the wrong order even outside the "camera is
+            // one point against a much smaller nearby object - a car passing level with the
+            // middle of a stopped bus - picked the wrong order even outside the "camera is
             // inside" case above (the bus's origin, metres behind the window nearest the
             // car, sorted as farther away than the car itself, so the car was drawn last and
             // painted over the window instead of being hidden behind the body between the
@@ -7067,7 +7067,7 @@ impl Renderer {
             // a stopped bus's body from outside (never reproduced, before or after this
             // commit): this order only ever decides how mutually-*blended* draws composite
             // where they overlap on screen (a car's own window glass in front of a bus's
-            // window + interior, say) — it cannot be why an opaque wall would fail to hide
+            // window + interior, say) - it cannot be why an opaque wall would fail to hide
             // something behind it. Every pipeline the main pass uses, opaque or blended,
             // keeps depth *testing* on (`GreaterEqual`, see the pipeline table above); only
             // depth *writing* differs. Opaque batches are always recorded before blended ones
@@ -7078,7 +7078,7 @@ impl Renderer {
             // (diffuse alpha is a reflection mask, not transparency, unless `[matl_alpha]` 1
             // or 2 says otherwise); an A/B render (this commit vs its parent, same seed, a
             // parked car centred behind a stopped EN92's midsection) came back pixel-identical
-            // at the car/bus silhouette — the only measured difference was in the bus's own
+            // at the car/bus silhouette - the only measured difference was in the bus's own
             // overlapping window/dirt/interior layers, which is exactly this sort's stated
             // job. If the reported artefact is real, its cause is still open and elsewhere.
             let near_by_origin: Vec<(DVec3, f32)> = if self.blend_by_origin {
@@ -7099,7 +7099,7 @@ impl Renderer {
                     let inst = &scene.instances[i];
                     // Surfaces are ground and go by distance alone: a tile's painted ground
                     // shares its origin with the terrain the camera is always inside of, and
-                    // ranked with it, it was drawn after everything blended near it — over the
+                    // ranked with it, it was drawn after everything blended near it - over the
                     // shadow blobs of the buses standing on it. A blob belongs to the ground
                     // under its vehicle too, drawn before the vehicle's glass.
                     let rank = if self.blend_by_origin || inst.surface {
@@ -7143,7 +7143,7 @@ impl Renderer {
                     // A layer its script has faded out (`[alphascale]` at 0: the rain film
                     // on a dry day, the dirt on a clean bus) shows nothing, as in the
                     // original, whose blend takes it out whole; drawn anyway it ran the full
-                    // shading over the whole windscreen for nothing — a bus's cab view had
+                    // shading over the whole windscreen for nothing - a bus's cab view had
                     // three or four such screen-sized layers.
                     if mat.alpha == AlphaMode::Blend && inst.slot_alpha.get(*slot as usize).is_some_and(|a| *a < 1.0 / 512.0) {
                         continue;
@@ -7471,7 +7471,7 @@ impl Renderer {
             }
         }
         // Without multisampling the main pass tests against the depth the prepass left
-        // (when there was one): the costly shading — lighting, the shadow filter — is then
+        // (when there was one): the costly shading - lighting, the shadow filter - is then
         // done once per pixel for the surface that is seen, not for every tree and wall
         // hidden behind it.
         let single = self.options.msaa <= 1;
@@ -7515,11 +7515,11 @@ impl Renderer {
         let msaa_prepass = msaa_prepass && self.prepass_msaa_pipelines.is_some() && targets.is_some();
         {
             // The enhanced sky dome was meant to cover everything, so this used to clear to
-            // black on that assumption — but the dome is a hemisphere, not a full sphere, and
+            // black on that assumption - but the dome is a hemisphere, not a full sphere, and
             // wherever the ground does not quite reach (a streamed tile not loaded yet, a gap
             // right at the horizon) that showed as a stark black void, where vanilla's plain
             // sky colour clear made the very same gap invisible. Using that same colour here
-            // (unscaled — multiplying it by the enhanced exposure blew a night sky's dim clear
+            // (unscaled - multiplying it by the enhanced exposure blew a night sky's dim clear
             // colour out to white instead) keeps a real gap from ever reading as a rendering
             // bug of its own.
             let sky = lighting.sky_color;
@@ -8400,7 +8400,7 @@ fn post_pass(
     pass.draw(0..3, 0..1);
 }
 
-/// `OMSI_DEBUG_EXPOSURE=1`: the enhanced path's exposure as it adapts — the light model's
+/// `OMSI_DEBUG_EXPOSURE=1`: the enhanced path's exposure as it adapts - the light model's
 /// pre-exposure, the metered picture and the correction the tone mapping applies, logged
 /// about four times a second (the metered value lives on the GPU and is read back).
 struct ExposureLog {
@@ -8588,7 +8588,7 @@ fn pass_timer<'a>(
     })
 }
 
-/// For each distinct origin among `items`, the smallest distance paired with it — an
+/// For each distinct origin among `items`, the smallest distance paired with it - an
 /// object's nearest blended mesh to the camera, used instead of the single point every mesh
 /// of that object shares (see the blended sort in `render_to_image`: a long vehicle's own
 /// origin can be well behind, or ahead of, the window nearest the camera).
@@ -8617,7 +8617,7 @@ struct DrawItem {
 /// Draws of the same mesh range with the same material and pipeline, made as one instanced
 /// draw: `instances` indexes the frame's draw list, which holds each instance's per-draw
 /// entry (the vertex shader looks it up). Thousands of single draws were the biggest CPU
-/// cost of a frame — wgpu validates and records every one — and trees, lamps, fences,
+/// cost of a frame - wgpu validates and records every one - and trees, lamps, fences,
 /// people and the AI cars' shared meshes collapse into a few hundred batches.
 struct Batch {
     pipe: u8,

@@ -50,7 +50,7 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) on_foot: bool,
     /// Control preset: `simple` (W/S/A/D and the arrow keys drive; the default), `wasd`,
-    /// `arrows` (leaves W, S and D to the jobs `Inputs/keyboard.cfg` gives them — wipers,
+    /// `arrows` (leaves W, S and D to the jobs `Inputs/keyboard.cfg` gives them - wipers,
     /// viewpoint and the D of the automatic gearbox) or `omsi` (only the original layout,
     /// Shift + numpad). With WASD driving, hold shift for the OMSI meaning of a key.
     #[arg(long, default_value = "simple")]

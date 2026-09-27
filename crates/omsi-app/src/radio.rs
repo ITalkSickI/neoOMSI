@@ -1,5 +1,5 @@
 //! The bus radio as live internet radio. OMSI itself plays no music: the buses' radios
-//! only set variables that plugins turned into sound — `Snd_Radio` (the cassette player of
+//! only set variables that plugins turned into sound - `Snd_Radio` (the cassette player of
 //! the stock buses and many mods: 1 while it plays) and the Sound Extension radios'
 //! `SndExt_Radio` (the station button pressed, 0 = off) with `SndVol_Radio` (the volume
 //! knob). Here those variables tune in a list of internet stations, streamed while they
@@ -135,7 +135,7 @@ impl Radio {
         let status = p.buf.status();
         if status != p.shown && !status.is_empty() && status != "connecting …" {
             p.shown = status.clone();
-            let line = format!("Radio {}: {} — {status}", p.station + 1, self.stations[p.station].0);
+            let line = format!("Radio {}: {} - {status}", p.station + 1, self.stations[p.station].0);
             log::info!("{line}");
             return Some(line);
         }

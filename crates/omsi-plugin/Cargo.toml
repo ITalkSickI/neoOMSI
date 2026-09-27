@@ -3,7 +3,7 @@ name = "omsi-plugin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "OMSI plugins: the .opl files of the plugins folder and their DLLs, driven as Omsi.exe drives them"
+description = "OMSI plugins: the .opl files of the plugins folder and their DLLs, driven as OMSI drives them"
 
 [dependencies]
 libloading = "0.8"

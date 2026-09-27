@@ -3,7 +3,7 @@
 //! A computer has many IPv4 addresses and most of them are no use to a friend: the loopback,
 //! the self-assigned 169.254 ones, the bridges of virtual machines and containers. What
 //! matters is the address on the network both players share: the home LAN when they sit in
-//! the same house, and a VPN's address when they play over the internet — Hamachi hands out
+//! the same house, and a VPN's address when they play over the internet - Hamachi hands out
 //! 25.x.x.x, Radmin VPN 26.x.x.x, Tailscale 100.64.0.0/10, ZeroTier a range of the network's
 //! own choosing on an interface named after it. The session code carries the best few
 //! (`SessionCode::ips`), and the joining game tries all of them at once.

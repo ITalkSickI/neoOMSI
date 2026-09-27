@@ -4,8 +4,8 @@
 //!
 //! The host simulates the shared world alone; a client draws what the host sends and
 //! simulates only its own bus (and the passengers that board it, see `CLAIM`). Every
-//! datagram is complete in itself — the pose of each thing it lists, not a change against
-//! an earlier one — so a lost datagram only delays the things it carried until the next
+//! datagram is complete in itself - the pose of each thing it lists, not a change against
+//! an earlier one - so a lost datagram only delays the things it carried until the next
 //! one. Things that move are sent ten times a second, things that stand once a second; a
 //! client that has heard nothing of something for `FORGET_AFTER` lets it go, and the host
 //! also names what it took away (`gone`).
@@ -31,7 +31,7 @@
 //!     on foot: x 19, y 19, z 17 (cm), heading 8 (360/256 deg), speed 6 (0.05 m/s),
 //!       waiting 1 (then: stop 32, the stop object's id, and its waiting place 8)
 //!     aboard: bus 24 (the car's id, or the player's), x 12, y 13, z 10 (cm in the bus frame), heading 8, seat 8 (255:
-//!       none — walking, at the desk or the door)
+//!       none - walking, at the desk or the door)
 //!   lights 6, each: crossing object 32, cycle position 17 (0.05 s), held 1
 //!   gone 6, each: kind 1 (0 car, 1 person), id 24
 //! ```
@@ -122,7 +122,7 @@ impl Activity {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PersonPlace {
     /// On foot: world position, heading (deg), walking speed (m/s), and the stop (its
-    /// object id) and waiting place when waiting there — such a person may board a
+    /// object id) and waiting place when waiting there - such a person may board a
     /// client's bus (`CLAIM`).
     Foot {
         x: f64,

@@ -29,11 +29,11 @@ struct Camera {
 // wall (a window sill, the handbrake by the windscreen) just outside the box, wearing the
 // up-facing wet/snow coat meant for the body panel beside it (see the `outside` weight
 // below). A previous fix WIDENED this margin to 0.6 m, reasoning by analogy with the falling-
-// particle exclusion box in `rain.rs` — but that box works the other way round (its margin
+// particle exclusion box in `rain.rs` - but that box works the other way round (its margin
 // is added, growing the excluded region outward, away from the body) from this one (whose
 // margin is subtracted, shrinking the "inside" region inward, toward the body): widening it
 // here shrank the cabin's own "inside" zone and threw the *whole* cabin outside it, coating
-// the entire interior in snow instead of just the ledge. Narrowed to 0.03 m instead — just
+// the entire interior in snow instead of just the ledge. Narrowed to 0.03 m instead - just
 // enough that the true outer skin and glass stay outside, without giving up real interior
 // floor space near the wall.
 // A normal of no length (a mesh saved with zero normals) is upright instead of NaN:
@@ -82,7 +82,7 @@ fn near_player_vehicle(world: vec3<f32>) -> f32 {
 // How much of the way from the camera to `world` lies outside the player's vehicle: there is
 // no fog in the cab. From the driver's seat the whole saloon (seats 2 m away, the doors 5 m
 // away) took the fog of that distance and in thick ground fog the interior went milky, the
-// door panes nearly opaque — outside the bus there was nothing of the kind. The box is the
+// door panes nearly opaque - outside the bus there was nothing of the kind. The box is the
 // one `inside_vehicle` uses; the part of the ray inside it is taken off the fogged distance.
 fn fog_distance(world: vec3<f32>) -> f32 {
     let full = distance(world, camera.cam_pos.xyz);
@@ -130,8 +130,8 @@ fn fn_box_local(world: vec3<f32>) -> vec3<f32> {
 // 1 where the weather reaches the point. The cab test above reaches 0.6 m below the
 // vehicle's box so that the floor stays dry, and that takes in the road under the bus as
 // well: the snow on it vanished in a bus-shaped patch of bare asphalt (which read as the
-// bus's shadow wiping the snow off). The ground — terrain, roads, painted ground, flagged
-// by `terrain` or the instance's surface flag — is never inside a vehicle.
+// bus's shadow wiping the snow off). The ground - terrain, roads, painted ground, flagged
+// by `terrain` or the instance's surface flag - is never inside a vehicle.
 fn weather_outside(world: vec3<f32>, terrain: bool, surface: f32) -> f32 {
     if (terrain || surface > 0.5) {
         return 1.0;
@@ -142,7 +142,7 @@ fn weather_outside(world: vec3<f32>, terrain: bool, surface: f32) -> f32 {
 // As `weather_outside`, knowing the surface's normal: the bus's own outer skin is outside
 // even where it lies inside the box. A side wall leans in towards the roof (and bulges over
 // the wheel arches), so the box's side plane cuts through the panel: above the cut the paint
-// took the cab's light and stayed dry, below it the sky's — the wall looked half glossy,
+// took the cab's light and stayed dry, below it the sky's - the wall looked half glossy,
 // half matt, along a sharp line. A face within 0.35 m of a side, the front, the back or the
 // roof of the box and turned out through it is skin, not cabin.
 fn weather_outside_n(world: vec3<f32>, n: vec3<f32>, terrain: bool, surface: f32) -> f32 {
@@ -150,7 +150,7 @@ fn weather_outside_n(world: vec3<f32>, n: vec3<f32>, terrain: bool, surface: f32
         return 1.0;
     }
     // a vehicle's part (lib.rs `Instance::roof`): under its roof it is dry, whichever
-    // vehicle it is — the one the camera is in, another player's, a timetable bus
+    // vehicle it is - the one the camera is in, another player's, a timetable bus
     if (surface < -500.0) {
         let roof = -surface - 5000.0;
         if (world.z < roof - 0.3) {
@@ -177,8 +177,8 @@ fn weather_outside_n(world: vec3<f32>, n: vec3<f32>, terrain: bool, surface: f32
 @group(0) @binding(0) var<uniform> camera: Camera;
 // Whether this pipeline draws alpha-tested materials (the only ones that may `discard`).
 // Pipelines of every other kind set it false, and the discard is compiled out: a fragment
-// function that can discard turns the GPU's early depth test off — on Apple's GPUs the
-// hidden surface removal as well — for everything it draws, and the heavy shading then
+// function that can discard turns the GPU's early depth test off - on Apple's GPUs the
+// hidden surface removal as well - for everything it draws, and the heavy shading then
 // ran for every covered layer of the city, not once per pixel.
 override ALPHA_TEST: bool = true;
 @group(0) @binding(5) var t_shadow: texture_depth_2d;
@@ -219,7 +219,7 @@ fn ao_at(frag: vec2<f32>, world: vec3<f32>) -> f32 {
         }
     }
     // no AO sample at this surface's depth: the surface is not in the depth prepass (a
-    // door or panel drawn in front of what the AO saw) — the AO behind it must not show
+    // door or panel drawn in front of what the AO saw) - the AO behind it must not show
     if (best_d > tol * 1.5) {
         return 1.0;
     }
@@ -295,7 +295,7 @@ struct MaterialParams {
 @group(1) @binding(10) var t_pbr_orm: texture_2d<f32>;
 
 // The reflection mask of a [matl_envmap] material: the alpha of its [matl_envmap_mask]
-// texture when it has one, else the diffuse texture's alpha — which reads 1 for a texture
+// texture when it has one, else the diffuse texture's alpha - which reads 1 for a texture
 // without an alpha channel (a 24-bit bitmap, DXT1, a JPEG), so its factor alone decides.
 fn reflection_mask(uv: vec2<f32>, diffuse_a: f32) -> f32 {
     let mask = textureSample(t_envmask, s_diffuse, uv).a;
@@ -341,7 +341,7 @@ fn vs_main(in: VsIn) -> VsOut {
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     // Road surfaces (splines, crossings, markings, a vehicle's shadow blob) are pulled
-    // towards the eye along the line of sight — the picture does not move, only the depth —
+    // towards the eye along the line of sight - the picture does not move, only the depth -
     // by two centimetres near and more far away (seen from above at a slant that is a few
     // millimetres of height: a tyre on the road does not sink into it). A road a little under the terrain
     // otherwise lost to it: the ground's triangles came through the carriageway in teeth
@@ -475,7 +475,7 @@ fn fs_transmap_depth(in: VsOut) {
     // texel that is merely more opaque than not (the dimmer and anti-aliased dots of a
     // display's text layer, whose transmap is its script texture) wrote depth here, the
     // display's backplate behind it was then rejected, and the half-transparent text was
-    // blended over the sky — holes in the display.
+    // blended over the sky - holes in the display.
     if (a < 0.99) {
         discard;
     }
@@ -493,8 +493,8 @@ const SHADOW_OFFSETS: array<vec2<f32>, 16> = array<vec2<f32>, 16>(
 // Depth bias of the sun shadow, in metres along the sun's ray. The maps' depth runs over
 // the light box's 2199 m, and the comparison used to take off 0.0015 (near) and 0.004 (far)
 // of that: 3.3 m and 8.8 m. Nothing closer to the ground than that along the ray cast a
-// shadow — not a car (1.4 m), not a bus (3 m; only its roof's shadow at a low sun,
-// which lay detached and offset from the bus) — and the grass and kerbs had none either.
+// shadow - not a car (1.4 m), not a bus (3 m; only its roof's shadow at a low sun,
+// which lay detached and offset from the bus) - and the grass and kerbs had none either.
 // The receiver plane below takes care of what the big constant stood in for.
 const SHADOW_DEPTH_RANGE: f32 = 2199.0;
 const SHADOW_BIAS_NEAR: f32 = 0.06;
@@ -529,7 +529,7 @@ fn shadow_receiver_slope(lvp: mat4x4<f32>, n: vec3<f32>) -> vec2<f32> {
 // one (`camera.light_view_proj_close`) in its right half. `uv` is the cascade's own 0..1.
 // The kernel's four outermost taps (SHADOW_OFFSETS 5, 1, 7, 12: one in each corner) and
 // the one nearest its middle (15, which catches a pole's shadow thinner than the kernel)
-// are taken first: when they agree — all lit or all in shadow — the pixel is not in a
+// are taken first: when they agree - all lit or all in shadow - the pixel is not in a
 // penumbra and the other eleven would agree too. Most of a picture is plainly lit or
 // plainly shaded, so the filter mostly costs 5 compares instead of 16.
 const SHADOW_CORNERS: array<i32, 5> = array<i32, 5>(5, 1, 7, 12, 15);
@@ -655,11 +655,11 @@ fn sun_shadow(world_in: vec3<f32>, n: vec3<f32>, thin: bool) -> f32 {
 // Sum of the point lights registered in the grid cell of `p`. A light is registered in
 // every cell its range touches, so the point's own cell holds every light that reaches it;
 // looking into the neighbouring cells as well counted a light up to four times, and how
-// often depended on where the cell edges fell — lamp pools brightened and dimmed as the
+// often depended on where the cell edges fell - lamp pools brightened and dimmed as the
 // camera moved.
 // `map_k`: how much of the map's lamps a surface takes (0 on a light-mapped road in the
 // classic picture, whose lamps are in its light map); a vehicle's own lights (dir.x 1, see
-// lib.rs `gpu_light`) always shine — the headlights lit no road at all in vanilla.
+// lib.rs `gpu_light`) always shine - the headlights lit no road at all in vanilla.
 fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let cell = camera.light_grid.z;
@@ -700,7 +700,7 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
 // [illumination_interior], 1 = a lamp's full light on a seat under it. `code` is the
 // instance's lamp code (lib.rs `Instance::interior_lamps`): the first of its lamp slots in
 // `lights` times 8 plus how many; below 1 it is a plain brightness (a passenger standing in
-// a lit bus). Each lamp is Omsi.exe's Direct3D point light (`sub_5fabbc`): attenuation
+// a lit bus). Each lamp is OMSI's Direct3D point light: attenuation
 // 1 / (d² / core²) with `core` the lamp's [interiorlight] range, no cut-off short of 100 m,
 // times N·L; the sum saturates, as Direct3D's vertex colour does.
 fn interior_lamps(p: vec3<f32>, n: vec3<f32>, code: f32) -> vec3<f32> {
@@ -731,7 +731,7 @@ fn interior_lamps(p: vec3<f32>, n: vec3<f32>, code: f32) -> vec3<f32> {
 // over the ground and the road surfaces close by, so that a blurred texture keeps some grain.
 //
 // The lattice cell is hashed as an integer. The old `fract(sin(dot(q, …)) * 43758.5)`
-// hash took the cell's map coordinate — two and a half million at Spandau's 892 km — into
+// hash took the cell's map coordinate - two and a half million at Spandau's 892 km - into
 // a sine: in 32-bit floats its argument is a multiple of 64 there, and what came out was
 // not noise but a ramp that repeated along straight lines, so every road wore thin
 // diagonal streaks at an exact spacing. Cells are wrapped at `PATTERN_PERIOD` (the pattern
@@ -770,7 +770,7 @@ fn vnoise_f(p: vec2<f32>, freq: f32, offset: vec2<f32>) -> f32 {
 
 fn detail_noise(p: vec2<f32>) -> f32 {
     // Anti-alias: point-sampling a lattice this fine aliases wherever one pixel's
-    // footprint spans more than about one cell of it — looking down a street at a
+    // footprint spans more than about one cell of it - looking down a street at a
     // grazing angle, or just driving away, constantly changes that footprint, and the
     // alias pattern with it, which reads as the "fractal" texture re-rendering itself as
     // the view angle changes. `fwidth` gives the footprint in the same units as `p`; an
@@ -851,7 +851,7 @@ fn rain_drops(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32) -
         down = vec2<f32>(0.0, 1.0); // a roof light: no way down, the drops just sit
     }
     // Snapped to the nearest eighth of a turn: `down` comes from the world's vertical, and
-    // the body rolls and pitches on its springs all the time — a grid turned with it by a
+    // the body rolls and pitches on its springs all the time - a grid turned with it by a
     // degree moves drops a metre from its origin by more than a cell, so every drop on the
     // pane jumped to a neighbour's place and back from frame to frame (the drops trembled
     // and flickered while driving). A pane's texture is laid out square to it, so the eighth
@@ -862,7 +862,7 @@ fn rain_drops(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32) -
     // pane coordinates in metres: x across, y down the glass
     let q = vec2<f32>(dot(p, side), dot(p, down));
     // a drop is a lens: it shows the world behind it upside down and small, which reads as
-    // a darker rim with a bright spot where it catches the sky — not a white fleck
+    // a darker rim with a bright spot where it catches the sky - not a white fleck
     var rim = 0.0;
     var glint = 0.0;
     var body = 0.0;
@@ -929,7 +929,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let wet = in.params.x;
         let d = rain_drops(in.world, in.uv - in.params.zw, safe_normal(in.normal), wet, camera.post.y);
         let light = camera.sun_color.rgb * camera.sun_dir.w * 0.5 + camera.sky_color.rgb + camera.ambient.rgb;
-        // (fading out with the distance: see enhanced.wgsl — far off, black flecks)
+        // (fading out with the distance: see enhanced.wgsl - far off, black flecks)
         let near = 1.0 - smoothstep(4.0, 12.0, distance(in.world, camera.cam_pos.xyz));
         return vec4<f32>(d.rgb * clamp(light, vec3<f32>(0.05), vec3<f32>(1.2)), d.a * near);
     }
@@ -957,7 +957,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             // binary; the loader smooths it into a soft ramp around a smooth curve
             // (`smooth_paint_mask` in scene.rs). Sharpen the ramp and let the ground
             // texture's own light and dark decide where the new surface wins within the
-            // ramp — cobbles then fray into the grass stone by stone instead of in soft
+            // ramp - cobbles then fray into the grass stone by stone instead of in soft
             // rectangles. (On the raw mask this sharpening is what drew the texel grid
             // as a staircase along every painted edge.)
             let lum = dot(tex.rgb, vec3<f32>(0.333, 0.333, 0.333));
@@ -975,7 +975,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let from_above = 0.5 + 0.5 * n.z;
     let shadow = sun_shadow(in.world, n, mode > 0.5 && mode < 1.5);
     // screen-space ambient occlusion darkens the indirect light (sky and ambient) in
-    // corners, under the bus, between the seats — not the sun, which the shadow map handles
+    // corners, under the bus, between the seats - not the sun, which the shadow map handles
     var ao = 1.0;
     // (not on a blended surface: the AO is the opaque depth's, and a translucent door
     // showed the shade of what stood behind it)
@@ -991,7 +991,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let nz = detail_noise(world_pattern_xy(in.world));
         albedo = albedo * (1.0 + (nz - 0.5) * 0.42 * k);
     }
-    // ([nomaplighting]: params.y 0.25 — not lit by the map's lamps)
+    // ([nomaplighting]: params.y 0.25 - not lit by the map's lamps)
     // (a light-mapped road or plate takes the map's lamps only in Vanilla+: as OMSI 2 shows
     // it, the vanilla picture lights it from the tile light map alone)
     let lm_only = light_map_mapped(material.params) && camera.sky_color.w > 0.5;
@@ -1012,7 +1012,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     lit = lit + tex.rgb * material.emissive.rgb;
     // the tile light map, as on the terrain: the lamps' pools on the roads and the plates,
     // lighting the surface (not painted over it: added as it was, the pool lay on the road
-    // as a white patch); only where it is their light at night — elsewhere the map's lamps
+    // as a white patch); only where it is their light at night - elsewhere the map's lamps
     // light them as they light the squares and pavements beside them
     if (lm_only) {
         lit = lit + albedo * material.color.rgb * light_map_at(in.world) * camera.sun_color.w;
@@ -1078,7 +1078,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         }
         if (glass) {
             // See-through glass reflects a few per cent of the sphere map when you look
-            // straight through it and much more at a grazing angle — without that the
+            // straight through it and much more at a grazing angle - without that the
             // windscreen carried an even milky veil over the whole road ahead.
             // (seen from inside the glass the normal points away, so take the angle
             // either way round)
@@ -1088,7 +1088,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // the sphere map was photographed by day: dim it with the scene light at night
         // (outside the classic picture it goes with the night as well: the photo's sunlit
         // trees and blue sky kept a fifth of their light at midnight, and the mirrors of
-        // an enhanced session — drawn with this shader — showed a street by daylight in
+        // an enhanced session - drawn with this shader - showed a street by daylight in
         // every pane they caught)
         let env_night = select(1.0 - 0.85 * clamp(camera.sun_color.w, 0.0, 1.0), 1.0, camera.sky_color.w > 0.5);
         let env_light = clamp(camera.sun_color.r * camera.sun_dir.w + camera.sky_color.r + camera.ambient.r, 0.05, 1.0) * env_night;
@@ -1098,7 +1098,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             let wet = camera.shadow.w * weather_outside_n(in.world, n, false, in.params2.w);
             lit = lit * (1.0 - 0.30 * wet);
             // the water film mirrors the (overcast) sky a little, mostly at grazing
-            // angles; kept faint — a strong rim read as a white outline round the bus
+            // angles; kept faint - a strong rim read as a white outline round the bus
             let facing = clamp(abs(dot(vdir, n)), 0.0, 1.0);
             let sheen = wet * min(material.params2.y, 1.0) * (0.05 + 0.22 * pow(1.0 - facing, 5.0));
             lit = mix(lit, camera.sky_color.rgb * env_light, sheen);
@@ -1144,7 +1144,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var rgb = mix(lit, camera.fog.xyz, clamp(f, 0.0, 1.0));
     if (camera.flags.z > 0.0) {
         // Never taken: flags.z (the old enhanced look's aerial perspective) is always 0
-        // now — the enhanced path has its own fragment shader (enhanced.wgsl). The branch
+        // now - the enhanced path has its own fragment shader (enhanced.wgsl). The branch
         // stays because Metal's fast-math contracts the fog mix above differently without
         // it, and the vanilla picture is to stay what it was to the last code value.
         let vdir = normalize(in.world - camera.cam_pos.xyz);
@@ -1153,7 +1153,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let scatter = mix(camera.sky_color.rgb * 1.4 + camera.ambient.rgb * 0.5, camera.sun_color.rgb * camera.sun_dir.w + camera.sky_color.rgb, towards_sun * towards_sun);
         rgb = mix(rgb, scatter, clamp(k * 0.6, 0.0, 0.5));
     }
-    // (a NaN anywhere above — a zero-length vector normalised, 0 x infinity — was a black
+    // (a NaN anywhere above - a zero-length vector normalised, 0 x infinity - was a black
     // patch on Windows, e.g. an EN92's headlights while off, and invisible on the Mac)
     rgb = finite_or(rgb, finite_or(albedo * material.color.rgb * diffuse, albedo));
     var a = tex.a * material.color.a;

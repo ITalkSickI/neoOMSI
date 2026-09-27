@@ -33,14 +33,13 @@ Plain cargo works too: `cargo build --release -p omsi-app` builds `target/releas
 
 ## The programs
 
-* `openomsi` (`crates/omsi-app`) — the game. Started with no arguments it opens the launcher
+* `openomsi` (`crates/omsi-app`) - the game. Started with no arguments it opens the launcher
   window; with arguments it starts a session directly (see [USER_GUIDE.md](USER_GUIDE.md));
   with `--server server.cfg` it is the dedicated server.
-* `openomsi-launcher` (`crates/omsi-launcher-core`) — the launcher's commands for a terminal
+* `openomsi-launcher` (`crates/omsi-launcher-core`) - the launcher's commands for a terminal
   (`openomsi-launcher --cli maps`, `--cli install '{"path":"mod.zip"}'` …).
-* `omsi-check` (`tools/omsi-check`) — loads every content file of an installation and reports
+* `omsi-check` (`tools/omsi-check`) - loads every content file of an installation and reports
   what failed: `cargo run --release -p omsi-check -- "/path/to/OMSI 2"`.
-* `omsi-re` (`tools/omsi-re`) — a reader for `Omsi.exe` used for reverse engineering.
 
 ## Icons
 

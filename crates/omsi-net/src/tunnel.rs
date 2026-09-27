@@ -1,13 +1,13 @@
 //! A free Cloudflare quick tunnel in front of the WebSocket gateway (`ws`): `cloudflared
 //! tunnel --url http://127.0.0.1:<port>` gives an `https://<words>.trycloudflare.com` address
-//! that reaches this machine from anywhere, through any router — no account, no port
+//! that reaches this machine from anywhere, through any router - no account, no port
 //! forwarding, no VPN. The session code still says where the host is on the LAN and the
 //! internet; the tunnel is the way in when neither answers.
 //!
 //! `cloudflared` is looked for next to the game, in `OMSI_CLOUDFLARED`, on the `PATH`, in
 //! Homebrew's folders and in the game's own data folder; when it is nowhere, the game fetches
 //! Cloudflare's own release build into its data folder the first time it hosts
-//! (`ensure_cloudflared`) — the player installs nothing.
+//! (`ensure_cloudflared`) - the player installs nothing.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -64,7 +64,7 @@ fn release_asset() -> Option<(&'static str, &'static str)> {
 }
 
 /// The marker written beside the game's own copy once its download was checked (a copy
-/// without it — fetched by an older game unchecked — is fetched again).
+/// without it - fetched by an older game unchecked - is fetched again).
 const VERIFIED: &str = "cloudflared.verified";
 
 /// cloudflared, fetched from Cloudflare's releases into the game's data folder when it is

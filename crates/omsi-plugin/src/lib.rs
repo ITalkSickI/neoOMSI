@@ -1,23 +1,22 @@
-//! OMSI plugins, driven the way Omsi.exe drives them (read with `tools/omsi-re`, addresses
-//! of Omsi.exe 2.3.004):
+//! OMSI plugins, driven the way OMSI drives them:
 //!
-//! * `sub_6920a8` finds every `*.opl` under `<OMSI>\plugins` (recursively) and reads
+//! * the original finds every `*.opl` under `<OMSI>\plugins` (recursively) and reads
 //!   `[dll]` (the library, relative to `plugins\`), `[varlist]`, `[stringvarlist]`,
-//!   `[systemvarlist]` and `[triggers]` — each a count, then that many names.
-//! * `sub_69376c` loads the library and looks up `PluginStart`, `PluginFinalize` (both
+//!   `[systemvarlist]` and `[triggers]` - each a count, then that many names.
+//! * the original loads the library and looks up `PluginStart`, `PluginFinalize` (both
 //!   required: without them the plugin is not loaded) and `AccessVariable`,
 //!   `AccessTrigger`, `AccessSystemVariable`, `AccessStringVariable` (each optional, a
 //!   warning when missing), then calls `PluginStart(AOwner)`. `PluginFinalize` is called
 //!   when the game ends.
-//! * Every frame (`sub_693054`, from the main loop `sub_6f34c0`), for each plugin in turn:
+//! * Every frame, for each plugin in turn:
 //!   every system variable of its list (`AccessSystemVariable(index, var value: Single,
 //!   var write: Boolean)`, the value written back when `write` comes back true); then,
 //!   with a player vehicle, its vehicle variables (`AccessVariable`, the same shape), its
 //!   string variables (`AccessStringVariable(index, PWideChar, var write)`: a buffer of
 //!   length + 1 wide characters holding the text and its terminating zero, read back when
 //!   `write` is set) and its triggers (`AccessTrigger(index, var active: Boolean)`, starting
-//!   from false each frame: a change from the last frame's state is a key going down —
-//!   the trigger fires — or coming up — `<trigger>_off`). Names nobody knows are skipped.
+//!   from false each frame: a change from the last frame's state is a key going down -
+//!   the trigger fires - or coming up - `<trigger>_off`). Names nobody knows are skipped.
 //!   All are `stdcall`; the index is the position in the plugin's own list (a Word).
 //!
 //! A plugin is a Windows DLL, almost always 32-bit. A library the running process can load
@@ -41,7 +40,7 @@ pub struct Opl {
     pub triggers: Vec<String>,
 }
 
-/// Read an `.opl` file's text: the tags Omsi.exe knows, each list a count and that many
+/// Read an `.opl` file's text: the tags OMSI knows, each list a count and that many
 /// lines (a count that is no number reads as 0, as `StrToInt` would refuse it).
 pub fn parse_opl(text: &str) -> Opl {
     let mut o = Opl::default();
@@ -70,7 +69,7 @@ pub fn parse_opl(text: &str) -> Opl {
 }
 
 /// Every `.opl` under `dir` (a folder's subfolders before its files, names compared without
-/// case — the order FindFilesRecursive gives).
+/// case - the order FindFilesRecursive gives).
 pub fn find_opls(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir(dir) else { return out };
@@ -152,7 +151,7 @@ pub struct Library {
 }
 
 impl Library {
-    /// Load the library and look its procedures up (`sub_69376c`).
+    /// Load the library and look its procedures up.
     pub fn load(path: &Path) -> Result<Library, String> {
         // SAFETY: loading a library runs its initialisers; that is what a plugin is for
         let lib = unsafe { libloading::Library::new(path) }.map_err(|e| format!("LoadLibrary failed: {e}"))?;
@@ -180,7 +179,7 @@ impl Library {
         unsafe { (self.finalize)() }
     }
 
-    /// One frame's calls, in Omsi.exe's order.
+    /// One frame's calls, in OMSI's order.
     pub fn frame(&self, f: &Frame) -> Reply {
         let mut r = Reply::default();
         let float = |func: Option<AccessFloatFn>, list: &[(u16, f32)]| -> Vec<Option<f32>> {
@@ -200,7 +199,7 @@ impl Library {
             .iter()
             .map(|(i, s)| {
                 let func = self.string?;
-                // (Omsi.exe hands over exactly length + 1 characters; a plugin writing a
+                // (OMSI hands over exactly length + 1 characters; a plugin writing a
                 // longer text overran the heap there. Here the buffer has room to spare,
                 // zeroed, and only up to its first zero is read back)
                 let mut buf: Vec<u16> = s.encode_utf16().collect();

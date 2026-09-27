@@ -39,7 +39,7 @@ pub struct ObjectType {
     pub mesh_pivots: Vec<Mat4>,
     /// `[isshadow]` per loaded mesh: a flat shadow blob drawn on the ground.
     pub mesh_shadow: Vec<bool>,
-    /// `[shadow]` per loaded mesh: the meshes Omsi.exe casts (stencil) shadows from.
+    /// `[shadow]` per loaded mesh: the meshes OMSI casts (stencil) shadows from.
     pub mesh_casts: Vec<bool>,
     /// Compiled scripts when the object is scripted or animated.
     pub program: Option<Arc<omsi_script::Program>>,
@@ -401,7 +401,7 @@ pub struct StagedTile {
     lanes: Mutex<Vec<Lane>>,
     objects: Vec<StagedObject>,
     /// The spline attachment rows `[attachObj]` records can hang on: (row id, where its first
-    /// object stands, the row's own type — a car park row's, not its car's).
+    /// object stands, the row's own type - a car park row's, not its car's).
     anchors: Vec<(i64, Pose, Arc<ObjectType>)>,
     /// What reading the tile counted (missing types, empty car parks, rows, attachments).
     counts: LoadStats,
@@ -744,7 +744,7 @@ pub struct GpuCache {
     /// Textures that lost mip levels to the budget and are near again: read again whole.
     wants_restore: Vec<PathBuf>,
     /// Scenery sign texts (`[texttexture]`) by what they show: (texture, material, users).
-    /// A street's name on twenty signs is one texture — every sign had its own, 270 MB
+    /// A street's name on twenty signs is one texture - every sign had its own, 270 MB
     /// around the Ahlheim main station.
     text_textures: HashMap<String, (TextureId, MaterialId, usize)>,
 }
@@ -875,7 +875,7 @@ impl GpuCache {
                         if worth {
                             self.wants_upgrade.push(path.clone());
                             // (to be swapped for the compressed whole soon: meanwhile at half
-                            // the size, a quarter of the memory — uploaded whole as RGBA, a
+                            // the size, a quarter of the memory - uploaded whole as RGBA, a
                             // map's first tiles took a gigabyte more than compressed, and
                             // cards with little memory ran out while the game was loading)
                             Arc::new(omsi_texture::gpu::halved_for_now(i))
@@ -1080,9 +1080,9 @@ fn tile_texture(img: Image, mask: bool) -> TextureData {
 const PAINT_MASK_MIN: usize = 512;
 
 /// A ground paint mask made ready to be drawn: the editor's brush writes nothing but 0 and
-/// 255, one texel every 0.6–3 m (2^params[0] texels a tile). Sampled as it is, the edge of
+/// 255, one texel every 0.6-3 m (2^params[0] texels a tile). Sampled as it is, the edge of
 /// a car park or a field follows the texel grid, and the shader's sharpening (see
-/// `fs_main`) turned that into hard steps — a staircase along every painted edge, metres
+/// `fs_main`) turned that into hard steps - a staircase along every painted edge, metres
 /// long where the edge runs nearly along the grid. Brought to at least
 /// `PAINT_MASK_MIN` texels (bilinearly) and blurred by a little under one of its own
 /// texels, the mask becomes a soft ramp whose half-way line is a smooth curve through the
@@ -1295,7 +1295,7 @@ pub struct World {
     /// The map's `Holidays.txt`, read when first asked.
     pub calendar: std::sync::OnceLock<omsi_map::Calendar>,
     /// The number plates of `registrations.txt` (the active chrono scenarios' first, the
-    /// latest before, then the map's own: Omsi.exe sub_785f98), read when first asked.
+    /// latest before, then the map's own: the original), read when first asked.
     pub registrations: std::sync::OnceLock<Vec<String>>,
     /// The clock the run starts at: a scenery object placed before the simulation's clock
     /// reaches the boards runs its `{init}` on it (it ran on 09:00 of 1989).
@@ -1329,7 +1329,7 @@ pub struct World {
     pub bus_stops: Mutex<Vec<(i64, DVec3, f64, String)>>,
     /// Where people wait at the stops: the `[passpos]` points of placed objects with a
     /// `[passengercabin]` (the maps' `people_standing_*` markers and bus shelters) as
-    /// (object id, world position, heading in degrees, seat height — 0 for a standing place).
+    /// (object id, world position, heading in degrees, seat height - 0 for a standing place).
     pub waiting_places: Mutex<Vec<(i64, DVec3, f64, f32)>>,
     /// Passenger cabins of waiting objects by file, read once.
     waiting_cabins: Mutex<HashMap<PathBuf, Option<Arc<omsi_vehicle::PassengerCabin>>>>,
@@ -1345,7 +1345,7 @@ pub struct World {
     /// flame) by tile.
     pub particle_objects: Mutex<HashMap<(i32, i32), Vec<ParticleObject>>>,
     /// The boxes of the loaded `[petrolstation]` objects (the depots' fuel and wash yards):
-    /// Omsi.exe (sub_7d4d64) lets the pump and the wash run only while the bus's box
+    /// OMSI lets the pump and the wash run only while the bus's box
     /// overlaps one, and sends the workshop's team out when the bus stands in none.
     pub petrol_stations: Mutex<Vec<omsi_sim::collision::Obb>>,
     /// Parked cars standing in the loaded tiles, and the options' `[AIMaxCountParked]`
@@ -1465,7 +1465,7 @@ pub fn standard_traffic_lamp(
 ///
 /// The lights of every detail level count, not only LOD 0's: a `[light_enh]` belongs to the
 /// mesh before it, and 40 stock models (the Spandau neon, sodium and gas street lamps, the
-/// Sv signals, the ICE and RE160 coaches) declare theirs after the far `[LOD] 0` mesh — their
+/// Sv signals, the ICE and RE160 coaches) declare theirs after the far `[LOD] 0` mesh - their
 /// glow still shows up close in OMSI. No stock model repeats a light in two levels.
 pub fn model_lights_faded(
     model: &Model,
@@ -1478,7 +1478,7 @@ pub fn model_lights_faded(
 }
 
 /// [`model_lights_faded`], each sprite with the light it belongs to (the n-th light of the
-/// model, `[light_enh]` and `[light_enh_2]` in file order — the order `value_of` is asked
+/// model, `[light_enh]` and `[light_enh_2]` in file order - the order `value_of` is asked
 /// in): one light gives several sprites (its glow, star, fog halo and cone).
 pub fn model_lights_owned(
     model: &Model,
@@ -1509,7 +1509,7 @@ pub fn model_lights_owned(
                 continue;
             }
             let p = xf.transform_point3(glam::Vec3::from(l.pos)).as_dvec3() + pos;
-            // (the glow is as wide as the light's size: Omsi.exe draws its sprite half that
+            // (the glow is as wide as the light's size: OMSI draws its sprite half that
             // either side of the lamp)
             out.push(omsi_render::Corona {
                 position: p,
@@ -1546,7 +1546,7 @@ pub fn model_lights_owned(
             let (outer, inner) = (l.cone_outer.max(l.cone_inner), l.cone_inner.min(l.cone_outer));
             let flags = l.values.first().map(|v| omsi_cfg::parse_f32(v) as i32).unwrap_or(0).clamp(0, 7) as u8;
             let color = [l.color[0] / 255.0, l.color[1] / 255.0, l.color[2] / 255.0];
-            // Omsi.exe sub_59fbbc / sub_5a0068: the glow, the light's own bitmap (else
+            // the original: the glow, the light's own bitmap (else
             // licht.bmp) as wide as its size, left out with effect bit 4; with effect bit 1 a
             // star (light_effect1.bmp) turned to the viewer, 2.5 times the size and growing
             // with the glow's strength (corona.wgsl, flag bit 8)
@@ -1594,7 +1594,7 @@ pub fn model_lights_owned(
                     ..Default::default()
                 });
             }
-            // the light's cone in fog (Omsi.exe sub_59f534: built for a directional light
+            // the light's cone in fog (the original: built for a directional light
             // with the cone flag whose cone angles make sense; effect bit 2 leaves it out).
             // Its size and strength follow the weather and the viewer (`lights::collect`,
             // corona.wgsl), so the raw values go along: the light's size and brightness and
@@ -1752,7 +1752,7 @@ impl World {
     /// The wetness a puddle would use at world (x, y): `wetness` where a road surface is
     /// under the point (the same `[moisture]` ground `enhanced.wgsl`'s reflective puddle
     /// patches sit on), 0 on bare terrain or where no surface is loaded there yet. Approximate
-    /// on purpose — `puddles::puddle_coverage` only needs to agree with the shader's own mask
+    /// on purpose - `puddles::puddle_coverage` only needs to agree with the shader's own mask
     /// closely enough that a wheel's splash starts where the reflection does, not to the texel.
     pub fn wet_road_at(&self, x: f64, y: f64, wetness: f32) -> f32 {
         let tx = (x / tile_size()).floor() as i32;
@@ -1772,8 +1772,8 @@ impl World {
     }
 
     /// The ground under a point of the outside camera's arm: the highest face of the roads,
-    /// crossings, surface objects and terrain at or below `top`. A face higher up — the
-    /// roof over a petrol station's forecourt, a bridge deck — is not the ground there (the
+    /// crossings, surface objects and terrain at or below `top`. A face higher up - the
+    /// roof over a petrol station's forecourt, a bridge deck - is not the ground there (the
     /// top surface of the raster is, and it put the camera on the canopy); a roof's mesh
     /// stops the camera instead.
     pub fn camera_ground(&self, x: f64, y: f64, top: f64) -> Option<f64> {
@@ -1825,8 +1825,8 @@ impl World {
         out
     }
 
-    /// Height for somebody on foot: the top of whatever is here — a pavement, a platform,
-    /// a painted yard — and the bare ground where there is nothing. [`ground_height`] is
+    /// Height for somebody on foot: the top of whatever is here - a pavement, a platform,
+    /// a painted yard - and the bare ground where there is nothing. [`ground_height`] is
     /// the wheels' answer instead: it picks the drivable surface, which is the road *under*
     /// the kerb, and standing people on that buried them to the ankles in the pavement.
     pub fn walk_height(&self, x: f64, y: f64) -> Option<f64> {
@@ -2262,7 +2262,7 @@ impl World {
     }
 
     /// The whole map's road network and where its objects stand, read from the tile files
-    /// alone — the splines' and objects' paths, no mesh, no texture — for the navigator,
+    /// alone - the splines' and objects' paths, no mesh, no texture - for the navigator,
     /// which must route beyond the tiles loaded around the bus. Objects placed on the ground
     /// take the tile's terrain height; editor-only splines and objects count (some maps put
     /// all their traffic paths on invisible splines).
@@ -2484,7 +2484,7 @@ impl World {
     }
 
     /// The sim date moved on (midnight, a clock set by hand): the chrono scenarios in force
-    /// then (Omsi.exe re-evaluates them at the day's change: `sub_707ab8` → `sub_5a6c28`).
+    /// then (OMSI re-evaluates them at the day's change: the original → the original).
     /// Returns the tiles a scenario that came or went changes (to be read again), and
     /// forgets the map index built with the old ones.
     pub fn set_date(&self, date: i32) -> Vec<(i32, i32)> {
@@ -2989,7 +2989,7 @@ impl World {
         if self.missing.lock().insert(key.clone()) {
             // the folder under Sceneryobjects/Splines names the add-on it comes with
             let addon = key.split('/').nth(1).unwrap_or("");
-            log::warn!("{what} not found: {file} (add-on folder \"{addon}\"; first used by id {id} in tile {tx},{ty}) — left out");
+            log::warn!("{what} not found: {file} (add-on folder \"{addon}\"; first used by id {id} in tile {tx},{ty}) - left out");
         }
     }
 
@@ -3156,7 +3156,7 @@ impl World {
                 };
                 // a point the parent does not have (its object was changed after the map
                 // was made: the Ahlheim signal heads on `Arm_3f` point 10 of 1) is the
-                // parent's own origin, as in the original — the object is not dropped
+                // parent's own origin, as in the original - the object is not dropped
                 let m = pt
                     .sco
                     .attachments
@@ -3260,7 +3260,7 @@ impl World {
             // plane or a few faces around 0): every vertex of the plate is raised by it where
             // it stands, and the ground is pressed onto the same field (`final_ground`). The
             // Juliusturm junction's field is a 3.5 % plane, -0.62 m under its west arm and
-            // +0.76 m under its east one — exactly where the roads arriving and leaving lie
+            // +0.76 m under its east one - exactly where the roads arriving and leaving lie
             // (34.91 and 36.29 m round the plate's 35.53 m). Pressed onto the terrain and the
             // nearby roads instead, the plate sagged into a trough with a 0.8 m wall at one
             // end. Past the field's edge a vertex takes the height of its nearest corner.
@@ -3608,7 +3608,7 @@ impl World {
                 // An editor-only object still lays its paths out: OMSI's invisible
                 // crossings (Novi Sad's junctions are 52-path `[onlyeditor]` objects, their
                 // light program driving the lamps placed round them) are where its traffic
-                // and its timetable buses turn — skipped, the junctions were holes in the
+                // and its timetable buses turn - skipped, the junctions were holes in the
                 // road network and every bus route through one jumped across it.
                 if first_load && !ot.sco.paths.is_empty() {
                     lanes.extend(object_lanes(
@@ -3748,7 +3748,7 @@ impl World {
                 }
             }
             // what the outside camera cannot pass through: houses, walls, shelters, canopies
-            // (surface objects too — a petrol station is a drivable [surface] with a roof)
+            // (surface objects too - a petrol station is a drivable [surface] with a roof)
             if let Some(shape) = ot.camera_shape() {
                 state.blockers.push(crate::camera_arm::Blocker {
                     ty: Arc::downgrade(&ot),
@@ -4062,11 +4062,11 @@ impl World {
                             Some(w) => w.iter().collect(),
                             None => ot.meshes.iter().map(|(m, _, _)| m).collect(),
                         };
-                        // The wheels stand on a `[surface]` object's drawn faces: Omsi.exe's
-                        // ground probe (sub_62a6a0, 0x62acc6) casts into the object's model
+                        // The wheels stand on a `[surface]` object's drawn faces: OMSI's
+                        // ground probe casts into the object's model
                         // mesh, whatever its `[collision_mesh]` or `[nocollision]` say (those
                         // only shape the crash body, TPhysObjInstance). Its collision mesh
-                        // counts as well (added above) — the Spandau depot (Omnibushof_S_1)
+                        // counts as well (added above) - the Spandau depot (Omnibushof_S_1)
                         // has one for its buildings only, and with the drawn faces left out
                         // the buses sank 10 cm into its yard onto the terrain under it and
                         // hopped wherever a building's footprint began
@@ -4166,9 +4166,9 @@ impl World {
                                 if let Some(c) = &cut {
                                     // The cut as the terrain's alpha test sees it: sampled
                                     // bilinearly at this texel's centre, cut below one half.
-                                    // Taken from the nearest cut texel (1.5–3 m each), the
+                                    // Taken from the nearest cut texel (1.5-3 m each), the
                                     // paint kept teeth over the hole the road left in the
-                                    // ground — drawn on top of the carriageway, a staircase
+                                    // ground - drawn on top of the carriageway, a staircase
                                     // of asphalt or cobbles reaching into the road.
                                     if bilinear_alpha(c, (i as f32 + 0.5) / w as f32, (j as f32 + 0.5) / h as f32) < 0.5 {
                                         *a = 0;
@@ -4256,7 +4256,7 @@ impl World {
     /// Runs on the loader thread. The GPU cache is only locked for two quick looks (which
     /// types are there, then which of the found files are): the lookups themselves go to
     /// the disk or into an archive the first time a name comes up, and the thread that
-    /// draws waited for them — a tile upload of the Ahlheim main station took 372 ms.
+    /// draws waited for them - a tile upload of the Ahlheim main station took 372 ms.
     fn wanted_textures(&self, p: &Prepared) -> Vec<(String, Vec<PathBuf>)> {
         let (have_types, have_splines, have_trees): (
             hashbrown::HashSet<usize>,
@@ -4408,7 +4408,7 @@ impl World {
             )
             .map(|t| (t.0, ground0.detail_repeats()));
         // The base layer wets in the rain exactly like a painted one when its own
-        // <texture>.cfg carries [moisture]/[puddles] — this used to be dropped on the
+        // <texture>.cfg carries [moisture]/[puddles] - this used to be dropped on the
         // floor (add_terrain_material had no moisture parameter at all), so a map whose
         // default ground is a wet-tagged surface (rather than the untagged stock grass)
         // never showed it, while the very same texture painted as a later [groundtex]
@@ -4709,7 +4709,7 @@ impl World {
         // lower LODs (plain materials). Each level is drawn from its own least size up to the
         // next larger least size of any level: models list them in either order (the stock
         // Sv signals say [LOD] 0.1 before [LOD] 1.0), and taken in file order a level came out
-        // as "from 1.0 up to 0.1" — never drawn, a signal or post blinking out as the view
+        // as "from 1.0 up to 0.1" - never drawn, a signal or post blinking out as the view
         // turned.
         let mins: Vec<f32> = std::iter::once(ot.lod0_min).chain(ot.lower_lods.iter().map(|l| l.0)).collect();
         let upper_of = |m: f32| mins.iter().copied().filter(|&x| x > m).fold(f32::MAX, f32::min);
@@ -4780,7 +4780,7 @@ impl World {
     }
 
     /// Give up on a tile on its way in (it went out of range): what it already has on the
-    /// GPU — textures and object types it holds, instances placed so far — goes back.
+    /// GPU - textures and object types it holds, instances placed so far - goes back.
     pub fn abandon_upload(
         &self,
         renderer: &Renderer,
@@ -4931,8 +4931,8 @@ impl World {
         state.poles = placing.poles;
     }
 
-    /// Place a tile whose textures and object types are on the GPU — the ground, then the
-    /// splines, the trees and the objects — until `deadline` (always a little: at least the
+    /// Place a tile whose textures and object types are on the GPU - the ground, then the
+    /// splines, the trees and the objects - until `deadline` (always a little: at least the
     /// ground or one spline, a few trees or one object). True when all of it is placed.
     /// A big tile (a main station with a few thousand objects and signs) took a third of a
     /// second in one piece.
@@ -5052,7 +5052,7 @@ impl World {
                             vec![mat]
                         ));
                         // The painted ground: every further [groundtex] the editor's brush put on this
-                        // tile is the same tile mesh once more, blended in through its own mask — which
+                        // tile is the same tile mesh once more, blended in through its own mask - which
                         // is how OMSI's car parks get their asphalt, its side streets their cobbles and
                         // its meadows their fields.
                         let no_paint = omsi_cfg::env::var_os("OMSI_NO_GROUND_PAINT").is_some();
@@ -5342,7 +5342,7 @@ impl World {
                             i
                         };
                         // (only where the lower levels are drawn instead: a scripted object
-                        // or a lamp keeps its first level, which alone the script poses —
+                        // or a lamp keeps its first level, which alone the script poses -
                         // limited as well, it vanished when small, with nothing in its place)
                         if has_lower && !surface && lamp.is_none() && ot.program.is_none() {
                             renderer.set_lod_range(scene, inst, ot.lod0_min, lod0_max);
@@ -5362,7 +5362,7 @@ impl World {
                             lamp_instances.push((inst, ot.mesh_visible.get(mi).cloned().flatten()));
                         }
                         if type_auto_night && (2..=4).contains(&ot.sco.night_map_mode) {
-                            // each house its own hours (Omsi.exe draws them once per object)
+                            // each house its own hours (OMSI draws them once per object)
                             pl.night_modes.push(NightMode { inst, use_: InUse::new(ot.sco.night_map_mode, map_id as u64), slots: mats.len().max(1) });
                         }
                         // [texttexture] + [useTextTexture]: street names etc. from the map strings
@@ -5855,8 +5855,8 @@ impl World {
     }
 
     /// Put scenery object `rel` (a `.sco`) at `pos` turned to `heading` (degrees), outside
-    /// any tile, its `[texttexture]` strings taken from `strings` — the game's own helpers,
-    /// as Omsi.exe puts the dynamic route arrows (`sub_617024`). Taken away again with
+    /// any tile, its `[texttexture]` strings taken from `strings` - the game's own helpers,
+    /// as OMSI puts the dynamic route arrows. Taken away again with
     /// `remove_helper_object`.
     pub fn add_helper_object(&self, renderer: &Renderer, scene: &mut Scene, rel: &str, pos: DVec3, heading: f64, strings: &[String]) -> Option<TileGpu> {
         let ot = self.object_type(rel)?;
@@ -6623,8 +6623,8 @@ impl World {
 
 /// The rotation of a knocked-over post: turned about its foot by 86° (it rests on its own
 /// thickness) in the direction of `push`.
-/// A file that belongs to a tile (`.terrain`, …): beside the tile file, or — for a tile the
-/// object editor saved as a copy in the content folder, which has only the tile itself —
+/// A file that belongs to a tile (`.terrain`, …): beside the tile file, or - for a tile the
+/// object editor saved as a copy in the content folder, which has only the tile itself -
 /// in the same map folder under the other content roots.
 pub fn tile_companion(path: &Path, ext: &str) -> PathBuf {
     // a copy in a content root before the installation's (the editor's ground, a mod's)
@@ -6731,11 +6731,11 @@ pub struct NightMode {
 }
 
 /// When a building with a `[NightMapMode]` is in use and when its windows are lit, as
-/// Omsi.exe decides once per object (`sub_611394`) and every frame (`sub_6119d8`): in use
-/// between `on` and `off` (seconds of the day; mode 2 homes 5.5–9.5 h until 22–24 h, mode 3
-/// offices 6–8 h until 17–19 h on working days that are no holiday, mode 4 schools 6–8 h until
-/// 14–16 h on school days, any other mode all day); lit while in use and the daylight under
-/// `threshold` (0.6 for mode 0, else 0.3–0.75).
+/// OMSI decides once per object and every frame: in use
+/// between `on` and `off` (seconds of the day; mode 2 homes 5.5-9.5 h until 22-24 h, mode 3
+/// offices 6-8 h until 17-19 h on working days that are no holiday, mode 4 schools 6-8 h until
+/// 14-16 h on school days, any other mode all day); lit while in use and the daylight under
+/// `threshold` (0.6 for mode 0, else 0.3-0.75).
 #[derive(Clone, Copy, Debug)]
 pub struct InUse {
     pub mode: i32,
@@ -6796,7 +6796,7 @@ impl World {
     }
 
     /// A number plate from `registrations.txt` for a vehicle with `[registration_free]`
-    /// (Omsi.exe gives such a vehicle's `ident` a random line of it at the spawn).
+    /// (OMSI gives such a vehicle's `ident` a random line of it at the spawn).
     pub fn free_registration(&self, seed: u64) -> Option<String> {
         let list = self.registrations.get_or_init(|| {
             self.chrono_dirs
@@ -6838,7 +6838,7 @@ impl World {
 
     /// Set the railway signals: `aspects` gives each signal object's `Signal` (0 stop, 1 go,
     /// 2 go at the route's speed limit) as the traffic worked it out, and every signal
-    /// learns what the next one shows (`NextSignal`) — a distant signal what its main
+    /// learns what the next one shows (`NextSignal`) - a distant signal what its main
     /// signal shows.
     pub fn set_signals(&self, aspects: &HashMap<i64, f32>) {
         if self.signal_routes.is_empty() {
@@ -6873,7 +6873,7 @@ impl World {
         }
     }
 
-    /// The echo at `p`: (reverberation time, how much of it is heard) — full inside an
+    /// The echo at `p`: (reverberation time, how much of it is heard) - full inside an
     /// underpass's box, fading over its edge distance at the sides.
     pub fn reverb_at(&self, p: DVec3) -> (f32, f32) {
         let me = omsi_sim::collision::Obb::point(p, 0.01);
@@ -7102,7 +7102,7 @@ impl World {
             }
             // [sound] of scenery objects: crossing bells, ambient loops
             let fired: Vec<String> = std::mem::take(&mut o.inst.host.fired_triggers);
-            // (out of earshot with nothing playing: nothing to do — finding the sound file
+            // (out of earshot with nothing playing: nothing to do - finding the sound file
             // for each of a city's scripted objects every frame took 1.8 ms)
             let near = dist < 300.0 || o.sounds.is_some();
             if let (Some(a), true) = (audio, near) {
@@ -7279,7 +7279,7 @@ fn own_skinned_meshes(
 }
 
 /// Reshape the skinned meshes of a vehicle and its coupled parts whose bones moved (the
-/// player's own, or an AI copy's — see `own_skinned_meshes`).
+/// player's own, or an AI copy's - see `own_skinned_meshes`).
 pub fn sync_skinned(
     renderer: &Renderer,
     scene: &mut Scene,
@@ -7449,10 +7449,10 @@ fn sync_materials(
 
 /// A vehicle's `[interiorlight]`s (`variable range r g b x y z`) as lamps for this frame:
 /// points of light at their place in the vehicle, as strong as their variable (0..1) times
-/// `range` (1 for a saloon lamp, 0.4 for a door lamp, 2 for the LiAZ's saloon rows — a door
+/// `range` (1 for a saloon lamp, 0.4 for a door lamp, 2 for the LiAZ's saloon rows - a door
 /// lamp 0.4 m across could not reach the step 2 m below it, so it is no distance), each
 /// lighting only the meshes that list it in
-/// their `[illumination_interior]` — up to four per mesh, as OMSI switches those lights on
+/// their `[illumination_interior]` - up to four per mesh, as OMSI switches those lights on
 /// for just that mesh. Every set of lamps some mesh names gets a run of slots of its own
 /// (the LiAZ 5292 has 32 lamps; only the first eight were drawn, and its saloon stayed dark).
 fn sync_interior_lamps(
@@ -7513,8 +7513,8 @@ fn sync_interior_lamps(
     for (first, set) in blocks {
         for (k, &li) in set.iter().enumerate() {
             let il = &ty.model.interior_lights[li];
-            // on or off: Omsi.exe enables the lamp when its variable is 0.5 or more
-            // (`sub_5fa78c`), there is no dimming
+            // on or off: OMSI enables the lamp when its variable is 0.5 or more
+            //, there is no dimming
             let on = il
                 .variable
                 .trim()
@@ -7529,8 +7529,8 @@ fn sync_interior_lamps(
                 first + k as u32,
                 omsi_render::PointLight {
                     position: position + at.as_dvec3(),
-                    // Omsi.exe's Direct3D light (`sub_5fabbc`): a point light of the
-                    // colour / 255, Range 100 m, attenuation 1 / (d² / range²) — full
+                    // OMSI's Direct3D light: a point light of the
+                    // colour / 255, Range 100 m, attenuation 1 / (d² / range²) - full
                     // light at `range` metres, stronger closer in, a quarter at twice
                     radius: 100.0,
                     core: il.range.max(0.01),
@@ -7960,8 +7960,8 @@ pub struct VariantSlot {
 }
 
 /// A material slot with several `[matl_lightmap]`s, each a texture and a variable (the
-/// LiAZ 5292's saloon: the cab lamp, saloon circuit 1 and circuit 2). Omsi.exe keeps them
-/// all (`sub_5efae8` grows two lists per material); drawn with only the last one, the
+/// LiAZ 5292's saloon: the cab lamp, saloon circuit 1 and circuit 2). OMSI keeps them
+/// all; drawn with only the last one, the
 /// saloon stayed unlit whenever circuit 2 was off. The slot's light map is the sum of the
 /// maps switched on, made the first time that combination shows and shared by every
 /// vehicle of the kind; the slot is as bright as its brightest variable.
@@ -8029,7 +8029,7 @@ impl MultiLight {
     }
 }
 
-/// `[matl_freetex]`: the slot shows the texture file named by a string variable — the
+/// `[matl_freetex]`: the slot shows the texture file named by a string variable - the
 /// SD200's destination roller reads the terminus pictures of the map's `.hof` this way.
 #[derive(Clone)]
 pub struct FreeTex {
@@ -8245,7 +8245,7 @@ pub struct VehicleSet {
 
 /// What reads vehicle sets ahead on a worker thread: their textures and meshes, made on the
 /// GPU right there (the device takes calls from any thread) and waiting in `ready` until the
-/// set is uploaded — which then only puts them into the scene and makes the materials. A
+/// set is uploaded - which then only puts them into the scene and makes the materials. A
 /// C2's set took 60 ms on the thread that draws when it had to read and upload it all.
 #[derive(Clone)]
 pub struct VehiclePrefetch {
@@ -8583,7 +8583,7 @@ impl World {
         let mut render = self.instantiate_vehicle(renderer, scene, vt, &set, Some(key), None);
         // an articulated AI bus (timetable or random traffic, and its coupled rear section)
         // bends its own bellows too, from a mesh copy of its own (freed again in
-        // `release_vehicle`) — the shared set's copy has to stay in the rest pose, since
+        // `release_vehicle`) - the shared set's copy has to stay in the rest pose, since
         // every other instance of the type still draws it
         own_skinned_meshes(renderer, scene, vt, &mut render);
         render
@@ -8831,7 +8831,7 @@ impl World {
 
     /// The snow the panes wear in a snow weather (`rain::snow_on_glass`), made once and
     /// shared by every vehicle like any other vehicle texture. `name` and `dirs` are not
-    /// used — it has the signature the `tex!` macro calls with.
+    /// used - it has the signature the `tex!` macro calls with.
     fn snow_glass_texture(
         &self,
         renderer: &Renderer,
@@ -9294,7 +9294,7 @@ impl World {
                     // `[matl_alpha] 2` explicitly, so the variable itself need not promote
                     // a slot into transparency.
                     // a `[isshadow]` mesh is a soft ground decal by convention, its texture's
-                    // own alpha fading it out at the edges — without a `[matl_alpha]`
+                    // own alpha fading it out at the edges - without a `[matl_alpha]`
                     // override of its own (most shadow blobs have none) it defaulted to
                     // opaque, so the decal's square base texture painted a solid (often
                     // white or grey) tile under the bus instead of a soft shadow.
@@ -9335,7 +9335,7 @@ impl World {
                     }
                     // Body-volume heuristics must never turn a named pane back into an
                     // opaque draw (the windscreen became a pale grey wall from inside after
-                    // the body-depth repair) — but only a pane the model.cfg declares
+                    // the body-depth repair) - but only a pane the model.cfg declares
                     // blended: a "glass" slot without [matl_alpha] is opaque in OMSI (the
                     // LiAZ's dark glass_gr.dds around its displays and over its windows,
                     // which drawn blended let the sky show through the body).
@@ -9355,7 +9355,7 @@ impl World {
                     });
                     // [matl_envmap] tex factor: reflectivity = factor (saturating at 1) x the
                     // reflection mask, which is the [matl_envmap_mask]'s alpha or else the
-                    // diffuse alpha — 1 for a texture without an alpha channel, as D3D samples
+                    // diffuse alpha - 1 for a texture without an alpha channel, as D3D samples
                     // it (a BC1 texture samples as 1 too): the SD200's dashboard (24-bit
                     // bitmap, factor 0.1) keeps a faint gloss. The mask matters: the Citaro's
                     // doors and the O530 Facelift's bodies carry a paint whose alpha is 255 and
@@ -9460,7 +9460,7 @@ impl World {
                     // and must not write depth, or everything blended behind them is thrown
                     // away and the window turns into a pale hole in the world
                     let spec = SlotSpec { base: Look { alpha, color, emissive, unlit, diffuse: None, transmap, night, lightmap, envmap, extra, dyn_tex: base_dyn }, item: item_spec };
-                    // [texchanges]: the texture named in the mesh is only a key — the master
+                    // [texchanges]: the texture named in the mesh is only a key - the master
                     // of that name holds the textures a script variable switches between
                     // (the SD200's roller blinds, the seat covers of the AI interior).
                     let master = vt.texchange(&m.texture);
@@ -9576,7 +9576,7 @@ impl World {
 ///
 /// A spline placed with `mirror` has its cross-section turned over: each path lies on the
 /// other side of the centre line and runs the other way, as its carriageway does (a right
-/// lane that ran forward is a left lane running backward — traffic still keeps right).
+/// lane that ran forward is a left lane running backward - traffic still keeps right).
 /// Ignoring the flag put every lane of Spandau's 40-odd mirrored road pieces 5 to 20 m
 /// beside its road and the wrong way round; a timetable route through one had its bus turn
 /// into the oncoming lanes and jump back where the next piece began.
@@ -9713,9 +9713,9 @@ fn object_lanes(
             _ => 0,
         };
         // The `[rule]`s the map put on this object's path. Most of a map's rules sit on the
-        // junctions, not on the splines — Berlin-Spandau has 5402 trafficdensity, 693
+        // junctions, not on the splines - Berlin-Spandau has 5402 trafficdensity, 693
         // speedlimit, 576 trucks and 64 no_cars on objects against 3114/810/284/4 on splines
-        // — so ignoring them left cars turning into every yard and pedestrian street.
+        // - so ignoring them left cars turning into every yard and pedestrian street.
         let rule_of = |name: &str| {
             rules
                 .iter()

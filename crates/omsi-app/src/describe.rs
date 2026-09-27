@@ -1,8 +1,8 @@
 //! Readable names for the cockpit: what the HUD says about the switch or part under the
 //! cursor. The scripts and models only know internal, mostly German names
 //! (`cp_batterietrennschalter_toggle`, `Zahltisch_Wechsler_0_05`), so a name is looked up
-//! the way OMSI's own key assignment dialog does it — `Languages/<LANG>_key_veh_gen*.olf`
-//! gives the text of every trigger the keyboard can reach (`KY_<trigger>`) — and whatever
+//! the way OMSI's own key assignment dialog does it - `Languages/<LANG>_key_veh_gen*.olf`
+//! gives the text of every trigger the keyboard can reach (`KY_<trigger>`) - and whatever
 //! the language files do not know is translated word by word with the common OMSI cockpit
 //! vocabulary below (German compounds are split into the words they are made of).
 

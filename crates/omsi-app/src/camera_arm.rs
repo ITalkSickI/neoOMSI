@@ -2,9 +2,9 @@
 //! in the way, and how it pulls in and eases back out again.
 //!
 //! OMSI's own outside camera only keeps above the ground. Here the arm is a probe from the
-//! point the camera orbits to where it wants to be — five parallel rays (the middle and the
+//! point the camera orbits to where it wants to be - five parallel rays (the middle and the
 //! four sides of the near plane) against the ground and the solid meshes of the buildings,
-//! walls, shelters and canopies around — and the camera stands short of the first hit, the
+//! walls, shelters and canopies around - and the camera stands short of the first hit, the
 //! way a modern third-person camera does: it snaps in at once (the inside of a wall is never
 //! shown), waits a moment once the way is clear and then eases back out, so that an edge
 //! swept past does not make it pump in and out.
@@ -12,7 +12,7 @@
 //! What blocks is decided once per object type ([`BlockerShape`]): only the opaque
 //! triangles count (foliage, fences and wire are alpha-tested cut-outs the camera may pass
 //! through), and only a type that is at least 2 m tall and wide and whose surfaces are a fair
-//! part of its bounding shell — a house, a wall, a bus shelter or a petrol station canopy,
+//! part of its bounding shell - a house, a wall, a bus shelter or a petrol station canopy,
 //! not a lamp post, a sign on a mast, a traffic light's boom, a tree's trunk or a parked car.
 //! `OMSI_DEBUG_CAMERA=1` logs the decision per type and what the arm hits.
 
@@ -365,7 +365,7 @@ fn slab(o: Vec3, d: Vec3, lo: Vec3, hi: Vec3) -> Option<(f32, f32)> {
     Some((t0, t1))
 }
 
-/// Möller–Trumbore, both faces: a one-sided wall seen from behind is still a wall.
+/// Möller-Trumbore, both faces: a one-sided wall seen from behind is still a wall.
 fn ray_triangle(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
     let e1 = b - a;
     let e2 = c - a;

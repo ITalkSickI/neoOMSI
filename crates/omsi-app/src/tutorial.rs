@@ -1,5 +1,5 @@
-//! OMSI 2's tutorials (`Tutorials/<n>`): four lessons, each a situation (Omsi.exe
-//! TTutorialMan: Strg.osn, Fast.osn, LIN.osn, SPEZ.osn) and a run of pages — `<step>.html`
+//! OMSI 2's tutorials (`Tutorials/<n>`): four lessons, each a situation (OMSI
+//! TTutorialMan: Strg.osn, Fast.osn, LIN.osn, SPEZ.osn) and a run of pages - `<step>.html`
 //! in the language's folder with `<step>.jpg` beside them, stepped through in the order of
 //! their numbers. The original moves on by itself when the step's action is done (the key
 //! pressed, the switch thrown: TTutorialMan.virtual_00 checks them); here Enter or Page

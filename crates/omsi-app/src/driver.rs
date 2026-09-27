@@ -1,5 +1,5 @@
 //! The driver of the player's bus: a person on the bus's `[drivpos]` with both hands on the
-//! steering wheel, turning it as the wheel turns — seen from outside, from the passengers'
+//! steering wheel, turning it as the wheel turns - seen from outside, from the passengers'
 //! places and in the mirrors, left out of the driver's own view (the cab view shows him
 //! only in the mirrors, as OMSI does).
 //!
@@ -475,7 +475,7 @@ impl DriverFigure {
             log::info!("HANDP {dt:.4} {:?} {:?} {:?} lean {:.2}", posed.wrist[0].to_array(), posed.elbow[0].to_array(), self.grip_fix[0].to_array(), self.lean);
         }
         if let (Some(t), true) = (&targets, posed.ok) {
-            // (drawn this frame as posed; the next frame holds the rim) — a hand on its way
+            // (drawn this frame as posed; the next frame holds the rim) - a hand on its way
             // to a new hold keeps the correction it had
             let tubes = t.tubes.map(|q| self.to_person(q));
             let holding = [0, 1].map(|k| self.hands[k].mv.is_none());
@@ -851,8 +851,8 @@ fn wrap(a: f32) -> f32 {
 }
 
 /// The driver figure: one of the map's `drivers.txt` (the human files OMSI draws at the
-/// wheel of its buses — Spandau and Grundorf name `humans\\axyz\\man01.hum`; Omsi.exe
-/// reads the list with the map, sub_785f98), chosen by `pick`; without the list OMSI's own
+/// wheel of its buses - Spandau and Grundorf name `humans\\axyz\\man01.hum`; OMSI
+/// reads the list with the map, the original), chosen by `pick`; without the list OMSI's own
 /// driver figure `Humans/*/DBC_man04_driver.hum`. Each file is read once.
 fn driver_type(world: &crate::scene::World, pick: u64) -> Option<Arc<HumanType>> {
     let listed: Vec<std::path::PathBuf> = omsi_map::ailists::load_list(&world.map_dir.join("drivers.txt"))
@@ -932,7 +932,7 @@ fn find_wheel(v: &VehicleInstance, hip: Vec3) -> Option<Wheel> {
     let origin_point = origin.transform_point3(Vec3::ZERO);
     let centre = origin_point;
     let mut axis = origin.transform_vector3(Vec3::X).normalize_or_zero();
-    // the axis points at the driver: at his shoulders, not his hips — a bus's wheel lies
+    // the axis points at the driver: at his shoulders, not his hips - a bus's wheel lies
     // nearly flat at the height of the hips, whose direction then says nothing (the SD202's
     // axis came out pointing down and the hands held the air under the rim); a wheel that
     // lies anywhere near flat faces up
@@ -973,8 +973,8 @@ fn find_wheel(v: &VehicleInstance, hip: Vec3) -> Option<Wheel> {
     // The rim's cross-section, from the ring of its vertices (a spoke or the hub is nearer
     // the axis): the middle of the tube across and along the axis, and how thick it is. The
     // animation's origin may be anywhere on the axis, the foot of the column as often as the
-    // hub; and a guessed tube — a fixed 93 % of the outer radius, 8 mm over the ring's mean
-    // height — put the fingers' fist 2-3 cm beside the SD202's rim, closed round the air.
+    // hub; and a guessed tube - a fixed 93 % of the outer radius, 8 mm over the ring's mean
+    // height - put the fingers' fist 2-3 cm beside the SD202's rim, closed round the air.
     let pct = |v: &mut Vec<f32>, f: f32| {
         v.sort_by(|a, b| a.total_cmp(b));
         v[((v.len() - 1) as f32 * f) as usize]

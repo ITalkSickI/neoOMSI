@@ -424,7 +424,7 @@ pub fn windows_components(rel: &str) -> Vec<&str> {
     out
 }
 
-/// How names compare, as on Windows: without regard to case (letters beyond ASCII too —
+/// How names compare, as on Windows: without regard to case (letters beyond ASCII too -
 /// `Bahnübergang` is `BAHNÜBERGANG`).
 fn name_key(name: &str) -> String {
     if name.is_ascii() {
@@ -546,7 +546,7 @@ static SANDBOX_ROOTS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec
 
 /// Mark a content root as a sandbox: content received from another machine. It is read as
 /// data (maps, vehicles, objects) like any other root, but nothing that runs code comes from
-/// it — no plugins are loaded from a sandbox.
+/// it - no plugins are loaded from a sandbox.
 pub fn mark_sandbox(root: PathBuf) {
     let mut r = SANDBOX_ROOTS.lock().unwrap();
     if !r.contains(&root) {
@@ -677,8 +677,8 @@ fn package_definitions(root: &Path, package: &str) -> std::collections::HashSet<
 ///
 /// That holds for a patch (no vehicle definitions of its own, or only ones the owner's pack
 /// has as well). A pack with vehicles the owner's copy does not know is another *version*
-/// of the pack — a map archive bundles its own Citaro Facelift next to the one installed
-/// in the content folder, with scripts, varlists and constfiles that belong together — and
+/// of the pack - a map archive bundles its own Citaro Facelift next to the one installed
+/// in the content folder, with scripts, varlists and constfiles that belong together - and
 /// taking single files from it broke the bus it did not come from (the Ahlheim Citaro's
 /// VDV and IBIS scripts ran on the installed pack's varlists, missing half their
 /// variables, and every display stayed dark). Such a copy is only asked for files the
@@ -726,7 +726,7 @@ pub fn missing_vehicle_pack(path: &Path) -> Option<String> {
 }
 
 /// Every content root's version of a folder given relative to a root (existing ones only),
-/// highest priority first — for listing maps, vehicles, weathers across the installation
+/// highest priority first - for listing maps, vehicles, weathers across the installation
 /// and the installed mods.
 pub fn content_dirs(rel: &str) -> Vec<PathBuf> {
     let rel = windows_components(rel);
@@ -792,7 +792,7 @@ pub fn resolve_path(base: &Path, rel: &str) -> PathBuf {
         cur = found.unwrap_or(direct);
     }
     if let (Some(owner), false) = (&owner, vfs::exists(&cur)) {
-        // not in `base`'s root either: another root may still have it — a lower-priority
+        // not in `base`'s root either: another root may still have it - a lower-priority
         // one, or another version of the pack that was passed over above
         for r in roots.iter().filter(|r| *r != owner) {
             if let Some(mb) = mirrored_base(base, r, &roots) {
@@ -809,7 +809,7 @@ pub fn resolve_path(base: &Path, rel: &str) -> PathBuf {
 /// game itself and the stock content every player gets with it (both stock maps, the stock
 /// buses, people, fonts, weather, inputs). Any copy of OMSI 2 has them, whatever version or
 /// shop it came from; a folder that lacks them (openOMSI's own content folder, a mod pack,
-/// a half-copied installation) is not a base to play on — everybody plays on the same
+/// a half-copied installation) is not a base to play on - everybody plays on the same
 /// original content.
 pub const ORIGINAL_ESSENTIALS: &[&str] = &[
     "Omsi.exe",
@@ -847,7 +847,7 @@ pub fn missing_original_essentials(root: &Path) -> Vec<String> {
 
 /// The folders an OMSI 2 installation has (as the original spells them). A content
 /// folder of openOMSI is laid out the same way, so a mod is installed by putting its
-/// folders here — and the game finds them exactly as the original would.
+/// folders here - and the game finds them exactly as the original would.
 pub const CONTENT_FOLDERS: &[&str] = &[
     "Vehicles", "maps", "Sceneryobjects", "Splines", "Texture", "Fonts", "Plugins", "TicketPacks", "Drivers", "Weather", "Announcements", "Humans", "Money", "Scripts", "Trains", "Situations", "Inputs", "Sound",
 ];
@@ -1026,7 +1026,7 @@ mod tests {
 }
 
 /// The `OMSI_*` switches of the environment, read once: the frame asked for dozens of them
-/// every time round (`getenv` takes a lock and walks the environment — 2 % of a frame's CPU
+/// every time round (`getenv` takes a lock and walks the environment - 2 % of a frame's CPU
 /// time in `sync_materials` alone). The environment is not changed while the game runs.
 pub mod env {
     use std::collections::HashMap;

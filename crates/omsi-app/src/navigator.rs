@@ -8,7 +8,7 @@
 //!   how busy each stretch is (blue empty, green, yellow, red, dark red jammed), and its
 //!   stops as markers (the last is a chequered flag).
 //! * Leaving the route is noticed after a moment: a way back is searched on the lanes
-//!   (Dijkstra, towards any lane of the route still ahead) and drawn instead — the route
+//!   (Dijkstra, towards any lane of the route still ahead) and drawn instead - the route
 //!   is recalculated as often as the driver goes wrong.
 //! * Traffic: every AI vehicle near the bus is on the map, and roads whose cars crawl or
 //!   stand are tinted amber or deep red (smoothed over seconds, so one car at a red light
@@ -1267,7 +1267,7 @@ fn lanes_near(net: &Network, c: DVec2, radius: f64) -> Vec<usize> {
 }
 
 /// `OMSI_NAV_PROBE=x,y[,r]`: the lanes of the map's network that start or end within r
-/// metres (25) of a point — how they link, to see why a route cannot reach a place.
+/// metres (25) of a point - how they link, to see why a route cannot reach a place.
 fn probe_lanes(net: &Network) {
     let Ok(v) = omsi_cfg::env::var("OMSI_NAV_PROBE") else { return };
     let f: Vec<f64> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
@@ -1340,7 +1340,7 @@ fn build_route(p: &mut Painter, net: &Network, lanes: &[usize], anchor: DVec2, s
     let mut runs: Vec<(Vec<Vec3>, f32, usize)> = Vec::new();
     let mut arrows: Vec<(DVec3, f32, usize, f32)> = Vec::new();
     let mut total = 0.0f32;
-    // the lane to show: of a road with several lanes each way, the one a driver takes — the
+    // the lane to show: of a road with several lanes each way, the one a driver takes - the
     // leftmost before a left turn, the rightmost before a right turn, and otherwise the one
     // the bus is driving in (`bus_lane`, counted from the right). Always the rightmost, the
     // route ran along the kerb on Berlin's three-lane roads, where the cars are parked; the
@@ -1428,7 +1428,7 @@ fn build_route(p: &mut Painter, net: &Network, lanes: &[usize], anchor: DVec2, s
         if let Some((every, reach)) = style.arrows {
             let len = lane.length();
             // (never more than a few dozen a lane: zoomed far in on the city map the step
-            // came out a few millimetres and the loop ran for minutes — the game froze)
+            // came out a few millimetres and the loop ran for minutes - the game froze)
             if total < reach && len > every * 0.4 && every > 0.5 {
                 let n = (len / every).round().clamp(1.0, 64.0);
                 let step = len / n;
@@ -1703,7 +1703,7 @@ fn heading_vec(h: f64) -> DVec2 {
 }
 
 /// The city map: the whole map from above in a large window over the game (after ETS2's
-/// map screen, but not full-screen) — every road, the trip's route, its stops with their
+/// map screen, but not full-screen) - every road, the trip's route, its stops with their
 /// names, the bus and the traffic. Dragged to move, the wheel zooms at the cursor, Escape
 /// or a click outside closes it.
 #[derive(Default)]
@@ -1764,7 +1764,7 @@ impl Navigator {
             let turn = d.abs() > 35.0 && (len < 60.0 || d.abs() > 70.0);
             if (turn || junction) && acc + len as f64 > 5.0 {
                 let kind = if !turn { "dn" } else if d > 0.0 { "R" } else { "L" };
-                // ten metres on from where the path begins, as Omsi.exe puts it (sub_617490:
+                // ten metres on from where the path begins, as OMSI puts it (the original:
                 // the path's start moved by (0, 0, 10) in its own frame); the mesh hangs
                 // 6-11 m over that point
                 let (p, _) = lane.at(10.0f32.min(len * 0.7));

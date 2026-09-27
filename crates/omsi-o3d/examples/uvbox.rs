@@ -1,4 +1,4 @@
-//! UV and position range of each material of a mesh — `uvbox <file>`.
+//! UV and position range of each material of a mesh - `uvbox <file>`.
 fn main() {
     for p in std::env::args().skip(1) {
         let m = omsi_o3d::load_mesh(std::path::Path::new(&p)).unwrap();

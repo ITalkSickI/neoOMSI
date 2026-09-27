@@ -2,7 +2,7 @@
 //! Its own physics give its speed along the rails; where it stands and which way it faces
 //! come from the rail lanes of the map's paths, as the AI trains' do. At a fork it takes
 //! the branch its indicator points to (Berlin's trams set their points so), else the
-//! branch the switch is set to, else the straightest — and throws the points it runs over
+//! branch the switch is set to, else the straightest - and throws the points it runs over
 //! (`World::set_switches`), so they move with it.
 //!
 //! A vehicle is rail-bound when its file says so: `[rail_body_osc]`, a `[contact_shoe]` or
@@ -21,7 +21,7 @@ pub(crate) struct RailDrive {
     /// The vehicle faces the lane's direction (else it drives it backwards).
     pub along: bool,
     /// The track the vehicle has come along: (distance travelled, the origin's position),
-    /// oldest first — where its coupled parts are placed (see `VehicleInstance::retrail`).
+    /// oldest first - where its coupled parts are placed (see `VehicleInstance::retrail`).
     trail: std::collections::VecDeque<(f64, DVec3)>,
     /// Distance travelled along the track (forward positive).
     u: f64,

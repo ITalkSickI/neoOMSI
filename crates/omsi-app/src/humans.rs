@@ -1,14 +1,14 @@
 //! People on foot: passengers and pedestrians as agents with a goal.
 //!
 //! A passenger comes along the pavement (or already stands at the stop when the map
-//! starts), waits at a free waiting place of the stop — the `[passpos]` points of the
+//! starts), waits at a free waiting place of the stop - the `[passpos]` points of the
 //! map's `people_standing_*` markers and shelters, else places spread along the back of
-//! the platform — and when a bus opens its doors there, queues at the nearest open
+//! the platform - and when a bus opens its doors there, queues at the nearest open
 //! `[entry]` (a passenger who still has to buy a ticket only at one with a cash desk),
 //! steps in when the doorway is free, pays or shows a pass at the desk, walks the cabin's
 //! `paths.cfg` network to a free `[passpos]` (a standing place once the seats are gone),
 //! rides, presses the stop button before their stop, walks to the nearest `[exit]` when
-//! the bus stands there, steps out and walks away along the pavement — or waits at the
+//! the bus stands there, steps out and walks away along the pavement - or waits at the
 //! stop for another bus. Timetable (AI) buses carry their passengers the same way.
 //! Nobody is taken away while the player can see them.
 //!
@@ -29,8 +29,8 @@
 //! and why somebody stands still.
 //!
 //! Pedestrians walk the map's pavement paths as one network (path ends that meet are
-//! joined whatever their heading), wait at the kerb for a pedestrian light's green — and
-//! only start across when it lasts long enough — and for approaching cars where there is
+//! joined whatever their heading), wait at the kerb for a pedestrian light's green - and
+//! only start across when it lasts long enough - and for approaching cars where there is
 //! no light; nobody stops in the middle of the road.
 //!
 //! The map streams: stops, waiting places and pavements come with their tiles. The
@@ -79,7 +79,7 @@ const STOP_REACH: f64 = 18.0;
 const YIELDING: &str = "lets somebody pass in the aisle";
 /// Pedestrians stroll within this distance of the player (m).
 const STROLL_RADIUS: f64 = 200.0;
-/// How far in front of a seat's hip point somebody stands to sit down — where the feet
+/// How far in front of a seat's hip point somebody stands to sit down - where the feet
 /// stay while seated (m).
 const SEAT_FRONT: f32 = 0.34;
 /// Over this distance on either side of a joint (m) a point of an articulated bus's cabin
@@ -364,7 +364,7 @@ impl Cabin {
                         .min_by(|a, b| points[*a].x.abs().total_cmp(&points[*b].x.abs()))
                 })
                 .filter(|&w| (points[w].x - inside.x).abs() > 0.3);
-            // (no aisle point linked beside the door — the W906's door steps lead straight on
+            // (no aisle point linked beside the door - the W906's door steps lead straight on
             // along it: the nearest path point off the door's line, else a step inwards)
             let wait = wait_point.map(|w| points[w]).unwrap_or_else(|| {
                 points
@@ -621,7 +621,7 @@ impl Cabin {
     /// floor in front of them). Only floors within a metre of `level` count, and of two
     /// about as near the one nearer that height wins: the decks of a double-decker lie over
     /// each other, and a foot put down beside the stairs belongs on the floor the body is
-    /// on. The nearest path point alone put feet a whole flight up — the first landing of
+    /// on. The nearest path point alone put feet a whole flight up - the first landing of
     /// the SD202's stairs is 0.7 m above the aisle beside it.
     fn floor_at(&self, p: DVec2, half_width: f64, level: f64) -> Option<f64> {
         if p.x.abs() > half_width - 0.05 {
@@ -716,7 +716,7 @@ fn crosses_street(net: &Network, a: DVec2, b: DVec2) -> bool {
     false
 }
 
-/// Whether the segments `a`–`b` and `c`–`d` cross.
+/// Whether the segments `a`-`b` and `c`-`d` cross.
 fn segments_cross(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> bool {
     let side = |p: DVec2, q: DVec2, r: DVec2| (q - p).perp_dot(r - p);
     let (d1, d2) = (side(c, d, a), side(c, d, b));
@@ -753,11 +753,11 @@ struct BusNow {
     trailers: Vec<PartFrame>,
     /// Its destination is an all-exit terminus (the scripts' `target_index_int` names a
     /// hof terminus added with `[addterminus_allexit]`: "Nicht einsteigen", a works trip):
-    /// Omsi.exe gives it the terminus "$allexit$", which no waiting passenger is going to.
+    /// OMSI gives it the terminus "$allexit$", which no waiting passenger is going to.
     all_exit: bool,
 }
 
-/// What passengers feel stepping into a bus (Omsi.exe reads the same fields: the vehicle's
+/// What passengers feel stepping into a bus (OMSI reads the same fields: the vehicle's
 /// `Cabinair_Temp` and `Cabinair_relHum`, the weather's temperature and the daylight).
 #[derive(Debug, Clone, Copy, Default)]
 struct CabinAir {
@@ -1118,7 +1118,7 @@ impl PedNet {
 
     /// The pavement lane nearest `p` within `reach` that can be reached without going over
     /// a carriageway: (lane, distance along it, distance to it). The plain nearest one was
-    /// often the pavement across the road — a passenger off a bus then walked straight
+    /// often the pavement across the road - a passenger off a bus then walked straight
     /// over the carriageway through the traffic to it, or joined a crossing in the middle.
     fn nearest(&self, net: &Network, p: DVec3, reach: f64) -> Option<(usize, f32, f64)> {
         let (cx, cy) = ((p.x / 50.0).floor() as i32, (p.y / 50.0).floor() as i32);
@@ -1184,7 +1184,7 @@ impl PedNet {
             .filter(|(l, _)| !twin(*l))
             .collect();
         // the way on rather than back: a path leaving the junction within 110° of the way
-        // the walker came (there usually is one — a pavement goes on past a side street),
+        // the walker came (there usually is one - a pavement goes on past a side street),
         // else any. Picked from all, a stroller would turn round at every corner and walk
         // back the way they came, which looked like a change of mind for no reason.
         let heading_in = {
@@ -1634,14 +1634,14 @@ pub struct Person {
     takes_next: bool,
     /// Wants to buy this ticket (None: has a pass, or stamps one at a validator).
     ticket: Option<usize>,
-    /// Whether the ticket was decided — at the first door, for that bus, as Omsi.exe does
-    /// (`sub_5ce4e0`): a validator or a ticket, from one draw.
+    /// Whether the ticket was decided - at the first door, for that bus, as OMSI does
+    ///: a validator or a ticket, from one draw.
     ticket_decided: bool,
     /// Stamps a ticket at one of the bus's validators on the way in.
     stamps: bool,
     /// Stands still until this time (s of `Humans::time`): stamping.
     pause_until: f64,
-    /// Age in years: the `.hum`'s `[age]`, else 40 as in Omsi.exe (`sub_624a90`). The
+    /// Age in years: the `.hum`'s `[age]`, else 40 as in OMSI. The
     /// ticket pack's tickets have age ranges (the reduced fare is for 6..13).
     age: f32,
     /// Seconds without getting nearer the goal while wanting to move; seconds left
@@ -1764,7 +1764,7 @@ pub struct Humans {
     ped: Option<PedNet>,
     hidden: Vec<usize>,
     /// GPU side of the human types, shared by everyone of a type: textures by file and the
-    /// materials of every (type, mesh) — each person used to upload its own copies — and
+    /// materials of every (type, mesh) - each person used to upload its own copies - and
     /// the meshes and instances of the people who have gone, taken over by the next person
     /// of the same type (the skinned vertices are rewritten anyway). Without that every
     /// passenger who ever appeared kept a mesh, its textures and materials on the GPU.
@@ -1808,7 +1808,7 @@ pub struct Humans {
     /// Passengers that reached the cash desk, and those the driver served there.
     pub boarded: u32,
     pub served: u32,
-    /// Omsi.exe's rating counters (sub_62a6a0): people who stepped into the player's bus
+    /// OMSI's rating counters: people who stepped into the player's bus
     /// and of those who had nothing to complain about (comfort = content / stepped in);
     /// tickets asked for and the points for selling them, two for the right change, one
     /// for the wrong (ticket selling = points / 2 × asked).
@@ -1837,9 +1837,9 @@ pub struct Humans {
     root: std::path::PathBuf,
     /// What passengers said since the app last collected it (see `take_voice_lines`).
     voice_lines: Vec<VoiceLine>,
-    /// When each voice file was last said (seconds of `time`): Omsi.exe keeps such a list
-    /// (sub_625c70, the global at 0x861244) and says a greeting or a complaint only when that
-    /// very file has not been heard for 10 s — without it every boarding passenger said
+    /// When each voice file was last said (seconds of `time`): OMSI keeps such a list
+    /// and says a greeting or a complaint only when that
+    /// very file has not been heard for 10 s - without it every boarding passenger said
     /// "Hallo" one after the other.
     voice_said: HashMap<std::path::PathBuf, f64>,
     /// What passengers may say (the `pax_voices` setting): 0 everything, 1 only the
@@ -1867,9 +1867,9 @@ pub struct Humans {
     stroll_timer: f32,
     /// Passengers pay the exact fare: no change is ever due.
     pub exact_fare: bool,
-    /// How passengers board (`boarding` in the settings): `auto` — pay and take the
-    /// ticket by themselves after a moment; `pay` — wait at the desk for the driver to
-    /// sell it (and show a pass after `PAY_PATIENCE`); `walk` — no cash desk at all.
+    /// How passengers board (`boarding` in the settings): `auto` - pay and take the
+    /// ticket by themselves after a moment; `pay` - wait at the desk for the driver to
+    /// sell it (and show a pass after `PAY_PATIENCE`); `walk` - no cash desk at all.
     pub boarding: String,
     /// The driver pressed the ticket key (`ticket_give`): sell the requested ticket.
     pub give_ticket: bool,
@@ -2170,9 +2170,9 @@ impl Humans {
         std::mem::take(&mut self.voice_lines)
     }
 
-    /// Person `i` says `name` (Omsi.exe `sub_625c70`): the ticket pack's `[voicepath]` (else
+    /// Person `i` says `name`: the ticket pack's `[voicepath]` (else
     /// its own folder), the
-    /// `.hum`'s `[voice]` folder in it and `<name>.wav` — `TicketPacks\Berlin_1\M4\Hello_1.wav`.
+    /// `.hum`'s `[voice]` folder in it and `<name>.wav` - `TicketPacks\Berlin_1\M4\Hello_1.wav`.
     /// Nothing is said when the pack has no voices or the file is not there.
     fn say(&mut self, i: usize, name: &str) {
         self.say_ex(i, name, true)
@@ -2187,9 +2187,9 @@ impl Humans {
             1 if !name.starts_with("Ticket_") => return,
             _ => {}
         }
-        // Greetings and complaints: one at a time for the whole bus. Omsi.exe only keeps
+        // Greetings and complaints: one at a time for the whole bus. OMSI only keeps
         // the same file from being said twice within 10 s, and with a dozen people
-        // boarding every other one said hello — the saloon never stopped talking, which
+        // boarding every other one said hello - the saloon never stopped talking, which
         // is not how the original sounds: a few words now and then.
         if limited && self.time - self.last_chat < CHAT_PAUSE && self.time >= self.last_chat {
             return;
@@ -2228,16 +2228,16 @@ impl Humans {
         self.voice_lines.push(VoiceLine { position: self.people[i].position + DVec3::new(0.0, 0.0, 1.6), path });
     }
 
-    /// Stepping into the player's bus (Omsi.exe `sub_62a6a0`; people boarding other buses
+    /// Stepping into the player's bus (the original; people boarding other buses
     /// say nothing): a complaint when there is something to complain about, each with the
-    /// pack's `whinge_prop` and the first that comes out winning —
+    /// pack's `whinge_prop` and the first that comes out winning -
     /// * too dark: the saloon light off (under half) while the daylight is under 0.2..0.5;
     /// * too hot: the cabin over 25..34 °C and 3..7 °C over the air outside, or between
-    ///   half the outside temperature plus 20..29 °C and 25 °C — "too wet" instead when the
+    ///   half the outside temperature plus 20..29 °C and 25 °C - "too wet" instead when the
     ///   air in it is over 90..100 % humid;
     /// * too cold: the cabin under 8..17 °C and under the outside temperature plus 5..9 °C,
     ///   or 10..19 °C under the air outside;
-    /// * too late: the bus more than five minutes behind its timetable —
+    /// * too late: the bus more than five minutes behind its timetable -
     /// otherwise, with its `chattiness`, a greeting: "Hello", in the morning and the evening
     /// now and then "Good morning" / "Good evening".
     fn greet_or_complain(&mut self, i: usize, bus: BusId, interior: f32, air: CabinAir) {
@@ -2400,7 +2400,7 @@ impl Humans {
 
     /// Seats of the player's bus from its `[passengercabin]`, and the engine's side of the
     /// ticket printer: `GivenTicket` is -1 until the driver hands a ticket over (the stock
-    /// `Ticketprinter.osc` never sets it, OMSI starts it at -1 — left at 0 the first
+    /// `Ticketprinter.osc` never sets it, OMSI starts it at -1 - left at 0 the first
     /// passenger took ticket 0 without the driver doing anything).
     pub fn set_cabin(&mut self, vehicle: &mut VehicleInstance) {
         vehicle.set_engine_var("GivenTicket", -1.0);
@@ -2838,8 +2838,8 @@ impl Humans {
         }
     }
 
-    /// What a passenger does at the door of a bus (Omsi.exe `sub_5ce4e0`): one draw from
-    /// 0..1 — below the pack's `stamper_prop` they stamp at a validator (when the bus has
+    /// What a passenger does at the door of a bus: one draw from
+    /// 0..1 - below the pack's `stamper_prop` they stamp at a validator (when the bus has
     /// one), else, with that part taken off, below `ticketbuy_prop` they buy a ticket (when
     /// the bus sells them); otherwise they show a pass. The pack's buying share was raised
     /// to at least 0.3 before, and nobody ever stamped.
@@ -2864,8 +2864,8 @@ impl Humans {
         }
     }
 
-    /// A ticket of the pack for a passenger of `age` (Omsi.exe `sub_5ce2dc`): those whose age
-    /// range holds it, weighted by their probability — a day ticket's by the time of day
+    /// A ticket of the pack for a passenger of `age`: those whose age
+    /// range holds it, weighted by their probability - a day ticket's by the time of day
     /// as well (`day_ticket_factor`). `max_stations` plays no part in the choice.
     fn pick_ticket(&mut self, age: f32) -> Option<usize> {
         let r = self.rand_f() as f32;
@@ -3374,7 +3374,7 @@ impl Humans {
             if free_spots <= 1 || waiting >= 7 {
                 continue;
             }
-            // somewhere 40–90 m away along the pavement, out of sight
+            // somewhere 40-90 m away along the pavement, out of sight
             let mut start: Option<(usize, f32, DVec3)> = None;
             for _ in 0..6 {
                 let mut leg = if self.rand_f() < 0.5 {
@@ -3504,7 +3504,7 @@ impl Humans {
         let mut out = Vec::new();
         let stops: Vec<(i64, DVec3, f64)> =
             world.bus_stops.lock().iter().map(|s| (s.0, s.1, s.2)).collect();
-        // The stop a bus serves: the nearest in reach — but one facing the way the bus goes
+        // The stop a bus serves: the nearest in reach - but one facing the way the bus goes
         // before one facing the other way. The two stops of a street often lie within
         // reach of each other, and the people of the stop across the road then walked over
         // the carriageway, through the traffic, to a bus that was not theirs.
@@ -3717,7 +3717,7 @@ impl Humans {
     /// left stays in it (it is one of the placed vehicles now), whoever rode in the one
     /// taken over is the player's bus's, and the player's cabin is the new vehicle's own.
     /// (Riders followed the player into the next bus, and people boarding it took the old
-    /// bus's seats — places in the air round a minibus's bonnet.)
+    /// bus's seats - places in the air round a minibus's bonnet.)
     pub fn player_bus_swapped(&mut self, old_uid: u64, new_uid: u64, new_vehicle: &mut VehicleInstance) {
         let old = BusId::Ai(placed_bus_id(old_uid));
         let new = BusId::Ai(placed_bus_id(new_uid));
@@ -3799,7 +3799,7 @@ impl Humans {
             let bb = v.ty.def.bounding_box.unwrap_or([2.5, 11.0, 3.0, 0.0, 0.0, 1.5]);
             let trailers = part_frames(v, &cabin);
             // (their doors as their game has them: a walker gets in only where one is open;
-            // the passengers here never board it — that bus's own game boards them)
+            // the passengers here never board it - that bus's own game boards them)
             let walk_open = Self::doors_open(v, cabin.entries.len(), cabin.exits.len());
             out.push(BusNow {
                 all_exit: false,
@@ -3867,7 +3867,7 @@ impl Humans {
     /// Nobody on foot walks into a wall: the scenery's collision boxes and meshes (shelters,
     /// fences, walls, buildings with a collision mesh) between knee and head height stop a
     /// step that would enter one, keeping the part of it along the wall. Somebody already
-    /// inside one (a waiting place the map put in a shelter's box) is left alone — pushed
+    /// inside one (a waiting place the map put in a shelter's box) is left alone - pushed
     /// out, they jumped. People used to walk through everything but the vehicles.
     fn keep_out_of_walls(&mut self, world: &World, who: &[usize], ground: &mut [(usize, Walker)]) {
         const R: f64 = 0.22;
@@ -3969,7 +3969,7 @@ impl Humans {
     }
 
     /// `OMSI_CHECK_OVERLAP=1`: measure how often somebody on the ground stands inside a
-    /// vehicle — an AI car (moving or not), the player's bus or a parked car — deeper
+    /// vehicle - an AI car (moving or not), the player's bus or a parked car - deeper
     /// than a few centimetres. Logs every new (person, vehicle) contact and a summary
     /// every ten seconds: person-frames inside, contacts, frames and people checked.
     fn check_overlaps(&mut self, world: &World, traffic: Option<&Traffic>, player: Option<&BusNow>) {
@@ -4083,7 +4083,7 @@ impl Humans {
 
     /// Keep only the people the map's `humans.txt` names (once). OMSI draws a map's
     /// pedestrians and passengers from that list alone: Berlin-Spandau and Grundorf name 15
-    /// of the stock types — not the uniformed DBC staff, not the aXYZ man01 — and certainly
+    /// of the stock types - not the uniformed DBC staff, not the aXYZ man01 - and certainly
     /// not an add-on's people installed for another map (the GSPNS ones of Novi Sad, whose
     /// man02 had no texture on Spandau and whose man04 walked with crossed legs). An entry
     /// may be listed more than once to make it more common. A map without the file, or
@@ -4841,7 +4841,7 @@ impl Humans {
             }
             wants.push(w);
         }
-        // do not push into somebody standing (or queueing) just in front — but pass
+        // do not push into somebody standing (or queueing) just in front - but pass
         // somebody coming the other way, and never wait for ever behind anybody
         let wanted: Vec<DVec2> = wants.iter().map(|w| w.vel).collect();
         for (i, w) in wants.iter_mut().enumerate() {
@@ -5037,7 +5037,7 @@ impl Humans {
                 State::Aboard { bus, idx, .. } => *bus == bn.id && *idx == 0,
                 _ => false,
             });
-            // getting off: everyone whose stop this is, from standing up to stepping out —
+            // getting off: everyone whose stop this is, from standing up to stepping out -
             // a long walk to the door (17 s through a full bus) must not see the bus
             // finish its stop and the doors close in front of them
             let alighting = self.people.iter().any(|p| match &p.state {
@@ -5460,7 +5460,7 @@ impl Humans {
                     // open, has a shorter queue and does not lead past the cash desk: in
                     // `pay` boarding they stood 18 s for every payer ahead of them.
                     // (only on the way: somebody already standing at their door stays there
-                    // — walking over to the other door at the last moment looked like a
+                    // - walking over to the other door at the last moment looked like a
                     // change of mind for no reason)
                     if let Some(other) = self
                         .pass_holder_leaf(i, bn, bus, entry, slot, slot_of)
@@ -5483,7 +5483,7 @@ impl Humans {
                     return w;
                 }
                 if !bn.entry_open.get(entry).copied().unwrap_or(false) {
-                    // another entry of the bus is open: go there — on the way, or when this
+                    // another entry of the bus is open: go there - on the way, or when this
                     // door has stayed shut a while (not the moment it closes behind the one
                     // before)
                     if let Some(other) = self
@@ -5687,7 +5687,7 @@ impl Humans {
                         let next = route[idx + 1].truncate().as_dvec2();
                         (next - here).length() < (next - tgt).length() - 0.05 && dist < 0.8
                     } else if let (Goal::Exit(_), true) = (goal, idx > 0) {
-                        // the step off the bus: out is out — somebody beside the spot (the
+                        // the step off the bus: out is out - somebody beside the spot (the
                         // one before them may still stand on it) or past it is on the ground.
                         // Waiting to stand exactly on it, the people getting off crowded onto
                         // one point and held each other up for half a minute.
@@ -5705,7 +5705,7 @@ impl Humans {
                     }
                 }
                 if let (Goal::ExitWait(x), true) = (goal, idx < route.len()) {
-                    // others already wait at that exit: the end of their line will do — once
+                    // others already wait at that exit: the end of their line will do - once
                     // on the exit's own floor. The upper deck of a double-decker lies right
                     // over that line: riders coming along it stopped up there, over the rear
                     // door, and later stepped out through the stairs and the panel.
@@ -6213,7 +6213,7 @@ impl Humans {
                                 }
                                 None => {
                                     // no pavement: on in the same direction, unless that
-                                    // is over the road — then away from it
+                                    // is over the road - then away from it
                                     let head = self.people[i].heading.to_radians();
                                     let mut dir = DVec2::new(head.sin(), head.cos());
                                     let here = self.people[i].position;
@@ -6433,7 +6433,7 @@ impl Humans {
                     .unwrap_or(last);
                 let w = bn.world(local);
                 // (the height they are at: the ground under them is reached stepping down
-                // — put on it at once, they dropped off the step in a frame)
+                // - put on it at once, they dropped off the step in a frame)
                 let z = w.z.max(world.walk_height(w.x, w.y).unwrap_or(w.z));
                 let away = bn.right_at(local) * local.x.signum() as f64;
                 let along = (self.rand_f() - 0.5) * 3.0;
@@ -6791,7 +6791,7 @@ impl Humans {
                         .unwrap_or(false)
                 })
                 .unwrap_or(false);
-        // keep to the right of the pavement (less so on a crossing) — the left where the
+        // keep to the right of the pavement (less so on a crossing) - the left where the
         // traffic drives on the left
         let side = if crossing {
             (walk.side.abs() as f64).min(0.3)
@@ -6837,8 +6837,8 @@ impl Humans {
     }
 
     /// May a pedestrian at the kerb start along `next`? A pedestrian light must show green,
-    /// and the time left to get across — the green and then the clearance until a light of
-    /// the carriageway turns green — must do; without a light no car may be about to pass
+    /// and the time left to get across - the green and then the clearance until a light of
+    /// the carriageway turns green - must do; without a light no car may be about to pass
     /// the crossing. Somebody who has waited very long takes any green (never a red).
     #[allow(clippy::too_many_arguments)]
     fn may_cross(
@@ -7292,7 +7292,7 @@ impl Humans {
                 None => Vec3::ZERO,
             };
             let level = origin.z;
-            // (beside the bus — a foot still on the pavement at the door — the floor is the
+            // (beside the bus - a foot still on the pavement at the door - the floor is the
             // ground there: taken as the bus frame's z = 0, the road under the bus, a foot
             // on the kerb sank 10-15 cm into the paving stones while stepping in or out)
             let bus_floor = bn.map(|b| {
@@ -7463,7 +7463,7 @@ impl Humans {
                 p.posed_at = (p.position, p.heading);
             }
             // riders go with their bus; on the ground a mesh not posed this frame goes on
-            // with the body too (left where it was posed, a far walker moved in jerks —
+            // with the body too (left where it was posed, a far walker moved in jerks -
             // its feet slide a few centimetres instead, which nobody sees at that distance)
             let (at, heading) = match (p.puppet, p.place) {
                 (Some(pp), _) if pp.mode == PuppetMode::Treadmill => (pp.base, pp.heading),
@@ -7791,8 +7791,8 @@ struct Puppet {
 
 // ---------------------------------------------------------------------------------------
 // Avatars: the player got up from the seat (`on_foot`), or another player walks about. The
-// game moves them; the people's animation poses them — the gait and its feet on the
-// ground, sitting down on a seat and getting up — so every change is eased, never a jump.
+// game moves them; the people's animation poses them - the gait and its feet on the
+// ground, sitting down on a seat and getting up - so every change is eased, never a jump.
 
 /// What the game wants of an avatar this frame.
 #[derive(Debug, Clone, Copy)]
@@ -8325,7 +8325,7 @@ impl Humans {
     }
 
     /// Everybody within `radius` of `near` the clients may see (host): on foot, waiting at
-    /// a stop, or aboard a timetable bus — not the riders of our own bus, which the others
+    /// a stop, or aboard a timetable bus - not the riders of our own bus, which the others
     /// see from outside only.
     pub fn lan_people(&self, near: DVec3, radius: f64) -> Vec<LanPerson> {
         let r2 = radius * radius;
@@ -8932,7 +8932,7 @@ pub struct VoiceLine {
 
 /// How much of its probability a day ticket keeps at a time of day (seconds): rising from
 /// nothing at midnight to all of it at 9:00, as the ticket packs describe it, then falling
-/// on Omsi.exe's line (`sub_5ce204`: 1 at 32 400 s, 0 at 88 776 s).
+/// on OMSI's line.
 fn day_ticket_factor(t: f64) -> f32 {
     let t = t.rem_euclid(86_400.0);
     let rise = t / 32_400.0;

@@ -1786,15 +1786,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
-name = "iced-x86"
-version = "1.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c447cff8c7f384a7d4f741cfcff32f75f3ad02b406432e8d6c878d56b1edf6b"
-dependencies = [
- "lazy_static",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3086,15 +3077,6 @@ version = "0.1.0"
 dependencies = [
  "libloading",
  "log",
-]
-
-[[package]]
-name = "omsi-re"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "iced-x86",
- "rayon",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@
 //! many of those too early or too late), hectometres driven, crashes, hurt pedestrians and
 //! abscondings, tickets sold with the takings, and three ratings (driving, passenger
 //! comfort, ticket selling). This module collects the same things over a session and
-//! merges them into the file, rated as Omsi.exe rates them (see `omsi_content::Driver`'s
+//! merges them into the file, rated as OMSI rates them (see `omsi_content::Driver`'s
 //! `[rating]`): a stop is late when the bus arrived more than 180 s after its time, early
 //! when it left more than 120 s before; driving is 100 (1 − P), where every jolt, pedal
 //! see-saw or crash moves P a part of the way to 1 and the kilometres driven wear it down.
@@ -14,7 +14,7 @@ use omsi_content::Driver;
 use omsi_sim::VehicleInstance;
 use std::path::{Path, PathBuf};
 
-/// Omsi.exe's jolts (sub_7d5124): the smoothed acceleration across over 3 m/s² or along
+/// OMSI's jolts: the smoothed acceleration across over 3 m/s² or along
 /// over 5 m/s², weighing 0.1, at most one a second.
 const HARSH_ACROSS: f32 = 3.0;
 const HARSH_ALONG: f32 = 5.0;
@@ -46,7 +46,7 @@ pub struct Career {
     /// Passengers that reached the cash desk, and those the driver served.
     pub boarded: i32,
     pub served: i32,
-    /// Omsi.exe's rating counters this session (see `Humans`): stepped in, of those without
+    /// OMSI's rating counters this session (see `Humans`): stepped in, of those without
     /// a complaint; tickets asked for and the points for them.
     pub stepped_in: i32,
     pub content: i32,
@@ -162,8 +162,8 @@ impl Career {
     pub fn tick(&mut self, dt: f32, bus: &VehicleInstance, riders: usize) {
         self.seconds += dt as f64;
         let v = bus.physics.velocity_kmh() / 3.6;
-        // (a jump no driving could make — the admin's teleport, the workshop, a host moving
-        // the bus off an occupied spawn — is not distance driven)
+        // (a jump no driving could make - the admin's teleport, the workshop, a host moving
+        // the bus off an occupied spawn - is not distance driven)
         let mut step_km = 0.0;
         if let Some(p) = self.last_pos {
             let step = (bus.position - p).length();
@@ -185,7 +185,7 @@ impl Career {
             dh += 360.0;
         }
         let raw_across = v * (dh.to_radians() / dt.max(1e-3) as f64) as f32;
-        // Omsi.exe weighs the accelerations by the speed up to 1 m/s (standing, the body's
+        // OMSI weighs the accelerations by the speed up to 1 m/s (standing, the body's
         // rocking is nothing) and smooths them (α = min(10 dt, 0.5))
         let weight = v.abs().min(1.0);
         let k = (10.0 * dt).min(0.5);
@@ -235,7 +235,7 @@ impl Career {
     }
 
     /// A timetable stop the bus arrived at `arrival` seconds after its time and left
-    /// `departure` seconds after its departure (Omsi.exe sub_70d214, sub_70d420, both
+    /// `departure` seconds after its departure (the original, both
     /// rounded to whole seconds).
     pub fn stop_served(&mut self, arrival: f64, departure: f64) {
         self.stops[0] += 1;
@@ -310,7 +310,7 @@ impl Career {
             d.bus_stops[i] += self.stops[i] - w.stops[i];
         }
         // whole hectometres only (the file keeps them as a whole number); the rest is carried
-        // to the next save — rounding each save gained or lost up to 50 m every time
+        // to the next save - rounding each save gained or lost up to 50 m every time
         let hm = ((self.metres - w.metres) / 100.0).max(0.0).floor();
         d.hektom = d.hektom.round() + hm;
         for i in 0..4 {

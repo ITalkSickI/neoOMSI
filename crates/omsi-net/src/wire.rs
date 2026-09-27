@@ -1,10 +1,10 @@
 //! The binary vehicle state (`STATE`): what a player's bus does right now, bit-packed.
 //!
 //! A state is sent up to twenty times a second, so it is kept small: a bus with its lamps,
-//! doors, wheels and the variables its outside sounds follow takes 50–70 bytes, where the
+//! doors, wheels and the variables its outside sounds follow takes 50-70 bytes, where the
 //! text pose of protocol 2 took about 200 without any of that. Every field has a fixed
 //! width and range; a value outside the range is clamped when it is written, so whatever a
-//! datagram holds decodes to finite numbers inside those ranges — the receiver never sees a
+//! datagram holds decodes to finite numbers inside those ranges - the receiver never sees a
 //! NaN, an infinity or a position a kilometre off the map's scale because of a bad packet.
 //!
 //! ```text

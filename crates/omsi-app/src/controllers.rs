@@ -1,8 +1,8 @@
-//! Game controllers — steering wheels, pedals, joysticks, gamepads — as OMSI drives them
-//! from `Inputs/gamectrler.cfg` (Omsi.exe sub_648764). Each `[ctrl]` block names a device
+//! Game controllers - steering wheels, pedals, joysticks, gamepads - as OMSI drives them
+//! from `Inputs/gamectrler.cfg`. Each `[ctrl]` block names a device
 //! and says what its eight DirectInput axes (X, Y, Z, Rx, Ry, Rz and the two sliders) do:
 //! a pair per axis of the function (-1 none, 0 steering, 1 throttle, 2 brake, 3 clutch,
-//! 4 throttle and brake on one axis — the options dialog's "<none>@Steering@Throttle@
+//! 4 throttle and brake on one axis - the options dialog's "<none>@Steering@Throttle@
 //! Brake@Clutch@Throttle/Brake" less its first entry) and flags (bit 0: the axis runs the
 //! other way, as the G25's pedals do). `[buttons]` lists per button the key action it
 //! presses. A device the file does not know is taken as a gamepad: the left stick steers,
@@ -211,7 +211,7 @@ impl Controllers {
             return out;
         }
         // the devices set up in gamectrler.cfg first; a device the file does not know (a
-        // gamepad) only gives what none of them does — a pad lying beside a set-up wheel
+        // gamepad) only gives what none of them does - a pad lying beside a set-up wheel
         // held the steering at its own centre, whichever the system listed first
         let mut pads: Vec<(Option<&DeviceCfg>, gilrs::Gamepad)> = g.gamepads().map(|(_, pad)| (self.cfg.iter().find(|d| names_match(&d.name, pad.name())), pad)).collect();
         pads.sort_by_key(|(cfg, _)| cfg.is_none());
@@ -263,9 +263,9 @@ impl Controllers {
     }
 
     /// The bus's force feedback: the scripts write `FF_Vib_Amp` (0..1, the engine's shaking,
-    /// a rough road) and OMSI shakes the wheel or pad with it — as a rumble on every device
+    /// a rough road) and OMSI shakes the wheel or pad with it - as a rumble on every device
     /// that can (gilrs has no steering spring).
-    /// `period`: `FF_Vib_Period` (Omsi.exe hands DirectInput Round(period × 10000) µs, so
+    /// `period`: `FF_Vib_Period` (OMSI hands DirectInput Round(period × 10000) µs, so
     /// a hundredth of a second per unit): the shaking comes in pulses that long, on for
     /// half of it; 0 is a steady rumble.
     pub fn feedback(&mut self, amp: f32, period: f32) {

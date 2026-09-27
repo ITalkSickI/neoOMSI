@@ -339,7 +339,7 @@ fn stop_within(pid: u32, grace: std::time::Duration) -> Result<bool> {
 fn end_process(inst: &Instance, grace: std::time::Duration) -> Result<bool> {
     let ours = is_our_child(&inst.id);
     if !ours && !same_process(inst) {
-        return Err(anyhow!("process {} is no longer the game that was started (it has ended; the id now belongs to another program) — nothing was stopped", inst.pid));
+        return Err(anyhow!("process {} is no longer the game that was started (it has ended; the id now belongs to another program) - nothing was stopped", inst.pid));
     }
     let ended = || if ours { reap(); !is_our_child(&inst.id) } else { !same_process(inst) };
     let asked = if ours {
@@ -477,7 +477,7 @@ mod tests {
             let game = Instance { id: "game".into(), pid, process_started: real, ..Default::default() };
             assert!(is_that_game(&game));
             // not our child: it stays a zombie until this test collects it, and a zombie has
-            // ended — the stop sees that at once instead of waiting out its grace time
+            // ended - the stop sees that at once instead of waiting out its grace time
             let t0 = std::time::Instant::now();
             assert!(end_process(&game, std::time::Duration::from_secs(5)).unwrap(), "ended by itself (SIGTERM)");
             assert!(t0.elapsed() < std::time::Duration::from_secs(2), "{:?}", t0.elapsed());

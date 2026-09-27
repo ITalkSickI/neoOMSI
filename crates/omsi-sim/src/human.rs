@@ -13,7 +13,7 @@
 //! from a [`PoseInput`] (where the person stands, how fast they move, whether they sit,
 //! pay, hold on or look at something); [`Pose::bones`] turns it into bone transforms and
 //! [`skin`] deforms a mesh with them. Walking is a speed-driven gait with planted feet: a
-//! foot on the floor stays where it was put (in the frame of the floor it stands on — the
+//! foot on the floor stays where it was put (in the frame of the floor it stands on - the
 //! ground or a bus) and the legs reach it by two-bone IK, so a stride always matches the
 //! ground speed and nothing slides; the swinging foot flies to where the body will be when
 //! it lands. The same stepping carries standing people through turns and shuffles, and the
@@ -131,7 +131,7 @@ pub struct HumanMesh {
     /// face corner (up to 24 times, always with the same weight), so the weights are taken
     /// once per bone and normalised; vertices near the sole also follow the foot.
     pub skin: Vec<Influence>,
-    /// Per material: the model's `[matl_alpha]` for it (0 opaque, 1 alpha test, 2 blend) —
+    /// Per material: the model's `[matl_alpha]` for it (0 opaque, 1 alpha test, 2 blend) -
     /// the hair of the stock women and of man02 is an alpha-tested texture.
     pub alpha: Vec<i32>,
 }
@@ -844,7 +844,7 @@ pub struct Pose {
     /// in (for the tests).
     catch_ups: u32,
     shuffles: u32,
-    /// A foot was put down in the last [`Pose::advance`] — one footstep sound.
+    /// A foot was put down in the last [`Pose::advance`] - one footstep sound.
     landed: bool,
 }
 
@@ -1795,7 +1795,7 @@ impl Pose {
         // front of the hip point, the same for every human type because the shared cabin
         // that computed it has no rig to ask. Redone here with this rig's own
         // `seat_front()` (from its actual thigh length), the knee lands where this body's
-        // legs naturally put it instead of at the average distance — on a long bench with
+        // legs naturally put it instead of at the average distance - on a long bench with
         // no footwell to hide a mismatch in, a longer-legged rig forced to the average
         // distance bent its knee enough to poke through the seat ahead.
         let seated_c = Vec3::new(

@@ -1,5 +1,5 @@
 //! Which way the faces on each side of a vehicle look: for the triangles at |x| > limit,
-//! how many face outwards (by winding, Direct3D's clockwise front) — `sides <limit> <files>`.
+//! how many face outwards (by winding, Direct3D's clockwise front) - `sides <limit> <files>`.
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let lim: f32 = a[0].parse().unwrap();

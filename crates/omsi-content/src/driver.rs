@@ -70,8 +70,8 @@ impl Driver {
         Ok(d)
     }
 
-    /// The `[rating]` block is Omsi.exe's driver record from +0x40 on (sub_7d5124,
-    /// sub_62a6a0, sub_65f340): the driving penalty P (0..1), passengers who stepped in
+    /// The `[rating]` block is OMSI's driver record from +0x40 on (the original,
+    /// the original): the driving penalty P (0..1), passengers who stepped in
     /// without a complaint, tickets asked for, points for selling them (2 for the right
     /// change, 1 for the wrong), passengers who stepped in. Values that cannot be those (an
     /// older openOMSI file kept averages there) are set back to zero.

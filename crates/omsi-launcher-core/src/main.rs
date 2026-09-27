@@ -1,5 +1,5 @@
 //! `openomsi-launcher`: the launcher's commands for a terminal (`--cli <command> [json]`), and
-//! otherwise the launcher window — which is the game binary beside this one, started with
+//! otherwise the launcher window - which is the game binary beside this one, started with
 //! `--launcher` (the window draws the bus with the game's own renderer).
 
 fn main() {

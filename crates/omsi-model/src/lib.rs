@@ -1,4 +1,4 @@
-//! `model.cfg` — the visual description of a vehicle, scenery object or human
+//! `model.cfg` - the visual description of a vehicle, scenery object or human
 //! (original unit `mc_complobj`, material commands from `mc_MatlMan`).
 //!
 //! The same vocabulary appears inline in `.sco` files, therefore parsing is exposed as a
@@ -81,7 +81,7 @@ pub struct MaterialDef {
     pub alphascale: Option<String>,
     pub freetex: Option<(String, String)>,
     pub lightmap: Option<(String, String)>,
-    /// Every `[matl_lightmap]` of the material in order (Omsi.exe keeps them all, a
+    /// Every `[matl_lightmap]` of the material in order (OMSI keeps them all, a
     /// texture and a variable each: the LiAZ's saloon has one per lighting circuit);
     /// `lightmap` is the last of them.
     pub lightmaps: Vec<(String, String)>,
@@ -201,7 +201,7 @@ pub struct ParticleEmitter {
 }
 
 /// A particle parameter: a number, or the name of a variable of the object that owns it
-/// (Omsi.exe reads every value of `[smoke]` after the direction this way, sub_7f2030).
+/// (OMSI reads every value of `[smoke]` after the direction this way, the original).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PsValue {
     Const(f32),
@@ -233,7 +233,7 @@ pub type PsRange = (PsValue, PsValue);
 
 /// A particle system of a model: `[smoke]` (exhaust, boiling coolant, wheel spray, chimney
 /// smoke) or `[particle_emitter]` (the fireworks and the memorial's flame), in one form.
-/// Omsi.exe (TRauch/TRauchInst, sub_59ed30 and sub_59dc70): at most 100 particles an
+/// OMSI (TRauch/TRauchInst, the original): at most 100 particles an
 /// emitter; each flies off along `dir` at `velocity`, its speed multiplied by `brake` every
 /// frame, falls with `gravity` (negative: rises), grows from `size_start` by `size_grow` a
 /// second and fades from `alpha_initial` at birth to `alpha_final` at the end of `life`.
@@ -264,7 +264,7 @@ pub struct ParticleSystemDef {
     /// Its picture, relative to the game folder (`texture\rauch.tga` by default).
     pub bitmap: Option<String>,
     /// `[PS_attachTo] emitter mode n`: emits from the particles of an earlier emitter of the
-    /// model — mode 0 all along their way (a trail), 1 when one ends (a burst), 2 against
+    /// model - mode 0 all along their way (a trail), 1 when one ends (a burst), 2 against
     /// its motion (a rocket's jet).
     pub attach: Option<(usize, u8)>,
 }
@@ -492,7 +492,7 @@ impl Model {
                 // The same first eight fields as [texttexture] and two more: orientation
                 // and grid (the SDK's own list in the stock model files; all 190 stock and
                 // installed uses follow it). It takes a slot in the same index space
-                // [useTextTexture] counts through — the D86's number plate is texture 0 and
+                // [useTextTexture] counts through - the D86's number plate is texture 0 and
                 // its matrix texts 3..5; without the slot every later index was off by one
                 // and the destination display showed the temperature's 7-segment digits.
                 let variable = r.str().to_string();
@@ -514,8 +514,8 @@ impl Model {
                     self.lods.push(Lod { min_size: 0.0, first_mesh: 0 });
                 }
                 let file = r.str().to_string();
-                // Omsi.exe (sub_5efae8, 5f15c0): a new mesh takes the interior lights of the
-                // mesh before it, the first one lights 0 to 3 — a mesh without its own
+                // OMSI: a new mesh takes the interior lights of the
+                // mesh before it, the first one lights 0 to 3 - a mesh without its own
                 // [illumination_interior] is lit like the one written before it (the GN92's
                 // rear saloon, its walls and seats, has no line of its own and stayed dark)
                 let illumination_interior = self.meshes.last().map(|m| m.illumination_interior.clone()).unwrap_or_else(|| vec![0, 1, 2, 3]);
@@ -634,7 +634,7 @@ impl Model {
                 let factor = r.f32();
                 let z_offset = r.f32();
                 let values: Vec<String> = (0..3).map(|_| r.str().to_string()).collect();
-                // the effect bitmap follows on the next line — when it names a picture (an
+                // the effect bitmap follows on the next line - when it names a picture (an
                 // empty line keeps the standard one)
                 let mut bitmap = None;
                 {
@@ -881,7 +881,7 @@ pub const ANIM_TOKENS: &[&str] = &["origin_trans", "origin_rot_x", "origin_rot_y
 ///
 /// The variable holds the index of the entry (0 = the first one, as the SD200's
 /// `rlbnd_lnN_bmp` shows: the roller position is clamped to 0…15 for sixteen entries).
-/// The texture named by the master usually does not exist on disk at all — the mesh only
+/// The texture named by the master usually does not exist on disk at all - the mesh only
 /// carries the name so that the master can be found.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TexChangeMaster {

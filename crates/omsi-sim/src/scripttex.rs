@@ -67,7 +67,7 @@ impl ScriptTexture {
 
     /// Draw `text` with the font at (x, y) (top-left), `spacing` extra pixels between
     /// letters. Glyph coverage scales the colour's alpha; RGB is the draw colour.
-    /// `STTextOut` as Omsi.exe draws (0x7bb731, sub_5d6d10): `mode` bit 0 takes the colour
+    /// `STTextOut` as OMSI draws (0x7bb731, the original): `mode` bit 0 takes the colour
     /// from the font's colour bitmap (else the `STSetColor` colour), the alpha is the font's
     /// mask; `mode & 3 == 2` writes only the glyphs' covered pixels (a transparent
     /// background), any other mode the whole glyph cell.

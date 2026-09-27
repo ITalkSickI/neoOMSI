@@ -8,7 +8,7 @@
 //! way to each other a few metres early instead of bumping and sliding round each other
 //! (which a plain repulsion does). A contact pass afterwards guarantees that nobody ends up
 //! inside anybody else, and people standing still (waiting, queueing) are pushed less than
-//! people walking — the one who walks goes round, the one who stands makes a little room.
+//! people walking - the one who walks goes round, the one who stands makes a little room.
 
 use glam::{DVec2, Vec3};
 use hashbrown::HashMap;
@@ -32,7 +32,7 @@ pub struct Walker {
     /// Passes through other walkers for a moment: the way out of a deadlock in a doorway
     /// or a narrow aisle (two people who have pushed against each other for seconds).
     pub ghost: bool,
-    /// Keeps to within `.2` of the segment `.0`–`.1` (an aisle): avoidance may move a walker
+    /// Keeps to within `.2` of the segment `.0`-`.1` (an aisle): avoidance may move a walker
     /// sideways, never into the seats.
     pub corridor: Option<(DVec2, DVec2, f64)>,
 }
@@ -308,8 +308,8 @@ pub fn step(walkers: &mut [Walker], blocks: &[Block], params: &CrowdParams, dt: 
 
 /// [`clamp_to_corridor`] a little at a time: a walker outside the corridor is brought back
 /// at up to 0.6 m/s. Clamped outright, a stroller jumped 5-6 cm in one frame wherever one
-/// pavement path took over from the next (their lines do not meet exactly) — the "micro
-/// teleports" — and whenever a corridor changed under somebody standing off its line.
+/// pavement path took over from the next (their lines do not meet exactly) - the "micro
+/// teleports" - and whenever a corridor changed under somebody standing off its line.
 pub fn ease_into_corridor(p: DVec2, a: DVec2, b: DVec2, max_dev: f64, dt: f64) -> DVec2 {
     let q = clamp_to_corridor(p, a, b, max_dev);
     let d = q - p;
@@ -347,14 +347,14 @@ pub fn heading_of(d: DVec2) -> f64 {
     d.x.atan2(d.y).to_degrees()
 }
 
-/// Nearest point to `p` on the segment `a`–`b` and the parameter along it (0..1).
+/// Nearest point to `p` on the segment `a`-`b` and the parameter along it (0..1).
 pub fn project_on_segment(p: DVec2, a: DVec2, b: DVec2) -> (DVec2, f64) {
     let ab = b - a;
     let t = ((p - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
     (a + ab * t, t)
 }
 
-/// Keep `p` within `max_dev` of the segment `a`–`b` (a walker in a narrow aisle).
+/// Keep `p` within `max_dev` of the segment `a`-`b` (a walker in a narrow aisle).
 pub fn clamp_to_corridor(p: DVec2, a: DVec2, b: DVec2, max_dev: f64) -> DVec2 {
     let (q, _) = project_on_segment(p, a, b);
     let d = p - q;
@@ -511,7 +511,7 @@ impl PathGraph {
     /// standing on or has half passed are left out. A cabin without a network is crossed
     /// in a straight line.
     pub fn route(&self, from: Vec3, to: Vec3) -> Vec<Vec3> {
-        // Onto the network where it passes closest — on a link, not at its nearest point.
+        // Onto the network where it passes closest - on a link, not at its nearest point.
         // The nearest *point* of a seat was often the one of the row behind (or across a
         // partition), and the walk to it went diagonally through the seat backs and the
         // wall; the nearest link is the aisle beside the seat.

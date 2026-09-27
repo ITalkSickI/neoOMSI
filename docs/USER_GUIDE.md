@@ -3,8 +3,7 @@
 How to run openOMSI, drive, use the launcher, install mods and play over LAN. For building
 from source see [BUILDING.md](BUILDING.md).
 
-> openOMSI runs on the content of an **original OMSI 2 installation** (any version, Steam or
-> not). Without one the game does not start.
+> openOMSI runs on the content of an **original OMSI 2 installation**. Without one the game does not start.
 
 ## Checking an installation
 
@@ -52,14 +51,14 @@ Everything can also be given on the command line, which then skips both:
 | `--enhanced` / `--export-glb bus.glb` | the physically based renderer; write the bus as glTF (the launcher's preview) and quit |
 | `--launcher` / `--menu` / `--no-menu` | open the launcher (the default without arguments), the in-game menu, or neither |
 
-Keys in the window: **W** throttle, **S** brake, **A**/**D** steering — the arrow keys do the
-same — and every vehicle key of `Inputs/keyboard.cfg` works as it does in OMSI: throttle
+Keys in the window: **W** throttle, **S** brake, **A**/**D** steering - the arrow keys do the
+same - and every vehicle key of `Inputs/keyboard.cfg` works as it does in OMSI: throttle
 Shift+Num 8, brake Shift+Num 2, steering Shift+Num 4/6, **E** battery and ignition, **M**
 starter, **N**/**R** the automatic, **.** the parking brake. W, S and D are OMSI's wiper,
 viewpoint and **D of the automatic gearbox**, so hold shift for those: **Shift+D** selects D.
 `--drive-keys arrows` leaves W/A/S/D to OMSI entirely.
 
-To start a stock SD200: **E** (battery — it puts the ignition key in as well), **M** held for a
+To start a stock SD200: **E** (battery - it puts the ignition key in as well), **M** held for a
 second (starter), **Shift+D** (drive), **.** (parking brake off), then throttle. **Shift+U** does the
 whole start-up by itself (main switch, ignition, starter, gearbox to neutral); `--autostart`
 is the same thing for an offscreen run.
@@ -69,7 +68,7 @@ or roll the mouse wheel over it (that is the `<event>_drag` OMSI fires); the nam
 under the cursor is shown in the HUD.
 Right-drag the mouse to look around in any view (the head turns inside, the camera swings
 around the bus outside), I/J/K/L does the same from the keyboard, the wheel zooms, Home
-recentres. F1–F4 driver / passenger / outside / map (free) camera, F5–F8 the destination
+recentres. F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
 sign and roller blind keys as in OMSI, Alt+S quick save, F9 write the run into the personnel
 file, WASD+QE in the free camera, left click on cockpit elements, **V** the chat line in a
 LAN session. Esc opens the game menu: drive the next placed vehicle, place any vehicle of
@@ -85,30 +84,30 @@ controls for the first seconds.
 ## The launcher
 
 The launcher is the game's own window (`crates/omsi-app/src/launcher`): `omsi` started
-without arguments (or with `--launcher`) opens it. It is drawn with wgpu — no web engine —
+without arguments (or with `--launcher`) opens it. It is drawn with wgpu - no web engine -
 flat and dark (neutral greys, one amber accent), every control custom (sliders, switches,
 dropdowns, a calendar, a time picker, text fields, segmented buttons), Material Symbols
 icons and Roboto (`crates/omsi-ui`). The Drive page shows the chosen bus in a card, as a
-picture **drawn by the game's renderer** — its model, paint, materials, reflections and
-shadows exactly as in the game, under the light of the chosen time and weather — drawn
+picture **drawn by the game's renderer** - its model, paint, materials, reflections and
+shadows exactly as in the game, under the light of the chosen time and weather - drawn
 again only when something changes; drag on it to turn the bus, scroll to zoom. Its pages:
 
-* **Drive** — four steps: the bus (search, liveries, depot file), the route (map, start
-  point, line and tour — the lines that run on the chosen date), time and weather (time,
+* **Drive** - four steps: the bus (search, liveries, depot file), the route (map, start
+  point, line and tour - the lines that run on the chosen date), time and weather (time,
   date, season, traffic, passengers, timetable buses, autostart, *LAN play: host / join*,
   the weather presets that suit the season), and the roadbook with the IBIS codes; the
   summary and **Start the duty** bottom right.
-* **Profile** — hours, experience and level, from OMSI's own `.odr` personnel files plus
+* **Profile** - hours, experience and level, from OMSI's own `.odr` personnel files plus
   the session summaries the game writes to `~/.openomsi/sessions`.
-* **Settings** — everything in `settings.cfg` below, saved as it changes; keys the page
+* **Settings** - everything in `settings.cfg` below, saved as it changes; keys the page
   does not manage are kept as they are.
-* **Controls** — `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red.
-* **Sessions** — every game started from the launcher, with its log, a **Stop** that lets
+* **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red.
+* **Sessions** - every game started from the launcher, with its log, a **Stop** that lets
   it save its run (SIGTERM, up to 8 s, and only a stuck game is killed) and, for a LAN
   session, the code to copy, who is playing and the chat.
-* **Mods** — installing mods and archives (see *Mods and the content folder*); a folder or
+* **Mods** - installing mods and archives (see *Mods and the content folder*); a folder or
   .zip dropped on the window is installed.
-* **Setup** — where the original installation and the game binary are.
+* **Setup** - where the original installation and the game binary are.
 
 ```bash
 scripts/build-macos.sh   # or build-windows.cmd / build-linux.sh: the game opens the launcher
@@ -119,7 +118,7 @@ Without a person at it: `OMSI_LAUNCHER_PAGE=drive:2` opens a page (and a Drive s
 `OMSI_LAUNCHER_INPUT="t=2 click 412,60; t=3 type 76; t=4 key Enter; t=5 shot a.png"` works
 it (logical pixels). The data side is `crates/omsi-launcher-core`:
 `openomsi-launcher --cli lines '{"map":"maps/Grundorf/global.cfg"}'` runs any of its commands
-from a terminal — `config`, `maps`, `vehicles`, `weather`, `lines`, `ibis`, `profiles`,
+from a terminal - `config`, `maps`, `vehicles`, `weather`, `lines`, `ibis`, `profiles`,
 `profile`, `mods`, `modinfo`, `install`, `instances`, `stop`, `log`, `join`, `settings`,
 `save_settings`, `keybindings`, `save_keybindings`, `preview`, `args`, `launch`. `lines`
 takes a `"date":"YYYY-MM-DD"` as well: the chrono folders active that day add and remove
@@ -134,21 +133,21 @@ lines, as in the game, whose default date is 1989-05-30.
 `boarding`, `detail_textures`, `exact_fare`, `enhanced`, `fullscreen`, `vsync`, `volume`
 and `drive_keys`, plus `render_scale` (`auto` or a fraction: the picture is drawn smaller
 and upscaled), `post_aa` (`fxaa`, the enhanced renderer's, or `off`), `view_distance` (m,
-how far the tiles are kept loaded), `texture_memory` (MB — OMSI's `texmemlimit` is read
+how far the tiles are kept loaded), `texture_memory` (MB - OMSI's `texmemlimit` is read
 under that name too; an eighth of the machine's memory when unset), `texture_compression`
-(BC1–BC3 on the GPU, on by default) and `language` (`ENG`, `DEU`, `FRA`: the language the
+(BC1-BC3 on the GPU, on by default) and `language` (`ENG`, `DEU`, `FRA`: the language the
 HUD names cockpit switches in). The file also carries a `version`; older files that say
 `boarding=pay` because that was the launcher's old default are read as `auto`.
 
 `drive_keys` is a control preset: `simple` (W/S/A/D and the arrow keys drive; the default),
-`wasd`, `arrows`, or `omsi` — only the original layout of `Inputs/keyboard.cfg` (Shift +
+`wasd`, `arrows`, or `omsi` - only the original layout of `Inputs/keyboard.cfg` (Shift +
 numpad), nothing added. **T** sells the ticket a passenger asks for on a bus without a
 ticket printer (the original's `ticket_give` key).
 
-`boarding` is how passengers board: `auto` (default) — they walk to the standing place the
+`boarding` is how passengers board: `auto` (default) - they walk to the standing place the
 cabin's `[ticket_sale]` names, turn to the driver, put the money down, take their ticket by
-themselves after a moment and walk on; `pay` — they wait for the driver to sell the ticket
-(the bus's printer, or **T**) and give up after 25 s; `walk` — straight into the saloon,
+themselves after a moment and walk on; `pay` - they wait for the driver to sell the ticket
+(the bus's printer, or **T**) and give up after 25 s; `walk` - straight into the saloon,
 no cash desk (flat fare / ticket machines). People keep a body's width apart outside.
 `exact_fare=0` makes them overpay so that change is due. Rain and snow stay outside the
 player's bus (its `[boundingbox]`), and heavy rain darkens the day enough for the saloon
@@ -163,7 +162,7 @@ and height fog, automatic exposure, a glow only real highlights produce and the 
 Neutral tone curve with FXAA (`post_aa`); no light shafts, vignette or grading. The
 vanilla look stays the default. The navigator (`crates/omsi-app/src/navigator.rs`) sits in a corner of the screen (lower
 left by default), after the Route Advisor of Euro Truck Simulator 2: small, dark and half
-transparent, a tilted 3D map that turns with the bus and zooms out with speed — the roads
+transparent, a tilted 3D map that turns with the bus and zooms out with speed - the roads
 of the lane network, the trip's route with arrows along it, coloured stretch by stretch by
 how busy the road is (blue empty, green light, yellow busy, red heavy, dark red jammed; it
 changes as the traffic does), the stops ahead, the other vehicles as blue dots, the next
@@ -173,11 +172,11 @@ start, so the way shows however far the route or the next stop is from the loade
 From the depot it leads at once to the next stop (never past it onto a later
 part of the route); leave the route and it is recalculated after two seconds (Dijkstra
 over the lanes, back onto the route ahead). A duty begins with the first trip of the tour
-whose first stop the bus can still reach before it leaves — not with the trip under way
+whose first stop the bus can still reach before it leaves - not with the trip under way
 at the start time, which put the driver late and halfway along the line. Above the map the speed with the limit, the line and the time;
 below it the next stop, its distance, the time to it, its planned time and whether the bus
-is early or late — in English, German, French or Russian (`language`). A click on the navigator (or **Shift+M**) opens the city map: a large window over the game
-with the whole map from above — every road with its street name (read from the map's
+is early or late - in English, German, French or Russian (`language`). A click on the navigator (or **Shift+M**) opens the city map: a large window over the game
+with the whole map from above - every road with its street name (read from the map's
 street name signs), the trip's route by traffic with arrows, its stops with their times,
 the bus and the traffic; drag to move, the wheel zooms, the buttons centre on the bus and
 zoom, Escape or a click outside closes it. **Shift+N** cycles
@@ -186,15 +185,15 @@ map → map with the schedule of the next stops → off (N alone is the gearbox'
 **Z / X / C** are the indicators. **Shift + 1**, **Shift + 2**, … open or close a door, front
 to back: a bus like the SD200/SD202/EN92 with one two-leaf front door and a combined
 aft/stop-brake-release door answers to Shift+1/2/3, a low-floor mod with three or four
-independent doors (the O530 Facelift) to Shift+1 through Shift+4/5 — whatever
+independent doors (the O530 Facelift) to Shift+1 through Shift+4/5 - whatever
 `bus_doorfront<n>` triggers the bus's own script defines, `bus_dooraft` last (the HUD's
 control reminder says how many).
 
 ## Mods and the content folder
 
 The folder of the game binary (`dist/<platform>` in a build; beside `openOMSI.app` on macOS) is laid out like an OMSI 2
-installation — `Vehicles`, `maps`, `Sceneryobjects`, `Splines`, `Texture`, `Fonts`,
-`Plugins`, `TicketPacks`, `Drivers`, `Weather`, … — and is searched *before* the original
+installation - `Vehicles`, `maps`, `Sceneryobjects`, `Splines`, `Texture`, `Fonts`,
+`Plugins`, `TicketPacks`, `Drivers`, `Weather`, … - and is searched *before* the original
 folder (`omsi_cfg::content_roots`): whatever a mod puts there is found exactly as if it had
 been copied into OMSI 2, and a file of the same name replaces the stock one. The original
 installation is never written to. `OMSI_CONTENT=/some/dir` moves the content folder.
@@ -258,7 +257,7 @@ back, left and right as the camera faces, **U/O** lower and raise it, **N/M** tu
 metre and five degrees a press, a tenth with Shift); **Delete** deletes it (again: back),
 **Backspace** undoes everything done to it, **Ctrl+S** saves and **Esc** leaves the editor.
 Saving writes each changed tile as a copy into the content folder's map folder
-(`<content>/maps/<map>/tile_x_y.map`), which the game reads before the installation — the
+(`<content>/maps/<map>/tile_x_y.map`), which the game reads before the installation - the
 original map is never written; delete the copy to have the original back. Only a tile's own
 `[object]` records can be edited: splines, the ground, spline rows, new objects and the
 timetable are not part of it.
@@ -284,7 +283,7 @@ Environment variables, all off unless set. The useful ones:
 | `OMSI_CONTENT=/dir`, `OMSI_CONTENT_ZIP=a.zip:b.zip`, `OMSI_ROOT=/dir` | where the content folder, the archives and the original installation are |
 | `OMSI_DEBUG_CONES`, `OMSI_NO_LIGHT_MAP`, `OMSI_DEBUG_LIGHT_GRID` | the lamps' fog cones and halos, the tiles' night light maps left out, lights a full grid cell leaves out |
 | `OMSI_PARKED_PULL_OUT=p` | the chance per population pass (about 2 s) that a parked car drives off (0.035 by default), with a log of why one does not |
-| `OMSI_NO_BRIDGE=1` | a LAN host leaves the internet alone (no UPnP port forward, no address posting) — for tests |
+| `OMSI_NO_BRIDGE=1` | a LAN host leaves the internet alone (no UPnP port forward, no address posting) - for tests |
 
 `OMSI_MUTE`, `OMSI_LAN_AUDIO` and `OMSI_LAN_SAY` are the LAN tests' switches; the rest are
 listed where they are read (`grep -r OMSI_ crates`).
@@ -295,11 +294,11 @@ listed where they are read (`grep -r OMSI_ crates`).
 joins one and `--lan-name` is your name. The launcher's Drive page has the same as *LAN
 play: host / join*.
 
-A host prints a **session code** — `OMSI-7Q4K-2M9X-HD3P-R8TZ-KC5W-NB6E`, a base-32
+A host prints a **session code** - `OMSI-7Q4K-2M9X-HD3P-R8TZ-KC5W-NB6E`, a base-32
 alphabet without look-alike characters, the scrambled session id first and the host's
 addresses hidden under a mask drawn from it, so two codes of one host share nothing. The
 code carries up to three addresses of the host, a VPN's first: Hamachi (25.x.x.x), Radmin
-VPN (26.x.x.x), ZeroTier, Tailscale (100.64.0.0/10), then the LAN's — never the loopback,
+VPN (26.x.x.x), ZeroTier, Tailscale (100.64.0.0/10), then the LAN's - never the loopback,
 a 169.254 address or a bridge of virtual machines. The joining game says hello to all of
 them at once and takes the one that answers; with no answer within 10 s it gives up and
 says why that may be (not the same network, a firewall). The launcher's Sessions page and
@@ -315,7 +314,7 @@ doors, wheel travel, the rear sections of an articulated bus and the vehicle's o
 switch and sound variables); everything else is text. The host relays and owns the world:
 a joining player takes its date, time, weather and season, and its clock keeps everybody
 in step. The other players' buses run their own AI scripts with the sender's inputs, are
-drawn and heard where they stand, and are obstacles for the AI traffic like your own bus —
+drawn and heard where they stand, and are obstacles for the AI traffic like your own bus -
 as long as that bus type is installed locally, otherwise your own type stands in for it.
 **V** opens the chat line (Enter sends, Esc drops it); joining and leaving are announced
 there. The host checks everything it takes in and limits how much a player may send.
@@ -330,7 +329,7 @@ own: when its bus stands at a stop with a door open, it asks the host for the pe
 waiting there; the host hands over those still waiting and keeps those who meanwhile went
 for another bus, so nobody is ever on two buses. The people walking up to a client's bus
 and those getting off are sent back up, so the host sees them too. Money and the timetable
-of your own duty stay local — but the host's timetable leaves the tour each player drives to
+of your own duty stay local - but the host's timetable leaves the tour each player drives to
 that player (its AI bus goes, and comes back from the next departure when the player leaves),
 and everybody sees the passengers in everybody's bus: the riders of a player's bus travel
 with the world frames and sit in that bus in every other game (protocol 5). `crates/omsi-net` is the transport, the same on every

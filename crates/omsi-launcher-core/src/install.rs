@@ -3,13 +3,13 @@
 //! A mod is a folder or a `.zip`. Installing it happens in four steps, each of which can be
 //! followed on the Mods page and cancelled:
 //!
-//! 1. **Plan** — from the archive's central directory (or the folder listing) alone, work
+//! 1. **Plan** - from the archive's central directory (or the folder listing) alone, work
 //!    out what goes where: OMSI-style folders (`Vehicles`, `maps`, `Sceneryobjects` ...) are
 //!    merged into the same folders of the content folder, a lone bus / map / object folder is
 //!    put under the right folder, and everything else (read-mes, screenshots) is left out.
 //!    A pack that only adds paints or textures to a bus that is not installed is kept aside
 //!    in `Mods/waiting` and installed by itself once the bus is there.
-//! 2. **Check** — the unpacked size of the planned files plus a margin must fit on the disk
+//! 2. **Check** - the unpacked size of the planned files plus a margin must fit on the disk
 //!    of the content folder; otherwise the job stops with the numbers before anything is
 //!    written.
 //! 3. **Unpack / copy** into `<content>/.install-staging/<pid>-<job>`, on the same volume
@@ -21,16 +21,16 @@
 //!    linked inbox files removed from the inbox.
 //!
 //! The staging folder is removed whatever happens (done, failed, cancelled, or the launcher
-//! killed half-way: stale ones of launchers that died — and the old `~/.openomsi/unzip`
-//! — are removed on start).
+//! killed half-way: stale ones of launchers that died - and the old `~/.openomsi/unzip`
+//! - are removed on start).
 //!
 //! Every path inside a source goes through `safe_rel` before it is planned, so no entry
 //! (`..\..\x` in a zip made on Windows included) can be written outside the staging folder.
 //!
 //! **In place** (`InstallMode::InPlace`): a `.zip` laid out like OMSI 2 is not unpacked at
-//! all. It is put into `<content>/Archives/` — hard-linked when it is on the same disk
+//! all. It is put into `<content>/Archives/` - hard-linked when it is on the same disk
 //! (no space, no time), moved when it came through the Mods inbox, else copied through the
-//! staging folder after the same free-space check — and the game mounts every archive
+//! staging folder after the same free-space check - and the game mounts every archive
 //! there as a content root (`omsi_cfg::vfs`), as the launcher's own lists do. The plan is
 //! still made, for the report and to check that the archive's folders are where the game
 //! looks for them. `InstallMode::Auto` (the page's default) unpacks what fits on the disk
@@ -236,7 +236,7 @@ fn start_inner(content: PathBuf, root: Option<PathBuf>, source: PathBuf, mode: I
             }),
             Err(e) if e.downcast_ref::<Cancelled>().is_some() => j.set(|p| {
                 p.state = "cancelled".into();
-                p.message = "cancelled — nothing was installed, the unpacked files were removed".into();
+                p.message = "cancelled - nothing was installed, the unpacked files were removed".into();
                 p.finished = Some(now_secs());
             }),
             Err(e) => j.set(|p| {
@@ -479,7 +479,7 @@ fn has_ext(name: &str, exts: &[&str]) -> bool {
 /// when it could lead out of the folder it is unpacked into: absolute, with a drive or a
 /// `:` (a Windows drive-relative path or stream), with a `..`, or a NUL. `zip`'s own check
 /// reads `\` as a plain character on macOS and Linux, so `..\..\x` passes it and only
-/// turns into a way out once the separators are unified — which is why this runs after.
+/// turns into a way out once the separators are unified - which is why this runs after.
 fn safe_rel(name: &str) -> Option<String> {
     let name = name.replace('\\', "/");
     if name.starts_with('/') || name.contains('\0') {
@@ -653,7 +653,7 @@ fn plan(entries: &[Entry], source_name: &str, installed: &Installed) -> Plan {
                                 match installed.vehicle(bus) {
                                     Some(have) => plan.maps.push(Mapping { src: bpath, dest: format!("Vehicles/{have}"), what: format!("add-on for {have} (paints / textures)"), files, bytes, aside: false }),
                                     None => {
-                                        plan.warnings.push(format!("{bus}: only paints or textures for a bus that is not installed (Vehicles/{bus}) — kept aside in Mods/{WAITING} and installed by itself once that bus is installed"));
+                                        plan.warnings.push(format!("{bus}: only paints or textures for a bus that is not installed (Vehicles/{bus}) - kept aside in Mods/{WAITING} and installed by itself once that bus is installed"));
                                         plan.maps.push(Mapping { src: bpath, dest: format!("Vehicles/{bus}"), what: format!("add-on for {bus}, which is not installed"), files, bytes, aside: true });
                                     }
                                 }
@@ -686,7 +686,7 @@ fn plan(entries: &[Entry], source_name: &str, installed: &Installed) -> Plan {
         if lower == "plugins" || lower.starts_with("plugins/") {
             m.dest = format!("Mods/{PLUGINS_HELD}{}", &m.dest["plugins".len()..]);
             plan.warnings.push(format!(
-                "{}: a plugin runs its own program code inside the game, so it was not enabled — it is in Mods/{PLUGINS_HELD}; move it into Plugins yourself if you trust where it came from",
+                "{}: a plugin runs its own program code inside the game, so it was not enabled - it is in Mods/{PLUGINS_HELD}; move it into Plugins yourself if you trust where it came from",
                 if m.src.is_empty() { source_name } else { &m.src }
             ));
         }
@@ -804,10 +804,10 @@ fn list_zip(z: &mut zip::ZipArchive<std::io::BufReader<std::fs::File>>, job: &Jo
     }
     job.files_done.store(0, Ordering::Relaxed);
     if encrypted > 0 {
-        problems.push(format!("{encrypted} file(s) in the archive are password protected — unpack it with the password first and install the folder"));
+        problems.push(format!("{encrypted} file(s) in the archive are password protected - unpack it with the password first and install the folder"));
     }
     for (m, c) in unsupported {
-        problems.push(format!("{c} file(s) are packed with {m}, which the launcher cannot unpack — unpack the archive with the system's tool and install the folder"));
+        problems.push(format!("{c} file(s) are packed with {m}, which the launcher cannot unpack - unpack the archive with the system's tool and install the folder"));
     }
     if unsafe_names > 0 {
         problems.push(format!("{unsafe_names} file name(s) point outside the archive and were refused"));
@@ -859,7 +859,7 @@ fn run(job: &Job, content: &Path, root: Option<&Path>) -> Result<()> {
         return Err(anyhow!("could not tell what {} is: no Vehicles / maps / Sceneryobjects ... folders and no .bus / .sco / .sli / global.cfg files in it", src.display()));
     }
     for m in &plan.maps {
-        let line = format!("{} -> {}{}/ ({} files, {}){}", if m.src.is_empty() { source_name.as_str() } else { m.src.as_str() }, if m.aside { format!("Mods/{WAITING}/{source_name}/") } else { String::new() }, m.dest, m.files.len(), gb(m.bytes), if m.what.is_empty() { String::new() } else { format!(" — {}", m.what) });
+        let line = format!("{} -> {}{}/ ({} files, {}){}", if m.src.is_empty() { source_name.as_str() } else { m.src.as_str() }, if m.aside { format!("Mods/{WAITING}/{source_name}/") } else { String::new() }, m.dest, m.files.len(), gb(m.bytes), if m.what.is_empty() { String::new() } else { format!(" - {}", m.what) });
         job.set(|p| p.report.push(line.clone()));
     }
     job.set(|p| {
@@ -907,7 +907,7 @@ fn run(job: &Job, content: &Path, root: Option<&Path>) -> Result<()> {
     }
     if needed > free {
         return Err(anyhow!(
-            "not enough disk space: {} unpacks to {} ({} files), and with {} kept free that needs {}, but only {} is free on the disk of {}. Nothing was unpacked — free some space and try again.",
+            "not enough disk space: {} unpacks to {} ({} files), and with {} kept free that needs {}, but only {} is free on the disk of {}. Nothing was unpacked - free some space and try again.",
             source_name,
             gb(total_bytes),
             total_files,
@@ -1039,7 +1039,7 @@ fn run(job: &Job, content: &Path, root: Option<&Path>) -> Result<()> {
         }
     }
     let summary = match (installed_items.is_empty(), aside_items.is_empty()) {
-        (false, true) => format!("installed {} — it is in the lists now", installed_items.join(", ")),
+        (false, true) => format!("installed {} - it is in the lists now", installed_items.join(", ")),
         (false, false) => format!("installed {}; kept aside: {}", installed_items.join(", "), aside_items.join(", ")),
         (true, _) => format!("nothing installed; kept aside: {}", aside_items.join(", ")),
     };
@@ -1166,7 +1166,7 @@ fn place_archive(job: &Job, content: &Path, src: &Path, plan: &Plan) -> Result<(
         crate::mount_archive(&dest);
     }
     let items: Vec<String> = plan.maps.iter().filter(|m| !m.aside).map(|m| m.dest.clone()).collect();
-    let summary = format!("{} used in place ({how}) as {}/{} — {} in the lists now; the game reads it without unpacking", name, ARCHIVES, name, if items.is_empty() { "its content is".to_string() } else { format!("{} are", items.join(", ")) });
+    let summary = format!("{} used in place ({how}) as {}/{} - {} in the lists now; the game reads it without unpacking", name, ARCHIVES, name, if items.is_empty() { "its content is".to_string() } else { format!("{} are", items.join(", ")) });
     job.set(|p| {
         p.installed = items.iter().map(|i| format!("{i} (in {ARCHIVES}/{name})")).collect();
         p.message = summary.clone();
@@ -1219,7 +1219,7 @@ pub fn inspect(content: &Path, root: Option<&Path>, src: &Path) -> Result<Source
 fn check_space(content: &Path) -> Result<()> {
     if let Some(free) = free_space(content) {
         if free < ABORT_BELOW {
-            return Err(anyhow!("the disk is almost full ({} free) — stopped unpacking and removed the partial files", gb(free)));
+            return Err(anyhow!("the disk is almost full ({} free) - stopped unpacking and removed the partial files", gb(free)));
         }
     }
     Ok(())

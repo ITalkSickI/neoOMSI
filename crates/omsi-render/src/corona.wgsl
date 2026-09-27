@@ -50,7 +50,7 @@ fn vs_main(in: CoronaIn) -> CoronaOut {
     let corners = array<vec2<f32>, 6>(vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
     let c = corners[in.vid % 6u];
     if (in.extra.w > 1.5) {
-        // the halo round a light in fog (Omsi.exe sub_5a0068): licht.bmp turned to the
+        // the halo round a light in fog: licht.bmp turned to the
         // viewer, pulled towards them by its size, seen from in front of the light (for a
         // directional one the more, the further out of its cone's side the viewer stands)
         let to_cam = camera.cam_pos.xyz - in.pos;
@@ -91,9 +91,9 @@ fn vs_main(in: CoronaIn) -> CoronaOut {
         return hout;
     }
     if (in.extra.w > 0.5) {
-        // OMSI's cone in the fog (Omsi.exe sub_59f534 builds it, sub_5a0068 draws it): a flat
+        // OMSI's cone in the fog: a flat
         // fan from the lamp, `size` in radius, spreading to the outer half angle either side
-        // of the light's axis and turned about that axis to face the eye (sub_59fda0 mode 1).
+        // of the light's axis and turned about that axis to face the eye.
         // It is drawn here as a square in that plane; the fragment cuts the fan out of it
         // and maps light_cone.bmp onto it as the fan's vertices do.
         let axis = normalize(in.dir.xyz);
@@ -142,7 +142,7 @@ fn vs_main(in: CoronaIn) -> CoronaOut {
     var brightness = in.color.a;
     if (directed) {
         // a directional light is seen inside its outer cone, in full inside the inner one,
-        // linearly in the angle between them (Omsi.exe sub_5a0068)
+        // linearly in the angle between them
         let ang = acos(clamp(dot(normalize(in.dir.xyz), view_dir), -1.0, 1.0));
         let outer = acos(clamp(in.dir.w, -1.0, 1.0));
         let inner = select(0.0, acos(clamp(in.extra.x, -1.0, 1.0)), in.extra.x >= -1.0);
@@ -202,8 +202,8 @@ fn vs_main(in: CoronaIn) -> CoronaOut {
 // The sprite's light: the soft round texture, and for a star light four thin rays across it.
 fn corona_shape(in: CoronaOut) -> f32 {
     let t = textureSample(t_corona, s_corona, in.uv).r;
-    // the cone's fan: its apex has uv (0, 1) and a rim vertex (sin a, 1 - cos a) (Omsi.exe
-    // sub_59f534: u from sub_404c28 = fsin, v = 1 - sub_404c18 = fcos), a being 0.05 inside
+    // the cone's fan: its apex has uv (0, 1) and a rim vertex (sin a, 1 - cos a)
+    // (u = sin a, v = 1 - cos a), a being 0.05 inside
     // the inner cone and rising to 0.9 pi/2 + 0.05 at the outer edge: light_cone.bmp's
     // bright left column runs down the light's axis and fades towards the fan's edges.
     // (With sin and cos the other way round the streaks ran along both edges, a "V" of
@@ -226,7 +226,7 @@ fn fs_main(in: CoronaOut) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color.rgb * corona_shape(in) * in.color.a, 1.0);
 }
 
-// Enhanced graphics: the corona in the pre-exposed high-range picture — the glare of a
+// Enhanced graphics: the corona in the pre-exposed high-range picture - the glare of a
 // lamp is drawn relative to what the eye is adapted to, brighter than white so that the
 // glow filter picks it up; precipitation streaks keep the vanilla level.
 @fragment

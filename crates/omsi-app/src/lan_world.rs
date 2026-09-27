@@ -1,5 +1,5 @@
 //! LAN play: one world for everybody. The host's game simulates the AI traffic, the
-//! timetable buses, the people on the pavements and at the stops, and the traffic lights —
+//! timetable buses, the people on the pavements and at the stops, and the traffic lights -
 //! for the whole session, around every player (`Traffic::lan_centers`,
 //! `Humans::lan_centers`, the tile streamer). A client simulates none of that: it draws
 //! what the host sends (`omsi_net::world`), a little in the past so that it can glide

@@ -1,6 +1,6 @@
 //! Particle systems: `[smoke]` and `[particle_emitter]` of vehicles and scenery objects, as
-//! Omsi.exe runs them (TRauch / TRauchInst: sub_59ed30 emits, sub_59eadc sets a particle
-//! off, sub_59dc70 moves it). An emitter keeps at most 100 particles. A particle leaves along
+//! OMSI runs them (TRauch / TRauchInst: the original emits, the original sets a particle
+//! off, the original moves it). An emitter keeps at most 100 particles. A particle leaves along
 //! the emitter's direction at its speed plus a random spread; every frame its velocity is
 //! multiplied by the brake factor (per frame, not per second: taken at OMSI's default 30 fps
 //! here) and gravity pulls it down (a negative factor makes it rise); it grows from its start
@@ -11,7 +11,7 @@ use glam::{DVec3, Mat4, Vec3};
 use omsi_model::{ParticleSystemDef, PsRange, PsValue};
 use std::sync::RwLock;
 
-/// Particles an emitter keeps at most (Omsi.exe's 100).
+/// Particles an emitter keeps at most (OMSI's 100).
 pub const MAX_PER_EMITTER: usize = 100;
 /// The frame rate a brake factor is written for.
 const FRAME_RATE: f32 = 30.0;

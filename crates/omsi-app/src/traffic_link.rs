@@ -27,7 +27,7 @@ pub(crate) fn vehicle_outline(v: &omsi_sim::VehicleInstance, speed: f32) -> traf
 /// Everything of the player's besides the bus's own box that the traffic has to keep out
 /// of: the rear sections of an articulated bus or a coupled trailer (the traffic saw only
 /// the front section and drove into the back of a turning GN92), and the vehicles placed
-/// by hand from the vehicle list, with their trailers — under ids of their own beside the
+/// by hand from the vehicle list, with their trailers - under ids of their own beside the
 /// LAN players'.
 pub(crate) fn own_outlines(player: Option<&Player>, placed: &[Player]) -> Vec<(u32, traffic::PlayerBox)> {
     let mut out = Vec::new();

@@ -4,7 +4,7 @@
 //! next vehicles) runs on pools of its own at a lower priority. On the shared pool such a job
 //! held up the frame's parallel work until it was done (a worker that picks up a long job
 //! cannot come back for the frame's), and at the same priority it took the cores the frame's
-//! workers were waiting for — the 40–60 ms frames that came every few seconds while driving.
+//! workers were waiting for - the 40-60 ms frames that came every few seconds while driving.
 
 /// Tell the scheduler that the calling thread's work can wait for the frame's: macOS's
 /// "utility" quality of service, Windows' below-normal priority, a higher nice value on

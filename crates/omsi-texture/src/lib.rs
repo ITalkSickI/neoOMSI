@@ -211,7 +211,7 @@ pub fn season_folder() -> Option<String> {
 
 pub fn find_texture(name: &str, dirs: &[&Path]) -> Option<PathBuf> {
     // Memoised: a lookup that misses probes five extensions in every folder, each with a
-    // case-insensitive directory scan — done afresh for every material of every bus it
+    // case-insensitive directory scan - done afresh for every material of every bus it
     // cost three quarters of a minute to put the Spandau fleet on the GPU.
     // (a miss is kept only while the content stays as it was: a paint installed while the
     // game runs is found)

@@ -1,7 +1,7 @@
 //! PBR texture sets: maps that lie beside a diffuse texture and share its name with a
 //! suffix, as the common PBR tools export them. For `Texture/bus.dds`:
 //!
-//! - `bus_nn`, `bus_normal`, `bus_nrm` (`_gl` after it — `bus_nn_gl` — for an OpenGL-style
+//! - `bus_nn`, `bus_normal`, `bus_nrm` (`_gl` after it - `bus_nn_gl` - for an OpenGL-style
 //!   map, green up; Direct3D's green-down is taken otherwise): a tangent-space normal map;
 //! - `bus_rr`, `bus_rough`, `bus_roughness` (or `bus_gg`, `bus_gloss`, `bus_glossiness`:
 //!   inverted);

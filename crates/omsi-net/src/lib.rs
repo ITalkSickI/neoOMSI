@@ -5,7 +5,7 @@
 //! sends the state of their own vehicle up to twenty times a second over UDP (five times a
 //! second while nothing changes; a player without a vehicle sends an empty state once a
 //! second, so that the others know it is still there); the host relays every state to
-//! every other player (a star), so a client only ever talks to the host — and listens to
+//! every other player (a star), so a client only ever talks to the host - and listens to
 //! nobody else. The host also owns the world: a joining player takes the host's date, time
 //! of day, weather and season (`Welcome::world`), and the host's clock keeps everybody's in
 //! step (`CLOCK`).
@@ -70,7 +70,7 @@
 //! it. Money and the timetable of the player's own duty stay local to each player.
 //!
 //! A host is joined by its code, or by any of its addresses (`addrs`): the code carries up
-//! to three of them (a VPN's first — Hamachi, Radmin VPN, ZeroTier, Tailscale — then the
+//! to three of them (a VPN's first - Hamachi, Radmin VPN, ZeroTier, Tailscale - then the
 //! LAN's), and a joining game says hello to all of them at once, takes the first that
 //! answers, and gives up with a message saying why that may be after `JOIN_TIMEOUT`.
 
@@ -145,7 +145,7 @@ const CHAT_RATE: (f32, f32) = (1.0, 3.0);
 // ---------------------------------------------------------------------------------------
 // session codes
 
-/// The code alphabet: 24 letters without I and O, and the digits 2–9 — nothing that reads
+/// The code alphabet: 24 letters without I and O, and the digits 2-9 - nothing that reads
 /// like something else (0/O, 1/I/L).
 const ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 /// Characters of a code without the `OMSI-` prefix and the dashes.
@@ -165,7 +165,7 @@ pub struct SessionCode {
     pub session: u64,
 }
 
-/// At most this many addresses go into a code (each makes it 6–7 characters longer).
+/// At most this many addresses go into a code (each makes it 6-7 characters longer).
 pub const MAX_CODE_ADDRS: usize = 3;
 
 /// CRC-16/CCITT-FALSE.
@@ -349,7 +349,7 @@ impl SessionCode {
         if !lengths.contains(&s.len()) {
             let n = s.len();
             return Err(format!(
-                "a session code has {} characters after OMSI- (this one has {n}) — copy the whole code",
+                "a session code has {} characters after OMSI- (this one has {n}) - copy the whole code",
                 lengths
                     .iter()
                     .map(|l| l.to_string())
@@ -364,7 +364,7 @@ impl SessionCode {
                 Some(v) => v,
                 None if matches!(c, b'0' | b'O' | b'1' | b'I') => {
                     return Err(format!(
-                    "'{}' never appears in a session code — check the character that looks like it",
+                    "'{}' never appears in a session code - check the character that looks like it",
                     c as char
                 ))
                 }
@@ -468,7 +468,7 @@ fn parse_session_hex(s: &str) -> Option<u64> {
 }
 
 /// A fresh random 48-bit session id (the hasher's per-process random keys, the clock and
-/// the process id — no dependency needed for this).
+/// the process id - no dependency needed for this).
 pub fn random_session_id() -> u64 {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
@@ -491,7 +491,7 @@ pub fn random_session_id() -> u64 {
 /// (`addrs::joinable_addresses`: a gaming VPN's first, then the LAN's), at most
 /// `MAX_CODE_ADDRS`; the loopback when there is none (a computer without a network).
 ///
-/// This used to be the first private address `ifconfig` listed — on a Mac with Hamachi and
+/// This used to be the first private address `ifconfig` listed - on a Mac with Hamachi and
 /// Tailscale that was the home LAN's 192.168.1.x, which a friend on Hamachi cannot reach,
 /// and a 169.254 address of a dead adapter counted as private as well.
 pub fn code_ipv4s() -> Vec<Ipv4Addr> {
@@ -539,7 +539,7 @@ pub fn describe_join(text: &str) -> Result<String, String> {
     if looks_like_code(t) {
         let c = SessionCode::decode(t)?;
         if c.protocol as u32 != PROTOCOL {
-            return Err(format!("this code was made by a game with LAN protocol {}, this one speaks {PROTOCOL} — both players need the same version", c.protocol));
+            return Err(format!("this code was made by a game with LAN protocol {}, this one speaks {PROTOCOL} - both players need the same version", c.protocol));
         }
         let at: Vec<String> = c
             .ips
@@ -760,7 +760,7 @@ impl Footprint {
         Self::from_numbers(&v)
     }
 
-    /// From x, y, z, heading, length, width — finite, and of a size a vehicle can have.
+    /// From x, y, z, heading, length, width - finite, and of a size a vehicle can have.
     fn from_numbers(v: &[f64]) -> Option<Footprint> {
         if v.len() != 6
             || v.iter().any(|x| !x.is_finite())
@@ -1546,7 +1546,7 @@ impl LanSession {
             JoinTarget::Direct { addrs, session, protocol } => {
                 if let Some(p) = protocol {
                     if p as u32 != PROTOCOL {
-                        return Err(format!("the session code was made by a game with LAN protocol {p}, this game speaks protocol {PROTOCOL} — both players need the same version"));
+                        return Err(format!("the session code was made by a game with LAN protocol {p}, this game speaks protocol {PROTOCOL} - both players need the same version"));
                     }
                 }
                 Self::join_addr(addrs, session, name, world).map_err(|e| format!("cannot open a network socket: {e}"))
@@ -2068,7 +2068,7 @@ impl LanSession {
         let norm = |s: &str| s.trim().replace('\\', "/").to_ascii_lowercase();
         if !host.map.is_empty() && norm(&host.map) != norm(&mine.map) {
             w.push(format!(
-                "the host drives on {}, you on {} — you will not meet",
+                "the host drives on {}, you on {} - you will not meet",
                 host.map, mine.map
             ));
         }
@@ -2195,7 +2195,7 @@ impl LanSession {
                 self.no_answer(self.join_timeout)
             }
             (true, Some(at)) if at.elapsed() >= RECONNECT_TIMEOUT => format!(
-                "the host has not answered for {:.0} s — the session is over (playing on alone)",
+                "the host has not answered for {:.0} s - the session is over (playing on alone)",
                 RECONNECT_TIMEOUT.as_secs_f32()
             ),
             _ => return,
@@ -2211,7 +2211,7 @@ impl LanSession {
         let port = self.candidates.first().map(|a| a.port()).unwrap_or(DEFAULT_PORT);
         if self.refused >= 2 && self.candidates.len() == 1 {
             return format!(
-                "{} answers, but no session runs on port {port} there — check the port, or whether the host has started its game",
+                "{} answers, but no session runs on port {port} there - check the port, or whether the host has started its game",
                 self.candidates[0].ip()
             );
         }
@@ -2330,7 +2330,7 @@ impl LanSession {
             // from anybody else is not the session's (discovery has its own socket)
             if self.role == Role::Client {
                 // while the host's addresses are being tried, an answer may come from any of
-                // them — or from another address of that computer, on the host's port (a
+                // them - or from another address of that computer, on the host's port (a
                 // machine on several networks may answer from the one its route prefers)
                 let trying = !self.connected
                     && (self.candidates.contains(&from)
@@ -2547,7 +2547,7 @@ impl LanSession {
                 ("HELLO", Role::Client) | ("DISCOVER", Role::Client) => {}
                 // an older game that got past the hello somehow (or sends its poses blindly)
                 ("POSE", Role::Host) if !self.peers.values().any(|p| p.addr == Some(from)) => {
-                    self.reject(from, &format!("the host runs LAN protocol {PROTOCOL}, your game an older one — both players need the same version of the game"));
+                    self.reject(from, &format!("the host runs LAN protocol {PROTOCOL}, your game an older one - both players need the same version of the game"));
                 }
                 _ => {}
             }
@@ -2621,7 +2621,7 @@ impl LanSession {
         peer.last_seen = now;
         // (a heartbeat of a game still loading its world is no state yet: a load that holds
         // its window for longer than the time-out cost the player the session, and they
-        // came back as a new one — "joined", "left", "joined")
+        // came back as a new one - "joined", "left", "joined")
         peer.has_pose |= state.flags & FLAG_VEHICLE != 0 || state.walker.is_some();
         if peer.history.len() >= 12 {
             peer.history.pop_front();
@@ -2777,7 +2777,7 @@ impl LanSession {
         };
         if proto != PROTOCOL {
             log::warn!("LAN: {from} speaks protocol {proto}, we speak {PROTOCOL}; turned away");
-            self.reject(from, &format!("the host runs LAN protocol {PROTOCOL}, your game protocol {proto} — both players need the same version of the game"));
+            self.reject(from, &format!("the host runs LAN protocol {PROTOCOL}, your game protocol {proto} - both players need the same version of the game"));
             return;
         }
         let asked = field(parts, 2);
@@ -2787,7 +2787,7 @@ impl LanSession {
                 session_hex(self.session)
             );
             let code = self.code().map(|c| c.encode()).unwrap_or_default();
-            self.reject(from, &format!("wrong session code: this host now runs another session ({code}) — ask for the current code"));
+            self.reject(from, &format!("wrong session code: this host now runs another session ({code}) - ask for the current code"));
             return;
         }
         let bus = vehicle_path(field(parts, 4)).unwrap_or_default();
@@ -2818,7 +2818,7 @@ impl LanSession {
             None if self.peers.values().filter(|p| !p.has_pose).count() >= MAX_JOINING => {
                 self.reject(
                     from,
-                    "the host is letting other players in — try again in a minute",
+                    "the host is letting other players in - try again in a minute",
                 );
                 return;
             }

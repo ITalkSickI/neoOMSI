@@ -29,8 +29,8 @@ pub struct Daylight {
     pub envir_tint: [Vec3; 3],
 }
 
-/// Where the map lies and how its clocks run, from its `timezone.txt` (Omsi.exe
-/// sub_785f98: `[timezone]` hours east of UTC, `[location]` latitude and longitude,
+/// Where the map lies and how its clocks run, from its `timezone.txt` (OMSI
+/// the original: `[timezone]` hours east of UTC, `[location]` latitude and longitude,
 /// `[DST]` periods). Without the file the exe keeps Spandau: 52.505 N, 13.2782 E, UTC+1.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SunPlace {

@@ -1,5 +1,5 @@
 //! Collision world: oriented boxes (scenery objects, parked and moving vehicles) tested
-//! against a vehicle's bounding box — separating axes in the ground plane plus a height
+//! against a vehicle's bounding box - separating axes in the ground plane plus a height
 //! range, which is what a bus body against walls, posts and cars needs. The contact query
 //! gives the depth, the direction to push the vehicle out and where the two touch, for the
 //! impulse response in [`crate::rigid`].
@@ -33,7 +33,7 @@ const BUMPER: f64 = 0.5;
 
 /// The height (world) at which a hit between two bodies sharing the heights `z0..z1` is
 /// reported to the scripts as `coll_pos_z`: near the bottom of the range, where a bumper
-/// or a frame meets the other body, not in its middle — the stock collision scripts of the
+/// or a frame meets the other body, not in its middle - the stock collision scripts of the
 /// SD200, SD202 and NL202 only damage the engine and the drivetrain below 1.10 m.
 pub fn impact_height(z0: f64, z1: f64) -> f64 {
     z0 + (0.5 * (z1 - z0)).clamp(0.0, BUMPER)
@@ -112,7 +112,7 @@ impl Obb {
     }
 
     /// How `self` touches the obstacle `o`, if it does. The push-out direction is the axis
-    /// that needs the shortest way *out* — measured to whichever side is nearer, not by the
+    /// that needs the shortest way *out* - measured to whichever side is nearer, not by the
     /// width of the overlap, or a thin post in front of the bumper would be "separated"
     /// sideways by its own width and the bus would slip past it.
     pub fn contact(&self, o: &Obb) -> Option<Contact> {
@@ -247,7 +247,7 @@ fn centroid(poly: &[DVec2]) -> Option<DVec2> {
 }
 
 /// The part of the convex polygon `subject` inside the convex polygon `clipper`
-/// (Sutherland–Hodgman); both wound the same way as [`Obb::corners`].
+/// (Sutherland-Hodgman); both wound the same way as [`Obb::corners`].
 fn clip(subject: &[DVec2], clipper: &[DVec2]) -> Vec<DVec2> {
     let mut out: Vec<DVec2> = subject.to_vec();
     // the corners run clockwise seen from above: "inside" is to the right of each edge
@@ -294,7 +294,7 @@ const PART_BAND: f64 = 0.1;
 /// A `[collision_mesh]` in its object's own frame (x right, y forward, z up), as what OMSI
 /// hands to ODE: a triangle mesh, not its extents. Each triangle becomes a thin box (a
 /// wall's is a slab along it, a floor's a flat plate), so a vehicle meets the faces it
-/// really runs into — one box around the whole mesh stood as a wall over every road
+/// really runs into - one box around the whole mesh stood as a wall over every road
 /// between the buildings of a housing estate, and around the whole Heerstraße bridge.
 #[derive(Debug, Default)]
 pub struct MeshShape {
@@ -380,7 +380,7 @@ impl MeshShape {
 }
 
 /// The boxes standing in for one triangle: one when it is upright (a wall) or flat (a
-/// floor, a roof), else a slab per band of its height, each laid along the band — a road
+/// floor, a roof), else a slab per band of its height, each laid along the band - a road
 /// ramping up a bridge, cut into one box, stood 0.4 m over its own foot, where the bus
 /// that drives up it runs into the box.
 fn triangle_parts(t: [DVec3; 3], out: &mut Vec<Obb>) {
@@ -686,7 +686,7 @@ impl CollisionWorld {
     }
 }
 
-/// Does the segment `a`–`b` pass through the box (in plan view within its footprint, and
+/// Does the segment `a`-`b` pass through the box (in plan view within its footprint, and
 /// within its heights there)?
 fn segment_through(a: DVec3, b: DVec3, o: &Obb) -> bool {
     let [r, f] = o.axes();

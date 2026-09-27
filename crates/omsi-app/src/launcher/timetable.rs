@@ -1,4 +1,4 @@
-//! The Timetable page: a map's lines, their tours and the trips each tour runs — the part of
+//! The Timetable page: a map's lines, their tours and the trips each tour runs - the part of
 //! OMSI 2's timetable editor a driver uses to change when buses go. A line is saved as its
 //! `.ttl`; a map of the original installation gets its `TTData` copied into the content
 //! folder first (the game reads that copy before the original's, which stays untouched).
@@ -60,7 +60,7 @@ pub fn parse_time(t: &str) -> Option<f32> {
 
 /// Where a map's line is written: in place when the map lies unpacked in the content folder
 /// (its file backed up as `<file>.orig` the first time, for the reset), else in the content
-/// folder's copy of its `TTData` (made whole first — the game reads the one folder, not a mix
+/// folder's copy of its `TTData` (made whole first - the game reads the one folder, not a mix
 /// of both). A map inside a mod archive (`.zip`) counts as not in the content folder: its
 /// file was "saved in place" into the archive's path, which is no folder, and never saved.
 fn save_target(line: &Line, map_folder: &str, original_ttdata: &Path) -> Result<PathBuf, String> {
@@ -315,7 +315,7 @@ pub fn draw(l: &mut Launcher, area: Rect) {
         }
         return;
     };
-    let inner = ui.heading(Rect::new(right.x + 18.0, right.y + 14.0, right.w - 36.0, right.h - 28.0), &format!("Tour {} — {}", tour.number, tour.ai_group), Some("schedule"));
+    let inner = ui.heading(Rect::new(right.x + 18.0, right.y + 14.0, right.w - 36.0, right.h - 28.0), &format!("Tour {} - {}", tour.number, tour.ai_group), Some("schedule"));
     if tv.times_for != Some((tv.line, tv.tour)) || tv.times.len() != tour.trips.len() {
         tv.times = tour.trips.iter().map(|t| fmt_time(t.departure)).collect();
         tv.times_for = Some((tv.line, tv.tour));

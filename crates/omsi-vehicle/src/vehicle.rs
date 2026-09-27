@@ -372,7 +372,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// Of the vehicle files of one vehicle folder (every content root's copy together), the
 /// ones offered for driving, loaded and in the given order: those with a `[friendlyname]`
-/// — OMSI's own rule — that no other file of the folder couples behind itself. The second
+/// - OMSI's own rule - that no other file of the folder couples behind itself. The second
 /// part keeps a rear section out of the list even when a mod copied the front section's
 /// name into it: a coupled part only ever comes with its front.
 pub fn offered_vehicles(files: &[PathBuf]) -> Vec<(PathBuf, Vehicle)> {

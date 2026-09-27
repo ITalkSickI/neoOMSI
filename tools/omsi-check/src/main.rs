@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 
 #[derive(Parser)]
 struct Args {
-    /// Path to the OMSI 2 installation (the folder containing Omsi.exe).
+    /// Path to the OMSI 2 installation (the folder containing OMSI).
     root: PathBuf,
     /// Only run the named checks (o3d, scripts, models, scenery, vehicles, maps, misc,
     /// textures, fleet). `fleet` is not part of the default set.
@@ -42,7 +42,7 @@ struct Args {
     #[arg(long)]
     dump_out: Option<PathBuf>,
     /// Resolve a file name as a content file writes it (`--resolve <folder> <name>`, the
-    /// folder relative to the installation) and print where it is found — as a path and as
+    /// folder relative to the installation) and print where it is found - as a path and as
     /// a texture of that folder.
     #[arg(long, num_args = 2)]
     resolve: Vec<String>,
@@ -337,7 +337,7 @@ fn check_scenery(root: &Path, verbose: bool) {
         .par_iter()
         .filter_map(|p| match omsi_scenery::SceneryObject::load(p) {
             Ok(o) => {
-                // `[collisionmesh]` is a misspelling Omsi.exe ignores as well (it knows only
+                // `[collisionmesh]` is a misspelling OMSI ignores as well (it knows only
                 // `[collision_mesh]`): the original's own behaviour, noted, not a failure
                 let ignored_by_omsi = |k: &str| k == "collisionmesh";
                 let mut unk: Vec<String> = o.unknown_keywords.iter().filter(|(k, _)| !ignored_by_omsi(k)).map(|(k, l)| format!("[{k}]@{l}")).collect();

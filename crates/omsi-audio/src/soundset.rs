@@ -13,7 +13,7 @@ struct RuntimeSound {
     /// The conditions held last frame (a `[noloop]` entry without a trigger plays once
     /// when they start to hold).
     held: bool,
-    /// Since when the conditions hold (triggered entries: since the trigger last fired) —
+    /// Since when the conditions hold (triggered entries: since the trigger last fired) -
     /// what a `[volcurve] -1` reads, see [`SoundSet::curve_input`].
     active_since: Option<std::time::Instant>,
 }
@@ -29,13 +29,13 @@ pub struct SoundSet {
     inside: bool,
     /// This set belongs to an AI vehicle (`[viewpoint]` bit 4).
     ai: bool,
-    /// The listener sits in *some* vehicle's cabin right now — set every frame on every
+    /// The listener sits in *some* vehicle's cabin right now - set every frame on every
     /// sound set, this vehicle's own and every other vehicle's alike (see
     /// [`SoundSet::set_muffled`] and [`SoundSet::lowpass_of`]).
     muffled: bool,
     /// The sound sets of the coupled parts (with the part's index among the vehicle's
-    /// trailers): the rear section of an articulated bus has a `[sound]` of its own — on a
-    /// pusher like the MB C2 G that is where the engine is — and plays it on the triggers
+    /// trailers): the rear section of an articulated bus has a `[sound]` of its own - on a
+    /// pusher like the MB C2 G that is where the engine is - and plays it on the triggers
     /// and variables of the scripts it shares with the front (see [`SoundSet::update_parts`]).
     pub parts: Vec<(usize, SoundSet)>,
 }
@@ -141,7 +141,7 @@ impl SoundSet {
     /// The listener sits inside *some* vehicle's cabin right now (not necessarily this one):
     /// called every frame on every sound set that exists, including AI traffic and other
     /// players' vehicles. A passing car heard from inside the player's own bus is still muffled
-    /// by the player's bodywork and glass on the way in — that has nothing to do with the car's
+    /// by the player's bodywork and glass on the way in - that has nothing to do with the car's
     /// own `[viewpoint]` tags, which describe its own driver's cabin, not ours. For the
     /// player's own bus this is the same value as `set_inside`.
     pub fn set_muffled(&mut self, muffled: bool) {
@@ -190,10 +190,10 @@ impl SoundSet {
 
     /// How muffled an entry should sound, once the listener sits in *some* cabin (`muffled`):
     /// a foreign vehicle's sound set (`exterior`, an AI bus or another player's) is always
-    /// muffled then — every one of its sounds is on the far side of the player's own
+    /// muffled then - every one of its sounds is on the far side of the player's own
     /// bodywork and glass, whatever its own `[viewpoint]` says. For the player's own bus, a
     /// sound not specifically authored as an interior recording (no `[viewpoint] 2`-only
-    /// entry) is coming through that bodywork too — an entry with no `[viewpoint]` at all
+    /// entry) is coming through that bodywork too - an entry with no `[viewpoint]` at all
     /// (heard both in and out) or one that includes the exterior bit is muffled (cut above
     /// ~450 Hz, roughly what a closed window and body panel leave of an outside sound); a
     /// dedicated cabin sound (`[viewpoint] 2` alone, e.g. the engine's interior loop) is left
@@ -228,7 +228,7 @@ impl SoundSet {
     /// A sound set heard from outside (AI and other players' vehicles): every sound is
     /// placed at the vehicle, `[3d]` or not, so that an aircraft's engine or a passing
     /// car's horn fades with distance instead of playing at full volume everywhere. The
-    /// player's own bus keeps its non-3D sounds unattenuated — the driver sits in them.
+    /// player's own bus keeps its non-3D sounds unattenuated - the driver sits in them.
     pub fn new_exterior(engine: &AudioEngine, cfg: &SoundCfg, dir: &Path) -> SoundSet {
         let mut s = Self::new(engine, cfg, dir);
         s.exterior = true;
@@ -314,9 +314,9 @@ impl SoundSet {
                 vol *= curve(&vc.points, x);
             }
         }
-        // DirectSound has no gain over 0 dB: Omsi.exe turns the factor into hundredths of a
+        // DirectSound has no gain over 0 dB: OMSI turns the factor into hundredths of a
         // dB and the buffer takes at most 0, so a factor over 1 plays at 1. The MB 412D's
-        // `[sound] start2.wav` carries a loop sound's lines — "44100" read as its volume —
+        // `[sound] start2.wav` carries a loop sound's lines - "44100" read as its volume -
         // and its start-up roared 44 100 times too loud.
         Some(vol.clamp(0.0, 1.0))
     }
@@ -328,7 +328,7 @@ impl SoundSet {
     /// GetTickCount/1000), -2 = how much a `[3d]` sound with a direction faces the listener
     /// (1 without one), anything below is skipped with "Volume Variable not valid!". The
     /// LiAZ 5292's engine loops fade in with `[volcurve] -1` (0 at 1 s, 1 at 1.3 s); read
-    /// as an unknown variable = 0 they were silent for ever — only the start-up and the
+    /// as an unknown variable = 0 they were silent for ever - only the start-up and the
     /// idle of the second engine set were heard, the bus drove off in silence.
     fn curve_input(
         vc: &omsi_vehicle::VolCurve,
@@ -394,7 +394,7 @@ impl SoundSet {
             // How the exe plays an entry (`TSound` update, 2.2.032):
             // * with a `[trigger]`: once each time the trigger fires, from the start, never
             //   looped (a `[loopsound]` too) and without looking at its conditions;
-            // * without one: looped for as long as its conditions hold and it can be heard —
+            // * without one: looped for as long as its conditions hold and it can be heard -
             //   `[sound]` and `[loopsound]` both loop by default;
             // * without one but with `[noloop]`: once, when its conditions start to hold.
             //   The mod buses' air sounds (ECAS kneeling, the parking brake valve, the
@@ -485,7 +485,7 @@ impl SoundSet {
         self.sounds.is_empty()
     }
 
-    /// The sounds playing right now: (file, gain at the listener, pitch) — for the logs.
+    /// The sounds playing right now: (file, gain at the listener, pitch) - for the logs.
     pub fn playing(&self, engine: &AudioEngine) -> Vec<(String, f32, f32)> {
         self.sounds
             .iter()
@@ -499,7 +499,7 @@ impl SoundSet {
 
     /// One line per entry of the configuration, saying whether it is heard and why not
     /// (`OMSI_DEBUG_SOUND`): the only way to see which of a bus's hundred sounds the
-    /// rewrite never reaches — a missing clip, a condition on a variable nobody feeds, a
+    /// rewrite never reaches - a missing clip, a condition on a variable nobody feeds, a
     /// volume curve that stays at zero or a `[viewpoint]` the camera is not in.
     pub fn report(&self, engine: &AudioEngine, var: &dyn Fn(&str) -> Option<f32>) -> Vec<String> {
         let view = self.view_mask();
@@ -539,7 +539,7 @@ impl SoundSet {
                     out.push(format!("{file}: {:.3} heard, pitch {:.2}", heard, p.pitch))
                 }
                 (None, true) => out.push(format!("{file}: ready, silent")),
-                (None, false) => out.push(format!("{file}: off — {why}")),
+                (None, false) => out.push(format!("{file}: off - {why}")),
             }
         }
         out

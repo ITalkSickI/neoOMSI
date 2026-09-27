@@ -50,7 +50,7 @@ impl Weather {
 }
 
 /// OMSI 2's current weather (`[currWeather_ICAO]`): a weather made from an airport's METAR
-/// report — visibility (m, CAVOK and statute miles too), wind, temperature with the
+/// report - visibility (m, CAVOK and statute miles too), wind, temperature with the
 /// humidity from the dew point, QNH, the cloud cover (the lowest layer that covers most)
 /// as one of OMSI's cloud types, and rain, drizzle or snow with their strength.
 pub fn from_metar(station: &str, text: &str) -> Weather {

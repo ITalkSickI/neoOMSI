@@ -1,5 +1,5 @@
-// Enhanced graphics: the sky — the physical sky table, clouds lit by the sun and the sky,
-// the sun's disc and the air — and the reflection probe drawn from it.
+// Enhanced graphics: the sky - the physical sky table, clouds lit by the sun and the sky,
+// the sun's disc and the air - and the reflection probe drawn from it.
 
 // Clouds: a ray-marched volume on the curved Earth, built the way Guerrilla's Horizon Zero
 // Dawn clouds are (and bevy-volumetric-clouds and Frostbite after them):

@@ -8,7 +8,7 @@ use omsi_vehicle::hof::Hof;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-/// `wearlifespan` of a vehicle that does not wear (Omsi.exe: every AI vehicle, and the
+/// `wearlifespan` of a vehicle that does not wear (OMSI: every AI vehicle, and the
 /// player's with the maintenance option "infinite").
 pub const AI_WEAR_LIFESPAN: f32 = 1.5e6;
 
@@ -20,7 +20,7 @@ pub struct VehicleHost {
     pub mouse: (f32, f32),
     pub precip_type: f32,
     pub precip_rate: f32,
-    /// `StreetCond`: how the road under the vehicle is — 0 dry, 1 wet, 2 covered in snow,
+    /// `StreetCond`: how the road under the vehicle is - 0 dry, 1 wet, 2 covered in snow,
     /// and everything in between. The engine feeds it like `Dirt_Norm` (no varlist declares
     /// it); the stock sound configurations fade `Sounds\WetLane_1.wav` in over 0 … 1 and
     /// `WetLane_2.wav` over 1 … 2, and `spray.osc` raises the wheel spray while it is
@@ -100,7 +100,7 @@ pub struct Arrival {
 }
 
 /// `STLoadTex`: a destination display loads its bitmap every time it changes, in every bus
-/// of the fleet — read from the disk (or an archive) in the frame each time. The pictures
+/// of the fleet - read from the disk (or an archive) in the frame each time. The pictures
 /// are kept (up to 64 MB of them), the misses too.
 fn st_load(path: &std::path::Path) -> Result<Arc<omsi_texture::Image>, String> {
     type Cache = Mutex<(std::collections::HashMap<std::path::PathBuf, Result<Arc<omsi_texture::Image>, String>>, usize)>;
@@ -248,10 +248,10 @@ impl Host for VehicleHost {
         }
     }
 
-    /// `(S.S.x)`: Omsi.exe writes through the system variable's pointer into the engine's
+    /// `(S.S.x)`: OMSI writes through the system variable's pointer into the engine's
     /// own value (`TXPC_calcblock_var`). What the engine sets anew every frame (the frame
     /// time, the mouse, the weather, the sun) takes the write for the rest of this frame
-    /// only; the clock keeps it — `time_written` hands a new time of day to the game — and so
+    /// only; the clock keeps it - `time_written` hands a new time of day to the game - and so
     /// do the collision values and the switches.
     fn set_sys_var(&mut self, v: SysVar, value: f32) {
         if !value.is_finite() {
@@ -437,13 +437,13 @@ impl Host for VehicleHost {
                 // which is `Vehicles\Anzeigen\...` seen from `Vehicles\<bus>\Texture`
                 // (and found in whichever content root has it)
                 let mut full = omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&self.content_dir, "Texture"), &path);
-                // (then the global `Texture` folder, as Omsi.exe looks)
+                // (then the global `Texture` folder, as OMSI looks)
                 if !omsi_cfg::vfs::is_file(&full) {
                     if let Some((_, p)) = omsi_cfg::find_in_roots(&format!("Texture/{}", path.replace('\\', "/"))) {
                         full = p;
                     }
                 }
-                // (Omsi.exe pushes nothing: a file it cannot find goes to its log only)
+                // (OMSI pushes nothing: a file it cannot find goes to its log only)
                 match st_load(&full) {
                     Ok(img) => {
                         if let Some(t) = self.script_textures.get_mut(i) {
@@ -567,7 +567,7 @@ impl Host for VehicleHost {
                     self.change_coins.push(i as usize);
                 }
             }
-            // Omsi.exe's number-specific random value (sub_7f1ed4): the same for a fleet
+            // OMSI's number-specific random value: the same for a fleet
             // number and characteristic every time (broken matrix pixels, wear effects)
             "nrspecrandom" => {
                 let n = stacks.pop().round() as i32;
@@ -624,7 +624,7 @@ impl Host for VehicleHost {
         self.fired_triggers.push(name.to_string());
     }
 
-    /// `$msg`: kept as the last few (Omsi.exe shows the latest on its debug line; every
+    /// `$msg`: kept as the last few (OMSI shows the latest on its debug line; every
     /// AI bus says one per stop, and the list grew all session).
     fn message(&mut self, text: &str) {
         const KEEP: usize = 16;

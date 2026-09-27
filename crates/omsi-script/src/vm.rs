@@ -136,7 +136,7 @@ static SEEDED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(
 
 /// Seed the `random` of every machine created from now on: each one gets its own stream
 /// from `seed` and its creation number, as OMSI seeds its random generator once per
-/// session. Without it every vehicle drew the same numbers in every session — the stock
+/// session. Without it every vehicle drew the same numbers in every session - the stock
 /// buses always started with the same (low) air pressure from bremse_init's 4-9 bar.
 pub fn set_session_seed(seed: u64) {
     SESSION_SEED.store(seed.max(1), std::sync::atomic::Ordering::Relaxed);
@@ -518,7 +518,7 @@ fn set_length(s: &str, n: usize, align: Align) -> String {
     }
 }
 
-/// `$IntToStrEnh` as Omsi.exe does it (op 0x1f at 0x5d59d5): the format's first character
+/// `$IntToStrEnh` as OMSI does it (op 0x1f at 0x5d59d5): the format's first character
 /// pads, the rest is the width. A format of fewer than two characters gives "ERROR", width 0
 /// an empty text; the truncated number too long for the width is cut to width − 1
 /// characters and a `#`; the padding always goes in front, before a minus sign too

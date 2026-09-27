@@ -1,6 +1,6 @@
-//! Puddle splashes: what a wheel throws up crossing standing water. The puddle itself — the
+//! Puddle splashes: what a wheel throws up crossing standing water. The puddle itself - the
 //! glass-flat, reflective patches on a wet `[moisture]` road, with the raindrop ripples
-//! crossing it — is `enhanced.wgsl`'s; this file only works out *where* one sits (the same
+//! crossing it - is `enhanced.wgsl`'s; this file only works out *where* one sits (the same
 //! low-frequency mask, evaluated here so a wheel can be asked whether it stands in one) and
 //! spawns the droplets through the renderer's existing corona sprite pipeline (the one rain
 //! and snow already use in `rain.rs`), so a splash costs one more small, dim sprite each,
@@ -12,7 +12,7 @@ use omsi_render::Corona;
 /// The puddle mask `enhanced.wgsl` paints on a `[moisture]` road, evaluated on the CPU with
 /// the same two octaves of value noise so a splash starts exactly where the reflection does.
 /// `wet_road` is the moisture-weighted wetness at this point (global wetness where the
-/// surface is a `[moisture]` road, 0 elsewhere — a puddle never sits on bare terrain).
+/// surface is a `[moisture]` road, 0 elsewhere - a puddle never sits on bare terrain).
 pub fn puddle_coverage(x: f64, y: f64, wet_road: f32) -> f32 {
     if wet_road <= 0.0 {
         return 0.0;
@@ -47,7 +47,7 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 }
 
 /// The player's wheel contact points this frame (world) and the vehicle's forward speed
-/// (m/s, unsigned) — [`Splashes::update`] does not need each wheel's own speed, only
+/// (m/s, unsigned) - [`Splashes::update`] does not need each wheel's own speed, only
 /// whether the bus is moving through what its own wheels stand on.
 pub fn wheel_contacts(v: &omsi_sim::VehicleInstance) -> Vec<DVec3> {
     let Some(rb) = v.rigid.as_ref() else { return Vec::new() };
@@ -90,9 +90,9 @@ impl Splashes {
     }
 
     /// One frame: `wheels` are this frame's ground contact points, `speed` the vehicle's own
-    /// (m/s), `coverage_at` the puddle mask at a world (x, y) — see [`puddle_coverage`]. The
+    /// (m/s), `coverage_at` the puddle mask at a world (x, y) - see [`puddle_coverage`]. The
     /// live droplets come back as coronas for the caller to push onto `scene.coronas`,
-    /// exactly as `rain::Rain::tick` pushes rain — a plain `Vec` so the spawning and ageing
+    /// exactly as `rain::Rain::tick` pushes rain - a plain `Vec` so the spawning and ageing
     /// above stay testable without a real, GPU-backed `Scene`.
     pub fn update(&mut self, dt: f32, wheels: &[DVec3], speed: f32, coverage_at: &dyn Fn(f64, f64) -> f32) -> Vec<Corona> {
         if self.debt.len() != wheels.len() {

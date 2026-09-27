@@ -1,4 +1,4 @@
-//! Material Symbols (Rounded, filled) — the SVG files of `assets/icons/material`, built in.
+//! Material Symbols (Rounded, filled) - the SVG files of `assets/icons/material`, built in.
 
 include!(concat!(env!("OUT_DIR"), "/icons.rs"));
 

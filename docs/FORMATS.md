@@ -1,16 +1,16 @@
-# OMSI 2 content formats (reverse-engineered from OMSI 2.2.032 + stock content)
+# OMSI 2 content formats
 
-Everything below was established by reading the stock content of a reference install and the
-string tables of `Omsi.exe`. No original code was copied.
+The file formats of OMSI 2 content (maps, objects, vehicles, scripts, timetables …) as openOMSI
+reads them.
 
 ## Text encoding
 
 * Map files (`global.cfg`, `tile_x_y.map`, Chrono `*.map`, `*.chronoterrrelevant`) are UTF-16LE with
   BOM (`FF FE`).
 * Every other text file is read by OMSI in the system's ANSI code page (Delphi `AnsiString`):
-  the stock content is Windows-1252, but a mod is written in its author's code page —
+  the stock content is Windows-1252, but a mod is written in its author's code page -
   Windows-1251 for the Russian ones (LiAZ, PAZ, the Scania Citywide's cockpit), 1250 for the
-  Polish and Czech ones — and some newer files are UTF-8. openOMSI has no system code page
+  Polish and Czech ones - and some newer files are UTF-8. openOMSI has no system code page
   to borrow and decides per file (`omsi-cfg::codepage::detect`): valid UTF-8; 1251 when at
   least half of the letters `0xC0..` stand in runs of three or more (Russian words; German
   has at most two in a row, "Größe"); 1250 when letters that are signs in 1252 (ł ą ś Ł Ś Ż)
@@ -30,11 +30,11 @@ Quoting the original .bus header comment: *the program ignores everything except
 `[mesh]` when they stand at the start of a line, alone on the line. The following lines are then
 read as the parameters, one per line. Afterwards the program searches for the next keyword.*
 
-Consequences implemented in `omsi-cfg` (settled on the loaders of `Omsi.exe`, which compare
+Consequences implemented in `omsi-cfg` (settled on the loaders of OMSI, which compare
 the line they read with their keyword literals by plain Delphi string equality):
 
 * A keyword line is the **whole line**: no leading whitespace (indented `[keyword]` lines are
-  the stock files' help texts and switched-off blocks — the SD202 cabin's `[exit]` help, the
+  the stock files' help texts and switched-off blocks - the SD202 cabin's `[exit]` help, the
   F90's second rear axle, whose mesh does not exist, the EN92's fourth door-slam sound) and no
   trailing whitespace.
 * The keyword is spelled as the original spells it: `[matl_noZwrite]`, `[LOD]`,
@@ -56,7 +56,7 @@ names compare without regard to case (umlauts included), a folder name loses one
 and the last name all trailing dots and spaces (Ahlheim's `anz-oben.jpg.`).
 
 Content roots (openOMSI's content folder, mounted archives, the OMSI 2 installation) are
-searched as if they had been copied over each other, highest priority last — with one
+searched as if they had been copied over each other, highest priority last - with one
 exception: a vehicle pack (`Vehicles/<folder>`) present in two roots in two *versions* does
 not mix. The copy under a higher-priority root patches the one a vehicle was loaded from
 only when it has no `.bus`/`.ovh`/`.zug` of its own or only ones that pack has too; a pack
@@ -65,7 +65,7 @@ Facelift next to an installed older one), whose files are only used for what the
 vehicle's own pack lacks. Mixed, the Ahlheim Citaro ran the installed pack's varlists
 and constfiles under its own scripts and its displays stayed dark.
 
-## Scripts (.osc) — unit `mc_exprcalc`
+## Scripts (.osc) - unit `mc_exprcalc`
 
 An 8-float *working stack* (`st[0..8]`) and a 10-float *register file* (`l0..l9` load,
 `s0..s9` store without popping; the exe's `TCache` is `array[0..9] of Single`). Values push: the new value goes to `st[0]`, everything shifts
@@ -111,7 +111,7 @@ Blocks: `{init}`, `{frame}`, `{frame_ai}`, `{macro:name}`, `{trigger:name}` … 
 `%stackdump%` dumps the stack to the log. Macro, trigger and variable names are case-insensitive.
 A trigger or macro defined in two script files is the **later** file's: the O530 Citaro pack's
 `engine.osc` redefines `cp_batterietrennschalter_toggle` of its `cockpit.osc` (the ignition key
-turns one notch per press of E: key in, electrics, ignition, starter while held — the bus could
+turns one notch per press of E: key in, electrics, ignition, starter while held - the bus could
 not start otherwise), its ALMEX redefines `IBIS_Zahlentasten`. Operator names are compared as
 spelled (`Min`, `$CutEnd` are not operators). A `$` word that is not one of the string
 operators compiles to nothing, silently (a lone `$`, `$=>`, `$++`, `$SetLengthM` in mods);
@@ -131,11 +131,11 @@ mouse_x mouse_y PrecipType PrecipRate coll_pos_x/y/z coll_energy Weather_Tempera
 Weather_AbsHum wearlifespan AutoClutch SunAlt.
 `mouse_x`/`mouse_y` are the movement of the frame while a `[mouseevent]` mesh is held: its
 `<event>_drag` trigger runs every frame the button is down, with 0 when the hand keeps
-still. The stock scripts depend on it — the EN92 cash desk takes its swing speed from
+still. The stock scripts depend on it - the EN92 cash desk takes its swing speed from
 `(pos - lastpos) / Timegap` in that trigger, the rollers of the SD202 likewise, and the
 door scripts set their push per trigger and clear it at the end of the frame.
 
-## o3d (binary mesh) — unit `mc_o3dfiles`
+## o3d (binary mesh) - unit `mc_o3dfiles`
 
 ```
 84 19            magic
@@ -167,7 +167,7 @@ objects writes them.
 **DirectX `.x` meshes** (text `xof 0303txt`, mod content: the BVG Citaro's Atron terminal,
 the O530's instrument glass) are flattened like `D3DXLoadMeshFromX` does: every `Frame`'s
 `FrameTransformMatrix` applies to the meshes inside it, parent after child. The 16 numbers are
-row-major for row vectors (translation in elements 12–14), i.e. read column by column they are
+row-major for row vectors (translation in elements 12-14), i.e. read column by column they are
 already the column-vector matrix; Blender's exporter puts a Y/Z swap (or a Z flip) in the root
 frame and each object's placement in its own frame. Normals go by the inverse transpose (the
 Ruede Trafohaus scales its frame unevenly). 27 stock scenery `.x` files have translated frames
@@ -193,7 +193,7 @@ for each vertex (raw x y z nx ny nz u v):
 Triangles, materials, matrix and bones are stored plainly. The original also refuses keys that
 are not in its registration list; that check is not reproduced.
 
-## Map — units `mc_mapclass`, `mc_terrain_2`, `mc_chrono`
+## Map - units `mc_mapclass`, `mc_terrain_2`, `mc_chrono`
 
 `global.cfg` keywords (from the exe): name friendlyname description/end version NextIDCode
 worldcoordinates dynhelperactive entrypoints realrail LHT mapcam standarddepot moneysystem
@@ -215,7 +215,7 @@ never), `[ticketpack]`, `[moneysystem]` and `[deactivate_lines]` (a block of lin
 per line). The folders are taken in name order and one is active when `startdate ≤ date`
 and (`enddate` = 0 or `date < enddate`); its `.map` patches, `ailists.cfg` and timetable
 files are laid over the map's. A line a chrono takes off does not run on any later date
-either — Berlin-Spandau on 2026-09-17 has 27 lines and not the "5 & 5N" that the timetable
+either - Berlin-Spandau on 2026-09-17 has 27 lines and not the "5 & 5N" that the timetable
 change `1000_FPW_19910602` of 1991-06-02 removed.
 
 `[object]`: `0`, path, IDCode, **x, y, z** (z relative to the terrain, except for `[absheight]`
@@ -231,13 +231,13 @@ Field orders were verified by prev/next continuity and bus-stop link distances o
 Street names are nowhere in a map but on its street name signs: a `StreetSign_*` object
 (Verkehrszeichen_MC; 670 on Berlin-Spandau, 32 on Grundorf) has type flag 1 and the name as its
 first string, and its heading is the named road's heading + 90° (the plate runs along the road:
-1281 of 1429 pairs of same-name signs 150–700 m apart lie within 15° of that). The navigator
+1281 of 1429 pairs of same-name signs 150-700 m apart lie within 15° of that). The navigator
 reads them for the city map.
 
 `[splineAttachement]`: `0`, path, IDCode, spline index (in the tile's spline order), lateral
 offset, height, start distance, heading, pitch, bank, interval, range, tilt flag, string
 count, strings; `[splineAttachement_repeater]` has two more lines after the `0`: the index of
-the master's tile in global.cfg's `[map]` list (counting the tiles whose files are missing —
+the master's tile in global.cfg's `[map]` list (counting the tiles whose files are missing -
 Berlin-Spandau lists 369 and ships 329) and the index of the row's first object on its
 spline. Object j of a row lies start distance + j·interval **along the chain from its start**
 (the splines before the master's, following the `prev` links with the direction flips where
@@ -268,16 +268,16 @@ along its edges.
 `[spline]` in a tile file: the ground is pulled onto that spline, as the editor's "align
 terrain" does, and the original redoes it on every load (Berlin-Spandau: 33 and 203 of
 2486 splines). `[terrainhole] <mesh.o3d>` inside a `[mesh]` block of a model.cfg names a
-cutter that takes the ground away under the object — 85 of the stock junction objects carry
+cutter that takes the ground away under the object - 85 of the stock junction objects carry
 one, next to the model or in its `model` folder. Both matter: without them the terrain
 stands over the carriageway, which from the driver's seat looks like a missing road.
 
 `[groundtex]` (global.cfg) is one ground texture the map may be painted with: texture,
-detail texture, then three numbers — the painting mask's size as a power of two, how often
+detail texture, then three numbers - the painting mask's size as a power of two, how often
 the texture repeats across a tile, how often the detail texture does. The first entry is
 what the whole map starts as and has no mask; each further one has a per-tile mask in
 `texture/map/tile_x_y.map.<index>.dds`, an 8-bit alpha DDS (DDPF_ALPHA, 0xff alpha mask,
-sometimes with mipmaps) of exactly that size, whose **first row is the north edge** —
+sometimes with mipmaps) of exactly that size, whose **first row is the north edge** -
 verified where a painted strip crosses the seam between Grundorf's tiles (0,-1) and (0,-2)
 at identical columns. The detail texture is multiplied in plainly; the stock ones are bright
 (noise_low averages 242, gras_det 179) and doubling them like a grey-centred D3D detail map
@@ -303,14 +303,14 @@ positive steering is to the right, and `n_Wheel` is rpm (`antrieb.osc` computes 
 A texture may carry a `<texture>.<ext>.cfg` sidecar: `[terrainmapping]` maps it in world
 coordinates, `[moisture]` marks a surface that darkens when it rains, `[puddles]` one that
 collects puddles, and `[surface] n` says what it is made of (0 asphalt, 1 concrete,
-2 cobblestone, 3 dirt, 4 grass, 5 gravel, 6 snow, 7 deep snow) — the id the vehicle scripts
+2 cobblestone, 3 dirt, 4 grass, 5 gravel, 6 snow, 7 deep snow) - the id the vehicle scripts
 read as `Axle_SurfaceID_`.
 
 `.map.water` = `u32 count` + 4 f32: one water surface over the tile with a height at each
 corner (every stock file has count 1). The riverbed is ordinary terrain and the water plane
 sits over it, so the shoreline is wherever the terrain rises through it. `.terrain_x.rdy` = editor cache, ignored.
 
-## Splines (.sli) — unit `mc_splines`
+## Splines (.sli) - unit `mc_splines`
 
 length texture scaleTexByLength patchwork_chain heightprofile profile profilepnt path path_2
 rail_enh third_rail halfcantwidth onlyeditor terrainholeprofile terrainholeprofilepnt.
@@ -340,14 +340,14 @@ index, and `[varparent] id` = the crossing; their `[visible] red|yellow|green 1`
 * `.ttp` trip: `[trip]` + 3 lines (the track it runs on, empty for a bus trip that goes by
   its station links; terminus; line string), `[station_typ2] object-id`…, `[profile] name
   minutes` (+ `profile_man_arr_time/dep_time`). A "type 1 (old)" trip (trains, and whole mod
-  maps such as Novi Sad) has `[station]` records of 8 lines instead — object id, index of
-  the track entry the stop lies on, name, tile index, then four numbers — and runs on the
+  maps such as Novi Sad) has `[station]` records of 8 lines instead - object id, index of
+  the track entry the stop lies on, name, tile index, then four numbers - and runs on the
   track its `[trip]` names ("1 Klisa-Liman I" → `1_Klisa-Liman1.ttr`), which need not be
   named like the trip. AI buses follow a route in whichever direction it goes along a path:
   station links and tracks do drive one-way paths backwards (invisible helper streets).
 * Map splines with the `mirror` flag have their cross-section turned over: every path lies
   at the negated offset and runs the other way (forward ↔ backward).
-* `.ttr` track: `[track_entry] id path-index tile-index internal-path-no length 0` — the lane
+* `.ttr` track: `[track_entry] id path-index tile-index internal-path-no length 0` - the lane
   sequence of the trip (`id` = spline/object id in that tile, `path-index` = the `[path]`
   index in its .sli/.sco; the internal number is OMSI's per-tile path array index, a cache).
 * `.ttl` line: `[userallowed]`, `[priority]`, `[newtour] number ai-group extra`,
@@ -355,11 +355,11 @@ index, and `[varparent] id` = the crossing; their `[visible] red|yellow|green 1`
 * `StnLinks.cfg`: `[StnLink] length from to …` + `[StnLink_entry] id path tile length -1 0 0`.
   A link often runs on a few paths past its station (the last entries mostly with length 0,
   into a turn lane or round a corner) while the next link starts at the stop on another
-  path — in 122 of Spandau's 505 joins; those extra paths are not driven. Lanes are linked
+  path - in 122 of Spandau's 505 joins; those extra paths are not driven. Lanes are linked
 by proximity of end/start points (≤ 1.5 m, heading within 40°), which reproduces the
 `prev`/`next` spline chains and the `[splinehelper]` connections of crossings.
 
-## Scenery objects (.sco) — unit `mc_complMapObj`
+## Scenery objects (.sco) - unit `mc_complMapObj`
 
 friendlyname groups onlyeditor complexity rendertype(presurface|surface|on_surface)
 LightMapMapping nomaplighting NightMapMode fixed absheight collision_mesh crossing_heightdeformation
@@ -371,7 +371,7 @@ add_camera_reflexion(_2) mass momentofintertia cog boundingbox crashmode_pole ne
 (attach_trans attach_rot_x/y/z) maplight rail_enh third_rail triggerbox_new triggerbox_setreverb
 plus the whole model.cfg vocabulary inline.
 
-## Model (.cfg) — unit `mc_complobj`
+## Model (.cfg) - unit `mc_complobj`
 
 LOD VFDmaxmin detail_factor tex_detail_factor noDistanceCheck terrainhole CTC CTCTexture
 scripttexture texttexture texttexture_enh mesh item setvar mesh_ident viewpoint shadow isshadow
@@ -383,13 +383,13 @@ useTextTexture alphascale matl_freetex matl_lightmap matl_nightmap matl_allcolor
 particle_emitter PS_attachTo; material manager: matl_alpha matl_noZwrite matl_noZcheck matl_Zbias
 matl_envmap matl_envmaprealtime matl_bumpmap matl_envmap_mask matl_transmap.
 
-**Object visibility (Omsi.exe 0x5fdc7c, established Sept 2026).** OMSI decides per *object*
+**Object visibility (OMSI 0x5fdc7c, established Sept 2026).** OMSI decides per *object*
 (scenery object, vehicle), never per mesh, with the model's radius R, `[detail_factor]` D
 (default 1; parsed into the model at +0xa8) and `[noDistanceCheck]` (+0xad, a flag of the whole
 model wherever it stands). With d the distance to the camera and z the depth along the view:
 the object is dropped when `d > R + maxObjDist` or `(z − R) / maxObjDist > 1` (both skipped by
 `[noDistanceCheck]`), and when `size / D < minObjSize` where
-`size = 2R / (z · fov · π/180)` — the object's diameter over its depth as a share of the
+`size = 2R / (z · fov · π/180)` - the object's diameter over its depth as a share of the
 camera's vertical field of view (degrees, camera +0x38). The same `size` (not divided by D)
 chooses the `[LOD]` level, so the `[LOD]` values of a model are in this measure. The values
 come from `options.cfg`: `[performance_maxObjDist]` (750 in the shipped file, 900 in the high
@@ -399,8 +399,8 @@ an object vanish sooner (clutter), below 1 keeps it longer.
 
 `[texchanges] <file>` names a `chtex_*.cfg` **relative to the vehicle's own folder**
 (`texture\chtex_SD.cfg`, `..\Anzeigen\Rollband_SD79\chtex_rollband.cfg`), not to the
-model.cfg's. It holds `[newtexchangemaster]` blocks of two lines — the texture name as it
-appears in the o3d, and a script variable — each followed by `[entries] n` and n texture
+model.cfg's. It holds `[newtexchangemaster]` blocks of two lines - the texture name as it
+appears in the o3d, and a script variable - each followed by `[entries] n` and n texture
 files that live next to that cfg. The variable's integer value picks the entry, 0 first
 (`rollband.osc` clamps `rlbnd_lnN` to 0…15 for sixteen entries and stores `trunc()+0.001`).
 The named texture usually does not exist on disk at all: the mesh carries it only as a key.
@@ -421,13 +421,13 @@ that axis up with `origin_rot_y -90`, wheels spin about it directly, the sun bli
 along it. `origin_from_mesh` uses the o3d pivot matrix: its first row (D3D frame, x right,
 y up, z forward) is that axis, its fourth row the origin. OMSI evaluates the rotations in
 its left-handed D3D frame, so in a right-handed (x right, y forward, z up) frame every
-angle — `origin_rot_*` and the animated one — changes sign: the wiper arm's `-84` raises it,
+angle - `origin_rot_*` and the animated one - changes sign: the wiper arm's `-84` raises it,
 the blade's `+84` about the arm pivot (frame `origin_rot_z 92`, i.e. 90° plus the windshield
 rake) follows the arm, the blade's `+84` about its own pivot keeps it upright (pantograph).
 Animations of one mesh compose in file order, the first one innermost.
 
 `[matl_envmap] tex factor`: reflectivity = diffuse alpha × factor, the factor saturating at 1
-like a D3D texture factor (SD202 bodies write `10`, their paint alpha is 0.12–0.19 → a
+like a D3D texture factor (SD202 bodies write `10`, their paint alpha is 0.12-0.19 → a
 gloss, not a mirror; windows have alpha 0.5 with factor 1). The sphere map has the sky at
 the bottom.
 
@@ -440,7 +440,7 @@ the bottom.
 * `[isshadow]` mesh (`D_schatten.o3d` with `Shadow.tga`, alpha blend, no z check/write):
   the vehicle's shadow blob lying at model z = 0; OMSI draws it on the ground under the
   vehicle. Scenery objects use it the same way. A vehicle's z = 0 is the plane its tyres
-  touch with the springs *unloaded*, so a vehicle at rest has it 10–16 cm under the road
+  touch with the springs *unloaded*, so a vehicle at rest has it 10-16 cm under the road
   (the springs' sag); only the missing depth test shows the blob. Here it is laid onto the
   plane the wheels stand on and left out while the sun shadow map is drawn.
 * `[carpark_p]` `[onlyeditor]` scenery objects (`Generic\car_park.sco`) are parking spaces:
@@ -469,7 +469,7 @@ the bottom.
 * Scenery `.sco` `[sound] sound\x.cfg` uses the vehicle sound.cfg format, driven by the
   object's script variables and triggers (ambient sound objects are `[onlyeditor]`).
 
-* `tile_x_y.map.LM.bmp` (256×256): the tile's **night light map** — pools of street lamp
+* `tile_x_y.map.LM.bmp` (256×256): the tile's **night light map** - pools of street lamp
   light on the ground (not shadows), north at the top row; added to the terrain at night.
 * Spline profiles (`[profilepnt] x z u v`) are extruded as-is: a road's outer points sit at
   the kerb height (0.25 m on the Marcel street splines) with no skirt down to the terrain,
@@ -481,12 +481,12 @@ the bottom.
   their thresholds. `coll_energy` is that crash's energy in kJ and reads the same however
   often the block asks: the SD200/SD202/NL202 block adds it to the general account and then
   again to the engine's, which it only does for a hit behind `coll_pos_y` < -4.70 and below
-  `coll_pos_z` < 1.10 (vehicle frame, m) — so `coll_pos_*` is where the bodies meet, down at
+  `coll_pos_z` < 1.10 (vehicle frame, m) - so `coll_pos_*` is where the bodies meet, down at
   the bumpers, not the height of the centre of gravity.
 * Engine callbacks the stock scripts still needed: `(M.V.GetHeightAbovePoint)` takes x y z in
   the vehicle frame and returns how high that point stands over the ground below it
   (positive with room underneath: the NL/NG lift may drop by it, up to 0.3 m, and the Solaris
-  Urbino's kneeling sensor reads under 0.05 once the body touches the kerb — its level
+  Urbino's kneeling sensor reads under 0.05 once the body touches the kerb - its level
   control vents the right-hand bellows only above that); `(M.V.GetHumanCountOnPathLink)`
   takes a `paths.cfg` link index and returns how many passengers stand on it (the NL/NG fare
   gate swings out of their way). `GetTTTerminusIndex` spells "TT" with two T's before
@@ -511,7 +511,7 @@ the bottom.
 * `[matl_envmap]`: the reflectivity mask is the diffuse alpha; textures without an alpha
   channel (DXT1 paint schemes such as the GN92 HVL livery) do not reflect at all.
 
-## Vehicles (.bus/.ovh) — unit `mc_roadvehicle`
+## Vehicles (.bus/.ovh) - unit `mc_roadvehicle`
 
 type friendlyname friendlyname_inv ai_veh_type coupling_back/front control_cable_back/front
 couple_back/front coupling_front_character boogies sinus rail_body_osc contact_shoe rowdy_factor
@@ -533,13 +533,13 @@ next_stepsound.
 Sound (.cfg): next_random loopsound sound 3d dir noloop important viewpoint volcurve pnt
 conditionSingle conditionInt conditionBool trigger checkloading onlyone.
 
-## HOF — `mc_station`/`mc_roadvehicle`
+## HOF - `mc_station`/`mc_roadvehicle`
 
 name global_strings servicetrip stringcount_terminus stringcount_busstop addterminus_allexit
 addterminus addterminus_list {ALLEX} end addbusstop addbusstop_list infosystem_trip
 infosystem_busstop_list.
 
-## Timetable (TTData) — `mc_timetable`
+## Timetable (TTData) - `mc_timetable`
 
 `Trains/*.zug`: pairs of lines, vehicle file (or pool group name) and a reverse flag (1 =
 coupled with its rear end forward: its `[couple_back]` point meets the leading vehicle and
@@ -575,13 +575,13 @@ onlytypes end types_prefered number_tour.
   only other languages have a `.dsc`, and a language without one falls back to `_ENG`. They
   are Latin-1 like the rest, except that some were saved as UTF-16 with a byte-order mark.
 * Sound conditions: `[conditionSingle]` / `[conditionInt]` give the variable, the **value**
-  and then the relation — 0 `<>`, 1 `=`, 2 `<`, 3 `>`, 4 `<=`, 5 `>=` (`engine_n 200 3` =
+  and then the relation - 0 `<>`, 1 `=`, 2 `<`, 3 `>`, 4 `<=`, 5 `>=` (`engine_n 200 3` =
   the engine runs, `velocity 2 2` = standing); `[conditionBool]` has no relation and
   compares for equality. How an entry plays (the exe's `TSound` update): with a
   `[trigger]` it plays once each time the trigger fires, from the start and never looped (a
   `[loopsound]` too), **without looking at its conditions**; without one it loops for as
   long as its conditions hold and it is audible (the long horn, rain, the compressor, the
-  heater) — `[sound]` and `[loopsound]` both loop by default — unless it has `[noloop]`,
+  heater) - `[sound]` and `[loopsound]` both loop by default - unless it has `[noloop]`,
   which makes it play once when its conditions start to hold (a rising edge; the mod
   buses' ECAS kneeling, parking brake valve and start-up chime are written like that, and
   looped they hissed for ever). A `[loopsound]` plays at `|pitch variable| · rate / reference`
@@ -600,34 +600,34 @@ onlytypes end types_prefered number_tour.
   random part lifetime the stock scripts draw is 0, which makes the SD200's rear door
   reopen by itself for ever.
 * Input: keyboard.cfg `[game]/[vehicles]` + `[entry] name scancode modifier` (the modifier
-  is a mask: 1 shift, 2 ctrl, 4 alt — OMSI's own driving keys are Shift + numpad);
+  is a mask: 1 shift, 2 ctrl, 4 alt - OMSI's own driving keys are Shift + numpad);
   gamectrler.cfg ctrl axis buttons FFScale.
 * Startup order (logfile.txt) documents the manager creation sequence, mirrored in `omsi-sim`.
 
 ## Radio variables (plugins)
 
 OMSI plays no music itself. The radios of the buses only set variables that plugins read:
-`Snd_Radio` — the cassette player (`KR_play`/`KR_stop`) of the stock SD200/SD202/NL and of
+`Snd_Radio` - the cassette player (`KR_play`/`KR_stop`) of the stock SD200/SD202/NL and of
 most mods, 1 while it plays (no sound.cfg uses it); the Sound Extension plugin's
-`SndExt_Radio` — the station button pressed (1..n, 0 = off; the W906 Sprinter and the
-Procity show their own station names for it) with `SndVol_Radio` — the volume knob (0..1,
+`SndExt_Radio` - the station button pressed (1..n, 0 = off; the W906 Sprinter and the
+Procity show their own station names for it) with `SndVol_Radio` - the volume knob (0..1,
 the Sprinter's goes to 2) and `SndExt_RadioPlaylist` for its USB/CD modes. openOMSI
 plays internet stations for them (`~/.openomsi/radio.cfg`). Streams in HE-AAC with a
 program config element (some `.aacp` stations) are not decoded; MP3, AAC-LC and Ogg are.
 
-## Textures on the GPU — unit `mc_texMan`
+## Textures on the GPU - unit `mc_texMan`
 
-* DDS files with DXT1–DXT5 data (and DX10 BC1–BC3) go to a GPU that takes block formats
+* DDS files with DXT1-DXT5 data (and DX10 BC1-BC3) go to a GPU that takes block formats
   (every Apple silicon Mac does) as they are: sRGB BC1/BC2/BC3 with the file's own mip chain
   (the header's mip count; a partial chain is kept as it is), or, for a file without one,
-  with levels made the way D3DX makes them — level 0 decoded, filtered in RGBA (here in
+  with levels made the way D3DX makes them - level 0 decoded, filtered in RGBA (here in
   linear light, like the RGBA path's GPU blits) and compressed again; level 0 stays the
   file's own. A DXT1 block with c0 <= c1 using index 3 is transparent black, and a DXT1
   file with such a block counts as having alpha (the reflection-mask rule below).
 * Uncompressed files (BMP, TGA, JPG, PNG, raw DDS) are compressed on loading, to BC1 when
   they have no alpha (or alpha 255 everywhere), else BC3 (the alpha is a reflection mask,
   a cut-out or a blend), when the result is close: luma-weighted colour PSNR at least 33 dB
-  and alpha PSNR at least 30 dB. Noisy cobbles and asphalt (27–30 dB, about one BMP in
+  and alpha PSNR at least 30 dB. Noisy cobbles and asphalt (27-30 dB, about one BMP in
   eleven on Ahlheim) stay RGBA. Block formats need sides that are multiples of four: a
   picture whose sides are not (the 2550² Ahlheim repaints, 771×1024 display pictures) is
   resampled to the nearest multiple of four with a Catmull-Rom filter that keeps the texel
@@ -654,7 +654,7 @@ program config element (some `.aacp` stations) are not decoded; MP3, AAC-LC and 
 * `envir.cfg`: `[sky_textures]` day/twilight/night, `[twilight_start_end]` sun altitudes,
   `[lightcolor_A/B/C]` = 5 RGB stops (nadir, twilight start, sunrise, twilight end, zenith)
   for direct sun, light from above and ambient.
-* `[light_enh]` (mesh): pos, rgb 0–255, size (m), fading variable (name or constant), 4
+* `[light_enh]` (mesh): pos, rgb 0-255, size (m), fading variable (name or constant), 4
   numbers, optional texture. `[light_enh_2]`: pos, dir, up, omni, rotating, rgb, size, cone
   inner/outer, variable, factor, z-offset, parameters, cone, timeconst, bitmap. The lights
   count whatever detail level their mesh belongs to: 40 stock models (the Spandau neon,
@@ -679,7 +679,7 @@ scripts draw with `(M.V.ST…)` callbacks, arguments pushed in order (index firs
 letter-spacing, "text")` (mode bit 0: colour from the font's colour bitmap, else the
 `STSetColor` colour; alpha from the font's mask; `mode & 3 == 2` writes only covered pixels,
 other modes the whole glyph cell), `STReadPixel(i, x, y)` + `STGetR/G/B/A(0)`, `STLoadTex("path", i)`
-(pushes nothing — Omsi.exe 0x7bba4e only logs a missing file; the path is relative to the
+(pushes nothing - OMSI 0x7bba4e only logs a missing file; the path is relative to the
 object's `Texture` folder, then to the global `Texture`, so the Krüger
 matrix's `..\..\Anzeigen\Krueger\x.bmp` is `Vehicles\Anzeigen\Krueger\x.bmp`), `STCopyColor(a, b)`.
 `GetFontIndex("name")` registers an .oft font and answers **-1** for a font that does not exist
@@ -744,7 +744,7 @@ frame x right / y forward / z up; the mesh is stored in a T-pose), `[voice]`, `[
 −4/−5 shins, −6/−7 upper arms, −8/−9 forearms, −10 hip, −11 torso, −12 head, −13/−14 hands.
 Left is −x in every stock and add-on mesh checked (20 stock, 3 GSPNS). `[links]` values are
 not always trustworthy: the GSPNS man04/man041 give the hip at x 0.6 and the knee at x 0.83
-(the mesh's thigh is at 0.08) — harmless for rotations about x, fatal for a leg IK, so a
+(the mesh's thigh is at 0.08) - harmless for rotations about x, fatal for a leg IK, so a
 leg joint outside its limb's vertices is taken from the mesh.
 A map's `humans.txt` (one `Humans\<group>\<file>.hum` per line) is the list its pedestrians
 and passengers are drawn from; Berlin-Spandau and Grundorf name 15 stock types (not the DBC
@@ -755,9 +755,9 @@ Clothing variants work like a bus's paint schemes: the human model's `[CTC] Colo
 Humans/Other/texture/man01) whose `.cti` `[item]`s replace the `[CTCTexture] farbschema
 <default>` texture (stock people have one or two variants besides the default). The body
 texture of man02 and the women's hair carry `[matl_alpha] 1` (alpha test).
-The `[passengercabin]` file gives `[passpos] x y z seat-height rot` seats — x, y, z is the
+The `[passengercabin]` file gives `[passpos] x y z seat-height rot` seats - x, y, z is the
 **hip** ("Attachpunkt Arsch") when the seat height above the floor is greater than zero and
-the **foot** when it is zero, which marks a standing place — plus `[entry]`/`[exit]`
+the **foot** when it is zero, which marks a standing place - plus `[entry]`/`[exit]`
 path points, `[ticket_sale]`, `[stamper]`. `[entry]` may carry `{noticketsale}`: passengers
 who use that door walk straight to a seat instead of past the cash desk.
 
@@ -796,7 +796,7 @@ of a dirt overlay material. `veh_wash` clears them.
 file has exactly one): the block's `[matl_nightmap]`, `[matl_lightmap]`, `[matl_allcolor]` …
 describe the material *variant* that is active while the variable is set (≥ 0.5); with the
 variable at 0 the plain material applies. The item's `[matl_nightmap]` glows at full strength while the
-variable is on, by day as well — warning lamps (`lights_blinkgeber`, `cockpit_light_*`,
+variable is on, by day as well - warning lamps (`lights_blinkgeber`, `cockpit_light_*`,
 `haltewunschlampe`) and dashboard screens drawn only in the night map (the Procity's pressure
 screen, switched by `elec_busbar_main`) depend on it; a plain `[matl_nightmap]` fades in with
 the night. Street lights use `NightlightA`, bus panels

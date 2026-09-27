@@ -1,6 +1,6 @@
 //! The host's mods for the players who join: whatever of the host's session is not stock
-//! OMSI 2 content — its map, the bus it drives, the objects, splines, AI vehicles and people
-//! the map uses, and the mod fonts — goes to every player who joins, for the session only.
+//! OMSI 2 content - its map, the bus it drives, the objects, splines, AI vehicles and people
+//! the map uses, and the mod fonts - goes to every player who joins, for the session only.
 //!
 //! The host serves the list of those files and the files themselves over TCP, on the same
 //! port number as its LAN session (UDP). It serves nothing but the files of that list, by

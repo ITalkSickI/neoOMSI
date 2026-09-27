@@ -1,6 +1,6 @@
-//! OMSI 2's dynamic route arrows (the `nav_arrows` setting): Omsi.exe puts the scenery
+//! OMSI 2's dynamic route arrows (the `nav_arrows` setting): OMSI puts the scenery
 //! objects `Sceneryobjects\Generic\routearrow_{L,R,dn}_dyn.sco` over the junctions of the
-//! player's route and `routearrows_busstop.sco` at its stops (`sub_617024`, called as the
+//! player's route and `routearrows_busstop.sco` at its stops (the original, called as the
 //! bus comes onto the route's paths), each with a text on it. Here the navigator says where
 //! the route goes (`Navigator::arrow_spots`) and the objects are put into the world
 //! outside the tiles (`World::add_helper_object`), the ones behind the bus taken away.

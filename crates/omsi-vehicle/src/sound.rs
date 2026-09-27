@@ -1,4 +1,4 @@
-//! Sound configuration files (unit `mc_sound`) — vehicles, scenery objects and AI cars share
+//! Sound configuration files (unit `mc_sound`) - vehicles, scenery objects and AI cars share
 //! the same format.
 
 use omsi_cfg::CfgFile;
@@ -12,7 +12,7 @@ pub struct VolCurve {
 
 /// `[conditionSingle]`: the sound is heard only while `variable <relation> value` holds.
 /// The file gives the variable, the value, then the relation: 0 `<>`, 1 `=`, 2 `<`, 3 `>`,
-/// 4 `<=`, 5 `>=` — `engine_n 200 3` (the engine runs), `velocity 2 2` (standing),
+/// 4 `<=`, 5 `>=` - `engine_n 200 3` (the engine runs), `velocity 2 2` (standing),
 /// `antrieb_getr_aktugang 2 4` (first or second gear), `cockpit_hupe_volume 3 0` (always).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Condition {
@@ -67,7 +67,7 @@ pub struct SoundCfg {
     pub unknown_keywords: Vec<(String, usize)>,
 }
 
-/// Omsi.exe's number-specific random value (sub_7f1ed4, the `NrSpecRandom` callback and
+/// OMSI's number-specific random value (the original, the `NrSpecRandom` callback and
 /// `[next_random]`): a value in [0, 1) that is always the same for a vehicle number
 /// (`ident`) and a characteristic `n`, so that bus 3261 always has the rattling compressor
 /// and 3262 never. The seed is 10 plus the UTF-16 code units of the number (a random one
@@ -95,7 +95,7 @@ pub fn spec_random(ident: &str, n: i32) -> f32 {
 
 impl SoundCfg {
     /// The entries a vehicle with this number keeps: a `[next_random] n min max` before an
-    /// entry drops it unless the number's characteristic `n` lies in [min, max) — the SD200's
+    /// entry drops it unless the number's characteristic `n` lies in [min, max) - the SD200's
     /// under-idle rattle, compressor burble and loud servo pump are on some buses only.
     pub fn chosen_for(&self, ident: &str) -> SoundCfg {
         let sounds = self
@@ -131,8 +131,8 @@ impl SoundCfg {
                 }
                 "loopsound" => {
                     // file, sample rate, pitch variable, its reference value, volume: the
-                    // exe's loader (sub_74d774) stores the fifth line where `[sound]` keeps
-                    // its volume (+0x6c) — 0.05 to 1.4 in the stock files
+                    // exe's loader stores the fifth line where `[sound]` keeps
+                    // its volume (+0x6c) - 0.05 to 1.4 in the stock files
                     let file = r.str().to_string();
                     let sample_rate = r.f32();
                     let pitch_variable = r.str().to_string();

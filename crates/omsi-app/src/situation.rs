@@ -161,8 +161,8 @@ pub(crate) fn apply_situation(args: &mut Args) -> Result<()> {
 }
 
 /// Build a `.osn` situation from the running world: map, clock, weather and every vehicle
-/// with its script variables (the player's marked as `[ismyVehicle]`). Like Omsi.exe, only
-/// the vehicles the player placed are written — never the AI traffic, which a loaded
+/// with its script variables (the player's marked as `[ismyVehicle]`). Like OMSI, only
+/// the vehicles the player placed are written - never the AI traffic, which a loaded
 /// situation brings back by itself (every stock situation holds exactly one vehicle; the
 /// AI cars within 900 m written before came back in OMSI as placed, standing vehicles).
 pub(crate) fn build_situation(
@@ -287,7 +287,7 @@ pub(crate) fn build_situation(
 }
 
 /// The heading (degrees clockwise from north) of a situation vehicle's rotation quaternion
-/// (x, y, z, w with y up, as Omsi.exe writes it).
+/// (x, y, z, w with y up, as OMSI writes it).
 pub(crate) fn situation_heading(q: &[f64; 9]) -> f64 {
     (2.0 * q[1].atan2(q[3]).to_degrees()).rem_euclid(360.0)
 }

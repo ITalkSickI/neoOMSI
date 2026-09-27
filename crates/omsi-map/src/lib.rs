@@ -34,8 +34,8 @@ pub fn set_tile_size(size: f64) {
 
 static WORLD_COORDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// `[worldcoordinates]`: a tile is a Web Mercator tile of zoom 16 (Omsi.exe sub_77b5dc,
-/// sub_7f2550, sub_7f23b4), its row `ty` counted north from the equator. The latitude of
+/// `[worldcoordinates]`: a tile is a Web Mercator tile of zoom 16 (the original,
+/// the original), its row `ty` counted north from the equator. The latitude of
 /// its lower edge is `2 atan(exp(2 pi ty / 2^16)) - 90` degrees, and the tile is as wide as
 /// the earth's circumference times the cosine of that latitude over 2^16: the lower edge
 /// `world_row_width(ty)`, the upper one `world_row_width(ty + 1)`, as high as the upper
@@ -48,7 +48,7 @@ pub fn world_row_width(ty: i32) -> f64 {
 /// The tile size a `[worldcoordinates]` map is laid out with: its median row's width. The
 /// original keeps each tile's own size and places the tiles around the camera one by one;
 /// a single grid needs one size, and each tile's contents are scaled onto it (see
-/// [`world_tile_scale`]) — before, every such map took Spandau's 371.9 m, and its roads
+/// [`world_tile_scale`]) - before, every such map took Spandau's 371.9 m, and its roads
 /// broke apart at the tile borders (a third of a metre on Spandau's outer rows, tens of
 /// metres on a map at another latitude).
 pub fn world_tile_size(rows: impl Iterator<Item = i32>) -> f64 {
@@ -83,7 +83,7 @@ pub fn world_tile_scale(ty: i32) -> (f64, f64) {
 }
 
 /// Set the tile grid (size and `[worldcoordinates]`) for `global`. Everything that turns a
-/// tile index and a position in the tile into world metres needs it first — the loader of a
+/// tile index and a position in the tile into world metres needs it first - the loader of a
 /// situation too, which runs before the world (with 300 m a Spandau situation put the bus
 /// kilometres off the map). `OMSI_OLD_WORLD_GRID`: the one size of 371.9 m for comparison.
 pub fn configure_grid(global: &GlobalCfg) {

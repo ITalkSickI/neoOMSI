@@ -1,5 +1,5 @@
 //! The launcher's look: flat and dark (neutral greys, no tint), one amber accent used
-//! sparingly — after the calm menus of Euro Truck Simulator 2.
+//! sparingly - after the calm menus of Euro Truck Simulator 2.
 
 use omsi_ui::Color;
 

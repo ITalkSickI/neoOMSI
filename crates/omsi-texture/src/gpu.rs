@@ -101,7 +101,7 @@ pub fn mip_count(w: u32, h: u32) -> u32 {
 /// How textures are prepared for the GPU, set once the device is known.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GpuOptions {
-    /// The device takes BC1–3 textures: DXT files go up as they are.
+    /// The device takes BC1-3 textures: DXT files go up as they are.
     pub bc: bool,
     /// Uncompressed pictures are compressed as well (where the result is close enough).
     pub compress: bool,
@@ -162,7 +162,7 @@ pub fn prepare_image(img: Image) -> (TextureData, Prepared) {
 }
 
 /// The size a picture is compressed at: its own, or (for a big picture whose sides are
-/// not multiples of four, which block formats need) the nearest multiple of four — a
+/// not multiples of four, which block formats need) the nearest multiple of four - a
 /// stretch of a texel or two (a 2550² repaint is 2552² on the GPU).
 pub fn block_size(w: u32, h: u32) -> Option<(u32, u32)> {
     if w % 4 == 0 && h % 4 == 0 {
@@ -217,7 +217,7 @@ pub const MIN_PSNR_BUMP: f64 = 40.0;
 
 /// A `[matl_bumpmap]` file for the GPU: its height in the alpha channel (see
 /// [`Image::bump_height_map`]; the colour is white), as BC3 where the heights stay within
-/// [`MIN_PSNR_BUMP`] (`compress`), else RGBA with its mip chain made here — so that either
+/// [`MIN_PSNR_BUMP`] (`compress`), else RGBA with its mip chain made here - so that either
 /// can be made on a worker ([`TextureData::gpu_mips`] is off).
 pub fn prepare_bump(img: &Image, compress: bool) -> TextureData {
     prepare_bump_with(img, if compress { gpu_options() } else { GpuOptions { bc: false, compress: false } })

@@ -95,7 +95,7 @@ impl KeyboardAxes {
         // 15+ s to come back on its own), so every correction overshot and had to be walked
         // back by hand. Now the return (the castor of the front axle pulling the wheel to the
         // middle, harder the faster the bus rolls) is a little brisker standing still, and the
-        // key turns the wheel at that same pace, only a tenth faster — never a swerve, because
+        // key turns the wheel at that same pace, only a tenth faster - never a swerve, because
         // a correction can only be as fast as the wheel would come back on its own anyway.
         let v = self.speed_kmh.abs();
         let base = 0.8 / (1.0 + v / 45.0);

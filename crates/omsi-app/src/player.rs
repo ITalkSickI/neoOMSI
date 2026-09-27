@@ -35,7 +35,7 @@ pub(crate) struct Player {
     pub(crate) startup: Option<omsi_sim::startup::StartUp>,
     /// The ticket key was pressed this frame (sell the requested ticket).
     pub(crate) give_ticket: bool,
-    /// OMSI's `change_give` / `change_take` keys (Omsi.exe sub_7e614c): hand the passenger
+    /// OMSI's `change_give` / `change_take` keys: hand the passenger
     /// at the desk all the change owed at once / take back what lies on the change tray.
     pub(crate) give_change: bool,
     /// Parts at the end of the train coupled by hand (they can be uncoupled; an articulated
@@ -93,14 +93,14 @@ pub(crate) struct Player {
 /// Shift+Num 2, steering Shift+Num 4/6). A laptop or a Mac keyboard has no numpad at all, so
 /// the arrow keys drive as well; all they do in OMSI is step through the interior cameras.
 ///
-/// W, A, S and D drive as well, because that is what everybody reaches for — but
+/// W, A, S and D drive as well, because that is what everybody reaches for - but
 /// `Inputs/keyboard.cfg` gives W the wipers, S the viewpoint and **D the D of the automatic
 /// gearbox**, so those three are reached by holding shift (Shift+D selects D), and the bus
 /// can still be put into gear. `--drive-keys arrows` leaves W/A/S/D to OMSI entirely.
 /// The driving keys of a control preset (`drive_keys` in the settings):
-/// `omsi` — only the original layout of Inputs/keyboard.cfg (Shift + numpad), nothing extra;
-/// `simple` — W/S/A/D and the arrow keys both drive; `wasd` — W/S/A/D only;
-/// `arrows` — the arrow keys only (W/S/D keep their OMSI meaning: wipers, viewpoint, gear).
+/// `omsi` - only the original layout of Inputs/keyboard.cfg (Shift + numpad), nothing extra;
+/// `simple` - W/S/A/D and the arrow keys both drive; `wasd` - W/S/A/D only;
+/// `arrows` - the arrow keys only (W/S/D keep their OMSI meaning: wipers, viewpoint, gear).
 pub(crate) fn fallback_action(code: KeyCode, preset: &str) -> Option<omsi_sim::EngineAction> {
     use omsi_sim::EngineAction as A;
     let preset = preset.to_ascii_lowercase();
@@ -355,7 +355,7 @@ impl Player {
     /// circuit (Inputs/keyboard.cfg: 7 `cp_licht_untenrechts_toggle`, 8
     /// `cp_licht_oberdeck_toggle`, 9 `cp_licht_unterdeck_toggle`) and the buses wire them
     /// differently: the stock MANs light the saloon with all three, the LiAZ 5292 with the
-    /// first two and nothing on the third — a shortcut that only threw
+    /// first two and nothing on the third - a shortcut that only threw
     /// `cp_licht_unterdeck` never lit the LiAZ. Every saloon switch the keyboard knows is
     /// pressed, and taken back when it moved the model's `[interiorlight]` lamps the
     /// wrong way (see [`Player::set_saloon_lights`]).
@@ -369,7 +369,7 @@ impl Player {
             format!("Saloon lights {}", if on { "on" } else { "off" })
         } else if on {
             // the switches are thrown, but the lamps stay dark: no current
-            "Saloon light switches on — no power (battery off?)".into()
+            "Saloon light switches on - no power (battery off?)".into()
         } else {
             "Saloon lights off".into()
         }
@@ -450,8 +450,8 @@ impl Player {
     /// L (`kw_scheinwerfer_toggle`) on a bus whose side and tail lights have a switch of
     /// their own (Ctrl+L, `kw_standlicht_toggle`): switching the headlights on puts those on
     /// too, and switching them off puts them out again when L put them on. The LiAZ 5292's
-    /// L lit the two dipped beams and nothing else — no marker lamps on the roof, no tail
-    /// lights — and nobody finds Ctrl+L. A bus whose L already lights everything (the stock
+    /// L lit the two dipped beams and nothing else - no marker lamps on the roof, no tail
+    /// lights - and nobody finds Ctrl+L. A bus whose L already lights everything (the stock
     /// MANs' rotary switch) is left as it is: pressing its side-light key would only take
     /// lamps away, and that press is undone.
     fn headlights_with_side_lights(&mut self, before: usize) {
@@ -798,7 +798,7 @@ impl Player {
             ss.set_inside(inside);
             ss.set_muffled(inside);
             // how open the bus is to the outside (doors, driver's window) for every outside
-            // sound heard in it — this bus's own and the traffic's
+            // sound heard in it - this bus's own and the traffic's
             omsi_audio::soundset::set_outside_open(if inside { v.var("Snd_OutsideVol") } else { None });
             ss.update(a, &|n| v.var(n), &xf, &fired);
             ss.update_parts(
@@ -884,7 +884,7 @@ impl Player {
     /// it hits nothing are rings of rays around it tried, so that a switch a couple of
     /// pixels wide can still be caught. Letting the ring win over the middle ray (which is
     /// what happened before) meant a switch standing slightly closer than the one actually
-    /// under the cursor took the click — the neighbouring toggle flipped instead.
+    /// under the cursor took the click - the neighbouring toggle flipped instead.
     ///
     /// `spread` is the half-angle of those rings in radians; the window passes the angle
     /// six pixels subtend, so aiming is equally forgiving at any resolution.
@@ -1197,7 +1197,7 @@ impl Player {
                 let (eye, yaw, pitch) = self.vehicle.camera_world(c);
                 let eye = if view == "driver" { eye + self.vehicle.body_rotation().transform_vector3(self.head).as_dvec3() } else { eye };
                 // near 0.25 rather than 0.1: the depth buffer has to reach 6 km, and the
-                // nearer the near plane the coarser it gets out there — the flicker between
+                // nearer the near plane the coarser it gets out there - the flicker between
                 // the road and the ground at a distance is that precision running out
                 Camera {
                     position: eye,
@@ -1234,7 +1234,7 @@ impl Player {
 }
 
 /// Put a vehicle's meshes where its state says (animations, visibility, lights, the
-/// matrix textures) — the player's bus, and the launcher's showroom bus.
+/// matrix textures) - the player's bus, and the launcher's showroom bus.
 pub(crate) fn sync_vehicle_transforms(
     renderer: &Renderer,
     scene: &mut Scene,

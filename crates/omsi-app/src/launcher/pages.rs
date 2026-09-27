@@ -293,7 +293,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect) {
     y += 6.0;
     ui.heading(Rect::new(inner.x, y, inner.w, 28.0), "World & memory", Some("public"));
     y += 32.0;
-    sel_setting(ui, s, dirty, "s-view", row(&mut y), "View distance", "view_distance", &[("auto", "Default (1200 m)"), ("600", "600 m — fastest"), ("900", "900 m"), ("1200", "1200 m"), ("1500", "1500 m"), ("2000", "2000 m"), ("2500", "2500 m")]);
+    sel_setting(ui, s, dirty, "s-view", row(&mut y), "View distance", "view_distance", &[("auto", "Default (1200 m)"), ("600", "600 m - fastest"), ("900", "900 m"), ("1200", "1200 m"), ("1500", "1500 m"), ("2000", "2000 m"), ("2500", "2500 m")]);
     // (the game takes the smaller of an eighth of the memory and what the graphics
     // adapter is taken to hold, see `memory::texture_budget`)
     let adapter_mb = omsi_render::ADAPTER_TEXTURE_MB.load(std::sync::atomic::Ordering::Relaxed) as i64;
@@ -373,7 +373,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect) {
     ui.heading(Rect::new(inner.x, y, inner.w, 28.0), "Performance", Some("speed"));
     y += 32.0;
     // Quality presets. (OMSI's own option_presets/*.oop are named after the PCs of their
-    // day — "PC 2006", "X10 high", "Chicago Recommended" — which read as random words here.)
+    // day - "PC 2006", "X10 high", "Chicago Recommended" - which read as random words here.)
     let presets: [(&str, serde_json::Value); 4] = [
         ("Low", json!({"msaa": 1, "anisotropy": 2, "shadow_size": 1024, "ssao": false, "shadows": false, "detail_textures": false, "clouds": false, "view_distance": "600", "min_obj_size": 0.03, "max_obj_dist": "500", "mirror_size": 128, "render_scale": "0.75", "texture_memory": 800})),
         ("Medium", json!({"msaa": 2, "anisotropy": 4, "shadow_size": 2048, "ssao": false, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "900", "min_obj_size": 0.02, "max_obj_dist": "750", "mirror_size": 256, "render_scale": "auto", "texture_memory": 1200})),
@@ -528,7 +528,7 @@ fn key_name(scan: i64, modifier: i64) -> String {
 }
 
 pub fn controls(l: &mut Launcher, area: Rect) {
-    let body = l.page_title(area, "Controls", if l.pages.controls_tab == 0 { "Click a key and press the new one (hold Shift, Ctrl or Alt for a combination); Escape leaves it as it is." } else { "What each axis and button of a wheel, pedals or joystick does — OMSI 2's gamectrler.cfg, kept in the content folder." });
+    let body = l.page_title(area, "Controls", if l.pages.controls_tab == 0 { "Click a key and press the new one (hold Shift, Ctrl or Alt for a combination); Escape leaves it as it is." } else { "What each axis and button of a wheel, pedals or joystick does - OMSI 2's gamectrler.cfg, kept in the content folder." });
     let mut tab = l.pages.controls_tab;
     if l.ui.segmented("controls-tab", Rect::new(body.right() - 320.0, body.y - 46.0, 320.0, 34.0), &mut tab, &["Keyboard", "Game controllers"]) {
         l.pages.controls_tab = tab;
@@ -774,7 +774,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             if pv.capturing {
                 pv.capturing = false;
             }
-            l.state.set_status(format!("{name}: button {} — choose what it does", n + 1), false);
+            l.state.set_status(format!("{name}: button {} - choose what it does", n + 1), false);
         }
     }
     let add_r = Rect::new(inner.x, inner.bottom() - 40.0, 260.0, 36.0);
@@ -875,9 +875,9 @@ pub fn sessions(l: &mut Launcher, area: Rect) {
         let duty = i.line.as_ref().map(|ln| format!(" · line {ln}{}", i.tour.as_ref().map(|t| format!(" / {t}")).unwrap_or_default())).unwrap_or_default();
         l.ui.text_in(&format!("{} · {}{duty}", short_map(&i.map), short_bus(&i.bus)), Rect::new(r.x + 42.0, r.y + 16.0, r.w - 260.0, 24.0), 16.0, Weight::Black, TEXT, Align::Left);
         let status = if running {
-            if l.state.stopping.contains(&i.pid) || i.stopping.is_some() { "stopping — saving the run…".to_string() } else { format!("running for {}", ago(i.started)) }
+            if l.state.stopping.contains(&i.pid) || i.stopping.is_some() { "stopping - saving the run…".to_string() } else { format!("running for {}", ago(i.started)) }
         } else {
-            let how = if i.exit_code == Some(0) { String::new() } else if i.killed { " (killed — it did not end by itself, the run is not saved)".into() } else { i.exit_code.map(|c| format!(" (exit code {c})")).unwrap_or_default() };
+            let how = if i.exit_code == Some(0) { String::new() } else if i.killed { " (killed - it did not end by itself, the run is not saved)".into() } else { i.exit_code.map(|c| format!(" (exit code {c})")).unwrap_or_default() };
             format!("ended{how}")
         };
         l.ui.text_in(&format!("{status} · driver {}", i.profile), Rect::new(r.x + 42.0, r.y + 42.0, r.w - 60.0, 18.0), 12.0, Weight::Regular, TEXT_DIM, Align::Left);
@@ -983,7 +983,7 @@ pub fn mods(l: &mut Launcher, area: Rect) {
     if !l.state.mods_asked {
         l.state.load_mods();
     }
-    let body = l.page_title(area, "Mods", "A bus, a map, scenery, a whole OMSI folder — as a folder or a .zip. The original OMSI 2 folder is never written to.");
+    let body = l.page_title(area, "Mods", "A bus, a map, scenery, a whole OMSI folder - as a folder or a .zip. The original OMSI 2 folder is never written to.");
     let cols = 3;
     let cw = (body.w - GAP * 2.0 * (cols as f32 - 1.0)) / cols as f32;
     let colr = |k: usize| Rect::new(body.x + k as f32 * (cw + GAP * 2.0), body.y, cw, body.h);
@@ -1040,8 +1040,8 @@ pub fn mods(l: &mut Launcher, area: Rect) {
         match l.state.mod_info.clone() {
             Some(Ok(i)) if i.is_zip => {
                 let fit = if i.fits { format!("fits ({} free)", fmt_bytes(i.free_bytes)) } else { format!("does not fit: needs {}, {} free", fmt_bytes(i.needed_bytes), fmt_bytes(i.free_bytes)) };
-                let place = if i.in_place_ok { "can be used in place".to_string() } else { format!("cannot be used in place — {}", i.in_place) };
-                y += l.ui.paragraph(&format!("{} archive, {} files, {} unpacked — {fit}; {place}", fmt_bytes(i.archive_bytes), i.files, fmt_bytes(i.unpacked_bytes)), Vec2::new(inner.x, y), inner.w, 12.0, Weight::Regular, if i.fits { TEXT_DIM } else { WARN });
+                let place = if i.in_place_ok { "can be used in place".to_string() } else { format!("cannot be used in place - {}", i.in_place) };
+                y += l.ui.paragraph(&format!("{} archive, {} files, {} unpacked - {fit}; {place}", fmt_bytes(i.archive_bytes), i.files, fmt_bytes(i.unpacked_bytes)), Vec2::new(inner.x, y), inner.w, 12.0, Weight::Regular, if i.fits { TEXT_DIM } else { WARN });
             }
             Some(Err(e)) => {
                 y += l.ui.paragraph(&e, Vec2::new(inner.x, y), inner.w, 12.0, Weight::Regular, DANGER);
@@ -1180,7 +1180,7 @@ pub fn setup(l: &mut Launcher, area: Rect) {
         }
     }
     y += ROW + 16.0;
-    y += l.ui.paragraph("The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation, Steam or not). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.", Vec2::new(inner.x, y), inner.w, 12.5, Weight::Regular, TEXT_DIM);
+    y += l.ui.paragraph("The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.", Vec2::new(inner.x, y), inner.w, 12.5, Weight::Regular, TEXT_DIM);
     y += 12.0;
     if l.ui.button("cfg-save", Rect::new(inner.x, y, 180.0, 42.0), "Save", Some("save"), ButtonKind::Primary) {
         l.state.config.root = root.trim().to_string();

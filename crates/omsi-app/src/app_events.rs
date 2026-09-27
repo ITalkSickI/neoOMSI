@@ -27,7 +27,7 @@ impl ApplicationHandler for App {
                 // No key-up reaches us for whatever was held when focus left (alt-tab, a
                 // click outside the window, an OS dialog popping up): without this, a held
                 // modifier got "stuck" and made the next plain key press look like it was
-                // held with that modifier — Shift got stuck this way once, and a plain `W`
+                // held with that modifier - Shift got stuck this way once, and a plain `W`
                 // (throttle in the wasd preset) was then read as Shift+W, OMSI's own wiper
                 // key, toggling the wipers on every press instead of driving.
                 self.keys.clear();
@@ -186,7 +186,7 @@ impl ApplicationHandler for App {
                     self.shift_clock(d);
                 }
                 // the graphics device is gone (a driver reset, an external card unplugged):
-                // nothing can be drawn again — end the session the ordinary way, so that the
+                // nothing can be drawn again - end the session the ordinary way, so that the
                 // summary, the personnel file and the LAN goodbye are not lost
                 if let Some(why) = self.renderer.as_ref().and_then(|r| r.device_lost()) {
                     log::error!("ending the session: the graphics device was lost ({why})");
@@ -587,7 +587,7 @@ impl ApplicationHandler for App {
                     }
                     let __th = Instant::now();
                     // (the cursor's aim into the cab: again when the cursor or the view
-                    // turned, else every few frames for switches that moved under it — a ray
+                    // turned, else every few frames for switches that moved under it - a ray
                     // through every cockpit mesh every frame was a tenth of the frame)
                     let key = self.camera.as_ref().map(|c| (self.cursor.0.round() as i32, self.cursor.1.round() as i32, (c.yaw * 4.0).round() as i32, (c.pitch * 4.0).round() as i32));
                     if key != self.hover_key || self.total_frames % 6 == 0 {
@@ -790,7 +790,7 @@ impl ApplicationHandler for App {
                     }
                     self.service_msg = Some(("On foot: Esc menu, Place a vehicle..., then G at its driver's door to drive it".into(), 8.0));
                 }
-                // the plugins' frame (Omsi.exe `sub_693054`), with the bus's scripts done
+                // the plugins' frame, with the bus's scripts done
                 let plugins = self.plugins.get_or_insert_with(crate::plugins::load);
                 if !plugins.is_empty() && !self.paused {
                     let mut io = crate::plugins::Io { vehicle: self.player.as_mut().map(|p| &mut p.vehicle) };
@@ -828,7 +828,7 @@ impl ApplicationHandler for App {
                 // looking around and zooming work in every view, not only the free camera
                 if self.player.is_some() && self.view != "free" {
                     // looking around with the keyboard: Alt + I/J/K/L (the plain letters
-                    // belong to the bus — L is the headlights in Inputs/keyboard.cfg)
+                    // belong to the bus - L is the headlights in Inputs/keyboard.cfg)
                     let step = 60.0 * dt;
                     let alt = self.keys.contains(&KeyCode::AltLeft)
                         || self.keys.contains(&KeyCode::AltRight);
@@ -1088,7 +1088,7 @@ impl ApplicationHandler for App {
                                 let bucket = (self.clock.time / every as f64) as u32;
                                 if LAST.swap(bucket, std::sync::atomic::Ordering::Relaxed) != bucket
                                 {
-                                    log::info!("sound: environment — {} (precip {kind} {rate:.2}, StreetCond {:.2}, {} voices)", amb.last, street_condition(wt, self.wetness), a.voice_count());
+                                    log::info!("sound: environment - {} (precip {kind} {rate:.2}, StreetCond {:.2}, {} voices)", amb.last, street_condition(wt, self.wetness), a.voice_count());
                                 }
                             }
                         }
@@ -1333,7 +1333,7 @@ impl ApplicationHandler for App {
                     self.window.as_ref(),
                 ) {
                     // `shot <file>` from the input script: the scene the window is showing,
-                    // from its camera and lighting, into a PNG — the only way to look at
+                    // from its camera and lighting, into a PNG - the only way to look at
                     // what an automated window run draws (also when the window is hidden,
                     // so it does not depend on a frame being acquired)
                     if let Some(path) = shot {
@@ -1448,7 +1448,7 @@ impl ApplicationHandler for App {
                         // that nobody can tell from 15.
                         // Every mirror at least MIRROR_MIN_HZ, though: with eight of them (the
                         // Procity) at 25 fps each was redrawn three times a second, and the
-                        // street jerked past in them — up to two a frame then (each costs a
+                        // street jerked past in them - up to two a frame then (each costs a
                         // few milliseconds of the frame).
                         let mirrors = self.player.as_ref().map(|p| p.vehicle.ty.def.cameras_reflexion.len()).unwrap_or(0) as f32;
                         let rate = MIRROR_RATE.max(mirrors * MIRROR_MIN_HZ);
@@ -1614,11 +1614,11 @@ impl ApplicationHandler for App {
                         let speed = self
                             .player
                             .as_ref()
-                            .map(|p| format!(" — {:.0} km/h", p.vehicle.physics.velocity_kmh()))
+                            .map(|p| format!(" - {:.0} km/h", p.vehicle.physics.velocity_kmh()))
                             .unwrap_or_default();
                         self.fps = self.frames as f32;
                         win.set_title(&format!(
-                            "openOMSI — {} fps{speed} — {:.0},{:.0},{:.0} yaw {:.0}",
+                            "openOMSI - {} fps{speed} - {:.0},{:.0},{:.0} yaw {:.0}",
                             self.frames,
                             cam.position.x,
                             cam.position.y,
@@ -1728,7 +1728,7 @@ fn info_line(clock: &omsi_sim::SimClock, player: Option<&Player>, duty: Option<&
     let mut parts = vec![format!("{:02}:{:02}:{:02}", ((t / 3600.0) as i64).rem_euclid(24), ((t % 3600.0) / 60.0) as i64, (t % 60.0) as i64)];
     if let Some(p) = player {
         parts.push(format!("{:.0} km/h", p.vehicle.physics.velocity_kmh().abs()));
-        // the tank as the bus's script says it (Omsi.exe's RL_TankContent: tank_percent)
+        // the tank as the bus's script says it (OMSI's RL_TankContent: tank_percent)
         if let Some(tank) = p.vehicle.var("tank_percent").filter(|v| v.is_finite()) {
             parts.push(format!("tank {:.0} %", (tank * 100.0).round()));
         }

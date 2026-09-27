@@ -24,7 +24,7 @@ pub(crate) fn load_weather(args: &Args) -> omsi_content::weather::Weather {
             );
             let mut w = w;
             // No weather chosen: the clear default (#CAVOK, no cloud at all) gets a few fair-
-            // weather cumulus clouds, as long as clouds are wanted — a sky without a single
+            // weather cumulus clouds, as long as clouds are wanted - a sky without a single
             // cloud was the first thing that looked wrong.
             if args.weather.is_none() && CLOUDS.load(std::sync::atomic::Ordering::Relaxed) && w.clouds.0.trim().starts_with("-1") {
                 w.clouds = ("Cumulus 1".into(), 100.0);
@@ -88,7 +88,7 @@ pub(crate) fn setup_sky(
 const FIELD: usize = 512;
 
 /// The texture both sky shaders draw their clouds from, seamless in both directions:
-/// R the weather's own cloud picture (Weather/clouds.cfg) — where its clouds are, the sky
+/// R the weather's own cloud picture (Weather/clouds.cfg) - where its clouds are, the sky
 /// has more; G the shape of the cumulus, fractal noise bent by more noise, equalised so
 /// that a threshold of 1 - f covers exactly the fraction f of the sky; B billows for the
 /// cauliflower edges; A how tall each cloud grows. Stored in sRGB bytes so that the
@@ -238,7 +238,7 @@ fn cloud_texture(root: &Path, kind: &str) -> Option<omsi_texture::Image> {
 }
 
 /// Cloud cover of a weather file: `[clouds] type density`, type -1 = clear, density up to
-/// ~300 (Cumulus 3) — mapped to 0..1; the cover drifts with the wind.
+/// ~300 (Cumulus 3) - mapped to 0..1; the cover drifts with the wind.
 pub(crate) fn clouds_of(w: &omsi_content::weather::Weather, time: f64) -> (f32, [f32; 2]) {
     let kind = w.clouds.0.trim();
     if kind.is_empty() || kind.starts_with("-1") || !CLOUDS.load(std::sync::atomic::Ordering::Relaxed) {

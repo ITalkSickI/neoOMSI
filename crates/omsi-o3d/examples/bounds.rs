@@ -1,4 +1,4 @@
-//! For each o3d: its matrix and the box its vertices span — `bounds <files>`.
+//! For each o3d: its matrix and the box its vertices span - `bounds <files>`.
 fn main() {
     for p in std::env::args().skip(1) {
         let Ok(m) = omsi_o3d::load_mesh(std::path::Path::new(&p)) else { continue };

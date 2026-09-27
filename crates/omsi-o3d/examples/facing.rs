@@ -1,5 +1,5 @@
 //! For each o3d: the determinant of its matrix and how many faces turn their backs on
-//! their own normals — `facing <files>`.
+//! their own normals - `facing <files>`.
 fn main() {
     for p in std::env::args().skip(1) {
         let Ok(m) = omsi_o3d::load_mesh(std::path::Path::new(&p)) else { continue };

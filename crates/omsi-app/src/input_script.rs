@@ -7,7 +7,7 @@ impl App {
     /// and the frames the loop still runs before it stops count no more time).
     pub(crate) fn finish_session(&mut self) {
         self.exiting = true;
-        // PluginFinalize, as Omsi.exe calls it on the way out
+        // PluginFinalize, as OMSI calls it on the way out
         if let Some(mut p) = self.plugins.take() {
             p.finalize();
         }
@@ -271,7 +271,7 @@ impl App {
                             _ => 3,
                         };
                         // (as the lever stands now: the scripts put it back themselves after
-                        // a turn, and the key remembered "left" — the next Z switched off a
+                        // a turn, and the key remembered "left" - the next Z switched off a
                         // blinker that was off, and it took two presses)
                         let lever = if p.vehicle.var("lights_sw_warnblinker").is_some_and(|v| v > 0.5) {
                             Some(3)
@@ -318,7 +318,7 @@ impl App {
                     }
                 }
                 // I: every saloon light circuit of the bus at once (OMSI has a key for
-                // each: 7, 8, 9 — see Player::toggle_saloon_lights).
+                // each: 7, 8, 9 - see Player::toggle_saloon_lights).
                 if self.view != "free"
                     && !repeat
                     && !(self.keys.contains(&KeyCode::AltLeft)
@@ -446,7 +446,7 @@ impl App {
             }
             // A driving key held with shift is the vehicle key it covers: Shift+W is
             // OMSI's wiper key, Shift+D selects the automatic's D, Shift+S the
-            // viewpoint — otherwise a bus driven with WASD could never be put in gear.
+            // viewpoint - otherwise a bus driven with WASD could never be put in gear.
             let shift =
                 self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
             let covers_vehicle_key = fallback_action(code, wasd).is_some() && self.view != "free";
@@ -603,7 +603,7 @@ impl App {
         }
     }
 
-    /// The cursor moved to (x, y) in physical pixels — from the window or an `OMSI_INPUT` script.
+    /// The cursor moved to (x, y) in physical pixels - from the window or an `OMSI_INPUT` script.
     pub(crate) fn on_cursor(&mut self, x: f32, y: f32) {
         let last = self.cursor;
         self.cursor = (x, y);
@@ -617,7 +617,7 @@ impl App {
             n.map_move(x, y);
             return;
         }
-        // Dragging a switch reads the movement in screen pixels — take it from the
+        // Dragging a switch reads the movement in screen pixels - take it from the
         // cursor itself rather than from the raw device delta, which is not in the
         // window's pixels (and on this Mac is not always delivered at all): that is
         // why the parking brake could not be pulled with the mouse. The movement is
@@ -708,7 +708,7 @@ impl App {
     }
 
     /// A switch held with the mouse: OMSI runs its `<event>_drag` trigger every frame the
-    /// button is down, with this frame's movement in `mouse_x` / `mouse_y` — 0 while the
+    /// button is down, with this frame's movement in `mouse_x` / `mouse_y` - 0 while the
     /// hand keeps still. The scripts rely on that: the EN92 cash desk takes its swing speed
     /// from the last two positions, and fired only on movement it kept the speed of the last
     /// small move through a pause and swung shut when let go; the door scripts set their
@@ -768,7 +768,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
 /// `OMSI_INPUT`: scripted window input, so the very same handlers the mouse and keyboard
     /// reach can be driven from the command line and checked without a hand on the mouse:
     /// `t=3 move 1045,826; t=3.2 press; t=3.5 drag 0,-80; t=4 release; t=4.5 log bremse_feststell;
-    /// t=5 key F3` — coordinates in logical pixels, `drag` relative, `key` a winit key name;
+    /// t=5 key F3` - coordinates in logical pixels, `drag` relative, `key` a winit key name;
     /// also `look yaw,pitch` (turn the head to), `turn dx,dy` (turn the view by degrees, as a
     /// right-button drag does, the free and outside cameras too), `set name=value` (a script
     /// variable), `trigger name`, `log name` (with what the HUD says about the cursor),
@@ -1008,7 +1008,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
     pub(crate) fn chooser_pick(&mut self, k: usize) {
         self.chooser = None;
         // a list of the menu's (the administration, the options …): done, and the list
-        // shown again — or the next one (a line's tours), or back to the menu
+        // shown again - or the next one (a line's tours), or back to the menu
         if let Some(list) = self.admin_list.take() {
             let kind = self.list_kind.take().unwrap_or(crate::game_lists::ListKind::Admin);
             let Some((_, action)) = list.get(k).cloned() else { return };
@@ -1163,7 +1163,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         let ed = crate::editor::Editor::default();
         let msg = self.world.as_ref().map(|w| ed.describe(w)).unwrap_or_default();
         self.editor = Some(ed);
-        self.service_msg = Some((format!("{msg} — click picks, drag moves, wheel turns (Shift: height), Delete, C copy, V variant, Backspace undo, PgUp/PgDn/F ground, [ ] brush, Ctrl+S save, Esc leave"), 10.0));
+        self.service_msg = Some((format!("{msg} - click picks, drag moves, wheel turns (Shift: height), Delete, C copy, V variant, Backspace undo, PgUp/PgDn/F ground, [ ] brush, Ctrl+S save, Esc leave"), 10.0));
     }
 
     /// A key while the object editor is on; true when it was the editor's.
@@ -1758,9 +1758,9 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         self.service_msg = Some(("The bus stands where the map was clicked".into(), 3.0));
     }
 
-    /// The world follows the sim date as Omsi.exe's does at the day's change (sub_707ab8):
+    /// The world follows the sim date as OMSI's does at the day's change:
     /// the chrono scenarios in force (the tiles they change are read again) and the
-    /// season's textures — also when the weather turns to snow or thaws (every loaded tile
+    /// season's textures - also when the weather turns to snow or thaws (every loaded tile
     /// is read again with the other texture folder).
     pub(crate) fn follow_date(&mut self) {
         let Some(w) = self.world.clone() else { return };
@@ -1788,7 +1788,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
     }
 
     /// `laststn.osn` in the map's folder (the content folder's copy: the original is never
-    /// written), as Omsi.exe keeps it (sub_64270c): the launcher offers to continue it. Not
+    /// written), as OMSI keeps it: the launcher offers to continue it. Not
     /// in a tutorial, a LAN session or without a bus of one's own.
     pub(crate) fn save_last_situation(&mut self) {
         if self.tutorial.is_some() || self.lan.is_some() || self.player.is_none() {

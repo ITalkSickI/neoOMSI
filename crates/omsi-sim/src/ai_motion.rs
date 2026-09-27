@@ -69,7 +69,7 @@ pub const BACK_IN_LAT_ACCEL: f32 = 2.5;
 
 /// Length (m) of the S-curve that takes a vehicle `offset` metres back into its lane at
 /// `speed` (m/s) after passing: a smoothstep of length L over the offset D turns at most
-/// 6·D·v²/L², so L = v·√(6·D/a) keeps it to `lat_accel` — about 2.8 s of travel for a lane
+/// 6·D·v²/L², so L = v·√(6·D/a) keeps it to `lat_accel` - about 2.8 s of travel for a lane
 /// width. A fixed 8-14 m cut back 3.3 m in under a second at 40 km/h (4-5.6 m/s²).
 pub fn back_in_ramp(offset: f32, speed: f32, lat_accel: f32) -> f32 {
     let geometric = (offset.abs() * 3.5).clamp(8.0, 14.0);
@@ -534,8 +534,8 @@ impl AiBody {
     /// metres along the new way from where the vehicle is now (the same way `step` is given,
     /// e.g. with a pull-out round something standing ahead in it); the vehicle starts at
     /// `speed` (a standing one first turns its wheels for `wait` seconds, as a driver does
-    /// before moving off) and speeds up at `accel` to at most `v_max`. The steering is the real one —
-    /// its rate limit, its lock and the pure pursuit that cuts in on a steep S-bend — which
+    /// before moving off) and speeds up at `accel` to at most `v_max`. The steering is the real one -
+    /// its rate limit, its lock and the pure pursuit that cuts in on a steep S-bend - which
     /// is what decides whether a car standing a few metres behind a bus can get its front
     /// corner past the bus's.
     #[allow(clippy::too_many_arguments)]

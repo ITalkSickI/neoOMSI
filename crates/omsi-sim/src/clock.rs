@@ -9,7 +9,7 @@ pub struct SimClock {
     /// Last frame duration in seconds.
     pub timegap: f32,
     pub paused: bool,
-    /// Seconds of play since the clock started — the scripts' `GetTime` (Omsi.exe keeps a
+    /// Seconds of play since the clock started - the scripts' `GetTime` (OMSI keeps a
     /// millisecond counter of frame times, `g_859ea8`, and never wraps it at midnight: the
     /// gearbox scripts compare timestamps of it).
     pub run_time: f64,

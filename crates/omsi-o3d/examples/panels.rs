@@ -1,5 +1,5 @@
 //! The flat parts of a mesh at one side: clusters of triangles at x beyond a limit, as
-//! y/z boxes — `panels <x limit, negative for the left> <file>`.
+//! y/z boxes - `panels <x limit, negative for the left> <file>`.
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let lim: f32 = a[0].parse().unwrap();

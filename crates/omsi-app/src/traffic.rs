@@ -23,7 +23,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// How many of a type's paint schemes the AI uses: every scheme is a full upload of the
-/// bus's textures the first time it appears, which used to cost a frame of 100–200 ms
+/// bus's textures the first time it appears, which used to cost a frame of 100-200 ms
 /// each and a minute of stutter after loading Spandau.
 pub const AI_SCHEMES: usize = 4;
 
@@ -363,7 +363,7 @@ const UNSEEN_NEAR: f64 = 80.0;
 
 /// How near an articulated AI bus has to be for its bellows to be reshaped as its joint
 /// turns (m): the fold of the bend is a few centimetres, which is a screen pixel or more
-/// within this range — farther out it is not worth a mesh update every frame it steers.
+/// within this range - farther out it is not worth a mesh update every frame it steers.
 const SKIN_DISTANCE: f64 = 200.0;
 
 impl Viewer {
@@ -432,7 +432,7 @@ impl Viewer {
 const DESPAWN_FACTOR: f64 = 1.6;
 
 /// A random car out of the player's range: still on the map and still driving, but without
-/// a body, a script or a picture — a few numbers. It comes back as the same car (type,
+/// a body, a script or a picture - a few numbers. It comes back as the same car (type,
 /// paint, id) where it has got to when the player comes near, and it only ever leaves the
 /// map at the end of the road network. Before, every car out of range was simply taken
 /// away and new ones made up around the player: the traffic followed the player about, and
@@ -537,7 +537,7 @@ pub struct Traffic {
     /// and for the pedestrian lights' request buttons.
     pub walkers: Vec<(usize, f32)>,
     /// Everybody on foot on the ground: position, velocity and whether they are waiting
-    /// at a stop (set every frame) — the cars stop for anybody in their way, not only on
+    /// at a stop (set every frame) - the cars stop for anybody in their way, not only on
     /// a crossing.
     pub people: Vec<(DVec2, DVec2, bool)>,
     /// No car has been placed yet: the first population may fill the view.
@@ -562,7 +562,7 @@ pub struct Traffic {
     /// The player's vehicle as of the last tick (nothing is put on the road on top of it).
     player: Option<PlayerBox>,
     /// The player's bus has right of way over the traffic (its script's `TrafficPriority`,
-    /// Omsi.exe: priority 1000 over the types' own): cars keep out of the way it is about
+    /// OMSI: priority 1000 over the types' own): cars keep out of the way it is about
     /// to take for longer.
     pub player_priority: bool,
     /// The LAN players' vehicles (their session ids and boxes as for the player), set
@@ -636,12 +636,12 @@ const LOOK_AHEAD: f32 = 70.0;
 const LOOK_AHEAD_MAX: f32 = 150.0;
 
 /// How far ahead a driver at `speed` watches for something standing in the way: far enough
-/// to slow down gently for it. With a fixed 70 m a car at 50–65 km/h first saw the player's
-/// bus standing (or a bus at its stop) so late that the following model braked at 4–5 m/s².
+/// to slow down gently for it. With a fixed 70 m a car at 50-65 km/h first saw the player's
+/// bus standing (or a bus at its stop) so late that the following model braked at 4-5 m/s².
 /// A timetable bus's IBIS moves on to its next stop as the driver would press it on: the
 /// stock scripts' interior displays, announcements and side displays read `IBIS_busstop`
 /// (an index into the depot file's stop list of the route), which nothing moved on an AI
-/// bus — its saloon display stood on the first stop for the whole trip. `remaining` is the
+/// bus - its saloon display stood on the first stop for the whole trip. `remaining` is the
 /// number of stops still to come.
 pub(crate) fn ibis_to_next_stop(v: &mut VehicleInstance, remaining: usize) {
     let Some(ri) = v.var("IBIS_RouteIndex").filter(|r| *r >= 0.0) else { return };
@@ -915,7 +915,7 @@ impl Traffic {
         // No buses in the random road traffic: the depot groups of `ailists.cfg` are the
         // fleet the *timetable* drives, and OMSI puts a bus on a street only because a trip
         // of the map's TTData runs there. Mixing the depot fleet into the random pool put
-        // the map's one bus type on every road of the map — on Grundorf that is a single
+        // the map's one bus type on every road of the map - on Grundorf that is a single
         // articulated GN92, which is why it seemed to be a type of our own choosing.
         if let Ok(list) = omsi_cfg::env::var("OMSI_DEBUG_LANES") {
             // lane indices, or `at:x,y,r` for the street lanes passing within r m of a point
@@ -1422,7 +1422,7 @@ impl Traffic {
     /// by: mirrors, a turn of the head and the gaps between houses see what is near,
     /// whatever the collision boxes say (a bus let appear 40 m away behind a box that stood
     /// for a building with a gateway in it was seen popping up in the middle of the street).
-    /// Within `NEAR_HIDE` only behind a building or the ground, wherever the camera looks —
+    /// Within `NEAR_HIDE` only behind a building or the ground, wherever the camera looks -
     /// the mirrors look back, and the head turns: buses appeared 160 m behind the player
     /// in plain sight of the mirrors, and a bus waiting at the edge of the loaded route
     /// vanished beside the player's bus because the camera was looking ahead. Further off:
@@ -1534,8 +1534,8 @@ impl Traffic {
             } else if at_end && (self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0) {
                 // (taken at once it vanished in plain view 300 m ahead; but a car kept
                 // until nobody could see it stood for good at the end of a long straight
-                // road in view, and the queue behind it — timetable buses with their
-                // passengers among them — never moved again)
+                // road in view, and the queue behind it - timetable buses with their
+                // passengers among them - never moved again)
                 true
             } else if c.gone || dist > far {
                 // in plain view a car stays until the renderer leaves it out anyway, and
@@ -1633,7 +1633,7 @@ impl Traffic {
     }
 
     /// Now and then a car near the player parks: a space at the kerb that a parked car has
-    /// left is taken by a car of the same kind driving up the lane beside it — it indicates,
+    /// left is taken by a car of the same kind driving up the lane beside it - it indicates,
     /// slows down, stops beside the space, moves over into it and stands there as the
     /// parked car it was. Called with every population pass (about every two seconds).
     pub fn park_in(&mut self, world: &World, center: DVec3) {
@@ -1999,7 +1999,7 @@ impl Traffic {
         }
     }
 
-    /// The cars out of range that have come near again take their bodies back — where
+    /// The cars out of range that have come near again take their bodies back - where
     /// nobody sees it happen, up to a little over the number asked for around the player.
     fn wake_dormant(&mut self, world: &World, renderer: &Renderer, scene: &mut Scene, center: DVec3, target: usize) {
         if self.dormant.is_empty() {
@@ -2019,7 +2019,7 @@ impl Traffic {
             };
             let near = centers.iter().any(|c| (p - *c).truncate().length() < self.spawn_radius);
             // (as a new car: never close by, where the mirrors and a turn of the head see
-            // it — woken out of the picture 30-60 m from the bus, a car came into being in
+            // it - woken out of the picture 30-60 m from the bus, a car came into being in
             // the mirror or just round the corner)
             let ok = near
                 && world.has_ground(p.x, p.y)
@@ -2650,7 +2650,7 @@ impl Traffic {
 
     /// The vehicles standing nose to tail from car `j` on (as far as their last steps
     /// show): the length of road they fill (m), and whether a bus serving its stop heads
-    /// it — a queue that will not move for a while, which the cars behind may pass as a
+    /// it - a queue that will not move for a while, which the cars behind may pass as a
     /// whole. (Behind a bus on its layover the whole street
     /// used to wait, five buses and a dozen cars for a quarter of an hour.)
     fn standing_queue(&self, j: usize) -> (f32, bool) {
@@ -2680,7 +2680,7 @@ impl Traffic {
 
     /// Pull out round something that has stopped in front (a bus at its stop, a car that
     /// gave up, the player standing in the lane): a car held for a few seconds behind a
-    /// standing obstacle within 25 m moves to a free neighbouring lane — left first, then
+    /// standing obstacle within 25 m moves to a free neighbouring lane - left first, then
     /// right. With nowhere to go it waits, like everybody else in a jam.
     fn plan_bypass(
         &mut self,
@@ -2925,7 +2925,7 @@ impl Traffic {
         };
         let clear_d = probe.clear_at(car.half_width);
         // Time out there: until the car is back far enough to be out of the oncoming
-        // traffic's way. Nobody coming may get to where its front will be by then — on the
+        // traffic's way. Nobody coming may get to where its front will be by then - on the
         // oncoming lane or on the lanes that feed it, back through the junctions beyond
         // (a car that came through the junction ahead used to meet the passer head-on).
         let t_need = pass_time(
@@ -3100,8 +3100,8 @@ impl Traffic {
 
     /// Who on the oncoming side comes too soon for a car that will be out on lane `opp`
     /// between distances `from` and `to` (that lane's own) for `t_need` seconds: anyone in
-    /// that stretch now, or anyone on the lane or on the lanes that lead into it — back
-    /// over joints and through junctions, as far as the fastest of them gets in that time —
+    /// that stretch now, or anyone on the lane or on the lanes that lead into it - back
+    /// over joints and through junctions, as far as the fastest of them gets in that time -
     /// whose front can get to `from` sooner. `strict`: a moving car may speed up to the
     /// limit (before starting a pass); otherwise it keeps its speed (while out there). A
     /// car waiting at a red light comes once its light changes, one giving way after its
@@ -3228,7 +3228,7 @@ impl Traffic {
 
     /// A car out on the oncoming lane round something: if somebody is coming who will be
     /// where its front is headed before it is back out of their way, it gives up while it
-    /// still can — back into its lane, stopping short of what it was going round — and
+    /// still can - back into its lane, stopping short of what it was going round - and
     /// otherwise finishes, with the oncoming traffic stopping short of where it moves back
     /// in (`Traffic::tick` puts it there on their lane).
     fn guard_pass(&mut self, i: usize, by_lane: &HashMap<usize, Vec<(usize, f32, f32, bool)>>) {
@@ -3597,7 +3597,7 @@ impl Traffic {
     }
 
     /// Right of way at the junction ahead of car `i`: where it has to wait (distance from
-    /// its origin), or None when it may go — in which case it claims the junction's lanes.
+    /// its origin), or None when it may go - in which case it claims the junction's lanes.
     /// It gives way to anyone already in the junction on a crossing path, to anyone who
     /// has claimed a crossing path and arrives before it could be through, to traffic with
     /// the right of way that is close enough in time (its `accept_gap`), to pedestrians on
@@ -3867,7 +3867,7 @@ impl Traffic {
         let mut blocked =
             (hard && !cannot_stop) || ((ruled || !soft.is_empty()) && !cannot_stop_gently);
         // held only by a full exit for long: a ring of queues each waiting for the next
-        // junction's exit (round a block) never clears by itself — squeeze in, as drivers do
+        // junction's exit (round a block) never clears by itself - squeeze in, as drivers do
         if blocked && exit_full && !hard && !ruled_before_exit && soft.is_empty() && wait > GRIDLOCK_WAIT {
             blocked = false;
             if omsi_cfg::env::var_os("OMSI_DEBUG_TRAFFIC").is_some() {
@@ -4068,7 +4068,7 @@ impl Traffic {
             .filter(|f| (f.center - pos).length() < reach as f64 + f.half_len + f.half_w + 2.0)
             .filter(|f| {
                 let o = &self.cars[f.car];
-                // it waits for this car already: the higher id goes — but never into it: a
+                // it waits for this car already: the higher id goes - but never into it: a
                 // body within reach of the bumper stops the car whoever waits for whom (a car
                 // drove straight into the side of a bus that stood waiting for it)
                 !(self.geo_prev.get(f.car).copied().flatten() == Some(me)
@@ -4122,7 +4122,7 @@ impl Traffic {
     /// Where the player's vehicle is in car `i`'s way: the gap to it and how fast it moves
     /// along that way. The bus's box is stretched along its motion for the next second and
     /// a half, so a bus pulling out of a stop, turning across or reversing is seen before
-    /// it is in the lane — the lanes alone saw it only once it stood in them.
+    /// it is in the lane - the lanes alone saw it only once it stood in them.
     fn player_in_way(&self, i: usize, player: &PlayerBox) -> Option<Lead> {
         let car = &self.cars[i];
         if (car.vehicle.position - player.0).length() > LOOK_AHEAD_MAX as f64 + 30.0 {
@@ -4525,7 +4525,7 @@ impl Traffic {
                     }
                 }
                 // a bus standing half in its bay: squeeze past on
-                // the other side when a metre is enough, instead of queueing behind it —
+                // the other side when a metre is enough, instead of queueing behind it -
                 // and stay out until past its front (moving back in while still beside it
                 // steered the car into the bus)
                 if !passing {
@@ -4746,7 +4746,7 @@ impl Traffic {
                 }
             }
             // right of way: at every junction before the red light's line (and in the one the
-            // car is in already) — skipping them all whenever some light ahead was red let a
+            // car is in already) - skipping them all whenever some light ahead was red let a
             // car cross another's path unchecked on its way to a light further on
             let junction = if self.net.lanes[self.cars[i].state.lane].kind == LaneKind::Air {
                 None
@@ -5385,7 +5385,7 @@ impl Traffic {
     /// `street_cond` is the state of the road (see `VehicleHost::street_cond`): the stock
     /// AI sound configuration fades `WetLane_1`/`WetLane_2` in with it, which is what a car
     /// driving past through the wet sounds like. `muffled`: the listener (the player) sits in
-    /// a cabin right now, so every AI car's sound is heard through that bodywork and glass —
+    /// a cabin right now, so every AI car's sound is heard through that bodywork and glass -
     /// a passing car's horn does not simply sound like the street outside once the windows
     /// are shut.
     pub fn update_audio(
@@ -5495,7 +5495,7 @@ impl Traffic {
     }
 
     /// Would a vehicle of type `ty` with its origin at `pos`, heading `heading` (and its
-    /// coupled parts, straight behind it) touch one that is already there — an AI vehicle,
+    /// coupled parts, straight behind it) touch one that is already there - an AI vehicle,
     /// or one of `keep_clear`? Bodies are compared with half a metre to spare, not centres:
     /// an articulated bus reaches 6 m ahead of its origin and 12 m behind it, and one put
     /// down 9.3 m from the player's bus stood 1.8 m inside it.
@@ -5581,7 +5581,7 @@ impl Traffic {
     }
 
     /// A lane from the end of `a` to the start of `b`, for a timetable route that jumps a
-    /// gap in the map (a road piece deleted after the timetable's tracks were recorded — a
+    /// gap in the map (a road piece deleted after the timetable's tracks were recorded - a
     /// dozen such holes of 10 to 150 m on Novi Sad): a smooth curve with the two lanes'
     /// headings at its ends, used by the timetable only. None when the two do not line up.
     pub fn add_connector(&mut self, a: usize, b: usize) -> Option<usize> {
@@ -5999,7 +5999,7 @@ impl Traffic {
         let mut changes = 0;
         for c in &mut self.cars {
             // out of sight (`tick` decided): hidden once, then left alone until it comes
-            // into view again — its many per-mesh updates were a third of this stage
+            // into view again - its many per-mesh updates were a third of this stage
             if !c.vehicle.ai_visuals {
                 if !c.render.hidden {
                     c.render.hidden = true;

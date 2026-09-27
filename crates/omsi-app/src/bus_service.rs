@@ -4,7 +4,7 @@
 //! the stops of its trip, the pull into the bay, the doors at each stop, the wait for the
 //! departure time, the blinker and the pull back out, the end of the trip, and the people
 //! aboard. Nothing of the player's bus is involved: no driver inputs, no throttle and brake
-//! for the script to turn into motion — the car moves, the script only animates it.
+//! for the script to turn into motion - the car moves, the script only animates it.
 
 use omsi_sim::traffic::{AiState, LaneKind, Network};
 use omsi_sim::VehicleInstance;
@@ -321,8 +321,8 @@ impl BusService {
             let speed = st.speed;
             // A bus creeping the last metres to its stop point is at its stop, even when the
             // point lies past the end of the stop's lane and the lane ahead takes over first:
-            // measured from the new lane the stop was suddenly 20-30 m behind, and the bus —
-            // blinker on, pulled into the bay — drove on without opening its doors.
+            // measured from the new lane the stop was suddenly 20-30 m behind, and the bus -
+            // blinker on, pulled into the bay - drove on without opening its doors.
             let crept_past = self.near_d < 12.0 && speed < 4.0;
             if stop.ri < st.route_index {
                 if crept_past {

@@ -1,4 +1,4 @@
-//! OMSI object scripts (`.osc`) — a re-implementation of the original `mc_exprcalc` unit.
+//! OMSI object scripts (`.osc`) - a re-implementation of the original `mc_exprcalc` unit.
 //!
 //! See `docs/FORMATS.md` for the language rules. A [`Program`] is compiled once per object
 //! *type* (vehicle, scenery object, script texture …) from its varlists, stringvarlists,

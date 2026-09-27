@@ -504,7 +504,7 @@ impl App {
                         &w,
                         self.traffic.as_ref().map(|t| &t.net),
                         // (still loading: a moment's wait for the host's list puts the bus
-                        // where it is free at once — without it the bus stood inside another
+                        // where it is free at once - without it the bus stood inside another
                         // player's for the first frames and then jumped out of it)
                         std::time::Duration::from_millis(1500),
                     );

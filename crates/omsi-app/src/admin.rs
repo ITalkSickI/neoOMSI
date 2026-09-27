@@ -5,7 +5,7 @@
 //! The host of a game started by code administers its own session from its game menu. A
 //! dedicated server has no screen: a player who knows its `admin_password` says
 //! `/admin <password>` in the chat, and the server's answer opens the same menu in that
-//! player's game — every line of it is then sent to the server as `admin <action>` and done
+//! player's game - every line of it is then sent to the server as `admin <action>` and done
 //! there (`server_command`).
 //!
 //! The password never goes over the network: the player's game asks (`auth?`), the server
@@ -473,8 +473,8 @@ pub(crate) fn server_command(lan: &mut LanSession, from: u32, text: &str, adm: &
 
 /// The bus fallen through the world (a hole in the ground, a tile that was not there yet,
 /// a mod's road without a surface) fell for ever. Where it last stood on the ground is
-/// kept every second; a bus more than 8 m under the ground there is — or 40 m under where
-/// it last stood, where there is no ground — is put back there.
+/// kept every second; a bus more than 8 m under the ground there is - or 40 m under where
+/// it last stood, where there is no ground - is put back there.
 pub(crate) fn guard_fall(app: &mut App, dt: f32) {
     let Some(p) = app.player.as_ref() else { return };
     let at = p.vehicle.position;

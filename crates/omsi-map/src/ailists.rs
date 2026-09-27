@@ -50,7 +50,7 @@ impl AiLists {
         let mut legacy: Option<(i32, Vec<String>)> = None;
         while let Some(k) = r.next_keyword() {
             match k.as_str() {
-                // Omsi.exe sub_780a58: a line it passes over, the default group's index, a
+                // the original: a line it passes over, the default group's index, a
                 // count and that many vehicle files
                 "ailist" => {
                     let _ = r.str();
@@ -64,7 +64,7 @@ impl AiLists {
                     // second header line: the depot (hof) name, empty for plain car groups
                     let hof = r.str().trim().to_string();
                     // (a map that leaves the depot line out altogether starts the list right
-                    // there: Novi Sad's "Trucks" group — that line is a vehicle, not a depot)
+                    // there: Novi Sad's "Trucks" group - that line is a vehicle, not a depot)
                     let lower = hof.to_ascii_lowercase();
                     let vehicle = lower.contains(".bus") || lower.contains(".ovh") || lower.contains(".sco");
                     let mut g = AiGroup { name, hof: if hof.is_empty() || vehicle { None } else { Some(hof.clone()) }, ..Default::default() };
@@ -114,7 +114,7 @@ impl AiLists {
             }
         }
         // no default group given: every listed vehicle that is in no group makes the group
-        // "NotInGroup" (weight 1), as Omsi.exe does after reading the file
+        // "NotInGroup" (weight 1), as OMSI does after reading the file
         if let Some((default, files)) = legacy {
             if default < 0 || default as usize >= a.groups.len() {
                 let grouped: std::collections::HashSet<String> = a.groups.iter().flat_map(|g| g.vehicles.iter().map(|v| v.file.to_ascii_lowercase())).collect();
@@ -214,7 +214,7 @@ pub fn parse_chrono_cfg(f: &CfgFile) -> ChronoCfg {
             "enddate" => c.end_date = r.i32(),
             "ticketpack" => c.ticket_pack = Some(r.str().to_string()),
             "moneysystem" => c.money_system = Some(r.str().to_string()),
-            // a count, then that many line names (Omsi.exe sub_5a6ed0: StrToInt, then ReadLn
+            // a count, then that many line names (the original: StrToInt, then ReadLn
             // n times). The count is not a line: read as one it took line "1" or "2" off.
             "deactivate_lines" => {
                 let n = r.i32().max(0);
@@ -227,15 +227,15 @@ pub fn parse_chrono_cfg(f: &CfgFile) -> ChronoCfg {
 }
 
 impl ChronoCfg {
-    /// Is the scenario in force on `date` (YYYYMMDD)? As Omsi.exe sub_5a6b3c: a scenario
+    /// Is the scenario in force on `date` (YYYYMMDD)? As the original: a scenario
     /// without any date never is; `[startdate]` and `[enddate]` both count as in force.
     pub fn active_on(&self, date: i32) -> bool {
         (self.start_date != 0 || self.end_date != 0) && (self.start_date == 0 || date >= self.start_date) && (self.end_date == 0 || date <= self.end_date)
     }
 }
 
-/// The `Chrono.cfg` files under a map's `Chrono` folder in the game's order (Omsi.exe
-/// sub_7f4d24): depth first, a folder's subfolders before its own files, names in the
+/// The `Chrono.cfg` files under a map's `Chrono` folder in the game's order (OMSI
+/// the original): depth first, a folder's subfolders before its own files, names in the
 /// order Windows lists them (case-insensitive). A later scenario overrides an earlier one.
 fn chrono_cfgs(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries = omsi_cfg::vfs::list_dir(dir).unwrap_or_default();

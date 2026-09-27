@@ -15,7 +15,7 @@ pub enum RenderType {
 }
 
 /// One `[phase]` of a light: the value the lamp scripts read as `TrafficLightPhase`
-/// (0..2 red, 3..5 red and yellow, 6..8 green, 9..11 yellow, 12 dark — see the stock
+/// (0..2 red, 3..5 red and yellow, 6..8 green, 9..11 yellow, 12 dark - see the stock
 /// `ampel1.osc`) and how many seconds it lasts. A last phase of 0 s lasts until the
 /// `[traffic_lights_group]` cycle starts again.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -98,7 +98,7 @@ pub struct SceneryObject {
     /// `[switchdir]` of each `[path]` (parallel to `paths`): the position of the points
     /// (the script's `Switch` variable) that sends a train along it.
     pub path_switch_dir: Vec<Option<i32>>,
-    /// `[blockpath] n mode` after a `[path]` (Omsi.exe keeps them with the path, sub_7b4214):
+    /// `[blockpath] n mode` after a `[path]` (OMSI keeps them with the path, the original):
     /// the other paths of the object that this one blocks while it is taken.
     pub path_blocks: Vec<Vec<(i32, i32)>>,
     /// `[crossingproblem]` after a `[path]`: a vehicle on it keeps the junction clear.
@@ -201,7 +201,7 @@ impl SceneryObject {
                 "nightmapmode" => o.night_map_mode = r.i32(),
                 "fixed" => o.fixed = true,
                 "absheight" => o.abs_height = true,
-                // Omsi.exe knows only this spelling: the 72 stock buildings written
+                // OMSI knows only this spelling: the 72 stock buildings written
                 // `[collisionmesh]` (the Staaken checkpoints on the Heerstraße among them)
                 // have no collision shape in OMSI and are driven through
                 "collision_mesh" => o.collision_mesh = Some(r.str().to_string()),

@@ -983,7 +983,7 @@ pub struct TourInfo {
     /// It runs on the date asked for (the game's timetable has only these tours that day).
     pub runs: bool,
     /// The first date from the one asked for on which it runs (`YYYY-MM-DD`): the game's
-    /// timetable dialog lists only the tours of the chosen day (Omsi.exe sub_67f268), so a
+    /// timetable dialog lists only the tours of the chosen day, so a
     /// tour of another day is picked by moving the date to it.
     pub next_run: Option<String>,
     pub trips: Vec<TripInfo>,
@@ -1003,7 +1003,7 @@ pub const DEFAULT_DATE: &str = "1989-05-30";
 
 /// The lines of a map's timetable on `date` (`YYYY-MM-DD`, the game's default when empty):
 /// the chrono folders active that day add their lines and take theirs off, as the game does
-/// — Spandau's 1991 timetable change replaces line "5 & 5N" and sixteen others.
+/// - Spandau's 1991 timetable change replaces line "5 & 5N" and sixteen others.
 pub fn list_lines(map: &str, date: &str) -> Result<Vec<LineInfo>> {
     let map_dir = resolve_content(map)?.parent().map(|p| p.to_path_buf()).context("map folder")?;
     lines_on(&map_dir, date)
@@ -1016,7 +1016,7 @@ fn lines_on(map_dir: &Path, date: &str) -> Result<Vec<LineInfo>> {
     let off = omsi_map::chrono_deactivated_lines(&chrono);
     let data = omsi_timetable::TimetableData::load_with_chrono(map_dir, &chrono, &off);
     // which tours run that day: the tour's mask as the game reads it (bits 0-6 Monday to
-    // Sunday, 7 a public holiday, 8 school holidays, 9 school days: Omsi.exe sub_73bc00)
+    // Sunday, 7 a public holiday, 8 school holidays, 9 school days: the original)
     let calendar = omsi_map::Calendar::load(&map_dir.join("Holidays.txt")).unwrap_or_default();
     let day_bit = if calendar.is_holiday(code) { 1 << 7 } else { 1 << weekday(code) };
     let school_bit = if calendar.in_holiday_range(code) { 1 << 8 } else { 1 << 9 };
@@ -1829,7 +1829,7 @@ pub fn duty_args(d: &Duty) -> Result<Vec<String>> {
         None => {}
     }
     // OMSI's [useActTime] / [useActDate] / [useActYear]: the machine's clock and calendar
-    // instead of the duty's (the year only on its own switch — a map's timetable is for
+    // instead of the duty's (the year only on its own switch - a map's timetable is for
     // its years)
     let st = get_settings().unwrap_or_default();
     let on = |k: &str| st.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
@@ -2035,7 +2035,7 @@ pub fn cli(cmd: &str, arg: &str) -> Result<Value> {
         }
         "keybindings" => get_keybindings()?,
         // `--cli save_keybindings '{"game":[...],"vehicles":[...]}'`: the whole list, as
-        // `keybindings` returns it — a partial update reads the current file first
+        // `keybindings` returns it - a partial update reads the current file first
         "save_keybindings" => {
             save_keybindings(&a)?;
             get_keybindings()?

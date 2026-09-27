@@ -1,5 +1,5 @@
 //! The OMSI plugins of the content roots' `plugins` folders (see `omsi_plugin`), driven
-//! every frame with the player's bus as Omsi.exe drives them (`sub_693054`): system
+//! every frame with the player's bus as OMSI drives them: system
 //! variables, then the bus's variables, string variables and triggers.
 
 use omsi_plugin::{HostConfig, PluginIo, Plugins};
@@ -71,8 +71,8 @@ impl PluginIo for Io<'_> {
         }
     }
 
-    /// A key down fires the trigger, a key up `<trigger>_off` (Omsi.exe's keyboard event
-    /// handler `sub_7e614c`, which the plugin frame calls with the new state).
+    /// A key down fires the trigger, a key up `<trigger>_off` (OMSI's keyboard event
+    /// handler the original, which the plugin frame calls with the new state).
     fn fire(&mut self, trigger: &str, down: bool) {
         if let Some(veh) = self.vehicle.as_mut() {
             if down {

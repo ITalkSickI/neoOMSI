@@ -44,7 +44,7 @@ pub struct SplineCurve {
     /// `[spline_h]`: the height gained over the length; the height is then a cubic between
     /// the two gradients instead of the gradient parabola of a plain `[spline]`.
     pub delta_h: Option<f64>,
-    /// Cant in percent (Omsi.exe `sub_79a8ec` divides it by 100): the rise across per metre.
+    /// Cant in percent: the rise across per metre.
     pub cant_start: f64,
     pub cant_end: f64,
     /// How far out from the centre line the cant lifts (`[halfcantwidth]` of the .sli;
@@ -52,7 +52,7 @@ pub struct SplineCurve {
     pub half_cant_width: f64,
 }
 
-/// The half cant width Omsi.exe uses for a spline type (`sub_5ab908`): the .sli's
+/// The half cant width OMSI uses for a spline type: the .sli's
 /// `[halfcantwidth]`, else as far as its profile reaches either side.
 pub fn half_cant_width(def: &Spline) -> f64 {
     if let Some(w) = def.half_cant_width.filter(|w| w.is_finite() && *w >= 0.0) {
@@ -63,7 +63,7 @@ pub fn half_cant_width(def: &Spline) -> f64 {
     (-lo).max(hi)
 }
 
-/// The half cant width of a spline without a .sli object (Omsi.exe: 10 m).
+/// The half cant width of a spline without a .sli object (OMSI: 10 m).
 pub const DEFAULT_HALF_CANT_WIDTH: f64 = 10.0;
 
 static HALF_CANT_WIDTHS: std::sync::OnceLock<std::sync::RwLock<std::collections::HashMap<String, f64>>> = std::sync::OnceLock::new();
@@ -180,7 +180,7 @@ impl SplineCurve {
         let c = self.point_at(s);
         let d = Self::dir(self.heading_at(s));
         let right = DVec2::new(d.y, -d.x);
-        // (Omsi.exe `sub_5ab038`: the cant is a percentage and lifts only within the half
+        // (the original: the cant is a percentage and lifts only within the half
         // cant width; read as degrees it banked every curve 1.75 times too steeply)
         let hcw = self.half_cant_width.max(0.0);
         let dz = -x.clamp(-hcw, hcw) * self.cant_at(s) / 100.0;
@@ -257,7 +257,7 @@ pub fn build_spline_mesh(def: &Spline, curve: &SplineCurve, mirror: bool, origin
 
 /// The surface a spline's `[heightprofile]` segments describe, extruded along the curve like
 /// the drawn profile: what vehicles and wheels stand on. OMSI keeps it apart from the graphics
-/// — a railway's third rail or a tunnel's walls are drawn but not driven on, a fence or the
+/// - a railway's third rail or a tunnel's walls are drawn but not driven on, a fence or the
 /// Berlin Wall has no height profile at all, and a street's lies exactly on its carriageway
 /// and pavements. Positions are relative to `origin`.
 pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool, origin: DVec3) -> MeshData {
@@ -328,7 +328,7 @@ pub fn build_terrain_mesh(t: &Terrain) -> MeshData {
             let c = a + n as u32;
             let d = c + 1;
             // split along the diagonal from the cell's (i, j) corner to its (i+1, j+1)
-            // corner, as Omsi.exe does (its terrain vertex cache, `.map.terrain_0.rdy`,
+            // corner, as OMSI does (its terrain vertex cache, `.map.terrain_0.rdy`,
             // lists every cell as (i,j)-(i,j+1)-(i+1,j+1) and (i,j)-(i+1,j+1)-(i+1,j)).
             // The maps' ground is shaped against those triangles: split the other way,
             // wherever the ground steps down beside a kerb half a cell of it stood up
@@ -343,7 +343,7 @@ pub fn build_terrain_mesh(t: &Terrain) -> MeshData {
 
 /// Height of the terrain *as drawn* at tile-local metres: the two triangles of each cell
 /// that [`build_terrain_mesh`] makes (diagonal from the cell's (i, j) corner to its
-/// (i+1, j+1) corner, as Omsi.exe splits it), not the bilinear patch `Terrain::sample`
+/// (i+1, j+1) corner, as OMSI splits it), not the bilinear patch `Terrain::sample`
 /// interpolates. On a curved slope the
 /// two differ by centimetres, and a wheel standing on the bilinear one sank into the grass
 /// or floated over it.
@@ -374,7 +374,7 @@ pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
     out.uvs = m.vertices.iter().map(|v| v.uv).collect();
     // A mesh whose faces all turn their backs on their own normals was mirrored in the
     // modeller (the winding flips, the normals are recomputed): drawn one-sided as it stands,
-    // the front shows nothing — the LiAZ 5292's right mirror housing and two dashboard
+    // the front shows nothing - the LiAZ 5292's right mirror housing and two dashboard
     // screens were holes. Such a mesh is turned round to face where its normals face. (Only
     // a mesh that is backwards nearly throughout: smoothed normals disagree with a few faces
     // of any ordinary mesh, and two-sided parts are two faces facing apart.)
@@ -399,8 +399,8 @@ pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
     }
     // …but only when the file's own matrix says the object was mirrored (a positive
     // determinant where the exporter writes -1 for an ordinary object: the LiAZ's right
-    // mirror housing, the Solaris' display planes). Omsi.exe culls by winding alone
-    // (D3DCULL_CCW, which only its stencil-shadow pass changes, sub_6f2b18), so a mesh
+    // mirror housing, the Solaris' display planes). OMSI culls by winding alone
+    // (D3DCULL_CCW, which only its stencil-shadow pass changes, the original), so a mesh
     // with an ordinary matrix is drawn as wound, whatever its normals say: the Procity's
     // dashboard screens face the driver by their winding and their normals away, and
     // turning them round hid the pressure and trip displays.
@@ -594,7 +594,7 @@ mod tests {
     }
 }
 
-/// Möller–Trumbore ray/triangle test. Returns the distance along the ray.
+/// Möller-Trumbore ray/triangle test. Returns the distance along the ray.
 pub fn ray_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
     let e1 = b - a;
     let e2 = c - a;
@@ -817,13 +817,13 @@ pub struct TileSurface {
     /// tile (270 MB around the Ahlheim main station). Per texel: whether a surface and a
     /// surface a vehicle can stand on cover it, the highest surface's height, the *lowest*
     /// surface's height (the ground has to be cut wherever it would come up through any of
-    /// them — at a junction the plate can ride a metre over the road that runs under its
+    /// them - at a junction the plate can ride a metre over the road that runs under its
     /// edge), and the drivable surface's height (a railway embankment or a bridge deck
-    /// passing over a road is a surface — the ground is cut under it — but the wheels must
+    /// passing over a road is a surface - the ground is cut under it - but the wheels must
     /// not be lifted onto it). [`TileSurface::finish`] drops a block's lowest or drivable
     /// heights where they are the highest one's.
     blocks: Vec<Option<Box<SurfaceBlock>>>,
-    /// `[terrainhole]`: the ground is cut here whatever its height — a junction, an
+    /// `[terrainhole]`: the ground is cut here whatever its height - a junction, an
     /// underpass or a tunnel mouth names a cutter mesh in its model, and OMSI takes the
     /// terrain away under it instead of leaving a mound over the carriageway. With the
     /// highest point of the cutter over each texel: a hole only takes the ground away where
@@ -1115,7 +1115,7 @@ impl TileSurface {
 
     /// Height of the drivable surface (else of any surface) here, blended between the four
     /// nearest covered texels. A texel is 0.7 m on a Berlin tile, and a wheel reading the
-    /// nearest one climbs a slope in centimetre steps — the AI cars shook on every hill.
+    /// nearest one climbs a slope in centimetre steps - the AI cars shook on every hill.
     pub fn sample_road_smooth(&self, x: f32, y: f32) -> Option<f32> {
         self.blend(x, y, true).or_else(|| self.blend(x, y, false))
     }
@@ -1206,7 +1206,7 @@ impl TileSurface {
 
     /// The ground goes where a surface crosses it: nothing more than `flush` above it (a
     /// bridge or an embankment keeps its ground). Below it, a road or footway may lie up to
-    /// a storey deep — a sunken road or an underpass still shows — but anything else only
+    /// a storey deep - a sunken road or an underpass still shows - but anything else only
     /// takes the ground away where it is flush with it: the far slope of a railway
     /// embankment runs on under the grass (Berlin-Spandau's `Damm1.sli` down to 16 m below
     /// it), and cutting the ground over it opened a band you could see the sky through.

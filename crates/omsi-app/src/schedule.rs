@@ -238,9 +238,9 @@ struct Choice {
 /// stop objects of many maps are placed there): the bus stays in its lane at the kerb then.
 /// Taken as a bay up to 4 m wide, the bus pulled out over the kerb onto the grass.
 ///
-/// Not at all, now: a timetable bus stays on its path at the stop, as Omsi.exe's do (a
+/// Not at all, now: a timetable bus stays on its path at the stop, as OMSI's do (a
 /// map's bus bay is a spline of its own that the route runs through). The pole's offset
-/// says nothing about where the kerb is — most stand behind the pavement — and a bus
+/// says nothing about where the kerb is - most stand behind the pavement - and a bus
 /// moved 1.6 m to the right of its lane drove along with its right wheels on the pavement.
 fn bay_offset(_lat: f32) -> f32 {
     0.0
@@ -365,8 +365,8 @@ pub struct Schedule {
     /// The map's `car_use/*.ocu`: which vehicles serve which line's tours.
     car_use: Vec<omsi_timetable::CarUse>,
     /// Per tour (`tour_key_of`): the depot vehicle (index in its group) and fleet number
-    /// it runs with today — from `car_use`, else drawn the first time the tour is due. A
-    /// number is given to one tour only (`used_numbers`), as in Omsi.exe (`sub_73cd50`):
+    /// it runs with today - from `car_use`, else drawn the first time the tour is due. A
+    /// number is given to one tour only (`used_numbers`), as in OMSI:
     /// hashing each tour to a number put the same fleet number on two buses at once.
     tour_vehicle: HashMap<u64, (usize, usize)>,
     used_numbers: HashSet<(String, String)>,
@@ -383,7 +383,7 @@ const LAYOVER: f64 = 900.0;
 const LAYOVER_SHARED: f64 = 60.0;
 
 impl Schedule {
-    /// `clock` gives the date: tours carry a validity mask (bits 0–6 Monday…Sunday, 7 public
+    /// `clock` gives the date: tours carry a validity mask (bits 0-6 Monday…Sunday, 7 public
     /// holiday, 8 school holidays, 9 school days) that selects which run today.
     pub fn new(root: &Path, world: &World, clock: &omsi_sim::SimClock) -> Schedule {
         let chrono_dirs = world.chrono_dirs.read().clone();
@@ -464,7 +464,7 @@ impl Schedule {
             trip_departures[d.trip].push(i);
         }
         // the previous departure of each tour, looked up once: the layover check used to
-        // walk all 3600 Spandau departures for each of them, every two seconds — 1.5 fps
+        // walk all 3600 Spandau departures for each of them, every two seconds - 1.5 fps
         let mut tour_prev = vec![None; departures.len()];
         let mut last_of: HashMap<(String, String), usize> = HashMap::new();
         for (i, d) in departures.iter().enumerate() {
@@ -650,7 +650,7 @@ impl Schedule {
         s
     }
 
-    /// The day's vehicles of the tours the map's `car_use` names (Omsi.exe `sub_73cd50`, run
+    /// The day's vehicles of the tours the map's `car_use` names (the original, run
     /// at load and when the date changes): for every record in force whose line runs,
     /// first its `[number_tour]` pairs (a fleet number for a tour), then for each other
     /// tour of the line, with the probability `[types_prefered]` gives (1 for
@@ -922,8 +922,8 @@ impl Schedule {
         (steps, false)
     }
 
-    /// One-way paths that a route drives the other way — their end lies where the path
-    /// before it ends, their start where the next one begins — get a lane that way
+    /// One-way paths that a route drives the other way - their end lies where the path
+    /// before it ends, their start where the next one begins - get a lane that way
     /// (`Traffic::add_reverse_twins`). OMSI's timetable buses follow their station links
     /// and tracks whichever way a path runs: Spandau's line to Kladow and a dozen Novi Sad
     /// tracks run over invisible one-way helper streets backwards, and the bus drove them
@@ -985,8 +985,8 @@ impl Schedule {
 
     /// The steps as the loaded network has them, each lane's direction chosen so that it
     /// follows the lane before it (`prev` for the first) and leads into the one after it.
-    /// Taking whichever direction came first — as the first step used to, with nothing
-    /// before it — sent the route (and the navigator) the wrong way along a two-way street.
+    /// Taking whichever direction came first - as the first step used to, with nothing
+    /// before it - sent the route (and the navigator) the wrong way along a two-way street.
     fn slots(
         &self,
         world: &World,
@@ -1169,7 +1169,7 @@ impl Schedule {
             (None, Some(vehicles)) => {
                 // The depot's types come out in proportion to their fleets: a typgroup
                 // listing 40 fleet numbers appears eight times as often as one with
-                // 5, as in OMSI — a plain round robin gave the single MB O305 of a
+                // 5, as in OMSI - a plain round robin gave the single MB O305 of a
                 // depot the same share as the whole SD200 fleet.
                 // A tour's vehicle for the day: the one `car_use` gives it, else one drawn now
                 // and kept (a fleet number no other tour has, while there are any left).
@@ -1350,7 +1350,7 @@ impl Schedule {
     }
 
     /// The lanes a trip runs on (for the navigator): its track, else the station links
-    /// between its stops, as far as the tiles have brought them — and whether that is all.
+    /// between its stops, as far as the tiles have brought them - and whether that is all.
     pub fn trip_route(
         &self,
         world: &World,
@@ -1381,8 +1381,8 @@ impl Schedule {
         )
     }
 
-    /// The lanes a trip runs on in `net` — the navigator's network of the whole map, which
-    /// has every tile's lanes whether loaded or not — chosen as `slots` chooses them (of a
+    /// The lanes a trip runs on in `net` - the navigator's network of the whole map, which
+    /// has every tile's lanes whether loaded or not - chosen as `slots` chooses them (of a
     /// two-way path the direction that joins the lanes before and after).
     pub fn trip_route_in(&self, net: &omsi_sim::traffic::Network, trip_name: &str) -> Vec<usize> {
         let Some(trip) = self.data.trips.iter().find(|x| x.name.eq_ignore_ascii_case(trip_name)) else {
@@ -1418,7 +1418,7 @@ impl Schedule {
     }
 
     /// `OMSI_CHECK_TRIPS=1`: build the route of every trip on the loaded lanes and say where
-    /// consecutive lanes do not join — a gap the bus would jump, or a lane taken the wrong
+    /// consecutive lanes do not join - a gap the bus would jump, or a lane taken the wrong
     /// way round (its end, not its start, lies where the lane before ends), which sends a
     /// bus into the oncoming traffic. Only trips whose route is wholly loaded are judged.
     pub fn check_routes(&self, world: &World, traffic: &mut Traffic) {
@@ -1626,7 +1626,7 @@ impl Schedule {
         // Buses on their layover: a trip that leaves within the next quarter of an hour,
         // whose tour's previous trip is already over, stands at its first stop with the
         // doors shut until its departure. Without this a map with one bus per line
-        // showed no bus at all for most of the hour — it only existed while driving.
+        // showed no bus at all for most of the hour - it only existed while driving.
         let mut early: Vec<usize> = Vec::new();
         // departures are sorted by time: only the ones in the next quarter of an hour
         let start = self.departures.partition_point(|d| d.time <= tod);
@@ -2123,7 +2123,7 @@ impl Schedule {
         }
         // a bus that would start a few metres short of its next stop stands at it (half a
         // metre short, so that it is served): starting before it, it had to pull over into
-        // the stop — often a lane over — in less than its own length
+        // the stop - often a lane over - in less than its own length
         if let Some(&(ri, ss, _, _)) = stops
             .iter()
             .find(|st| st.0 > start_index || (st.0 == start_index && st.1 > s))
@@ -2269,12 +2269,12 @@ fn joins(net: &Network, a: usize, b: usize) -> bool {
 }
 
 /// A station link often runs on past its station: the path search that made it went a
-/// few paths beyond the stop — into a turning lane, round a corner — before the next link
+/// few paths beyond the stop - into a turning lane, round a corner - before the next link
 /// starts back at the stop on another path (Spandau's links end so in 122 of 505 joins, the
 /// extra paths mostly listed with length 0). Driven as listed, the bus turned off, then
 /// jumped back and drove on the wrong side or against the traffic. Such a detour is passed
 /// over (made `Absent`): where the route does not join, the lane a few steps back that
-/// the next one continues from — or the lane a few steps on that continues this one — is
+/// the next one continues from - or the lane a few steps on that continues this one - is
 /// where the route really goes.
 fn skip_detours(net: &Network, slots: &mut [Slot]) {
     const REACH: usize = 8;
@@ -2437,7 +2437,7 @@ fn section_around(slots: &[Slot], at: usize) -> (usize, usize) {
 }
 
 /// The depot file an `[aigroup_depot]` names for a vehicle: a file of that name next to the
-/// vehicle, else the one whose `[name]` it is — the stock groups name the depot
+/// vehicle, else the one whose `[name]` it is - the stock groups name the depot
 /// ("Spandau 1986"), not the file ("Spandau 86.hof"), and without it no scheduled bus had
 /// termini or stops for its displays.
 fn depot_file(
@@ -2486,8 +2486,8 @@ pub fn set_ai_destination(
 }
 
 /// The same for the player's bus, done the driver's way: a typing job
-/// (`omsi_sim::ibis::Typist`) that works the bus's own IBIS keys — or its ticket machine's
-/// — as a driver would, so that the IBIS script itself sets the displays, the stop list,
+/// (`omsi_sim::ibis::Typist`) that works the bus's own IBIS keys - or its ticket machine's
+/// - as a driver would, so that the IBIS script itself sets the displays, the stop list,
 /// the announcements and the ticket printer. `stop` is the stop of the trip the bus is at.
 /// None when the depot file has no such destination. The electrics must be on; when the
 /// typing fails the IBIS variables are written directly ([`set_player_destination_directly`]).
@@ -2572,7 +2572,7 @@ pub fn ibis_target(
     let line_number = codes.line.unwrap_or(0) / 100;
     // the last two digits of the depot code are the line's letter suffix ("5E" = line 5,
     // suffix code for E), typed as its own field on the IBIS (`ls = line*100 + suffix`,
-    // ibis.rs) — dropped here it left every lettered line's suffix untyped, so a bus that
+    // ibis.rs) - dropped here it left every lettered line's suffix untyped, so a bus that
     // reads it (a destination matrix testing `IBIS_Linie_Suffix` against its own reserved
     // codes, say) found 0 instead and could take the wrong branch.
     let suffix = match codes.line.unwrap_or(0) % 100 {
@@ -2635,8 +2635,8 @@ fn has_roller_blind(v: &omsi_sim::VehicleInstance) -> bool {
         .any(|t| v.ty.program.trigger(t).is_some())
 }
 
-/// `SetLineTo` for the AI trigger. A roller blind turns one roller per character —
-/// hundreds, tens, units, with the letter suffixes only on the later rollers — so its
+/// `SetLineTo` for the AI trigger. A roller blind turns one roller per character -
+/// hundreds, tens, units, with the letter suffixes only on the later rollers - so its
 /// line is right-aligned to three places ("  5", " 5E"); the matrix scripts take the line
 /// as it is.
 fn set_line_to(v: &mut omsi_sim::VehicleInstance, line: &str) {
@@ -2980,7 +2980,7 @@ pub struct PlayerDuty {
 
 impl Schedule {
     /// The player drives this tour (line and tour as `player_duty` names them): OMSI leaves
-    /// it to the player, so no AI bus runs it as well — one of line 76 tour 1 appeared
+    /// it to the player, so no AI bus runs it as well - one of line 76 tour 1 appeared
     /// 5 m beside the player's own bus at the Bauernhof, where the passengers queued.
     /// Returns how many of today's departures that takes from the AI.
     pub fn reserve_tour(&mut self, line: &str, tour: &str) -> usize {
@@ -3059,7 +3059,7 @@ impl Schedule {
 
     /// Assign the player a tour of a line (names as in the .ttl / `[newtour]`), starting
     /// with the trip that fits the time of day `now`: the one under way, else the next to
-    /// leave — as OMSI does when a time is picked for a tour. (The duty used to start with
+    /// leave - as OMSI does when a time is picked for a tour. (The duty used to start with
     /// the tour's first trip whatever the time: Spandau's "Mo-Fr 3" of line 5 at 15:05 began
     /// with the 14:44 depot run, and the IBIS was typed for it.) The AI no longer drives the
     /// tour: its trips are the player's ([`Schedule::reserve_tour`]).
@@ -3068,8 +3068,8 @@ impl Schedule {
     /// the callers used to drop that silently and the game started without a duty.
     ///
     /// `trip` is the trip to start with as the player picked it (OMSI's timetable dialog
-    /// has line, tour and trip): its departure time "HH:MM" — the first trip leaving then or
-    /// later — or its number in the tour (1 = first). The duty goes on with the tour's next
+    /// has line, tour and trip): its departure time "HH:MM" - the first trip leaving then or
+    /// later - or its number in the tour (1 = first). The duty goes on with the tour's next
     /// trips from there, as OMSI's does.
     pub fn player_duty(
         &mut self,
@@ -3156,7 +3156,7 @@ impl Schedule {
                         .map(|b| b.name.clone())
                         .filter(|n| !n.trim().is_empty())
                         // (the trip file names its stations too: a stop whose object is not
-                        // among the map's known stops — Novi Sad's, on tiles not loaded yet —
+                        // among the map's known stops - Novi Sad's, on tiles not loaded yet -
                         // had no name on the navigator, the HUD and in the log)
                         .or_else(|| trip.stations.is_empty().then(|| trip.stations_legacy.get(i).and_then(|r| r.get(2)).map(|n| n.trim().to_string())).flatten())
                         .unwrap_or_default();
@@ -3251,7 +3251,7 @@ impl Schedule {
     /// Make the departure boards of the stops whose displays are near
     /// (`World::timetable_boards`), and hand the scenery the time of day. The boards are
     /// made at most once a second: the buses due at each stop in the next two hours,
-    /// soonest first — the timetable buses with the delay they run with, and the player's.
+    /// soonest first - the timetable buses with the delay they run with, and the player's.
     pub fn update_boards(
         &mut self,
         world: &World,
@@ -3428,7 +3428,7 @@ pub(crate) fn hhmm(t: f64) -> String {
     format!("{:02}:{:02}", (t / 3600.0) as i32, ((t % 3600.0) / 60.0) as i32)
 }
 
-/// The trip the player picked: "HH:MM" — the first trip leaving at that minute or later —
+/// The trip the player picked: "HH:MM" - the first trip leaving at that minute or later -
 /// or its number in the tour (1 = the first).
 fn chosen_trip(trips: &[PlannedTrip], pick: &str) -> Option<usize> {
     if let Some((h, m)) = pick.split_once(':') {
@@ -3477,7 +3477,7 @@ fn norm_vehicle_path(p: &str) -> String {
 }
 
 /// The tour mask bits `clock`'s date selects: (the weekday's or public holiday's, the school
-/// holidays' or school days'). Omsi.exe sub_73bc00: bit 8 = runs in the school holidays,
+/// holidays' or school days'). the original: bit 8 = runs in the school holidays,
 /// bit 9 = runs on school days.
 fn day_bits(calendar: &omsi_map::Calendar, clock: &omsi_sim::SimClock) -> (i32, i32) {
     let date = clock.date_code();
@@ -3487,7 +3487,7 @@ fn day_bits(calendar: &omsi_map::Calendar, clock: &omsi_sim::SimClock) -> (i32, 
 }
 
 /// What a bus's displays call its terminus: the depot file's first string for it (what the
-/// IBIS shows, in capitals — the stock departure display's font has no small letters, and
+/// IBIS shows, in capitals - the stock departure display's font has no small letters, and
 /// the trip's "Bauernhof" came out as a lone "B"), else the timetable's name in capitals
 /// (a train has no depot file).
 fn terminus_text(hof: Option<&omsi_vehicle::Hof>, terminus: &str) -> String {
@@ -3575,8 +3575,8 @@ impl PlayerDuty {
     /// Where the bus starts: at the stop of the trip under way it stands at; else with the
     /// first trip of the tour whose first stop it can reach before that trip leaves (a
     /// duty picked for 08:00 with the bus in the depot used to start with the trip under
-    /// way at 08:00, led the driver to whatever stop that trip was due at next — halfway
-    /// along the line — and ran late from the first second). When no trip of the tour
+    /// way at 08:00, led the driver to whatever stop that trip was due at next - halfway
+    /// along the line - and ran late from the first second). When no trip of the tour
     /// can be reached in time any more, the last one is driven from its first stop that
     /// can (else its first stop), late as that is.
     fn place(&mut self, pos: glam::DVec3, now: f64) {
@@ -3825,7 +3825,7 @@ impl PlayerDuty {
                     self.at_stop = false;
                     let late = day_time - stop.dep;
                     self.left_late = Some(late);
-                    // (Omsi.exe counts a stop only with its arrival: `sub_745ce0`)
+                    // (OMSI counts a stop only with its arrival: the original)
                     if let (true, Some(arrived)) = (stop.stops, self.arrived_late.take()) {
                         served = Some((arrived, late));
                     }
@@ -3916,7 +3916,7 @@ mod tests {
         let (at, off) = step_at(&steps, &slots, &est, 1, 0.1).unwrap();
         assert!(at == 2 && (off - 17.0).abs() < 1e-9, "{at} {off}");
         assert_eq!(section_around(&slots, 2), (0, 3));
-        // half way: on the step still to come — the bus has to wait
+        // half way: on the step still to come - the bus has to wait
         assert_eq!(step_at(&steps, &slots, &est, 1, 0.5), Some((3, 35.0)));
         // near the end of the leg: after the gap
         let (at, off) = step_at(&steps, &slots, &est, 1, 0.9).unwrap();

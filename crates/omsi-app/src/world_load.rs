@@ -136,7 +136,7 @@ pub(crate) fn load_world(args: &Args, renderer: &Renderer, scene: &mut Scene) ->
     let stats = world.build_scene(renderer, scene, &tiles)?;
     // OMSI_CHURN=x,y (a point a few tiles away): the tiles around that point are loaded,
     // the start area unloaded, the far tiles unloaded and the start area loaded again, with
-    // the per-draw buffers uploaded in between as a window's frames do — the picture then
+    // the per-draw buffers uploaded in between as a window's frames do - the picture then
     // shows the start area drawn from recycled GPU slots, as after a drive away and back.
     let churn = omsi_cfg::env::var("OMSI_CHURN").ok().and_then(|v| {
         let (a, b) = v.split_once(',')?;

@@ -2,12 +2,12 @@
 //!
 //! * `[attachObj]` hangs an object on one of the `[new_attachment]` points of its parent
 //!   (traffic lights on a whip beam, line plates on a bus stop sign, the next house of a
-//!   terrace) — none of them was placed before, which is most of what "objects missing" and
+//!   terrace) - none of them was placed before, which is most of what "objects missing" and
 //!   "a sign floating in the air" were on the stock maps.
 //! * `[splineAttachement]` puts a row of objects along a spline (street lamps, parking
 //!   bays, catenary masts) and the splines after it in its tile;
 //!   `[splineAttachement_repeater]` continues the row where the chain enters another tile,
-//!   and the position there depends on the length of the chain from its start — which may
+//!   and the position there depends on the length of the chain from its start - which may
 //!   lie in other tiles. [`MapIndex`] knows every spline of the map for that walk, and every
 //!   object for entry points and bus stops of tiles that are not loaded.
 //! * [`Streamer`] loads the tiles around the camera and the player's bus on a worker
@@ -34,7 +34,7 @@ pub struct IndexedSpline {
 pub struct MapIndex {
     pub splines: HashMap<i64, IndexedSpline>,
     /// (tile index in global.cfg, attachment id) → (spline id, distance of the row's first
-    /// object from the start of that spline — negative when it lies before it).
+    /// object from the start of that spline - negative when it lies before it).
     pub masters: HashMap<(usize, i64), (i64, f64)>,
     /// Object id → (tile, world position with the ground under it, rotation).
     pub objects: HashMap<i64, ((i32, i32), DVec3, [f64; 3])>,
@@ -49,7 +49,7 @@ pub struct MapIndex {
 }
 
 impl MapIndex {
-    /// Read every tile file of the map (with the active chrono patches) — no meshes, no
+    /// Read every tile file of the map (with the active chrono patches) - no meshes, no
     /// object types, just the records. Spandau's 329 tiles take a fraction of a second on
     /// the worker pool; a tile that cannot be read is logged and left out. `tiles` are
     /// (index in global.cfg's `[map]` list, x, y, file): repeaters and timetable tracks name
@@ -423,7 +423,7 @@ fn place_on(att: &SplineAttachment, spline: &MapSpline, origin: DVec2, index: Op
             if att.tilt {
                 let sign = if backwards { -1.0 } else { 1.0 };
                 pitch += sign * curve.slope_at(u).atan().to_degrees();
-                // (Omsi.exe `sub_5ab4cc`: the cant's angle, atan of the percentage, and only
+                // (the original: the cant's angle, atan of the percentage, and only
                 // for an object standing within the half cant width)
                 if side.abs() < curve.half_cant_width {
                     bank += sign * (curve.cant_at(u) / 100.0).atan().to_degrees();
@@ -448,7 +448,7 @@ fn place_on(att: &SplineAttachment, spline: &MapSpline, origin: DVec2, index: Op
 /// at `origin` (the tile origin). Object `j` of a row lies `d + j * interval` along the chain
 /// from the chain's start (see [`chain_offset`]) while `j * interval <= range`: on the
 /// record's own spline and on the splines after it in the chain as long as they are in the
-/// same tile — where the
+/// same tile - where the
 /// chain enters another tile, a repeater there carries the row on (every one of the 169
 /// repeaters of Berlin-Spandau with objects lies on the first spline of a new tile, and 413
 /// later splines in the record's own tile have none). (index into `splines`, object).
@@ -494,7 +494,7 @@ type Batch = (Vec<(i32, i32)>, Vec<crate::scene::Prepared>, crate::scene::LoadSt
 
 /// The threads tiles are prepared on while the game runs: a pool of their own, a third of
 /// the cores, so that the frame's parallel work (culling, the AI scripts) never waits for a
-/// tile to finish on the shared pool — and at a lower priority, so that they do not take
+/// tile to finish on the shared pool - and at a lower priority, so that they do not take
 /// the cores those workers need either (see `threads`).
 fn loader_pool() -> &'static rayon::ThreadPool {
     static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();

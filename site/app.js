@@ -6,7 +6,7 @@ const DOCS = [
   { file: "BUILDING", title: "Building", icon: "build" },
   { file: "FORMATS", title: "Content formats", icon: "description" },
   { file: "ARCHITECTURE", title: "Architecture", icon: "account_tree" },
-  { file: "RE_ROUTES", title: "Routes in Omsi.exe", icon: "alt_route" },
+  { file: "ROUTES", title: "Routes", icon: "alt_route" },
   { file: "PLUGINS", title: "Plugins", icon: "extension" },
   { file: "SERVER", title: "Dedicated server", icon: "dns" },
   { file: "VERSIONING", title: "Versioning & releases", icon: "new_releases" },

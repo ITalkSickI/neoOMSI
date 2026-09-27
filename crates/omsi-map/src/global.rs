@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 /// One `[groundtex]` of `global.cfg`: a ground texture the map can be painted with.
 ///
 /// The three numbers are the editor's settings for the layer: the size of the painting mask
-/// as a power of two (`8` = 256×256 alpha texels over the tile — the stock masks in
+/// as a power of two (`8` = 256×256 alpha texels over the tile - the stock masks in
 /// `texture/map/tile_x_y.map.<layer>.dds` are exactly that size), how often the texture
 /// repeats across the tile, and how often the detail texture does. The first entry is the
 /// ground everything starts as and has no mask of its own.

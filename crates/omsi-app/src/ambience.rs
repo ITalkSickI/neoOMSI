@@ -3,7 +3,7 @@
 //! OMSI keeps them in `Sounds\` next to the per-vehicle configurations: `rain_outside.wav`
 //! is the rain as it sounds in the street (the bus plays its own `regen.wav` on the roof,
 //! `[viewpoint] 2`, inside the cab), and `Sounds\Passengers\sound.cfg` holds the footstep
-//! entry with its volume and its `[3d]` range — one metre, so a step is only heard from a
+//! entry with its volume and its `[3d]` range - one metre, so a step is only heard from a
 //! few metres away. The wet-road hiss (`Sounds\WetLane_1.wav`, `WetLane_2.wav`) belongs to
 //! the vehicles and comes out of their own sound configurations once `StreetCond` is fed.
 
@@ -133,7 +133,7 @@ impl Ambience {
     }
 
     /// One frame. `precip` is the kind (1 rain, 2 snow) and the rate 0 … 1, `inside` says
-    /// whether the camera sits in a vehicle (the rain is then muffled — the bus's own
+    /// whether the camera sits in a vehicle (the rain is then muffled - the bus's own
     /// `regen.wav` takes over), `engine_running` whether the player's engine is running (for
     /// the cabin hum), `street_cond` the state of the road and `footfalls` the steps taken
     /// since the last frame.
@@ -157,8 +157,8 @@ impl Ambience {
     }
 
     /// The rain in the street: it only rains audibly, snow is silent. Heard at a quarter
-    /// through the bodywork, and muffled on top of that, so that a shower is still there —
-    /// duller, not just quieter — when you sit down in the cab.
+    /// through the bodywork, and muffled on top of that, so that a shower is still there -
+    /// duller, not just quieter - when you sit down in the cab.
     fn rain(&mut self, engine: &AudioEngine, precip: (i32, f32), inside: bool) {
         let Some(clip) = self.rain.clone() else {
             return;
@@ -224,7 +224,7 @@ impl Ambience {
     }
 
     /// Footsteps. A step is a 3D one-shot at the foot, with the `[3d]` range of the
-    /// configuration (1 m), so it fades within a few metres — the pavement in front of the
+    /// configuration (1 m), so it fades within a few metres - the pavement in front of the
     /// bus is alive, the crowd at the far end of the street is not. Snow swallows a step
     /// (quieter and duller), a wet pavement sharpens it a little.
     fn footsteps(

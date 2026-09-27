@@ -425,8 +425,8 @@ impl Network {
         }
     }
 
-    /// Does `b` run beside `a` from about where `a` starts — another lane of the same spline,
-    /// or the other branch of a fork in the same junction — without `a` leading into it? A
+    /// Does `b` run beside `a` from about where `a` starts - another lane of the same spline,
+    /// or the other branch of a fork in the same junction - without `a` leading into it? A
     /// timetable track that lists two such paths one after the other changes lanes there
     /// (Spandau's line 92 moves from lane 5 to lane 6 of a six-lane Falkenseer Chaussee
     /// piece that way); driving `a` to its end first and then starting `b` sent the bus
@@ -576,7 +576,7 @@ impl Network {
                     let merge = joint && (a.start() - b.start()).truncate().length() > 3.0;
                     let place = if merge { Some((a.length(), b.length())) } else { polyline_crossing(a, b) };
                     // `[blockpath]`: the object says the two are in each other's way even
-                    // where their lines do not cross — the whole of both is the meeting place
+                    // where their lines do not cross - the whole of both is the meeting place
                     let (pa, pb) = (a.key.map(|k| k.path).unwrap_or(u16::MAX), b.key.map(|k| k.path).unwrap_or(u16::MAX));
                     if place.is_none() && (a.blocks.contains(&pb) || b.blocks.contains(&pa)) {
                         let (la, lb) = (a.length(), b.length());
@@ -617,7 +617,7 @@ impl Network {
     /// the higher `[rule] priority` goes first; between equals, a left turn waits for the
     /// oncoming traffic, and otherwise the one coming from the right has the right of way
     /// (the German "rechts vor links" that the stock maps rely on wherever they set no
-    /// priorities) — mirrored on a left-hand-traffic map. A train always goes first.
+    /// priorities) - mirrored on a left-hand-traffic map. A train always goes first.
     pub fn must_yield(&self, a: usize, b: usize) -> bool {
         let (la, lb) = (&self.lanes[a], &self.lanes[b]);
         if la.kind == LaneKind::Rail {
@@ -651,7 +651,7 @@ impl Network {
 
     /// The lane beside `lane` at `s` that carries the traffic the other way (the other half
     /// of a two-way street): (lane, distance along it at the same place, how far its middle
-    /// lies over to the oncoming side — the left, or the right on a left-hand-traffic map;
+    /// lies over to the oncoming side - the left, or the right on a left-hand-traffic map;
     /// `oncoming_sign` turns it into a lateral offset).
     pub fn opposite(&self, lane: usize, s: f32) -> Option<(usize, f32, f32)> {
         let l = self.lanes.get(lane)?;
@@ -909,7 +909,7 @@ impl Network {
     }
 
     /// The nearest lane of `kind` to `p`: (lane, distance along it, distance to it). With
-    /// the grid built, only lanes within about a cell of `p` are considered — enough for
+    /// the grid built, only lanes within about a cell of `p` are considered - enough for
     /// everything that asks where a vehicle or a person stands.
     pub fn nearest_lane(&self, p: DVec3, kind: LaneKind) -> Option<(usize, f32, f64)> {
         if !self.grid.is_empty() {
@@ -1776,7 +1776,7 @@ impl AiState {
 
     /// A random way on from the end of `lane`. Lanes the map closes to cars ([rule]
     /// no_cars, or a bus-only road) and lanes whose traffic density is zero are not driven
-    /// into — filtering them only at spawn still let cars turn into a pedestrian street or a
+    /// into - filtering them only at spawn still let cars turn into a pedestrian street or a
     /// depot yard from next door. A car that has taken a turn lane takes the turn.
     fn choose_after(&mut self, net: &Network, lane: usize) -> Option<usize> {
         let l = &net.lanes[lane];
@@ -2009,7 +2009,7 @@ impl AiState {
 
     /// How fast the car may be going now so that it can take every bend of the next stretch
     /// of its way at `lat_accel`, braking gently (2 m/s²) into the tight ones. Without this
-    /// the cars swept round a junction at 40 km/h — well over a g. The bend is the lane's
+    /// the cars swept round a junction at 40 km/h - well over a g. The bend is the lane's
     /// own curvature or the turn of the way over 6 m, whichever is sharper: lanes are linked
     /// with up to 40° between them, and such a kink is a bend too.
     pub fn curve_speed(&self, net: &Network) -> f32 {
@@ -2083,7 +2083,7 @@ impl AiState {
 
     /// Set the indicator for what the car is doing or about to do: a lane change, its own
     /// manoeuvre (pulling away from a stop), moving sideways into a bay or out round a
-    /// parked car and back, and a turn at the junction ahead — from about four seconds
+    /// parked car and back, and a turn at the junction ahead - from about four seconds
     /// before it (at least 25 m, at most 60 m) until the turn is done.
     pub fn update_blinker(&mut self, net: &Network) {
         self.blinker = if let Some(c) = self.change {

@@ -79,7 +79,7 @@ pub struct SyncTable {
     throttle: Option<VarId>,
     brake: Option<VarId>,
     /// The outside sounds: `[sound_ai]` (or `[sound]`), and the horn and indicator relay
-    /// entries of `[sound]` — with the folder their files are in.
+    /// entries of `[sound]` - with the folder their files are in.
     sounds: Vec<(Arc<omsi_vehicle::SoundCfg>, PathBuf)>,
 }
 
@@ -243,7 +243,7 @@ impl SyncTable {
             }
         }
         // the parts that move where they can be seen (not the cockpit's switches)
-        // — and the doors opened by hand, whose meshes are clickable: the W906's cab and rear
+        // - and the doors opened by hand, whose meshes are clickable: the W906's cab and rear
         // doors (`[mouseevent] cp_kryshka1_opn`, "kryshka" a Russian mod's word for a
         // leaf) swung open in the driver's game and stayed shut in everybody else's
         const DOORISH: [&str; 6] = ["door", "tuer", "tür", "ramp", "kryshka", "dver"];
@@ -400,7 +400,7 @@ pub struct RemoteVehicle {
     driver_tried: bool,
     /// Their states by their clock (s), oldest first, and how far our clock (`lan_now`) is
     /// ahead of theirs as the quickest state showed it: the bus is drawn where their states
-    /// put it a little in the past, between two of them — never pulled towards the newest
+    /// put it a little in the past, between two of them - never pulled towards the newest
     /// as it happened to arrive (network jitter made it jump a few centimetres at every
     /// state, and whoever stood in it shook).
     samples: std::collections::VecDeque<(f64, Pose)>,
@@ -575,7 +575,7 @@ fn date_of(clock: &omsi_sim::SimClock) -> String {
 }
 
 /// The name the other players see: `--lan-name` (the launcher passes the driver profile's
-/// name), else the personnel file's name, else the computer account's — never a name to
+/// name), else the personnel file's name, else the computer account's - never a name to
 /// type in, and never the bare "Driver" everybody would share.
 pub fn player_name(args: &Args) -> String {
     let given = args.lan_name.trim();
@@ -637,7 +637,7 @@ pub fn tunnel_url() -> Option<String> {
 
 /// Host: a WebSocket gateway to the session's port, and a free Cloudflare tunnel in front of
 /// it when `cloudflared` is installed, whose address goes to the rendezvous under the
-/// session's topic — the way in for a player whose router and ours cannot be punched
+/// session's topic - the way in for a player whose router and ours cannot be punched
 /// through (the code alone found a friend across the world once, and then never again).
 /// `web_port` 0 picks the session port + 10.
 pub fn open_public_gateway(session: &LanSession, info: omsi_net::ws::ServerInfo, web_port: u16, want_tunnel: bool) {
@@ -697,7 +697,7 @@ pub fn open_public_gateway(session: &LanSession, info: omsi_net::ws::ServerInfo,
 }
 
 /// The buses a joining player may choose, on the gateway's status page (the launcher
-/// offers only those): `only` when a server's list says, else every bus installed here —
+/// offers only those): `only` when a server's list says, else every bus installed here -
 /// read in the background (it takes a moment over all content folders).
 pub fn publish_vehicles(root: PathBuf, only: Vec<String>) {
     let _ = std::thread::Builder::new().name("vehicle list".into()).spawn(move || {
@@ -906,7 +906,7 @@ pub fn share_mods(args: &mut Args, lan: &mut LanSession) {
                     }
                 }
             }
-            // (in the background: the session is kept alive meanwhile — a join held for
+            // (in the background: the session is kept alive meanwhile - a join held for
             // minutes was dropped by the host and came in later without the mods)
             let (tx, rx) = std::sync::mpsc::channel::<String>();
             let mut fargs = args.clone();
@@ -1109,7 +1109,7 @@ fn adopt_at_runtime(
         theirs.weather = weather.clone();
         let want = crate::season_folder(&theirs, &world.global).1;
         if want != omsi_texture::season_folder() {
-            warnings.push(format!("the host's season ({}) differs from the one loaded here ({}) — start the game again to see it", want.as_deref().unwrap_or("summer"), omsi_texture::season_folder().as_deref().unwrap_or("summer")));
+            warnings.push(format!("the host's season ({}) differs from the one loaded here ({}) - start the game again to see it", want.as_deref().unwrap_or("summer"), omsi_texture::season_folder().as_deref().unwrap_or("summer")));
         }
     }
     let mut mine = world_info(args);
@@ -1160,7 +1160,7 @@ fn now_secs() -> u64 {
 }
 
 /// The addresses other players may join this host at, best first: (what network it is,
-/// `ip:port`, kind key) — a VPN's ("Hamachi 25.34.223.28:27015") before the LAN's.
+/// `ip:port`, kind key) - a VPN's ("Hamachi 25.34.223.28:27015") before the LAN's.
 pub fn host_addresses(port: u16) -> Vec<(&'static str, String, &'static str)> {
     omsi_net::addrs::joinable_addresses()
         .into_iter()
@@ -1231,7 +1231,7 @@ fn write_status(lan: &LanSession, game: &LanGame, player: Option<&Player>) {
     }
 }
 
-/// "35 m ahead", "1.2 km behind", "12 m to the left" — where `pose` is seen from our bus.
+/// "35 m ahead", "1.2 km behind", "12 m to the left" - where `pose` is seen from our bus.
 fn relative_position(me: &omsi_sim::VehicleInstance, pose: &Pose) -> String {
     let d = DVec3::new(pose.x, pose.y, pose.z) - me.position;
     let dist = d.truncate().length();
@@ -1444,7 +1444,7 @@ pub fn my_pose(
         3
     } else if on("lights_abbl") || on("lights_main") || v.var("Spot_Select").is_some_and(|s| s >= 0.0) {
         // (a mod bus names its lamps its own way; its selected spotlight is the dipped
-        // beam every script sets for the renderer — without it the others saw such a bus
+        // beam every script sets for the renderer - without it the others saw such a bus
         // drive through the night with its headlights off)
         2
     } else if on("lights_stand") {
@@ -1664,7 +1664,7 @@ fn heading_gap(a: f32, b: f32) -> f32 {
 
 /// Move our bus off anything standing where it spawned: along the road it stands on, the
 /// nearest free place behind or in front of the others (behind first at equal distance),
-/// or — off the road — along its own heading and then in rows beside it. Returns the
+/// or - off the road - along its own heading and then in rows beside it. Returns the
 /// distance moved (0 when the spawn was free, None when no free place was found).
 pub fn clear_spawn(
     p: &mut Player,
@@ -1918,7 +1918,7 @@ pub fn settle_spawn(
 
 /// The vehicle file a remote pose names, on this machine. The path comes off the network:
 /// it must be a plain relative `.bus` / `.ovh` path (`omsi_net::vehicle_path`), found under
-/// one of our content roots, and a regular file of a sane size — never a device such as
+/// one of our content roots, and a regular file of a sane size - never a device such as
 /// `/dev/zero`, never a file elsewhere on the disk.
 fn remote_bus_file(args: &Args, bus: &str) -> Result<PathBuf, String> {
     let rel = omsi_net::vehicle_path(bus)
@@ -2142,7 +2142,7 @@ impl RemoteVehicle {
         let off = self.offset?;
         let (last_t, last) = self.samples.back()?;
         // as far back as two of their recent states apart: a bus that stood still is sent
-        // five times a second, and 0.12 s behind the newest state lay past it — the doors,
+        // five times a second, and 0.12 s behind the newest state lay past it - the doors,
         // the wheels and the walker waited for each state and then jumped to it
         let n = self.samples.len();
         let gap = if n >= 2 {
@@ -2376,8 +2376,8 @@ fn drive_remote(rv: &mut RemoteVehicle, pose: &Pose, dt: f32, exact: bool) {
     );
     inputs.extend(t.throttle.map(|id| (id, pose.throttle)));
     inputs.extend(t.brake.map(|id| (id, pose.brake)));
-    // what is pinned to their values: the engine speed, the doors, and — for the same
-    // vehicle files — the lamps, switches and sound and moving-part values
+    // what is pinned to their values: the engine speed, the doors, and - for the same
+    // vehicle files - the lamps, switches and sound and moving-part values
     let mut pinned: Vec<(VarId, f32)> =
         Vec::with_capacity(8 + t.lamps.len() + t.switches.len() + t.values.len());
     if !t.values.iter().any(|v| Some(v.1) == t.engine_n) {
@@ -2732,7 +2732,7 @@ pub fn tick(
         }
         // drawn as the own bus is: its outside meshes from outside, its inside ones to
         // whoever stands in it (the outside and the AI meshes together fought over the
-        // same surfaces — the flicker and the black patches in the saloon), opaque slots
+        // same surfaces - the flicker and the black patches in the saloon), opaque slots
         // never faded by an alpha variable the AI scripts left at 0, the bellows skinned
         let inside = frame.inside_of == Some(*id);
         // OMSI_TRACE_REMOTE=<file.csv>: where each other player's bus is drawn, every frame

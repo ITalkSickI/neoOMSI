@@ -105,7 +105,7 @@ impl MeshAnimator {
             // arm's own two about the arm's base, and composed the other way round the
             // blade leaves the arm 1.2 m behind. Angles keep the same sign as the origin
             // rotations they are measured in (both are read in the original's left-handed
-            // frame, so both change sign here) — with only one of them flipped the wiper
+            // frame, so both change sign here) - with only one of them flipped the wiper
             // sweeps down into the bonnet instead of across the glass.
             m = *origin * local * origin.inverse() * m;
         }

@@ -110,7 +110,7 @@ struct Shared {
     reverb: Mutex<Reverb>,
     sample_rate: u32,
     channels: usize,
-    /// `OMSI_MUTE`: everything is mixed as usual (voices play and end), nothing is heard —
+    /// `OMSI_MUTE`: everything is mixed as usual (voices play and end), nothing is heard -
     /// for test runs on a machine somebody is working at.
     muted: bool,
 }
@@ -158,7 +158,7 @@ impl Shared {
             if let Some(p) = v.params.position {
                 let d = p - listener.position;
                 let dist = d.length().max(0.1);
-                // full within the range, then falling a little faster than 1/d — a plain
+                // full within the range, then falling a little faster than 1/d - a plain
                 // 1/d kept an aircraft's engine audible for kilometres
                 spatial_gain = (v.params.range / dist).min(1.0).powf(1.6);
                 let side = d.normalize_or_zero().dot(listener.right);

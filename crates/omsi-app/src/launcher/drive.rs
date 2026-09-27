@@ -1,5 +1,5 @@
-//! The Drive page: the duty put together in four steps — the bus, the route (map, line,
-//! tour), the time and weather, the roadbook — in a panel on the left, the bus itself in
+//! The Drive page: the duty put together in four steps - the bus, the route (map, line,
+//! tour), the time and weather, the roadbook - in a panel on the left, the bus itself in
 //! the showroom on the right, and the button that starts the game.
 
 use super::state::{fmt_bytes, hhmm};
@@ -142,7 +142,7 @@ fn step_bus(l: &mut Launcher, r: Rect) {
         // (the depot file is the map's, found by itself: see `State::default_hof`)
         if !v.missing_packs.is_empty() {
             let text = format!(
-                "This bus takes its dashboard, steering wheel or ticket machine from {} — not installed. It will drive with those parts missing, as in OMSI 2; install {} (Mods page) to complete it.",
+                "This bus takes its dashboard, steering wheel or ticket machine from {} - not installed. It will drive with those parts missing, as in OMSI 2; install {} (Mods page) to complete it.",
                 v.missing_packs.join(", "),
                 if v.missing_packs.len() == 1 { "that pack" } else { "those packs" }
             );
@@ -278,7 +278,7 @@ fn step_route_rest(l: &mut Launcher, r: Rect, mut y: f32) {
             // (the tour's name as the map writes it and OMSI lists it: "1", "Mo-Fr 1")
             let name = num.clone();
             ui.text_in(&name, Rect::new(rr.x + 10.0, rr.y + 6.0, rr.w - 110.0, 18.0), 13.5, Weight::Bold, c, Align::Left);
-            ui.text_in(&format!("{} – {}", hhmm(*first), hhmm(*last)), Rect::new(rr.right() - 110.0, rr.y + 6.0, 100.0, 18.0), 12.0, Weight::Medium, if *runs { ACCENT } else { TEXT_FAINT }, Align::Right);
+            ui.text_in(&format!("{} - {}", hhmm(*first), hhmm(*last)), Rect::new(rr.right() - 110.0, rr.y + 6.0, 100.0, 18.0), 12.0, Weight::Medium, if *runs { ACCENT } else { TEXT_FAINT }, Align::Right);
             let sub = if *runs {
                 format!("{trips} trips · {days}")
             } else {
@@ -435,9 +435,9 @@ fn step_time(l: &mut Launcher, r: Rect) {
         let root = std::path::PathBuf::from(&l.state.config.root);
         let list = AIRPORTS.get_or_init(|| {
             let text = std::fs::read(root.join("Weather").join("ICAO.txt")).map(|b| omsi_cfg::codepage::decode(&b)).unwrap_or_default();
-            let mut v: Vec<(String, String)> = text.lines().filter_map(|l| l.split_once(" - ").map(|(c, n)| (c.trim().to_string(), format!("{} – {}", c.trim(), n.trim())))).collect();
+            let mut v: Vec<(String, String)> = text.lines().filter_map(|l| l.split_once(" - ").map(|(c, n)| (c.trim().to_string(), format!("{} - {}", c.trim(), n.trim())))).collect();
             if !v.iter().any(|a| a.0 == "EDDB") {
-                v.insert(0, ("EDDB".into(), "EDDB – Berlin Brandenburg".into()));
+                v.insert(0, ("EDDB".into(), "EDDB - Berlin Brandenburg".into()));
             }
             v
         });
@@ -503,7 +503,7 @@ fn step_roadbook(l: &mut Launcher, r: Rect) {
             let head = Rect::new(v.x + 4.0, y, v.w - 12.0, 46.0);
             ui.p().rounded(head, 6.0, if k == 0 { SELECTED } else { FIELD });
             ui.text_in(&format!("{} · {} → {}", if k == 0 { "Your first trip" } else { "Then" }, if t.from.is_empty() { "?" } else { &t.from }, t.terminus), Rect::new(head.x + 10.0, head.y + 4.0, head.w - 20.0, 20.0), 13.0, Weight::Bold, TEXT, Align::Left);
-            ui.text_in(&format!("{} – {} · {:.1} km · {}{}", hhmm(t.departure), hhmm(t.arrival), t.km, if t.line.is_empty() { "depot run".to_string() } else { format!("line {}", t.line) }, format!(" · {}", t.name)), Rect::new(head.x + 10.0, head.y + 24.0, head.w - 20.0, 18.0), 11.0, Weight::Regular, TEXT_DIM, Align::Left);
+            ui.text_in(&format!("{} - {} · {:.1} km · {}{}", hhmm(t.departure), hhmm(t.arrival), t.km, if t.line.is_empty() { "depot run".to_string() } else { format!("line {}", t.line) }, format!(" · {}", t.name)), Rect::new(head.x + 10.0, head.y + 24.0, head.w - 20.0, 18.0), 11.0, Weight::Regular, TEXT_DIM, Align::Left);
             y += 52.0;
             let n = t.stops.len();
             for (s, st) in t.stops.iter().enumerate() {
@@ -583,7 +583,7 @@ fn summary(l: &mut Launcher, side: Rect) {
     let paint = if l.state.choice.paint.is_empty() { "Default paint".to_string() } else { l.state.choice.paint.clone() };
     l.ui.text_in(&paint, Rect::new(side.x, y, pw, 18.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
     y += 30.0;
-    let map = l.state.map().map(|m| if m.friendly.is_empty() { m.name.clone() } else { m.friendly.clone() }).unwrap_or_else(|| "—".into());
+    let map = l.state.map().map(|m| if m.friendly.is_empty() { m.name.clone() } else { m.friendly.clone() }).unwrap_or_else(|| "-".into());
     let duty = match (&l.state.choice.line, &l.state.choice.tour, l.state.choice.free) {
         (_, _, true) | (None, _, _) => "Free drive".to_string(),
         (Some(line), Some(t), _) => format!("Line {line}, tour {t}"),
@@ -650,7 +650,7 @@ fn summary(l: &mut Launcher, side: Rect) {
         }
     }
     if running > 0 {
-        let note = format!("{running} game{} running — see Sessions", if running > 1 { "s" } else { "" });
+        let note = format!("{running} game{} running - see Sessions", if running > 1 { "s" } else { "" });
         let nr = Rect::new(btn.x, btn.bottom() + 4.0, pw, 20.0);
         let (h, _, clicked) = l.ui.interact(id_of("running-note"), nr);
         if clicked {
@@ -676,7 +676,7 @@ fn start(l: &mut Launcher) {
     // accident: with one running, the button asks for a second click
     if running > 0 && l.state.second_armed.map(|t| t.elapsed().as_secs() >= 6).unwrap_or(true) {
         l.state.second_armed = Some(std::time::Instant::now());
-        l.state.set_status("A game is running already (its window may be behind this one — see Sessions). Click again to start another one anyway.", true);
+        l.state.set_status("A game is running already (its window may be behind this one - see Sessions). Click again to start another one anyway.", true);
         return;
     }
     l.state.second_armed = None;

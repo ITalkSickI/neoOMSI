@@ -16,7 +16,7 @@ pub extern "system" fn PluginStart(_owner: *mut std::ffi::c_void) {
 pub extern "system" fn PluginFinalize() {}
 
 /// # Safety
-/// `value` and `write` point to a Single and a Boolean, as Omsi.exe passes them.
+/// `value` and `write` point to a Single and a Boolean, as OMSI passes them.
 #[no_mangle]
 pub unsafe extern "system" fn AccessVariable(index: u16, value: *mut f32, write: *mut u8) {
     if index == 0 {

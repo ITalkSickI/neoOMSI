@@ -274,7 +274,7 @@ impl App {
         let stand = self.humans.as_mut().and_then(|h| h.driver_stand(v));
         let seat_w = stand.and_then(|l| self.humans.as_mut().and_then(|h| h.vehicle_cabin_world(v, l))).unwrap_or(v.position);
         let side = look.dot(right);
-        // a van's cab door by the seat (the W906): out of it, as a van driver gets out —
+        // a van's cab door by the seat (the W906): out of it, as a van driver gets out -
         // there is no standing room in such a cab, the driver who got up stood with their
         // head in the roof over the windscreen
         let cab_door = self.humans.as_mut().and_then(|h| h.vehicle_cab_door(v));
@@ -622,7 +622,7 @@ impl App {
         // walker was put in the seat behind the driver)
         let own_front = self.player.as_ref().and_then(|p| self.humans.as_mut().and_then(|h| h.vehicle_driver_door(&p.vehicle)));
         let Some(h) = self.humans.as_ref() else { return };
-        if omsi_cfg::env::var_os("OMSI_DEBUG_FOOT").is_some() { log::info!("on foot at ({:.1}, {:.1}): G — own bus doors {:?}, a seat near: {:?}", pos.x, pos.y, h.bus_doors(BusId::Player).iter().map(|d| ((d.x * 10.0).round() / 10.0, (d.y * 10.0).round() / 10.0)).collect::<Vec<_>>(), h.seat_near(pos, DOOR_REACH, None).map(|s| (s.bus, s.seat))); }
+        if omsi_cfg::env::var_os("OMSI_DEBUG_FOOT").is_some() { log::info!("on foot at ({:.1}, {:.1}): G - own bus doors {:?}, a seat near: {:?}", pos.x, pos.y, h.bus_doors(BusId::Player).iter().map(|d| ((d.x * 10.0).round() / 10.0, (d.y * 10.0).round() / 10.0)).collect::<Vec<_>>(), h.seat_near(pos, DOOR_REACH, None).map(|s| (s.bus, s.seat))); }
         if let Some(d) = own_front {
             if (d - pos).truncate().length() < DOOR_REACH {
                 self.walk_to_wheel();
@@ -1078,7 +1078,7 @@ impl App {
             let cmd = match aboard {
                 Some((bus, Some(k), at, _)) => AvatarCmd { pos: at, heading: wk.heading as f64, vel: DVec2::ZERO, lift: 0.0, seat: Some((bus, k as usize)), floor: Some(at.z), aboard: None },
                 Some((bus, None, at, _)) => AvatarCmd { pos: at, heading: wk.heading as f64, vel: DVec2::new(hh.sin(), hh.cos()) * wk.speed as f64, lift: 0.0, seat: None, floor: Some(at.z), aboard: wk.aboard.map(|a| (bus, glam::Vec3::from(a.local))) },
-                // (sitting in a bus that is not a player's: not drawn — its seat is not known)
+                // (sitting in a bus that is not a player's: not drawn - its seat is not known)
                 None if wk.seated => continue,
                 None => AvatarCmd { pos: DVec3::new(wk.x, wk.y, wk.z), heading: wk.heading as f64, vel: DVec2::new(hh.sin(), hh.cos()) * wk.speed as f64, lift: 0.0, seat: None, floor: w.walk_height(wk.x, wk.y).filter(|g| wk.z > g + 0.25).map(|_| wk.z), aboard: None },
             };

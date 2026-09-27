@@ -71,7 +71,7 @@ pub fn export_glb(root: &Path, vt: &VehicleType, vehicle: &VehicleInstance, sche
             let tex_name = subst.get(&tex_name.to_ascii_lowercase()).cloned().unwrap_or(tex_name);
             // OMSI reads the diffuse alpha only as an alpha test ([matl_alpha] 1) or a
             // blend ([matl_alpha] 2); otherwise it is the reflection mask and the surface
-            // is opaque — treated as a cutout, the NL202's body (alpha 0.15) vanished and
+            // is opaque - treated as a cutout, the NL202's body (alpha 0.15) vanished and
             // left the dark interior and dirt layers showing through
             let alpha_mode = vm.overrides.iter().filter(|o| o.texture.eq_ignore_ascii_case(&tex_name) || o.texture.eq_ignore_ascii_case(mat.map(|m| m.texture.as_str()).unwrap_or(""))).map(|o| o.alpha).max().unwrap_or(0);
             let alpha_override = alpha_mode >= 2;

@@ -193,7 +193,7 @@ fn parse_frame(t: &mut Tok, ctx: &mut Ctx, parent: Mat4) -> Result<(), O3dError>
                     }
                 }
                 // Direct3D writes the matrix row by row for row vectors (v' = v·M, the
-                // translation in elements 12–14); read column by column that is already the
+                // translation in elements 12-14); read column by column that is already the
                 // column-vector matrix glam uses. Transposing it as well dropped every
                 // translation into the bottom row and turned the rotations the wrong way: the
                 // BVG Citaro's Atron terminal and ALMEX (46 meshes 5.5 m forward and 1.3 m up)

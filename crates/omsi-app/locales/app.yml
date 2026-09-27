@@ -278,10 +278,10 @@ _version: 2
   ru: "Код сессии OMSI-XXXX-… или адрес; пусто = поиск в локальной сети"
   de: "Sitzungscode OMSI-XXXX-… oder Adresse; leer = LAN durchsuchen"
   fr: "Code de session OMSI-XXXX-… ou adresse ; vide = chercher sur le réseau local"
-"Once the game runs, the Sessions page shows the session code with a copy button; your friend pastes it into Join. It works at home and over the internet — no VPN needed.":
-  ru: "Когда игра запущена, на странице «Сессии» виден код сессии с кнопкой копирования; друг вставляет его в «Присоединиться». Работает дома и через интернет — VPN не нужен."
-  de: "Sobald das Spiel läuft, zeigt die Seite Sitzungen den Code mit Kopier-Knopf; dein Freund fügt ihn bei Beitreten ein. Funktioniert zu Hause und über das Internet — ohne VPN."
-  fr: "Une fois le jeu lancé, la page Sessions affiche le code avec un bouton copier ; votre ami le colle dans Rejoindre. Fonctionne à la maison et sur Internet — sans VPN."
+"Once the game runs, the Sessions page shows the session code with a copy button; your friend pastes it into Join. It works at home and over the internet - no VPN needed.":
+  ru: "Когда игра запущена, на странице «Сессии» виден код сессии с кнопкой копирования; друг вставляет его в «Присоединиться». Работает дома и через интернет - VPN не нужен."
+  de: "Sobald das Spiel läuft, zeigt die Seite Sitzungen den Code mit Kopier-Knopf; dein Freund fügt ihn bei Beitreten ein. Funktioniert zu Hause und über das Internet - ohne VPN."
+  fr: "Une fois le jeu lancé, la page Sessions affiche le code avec un bouton copier ; votre ami le colle dans Rejoindre. Fonctionne à la maison et sur Internet - sans VPN."
 "Weather":
   ru: "Погода"
   de: "Wetter"
@@ -354,10 +354,10 @@ _version: 2
   ru: "Сначала выберите автобус и карту."
   de: "Wähle zuerst einen Bus und eine Karte."
   fr: "Choisissez d'abord un bus et une carte."
-"A game is running already (its window may be behind this one — see Sessions). Click again to start another one anyway.":
-  ru: "Игра уже запущена (её окно может быть позади — см. «Сессии»). Нажмите ещё раз, чтобы запустить ещё одну."
-  de: "Ein Spiel läuft bereits (sein Fenster liegt vielleicht dahinter — siehe Sitzungen). Nochmals klicken, um trotzdem ein weiteres zu starten."
-  fr: "Une partie est déjà lancée (sa fenêtre est peut-être derrière — voir Sessions). Cliquez encore pour en lancer une autre."
+"A game is running already (its window may be behind this one - see Sessions). Click again to start another one anyway.":
+  ru: "Игра уже запущена (её окно может быть позади - см. «Сессии»). Нажмите ещё раз, чтобы запустить ещё одну."
+  de: "Ein Spiel läuft bereits (sein Fenster liegt vielleicht dahinter - siehe Sitzungen). Nochmals klicken, um trotzdem ein weiteres zu starten."
+  fr: "Une partie est déjà lancée (sa fenêtre est peut-être derrière - voir Sessions). Cliquez encore pour en lancer une autre."
 "Profile":
   ru: "Профиль"
   de: "Profil"
@@ -386,10 +386,10 @@ _version: 2
   ru: "Установка"
   de: "Einrichtung"
   fr: "Installation"
-"The original OMSI 2 was not found automatically. Choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.":
-  ru: "Оригинальная OMSI 2 не найдена автоматически. Выберите её папку (где Omsi.exe, maps и Vehicles) и нажмите «Сохранить»."
-  de: "Das originale OMSI 2 wurde nicht automatisch gefunden. Wähle seinen Ordner (mit Omsi.exe, maps und Vehicles) und drücke Speichern."
-  fr: "L'OMSI 2 original n'a pas été trouvé automatiquement. Choisissez son dossier (celui avec Omsi.exe, maps et Vehicles) et appuyez sur Enregistrer."
+"The original OMSI 2 was not found automatically. Choose its folder (the one with OMSI, maps and Vehicles) and press Save.":
+  ru: "Оригинальная OMSI 2 не найдена автоматически. Выберите её папку (где OMSI, maps и Vehicles) и нажмите «Сохранить»."
+  de: "Das originale OMSI 2 wurde nicht automatisch gefunden. Wähle seinen Ordner (mit OMSI, maps und Vehicles) und drücke Speichern."
+  fr: "L'OMSI 2 original n'a pas été trouvé automatiquement. Choisissez son dossier (celui avec OMSI, maps et Vehicles) et appuyez sur Enregistrer."
 "No preview":
   ru: "Нет превью"
   de: "Keine Vorschau"
@@ -422,10 +422,10 @@ _version: 2
   ru: "Настройки сохранены."
   de: "Einstellungen gespeichert."
   fr: "Paramètres enregistrés."
-"The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.":
-  ru: "Оригинальная OMSI 2 не найдена автоматически: выберите её папку (где Omsi.exe, maps и Vehicles) и нажмите «Сохранить»."
-  de: "Das originale OMSI 2 wurde nicht automatisch gefunden: wähle seinen Ordner (mit Omsi.exe, maps und Vehicles) und drücke Speichern."
-  fr: "L'OMSI 2 original n'a pas été trouvé automatiquement : choisissez son dossier (celui avec Omsi.exe, maps et Vehicles) et appuyez sur Enregistrer."
+"The original OMSI 2 was not found automatically: choose its folder (the one with OMSI, maps and Vehicles) and press Save.":
+  ru: "Оригинальная OMSI 2 не найдена автоматически: выберите её папку (где OMSI, maps и Vehicles) и нажмите «Сохранить»."
+  de: "Das originale OMSI 2 wurde nicht automatisch gefunden: wähle seinen Ordner (mit OMSI, maps und Vehicles) und drücke Speichern."
+  fr: "L'OMSI 2 original n'a pas été trouvé automatiquement : choisissez son dossier (celui avec OMSI, maps et Vehicles) et appuyez sur Enregistrer."
 "The driver whose personnel file the game writes: hours, kilometres, punctuality, tickets.":
   ru: "Водитель, в личное дело которого игра пишет: часы, километры, пунктуальность, билеты."
   de: "Der Fahrer, dessen Personalakte das Spiel führt: Stunden, Kilometer, Pünktlichkeit, Fahrscheine."
@@ -495,7 +495,7 @@ _version: 2
   de: "Letzte Fahrten"
   fr: "Trajets récents"
 "No runs yet. Drive a duty and it shows up here.":
-  ru: "Поездок пока нет. Отработайте смену — она появится здесь."
+  ru: "Поездок пока нет. Отработайте смену - она появится здесь."
   de: "Noch keine Fahrten. Fahre einen Dienst, dann erscheint er hier."
   fr: "Aucun trajet pour l'instant. Faites un service et il apparaîtra ici."
 "Every change is saved at once; the game reads them when it starts.":
@@ -578,10 +578,10 @@ _version: 2
   ru: "По умолчанию (1200 м)"
   de: "Standard (1200 m)"
   fr: "Par défaut (1200 m)"
-"600 m — fastest":
-  ru: "600 м — быстрее всего"
-  de: "600 m — am schnellsten"
-  fr: "600 m — le plus rapide"
+"600 m - fastest":
+  ru: "600 м - быстрее всего"
+  de: "600 m - am schnellsten"
+  fr: "600 m - le plus rapide"
 "Automatic":
   ru: "Автоматически"
   de: "Automatisch"
@@ -1042,10 +1042,10 @@ _version: 2
   ru: "Назначения клавиш сохранены."
   de: "Tastenbelegung gespeichert."
   fr: "Raccourcis enregistrés."
-"The games you started: their logs, and their LAN session — the code to give a friend, who joined, the chat.":
-  ru: "Запущенные вами игры: их журналы и сетевая сессия — код для друга, кто подключился, чат."
-  de: "Die gestarteten Spiele: ihre Protokolle und ihre LAN-Sitzung — der Code für einen Freund, wer beigetreten ist, der Chat."
-  fr: "Les parties lancées : leurs journaux et leur session réseau — le code à donner à un ami, qui a rejoint, le chat."
+"The games you started: their logs, and their LAN session - the code to give a friend, who joined, the chat.":
+  ru: "Запущенные вами игры: их журналы и сетевая сессия - код для друга, кто подключился, чат."
+  de: "Die gestarteten Spiele: ihre Protokolle und ihre LAN-Sitzung - der Code für einen Freund, wer beigetreten ist, der Chat."
+  fr: "Les parties lancées : leurs journaux et leur session réseau - le code à donner à un ami, qui a rejoint, le chat."
 "No game is running. Start a duty on the Drive page; to drive with a friend, choose LAN play → Host there, and give them the session code shown here.":
   ru: "Игра не запущена. Начните смену на странице «Поездка»; чтобы играть с другом, выберите там «Игра по сети → Создать» и дайте ему код сессии отсюда."
   de: "Kein Spiel läuft. Starte einen Dienst auf der Seite Fahren; um mit einem Freund zu fahren, wähle dort Netzwerkspiel → Hosten und gib ihm den hier gezeigten Code."
@@ -1070,10 +1070,10 @@ _version: 2
   ru: "КОД СЕТЕВОЙ СЕССИИ"
   de: "LAN-SITZUNGSCODE"
   fr: "CODE DE SESSION RÉSEAU"
-"Your friend pastes it into LAN play → Join — at home or anywhere on the internet.":
-  ru: "Друг вставляет его в «Игра по сети → Присоединиться» — дома или где угодно через интернет."
-  de: "Dein Freund fügt ihn bei Netzwerkspiel → Beitreten ein — zu Hause oder irgendwo im Internet."
-  fr: "Votre ami le colle dans Jeu en réseau → Rejoindre — à la maison ou n'importe où sur Internet."
+"Your friend pastes it into LAN play → Join - at home or anywhere on the internet.":
+  ru: "Друг вставляет его в «Игра по сети → Присоединиться» - дома или где угодно через интернет."
+  de: "Dein Freund fügt ihn bei Netzwerkspiel → Beitreten ein - zu Hause oder irgendwo im Internet."
+  fr: "Votre ami le colle dans Jeu en réseau → Rejoindre - à la maison ou n'importe où sur Internet."
 "Copy code":
   ru: "Скопировать код"
   de: "Code kopieren"
@@ -1098,10 +1098,10 @@ _version: 2
   ru: "Код сессии скопирован."
   de: "Sitzungscode kopiert."
   fr: "Code de session copié."
-"A bus, a map, scenery, a whole OMSI folder — as a folder or a .zip. The original OMSI 2 folder is never written to.":
-  ru: "Автобус, карта, объекты, целая папка OMSI — папкой или .zip. В папку оригинальной OMSI 2 ничего не пишется."
-  de: "Ein Bus, eine Karte, Szenerie, ein ganzer OMSI-Ordner — als Ordner oder .zip. In den originalen OMSI-2-Ordner wird nie geschrieben."
-  fr: "Un bus, une carte, des décors, tout un dossier OMSI — en dossier ou en .zip. Le dossier de l'OMSI 2 original n'est jamais modifié."
+"A bus, a map, scenery, a whole OMSI folder - as a folder or a .zip. The original OMSI 2 folder is never written to.":
+  ru: "Автобус, карта, объекты, целая папка OMSI - папкой или .zip. В папку оригинальной OMSI 2 ничего не пишется."
+  de: "Ein Bus, eine Karte, Szenerie, ein ganzer OMSI-Ordner - als Ordner oder .zip. In den originalen OMSI-2-Ordner wird nie geschrieben."
+  fr: "Un bus, une carte, des décors, tout un dossier OMSI - en dossier ou en .zip. Le dossier de l'OMSI 2 original n'est jamais modifié."
 "Install a mod":
   ru: "Установить мод"
   de: "Mod installieren"
@@ -1198,10 +1198,10 @@ _version: 2
   ru: "Программа openomsi"
   de: "Das Programm openomsi"
   fr: "Le programme openomsi"
-"The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation, Steam or not). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.":
-  ru: "Папка OMSI 2 — та, где есть maps и Vehicles (любая полная установка, Steam или нет). Файл игры — программа omsi этого переписанного варианта; он находится сам, если лежит рядом с лаунчером."
-  de: "Der OMSI-2-Ordner ist der mit maps und Vehicles (jede vollständige Installation, Steam oder nicht). Die Spieldatei ist das Programm openomsi; sie wird gefunden, wenn sie neben dem Launcher liegt."
-  fr: "Le dossier OMSI 2 est celui qui contient maps et Vehicles (toute installation complète, Steam ou non). L'exécutable est le programme omsi de cette réécriture ; il est trouvé tout seul s'il est à côté du lanceur."
+"The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.":
+  ru: "Папка OMSI 2 - та, где есть maps и Vehicles (любая полная установка). Файл игры - программа omsi этого переписанного варианта; он находится сам, если лежит рядом с лаунчером."
+  de: "Der OMSI-2-Ordner ist der mit maps und Vehicles (jede vollständige Installation). Die Spieldatei ist das Programm openomsi; sie wird gefunden, wenn sie neben dem Launcher liegt."
+  fr: "Le dossier OMSI 2 est celui qui contient maps et Vehicles (toute installation complète). L'exécutable est le programme omsi de cette réécriture ; il est trouvé tout seul s'il est à côté du lanceur."
 "Save":
   ru: "Сохранить"
   de: "Speichern"
@@ -1231,7 +1231,7 @@ _version: 2
   de: "Situationen"
   fr: "Situations"
 "Arrow keys choose, Enter starts, Esc quits":
-  ru: "Стрелки — выбор, Enter — старт, Esc — выход"
+  ru: "Стрелки - выбор, Enter - старт, Esc - выход"
   de: "Pfeiltasten wählen, Enter startet, Esc beendet"
   fr: "Flèches pour choisir, Entrée pour démarrer, Échap pour quitter"
 "Click here or press / to chat":
@@ -1239,7 +1239,7 @@ _version: 2
   de: "Hier klicken oder / drücken zum Chatten"
   fr: "Cliquez ici ou appuyez sur / pour discuter"
 "Paused  ·  P to go on":
-  ru: "Пауза  ·  P — продолжить"
+  ru: "Пауза  ·  P - продолжить"
   de: "Pause  ·  P zum Fortsetzen"
   fr: "En pause  ·  P pour reprendre"
 "Paused":
@@ -1258,10 +1258,10 @@ _version: 2
   ru: "У этого автобуса нет освещения салона"
   de: "Dieser Bus hat keine Innenbeleuchtung"
   fr: "Ce bus n'a pas d'éclairage intérieur"
-"Saloon light switches on — no power (battery off?)":
-  ru: "Свет в салоне включён — нет питания (батарея выключена?)"
-  de: "Innenlicht an — kein Strom (Batterie aus?)"
-  fr: "Éclairage allumé — pas de courant (batterie coupée ?)"
+"Saloon light switches on - no power (battery off?)":
+  ru: "Свет в салоне включён - нет питания (батарея выключена?)"
+  de: "Innenlicht an - kein Strom (Batterie aus?)"
+  fr: "Éclairage allumé - pas de courant (batterie coupée ?)"
 "Saloon lights off":
   ru: "Свет в салоне выключен"
   de: "Innenbeleuchtung aus"
@@ -1335,7 +1335,7 @@ _version: 2
   de: "Kein anderes Fahrzeug zum Fahren"
   fr: "Aucun autre véhicule à conduire"
 "No quicksave yet (Alt+S saves one)":
-  ru: "Быстрого сохранения нет (Alt+S — сохранить)"
+  ru: "Быстрого сохранения нет (Alt+S - сохранить)"
   de: "Noch kein Schnellspeicher (Alt+S speichert)"
   fr: "Pas encore de sauvegarde rapide (Alt+S en crée une)"
 "This bus has no ticket desk camera":
@@ -1347,7 +1347,7 @@ _version: 2
   de: "Fahrgast"
   fr: "Passager"
 "Mouse steering on: across steers, up is the throttle, down the brake (O turns it off)":
-  ru: "Руление мышью вкл.: влево-вправо — руль, вверх — газ, вниз — тормоз (O — выключить)"
+  ru: "Руление мышью вкл.: влево-вправо - руль, вверх - газ, вниз - тормоз (O - выключить)"
   de: "Maussteuerung an: quer lenkt, hoch ist Gas, runter Bremse (O schaltet aus)"
   fr: "Direction à la souris : horizontal pour tourner, haut pour accélérer, bas pour freiner (O pour désactiver)"
 "Mouse steering off":
@@ -1443,7 +1443,7 @@ _version: 2
   de: "Sitzung beenden"
   fr: "Terminer la session"
 "Refuel and wash only at a petrol station or in the depot's wash yard":
-  ru: "Заправка и мойка — только на заправке или на мойке депо"
+  ru: "Заправка и мойка - только на заправке или на мойке депо"
   de: "Tanken und Waschen nur an einer Tankstelle oder in der Waschanlage des Betriebshofs"
   fr: "Plein et lavage seulement à une station-service ou à l'aire de lavage du dépôt"
 "Get up":
@@ -1455,7 +1455,7 @@ _version: 2
   de: "Hinsetzen"
   fr: "S'asseoir"
 "On foot: W A S D walk, Shift runs, Space jumps, F1 / F2 / F3 cameras, G at a door sits down":
-  ru: "Пешком: W A S D — идти, Shift — бег, Пробел — прыжок, F1 / F2 / F3 — камеры, G у двери — сесть"
+  ru: "Пешком: W A S D - идти, Shift - бег, Пробел - прыжок, F1 / F2 / F3 - камеры, G у двери - сесть"
   de: "Zu Fuß: W A S D gehen, Shift rennen, Leertaste springen, F1 / F2 / F3 Kameras, G an einer Tür hinsetzen"
   fr: "À pied : W A S D pour marcher, Shift pour courir, Espace pour sauter, F1 / F2 / F3 caméras, G à une porte pour s'asseoir"
 "No free seat here: stand by a bus's door":
@@ -1638,7 +1638,7 @@ _version: 2
   fr: "Choisir un bus et rejoindre"
 
 "Paste the code your friend's game shows. The map, time and weather are the host's; you choose your bus.":
-  ru: "Вставьте код из игры друга. Карта, время и погода — как у хоста; автобус выбираете вы."
+  ru: "Вставьте код из игры друга. Карта, время и погода - как у хоста; автобус выбираете вы."
   de: "Füge den Code aus dem Spiel deines Freundes ein. Karte, Zeit und Wetter sind die des Hosts; den Bus wählst du."
   fr: "Collez le code affiché par le jeu de votre ami. La carte, l'heure et la météo sont celles de l'hôte ; vous choisissez votre bus."
 
@@ -1658,7 +1658,7 @@ _version: 2
   fr: "En ligne : 1 autre joueur"
 
 "Get in through an open door of the bus, then G by a seat sits down":
-  ru: "Войдите в открытую дверь автобуса, затем G у сиденья — сесть"
+  ru: "Войдите в открытую дверь автобуса, затем G у сиденья - сесть"
   de: "Steig durch eine offene Tür ein, dann G am Sitz zum Hinsetzen"
   fr: "Montez par une porte ouverte, puis G près d'un siège pour s'asseoir"
 

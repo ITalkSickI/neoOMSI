@@ -13,14 +13,13 @@
 </p>
 
 **openOMSI** is a from-scratch recreation of the bus simulator **OMSI 2**, written in Rust:
-64-bit, multithreaded, with a modern renderer (Metal / Vulkan / DirectX 12 through wgpu) —
+64-bit, multithreaded, with a modern renderer (Metal / Vulkan / DirectX 12 through wgpu) -
 and fully compatible with the existing maps, buses, scenery and mods.
 
 > [!IMPORTANT]
 > **openOMSI needs an original copy of OMSI 2.** It contains no game content of its own: it
-> plays on the maps, vehicles and other files of an installed OMSI 2 (any version, Steam or
-> not) and **will not start without one**. Buy OMSI 2 on
-> [Steam](https://store.steampowered.com/app/252530/OMSI_2_Steam_Edition/) if you do not have it.
+> plays on the maps, vehicles and other files of an installed OMSI 2 and **will not start without one**.
+
 
 ## Download
 
@@ -29,10 +28,10 @@ Every commit to `main` is built by GitHub Actions and published on the
 
 | Platform | File |
 | --- | --- |
-| Windows x64 | `openOMSI-<version>-windows-x64.zip` — run `openomsi.exe` |
-| macOS (Apple silicon) | `openOMSI-<version>-macos-arm64.zip` — open `openOMSI.app` |
-| Linux x64 | `openOMSI-<version>-linux-x64.zip` — run `openomsi` |
-| Dedicated server (Linux x64) | `openOMSI-<version>-server-linux-x64.zip` — see [docs/SERVER.md](docs/SERVER.md) |
+| Windows x64 | `openOMSI-<version>-windows-x64.zip` - run `openomsi.exe` |
+| macOS (Apple silicon) | `openOMSI-<version>-macos-arm64.zip` - open `openOMSI.app` |
+| Linux x64 | `openOMSI-<version>-linux-x64.zip` - run `openomsi` |
+| Dedicated server (Linux x64) | `openOMSI-<version>-server-linux-x64.zip` - see [docs/SERVER.md](docs/SERVER.md) |
 
 Start the game, point the launcher to your OMSI 2 folder once, pick a map, a bus and a duty,
 and drive. Mods go into the folder next to the game (or through the launcher's **Mods**
@@ -42,11 +41,11 @@ page); the original installation is never written to.
 
 ## Goals
 
-1. **1:1 behaviour.** Every content format of the original — maps, splines, scenery objects,
-   vehicles, scripts, timetables, HOF files, fonts, weather, tickets, situations, plugins —
+1. **1:1 behaviour.** Every content format of the original - maps, splines, scenery objects,
+   vehicles, scripts, timetables, HOF files, fonts, weather, tickets, situations, plugins -
    loads and behaves exactly as in OMSI 2.2.032. Existing maps and mods work unchanged.
 2. **No original code or assets.** Nothing from the original is copied; the formats are
-   reverse engineered and documented in [docs/FORMATS.md](docs/FORMATS.md).
+   described in [docs/FORMATS.md](docs/FORMATS.md).
 3. **A better engine.** 64-bit address space, streaming and texture loading on worker threads,
    no 2 GB limit, no single-thread stalls, LAN multiplayer and a dedicated server.
 
@@ -59,9 +58,9 @@ pages live in [`docs/`](docs):
 | --- | --- |
 | [User guide](docs/USER_GUIDE.md) | running, controls, launcher, settings, mods, LAN play, debug switches |
 | [Building](docs/BUILDING.md) | building from source on macOS, Windows and Linux |
-| [Content formats](docs/FORMATS.md) | every OMSI 2 file format, as reverse engineered |
+| [Content formats](docs/FORMATS.md) | every OMSI 2 file format |
 | [Architecture](docs/ARCHITECTURE.md) | crates, threading, renderer, roadmap |
-| [Routes in Omsi.exe](docs/RE_ROUTES.md) | how the original runs timetables, chrono, HOF, IBIS |
+| [Routes](docs/ROUTES.md) | how the original runs timetables, chrono, HOF, IBIS |
 | [Plugins](docs/PLUGINS.md) | OMSI plugin DLLs and the 32-bit plugin host |
 | [Dedicated server](docs/SERVER.md) | hosting a session without a window |
 | [Versioning & releases](docs/VERSIONING.md) | the `MAJOR.MINOR.COMMIT` scheme and the CI |
@@ -94,7 +93,7 @@ openOMSI/
 │   ├── omsi-sim/        vehicles, AI traffic, people, physics
 │   ├── omsi-render/     the wgpu renderer
 │   ├── omsi-audio/ omsi-net/ omsi-plugin/ omsi-ui/   sound, multiplayer, plugins, UI toolkit
-├── tools/             developer tools: omsi-check (format coverage), omsi-re (Omsi.exe reader)
+├── tools/             developer tools: omsi-check (format coverage)
 ├── scripts/           build scripts for every platform, version.sh, packaging files
 ├── assets/            fonts, Material icons, app icons (assets/icons/app), logos (assets/logos)
 ├── docs/              documentation (also published as the website)
@@ -104,10 +103,9 @@ openOMSI/
 
 ## Contributing
 
-Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 openOMSI is released under the [MIT License](LICENSE). OMSI and OMSI 2 are trademarks of their
-respective owners (MR Software GbR / aerosoft); openOMSI is an independent project and is not
-affiliated with or endorsed by them.
+respective owners. openOMSI is an independent project and is not affiliated with them.

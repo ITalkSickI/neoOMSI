@@ -68,7 +68,7 @@ impl Terrain {
 
     /// Height at tile-local coordinates (metres, 0..300) on the ground as drawn: each cell
     /// is two triangles split along the diagonal from its (i, j) to its (i+1, j+1) corner,
-    /// as Omsi.exe splits them (its `.map.terrain_0.rdy` vertex cache). Objects, people and
+    /// as OMSI splits them (its `.map.terrain_0.rdy` vertex cache). Objects, people and
     /// wheels stand on that; a bilinear patch differs from it by centimetres on a curved
     /// slope and by half the step beside a kerb.
     pub fn sample(&self, x: f32, y: f32) -> f32 {
@@ -123,7 +123,7 @@ impl Water {
     }
 }
 
-/// `tile.map.prt`: precache list — scenery object file followed by min id, max id and -1.
+/// `tile.map.prt`: precache list - scenery object file followed by min id, max id and -1.
 pub fn parse_prt(text: &str) -> Vec<(String, i64, i64)> {
     let lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
     let mut out = Vec::new();

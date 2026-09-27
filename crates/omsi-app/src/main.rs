@@ -1,4 +1,4 @@
-//! `omsi` — load an OMSI 2 map and render it.
+//! `omsi` - load an OMSI 2 map and render it.
 //!
 //! ```text
 //! omsi --root "/path/to/OMSI 2" --map maps/Grundorf/global.cfg            # window
@@ -193,9 +193,9 @@ fn main() -> Result<()> {
                 let missing = omsi_cfg::missing_original_essentials(&args.root);
                 let text = format!(
                     "The original OMSI 2 was not found.\n\n\
-                     openOMSI needs a complete installation of the original game (any version, \
-                     Steam or not). Choose its folder in the launcher (Setup), or start once with \
-                     --root \"/path/to/OMSI 2\" — the folder with Omsi.exe, maps and Vehicles in it.\n\n\
+                     openOMSI needs a complete installation of the original game (any version). \
+                     Choose its folder in the launcher (Setup), or start once with \
+                     --root \"/path/to/OMSI 2\", the folder with Omsi.exe, maps and Vehicles in it.\n\n\
                      Missing in {}: {}",
                     args.root.display(),
                     missing.join(", ")

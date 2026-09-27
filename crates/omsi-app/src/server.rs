@@ -1,5 +1,5 @@
 //! The dedicated server (`omsi --server server.cfg`): a session host that is always on, like
-//! a Minecraft server — no window, no sound, no graphics card (the renderer runs on wgpu's
+//! a Minecraft server - no window, no sound, no graphics card (the renderer runs on wgpu's
 //! no-op device: the world, the traffic, the timetable and the people are simulated as the
 //! host's game simulates them, and nothing is drawn). Players reach it at `host:port` (UDP)
 //! or at its web address over a WebSocket (`omsi_net::ws`), which is what a free Cloudflare

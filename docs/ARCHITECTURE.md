@@ -16,7 +16,7 @@ state.
 | `mc_roadvehicle`, `mc_vehicle`, `mc_train`, `mc_passcabin`, `mc_sound` | `omsi-vehicle` | parser done |
 | `mc_timetable`, `mc_station`           | `omsi-timetable`              | parser done; the runtime (duties, trips, layovers, departure boards) is `omsi-app::schedule` |
 | `mc_weather`, `mc_himmel`, `mc_font`, `mc_language`, `mc_money`, `mc_human`, `mc_driver`, `mc_situation`, `mc_input`, options | `omsi-content` | parsers done |
-| `mc_texMan`                            | `omsi-texture`                | loading done incl. seasonal and `_LOW` variants; BC1–3 on the GPU (DXT as is, others compressed) and a texture budget |
+| `mc_texMan`                            | `omsi-texture`                | loading done incl. seasonal and `_LOW` variants; BC1-3 on the GPU (DXT as is, others compressed) and a texture budget |
 | `mc_sound` runtime, DirectSound        | `omsi-audio` (cpal)           | mixer, WAV, loop/one-shot sounds with volcurves, conditions, triggers, 3D |
 | `mc_font` text textures                | `omsi-sim::texttex`           | `[texttexture]` rendering from `.oft` fonts |
 | tessellation, spline geometry          | `omsi-geometry`               | splines, terrain, placement done; the ground cut under flush surfaces and `[terrainhole]` |
@@ -25,7 +25,7 @@ state.
 | vehicle runtime (`TRoadVehicleInst`)   | `omsi-sim`                    | scripts, animations, dynamic materials, keyboard/mouse input, IBIS typing, coupled parts |
 | AI (`mc_path`, `mc_pathrule`), humans, physics (ODE) | `omsi-sim` | `traffic` + `ai_motion` (rules, light programs, following, passing), `human` + `crowd` (poses, queues, avoidance), `rigid` + `physics` (wheels, collisions) |
 | Optionen and the start dialogs         | `omsi-app::launcher` + `omsi-launcher-core` | the game's own window (wgpu, `omsi-ui`): profile, bus, map, duty, weather, settings, mods, running games (the Tauri launcher is gone since round 9) |
-| — (no original counterpart)            | `omsi-net`, `omsi-app::lan`   | LAN play: UDP session, bit-packed vehicle states, chat |
+| - (no original counterpart)            | `omsi-net`, `omsi-app::lan`   | LAN play: UDP session, bit-packed vehicle states, chat |
 
 ## Threading
 
@@ -38,7 +38,7 @@ state.
   (and unloads within the frame budget) so that streaming never shows as a stutter.
 * Textures decode on worker threads through `TextureCache` and are compressed there
   (BC1/BC3) before they go up. A vehicle set read ahead for the timetable fleet is made on
-  the GPU by the worker as well — wgpu takes device calls from any thread — so the drawing
+  the GPU by the worker as well - wgpu takes device calls from any thread - so the drawing
   thread only puts it into the scene.
 * People are posed and skinned in parallel (`par_iter_mut` over those due this frame, at a
   rate that falls with distance and with what the camera sees).
@@ -97,7 +97,7 @@ budget.
   another place first (and raises it) to check the way back.
 * Freed scene slots are handed out lowest first, and after unloads a free tail of the
   scene's arrays is cut off (`World::compact_slots`; a few live entries at the end keep the
-  arrays long — moving live entries is not done).
+  arrays long - moving live entries is not done).
 * Sound clips nobody holds (no sound set, no voice) and nobody asked for in a minute leave
   the cache (`AudioEngine::trim_clips`; 140 MB of every vehicle that ever came into
   earshot before) and are read again in the background; the map index hands its 345 000
@@ -132,7 +132,7 @@ budget.
   transpose.
 * Vehicle frame = the `.cfg` frame (x right, y forward, z up), origin at the model's z = 0:
   the plane the tyres touch with the springs **unloaded**, so a standing bus's origin is
-  10–16 cm above the road. `coll_pos_*` is in that frame, at bumper height.
+  10-16 cm above the road. `coll_pos_*` is in that frame, at bumper height.
 * Angles: `Wheel_Rotation_*` and `Axle_Steering_*` are radians, positive to the right;
   `articulation_<n>_alpha` is the joint's yaw in clockwise degrees (`beta` its pitch), `n`
   the coupled part's position in the train.
@@ -191,14 +191,14 @@ budget.
    `PAX_Exit<i>_Req/_Open`, `door_aussenoeffner`), and the depot services `veh_tank`,
    `veh_wash`, `malfunction_gettime` / `malfunction_reset` (the workshop's minutes come
    from the bus script, the travel time from the map's `[repair_time_min]`). **(done)**
-   Also: the driver's personnel file (.odr) — stops served and how many were left early or
+   Also: the driver's personnel file (.odr) - stops served and how many were left early or
    late, hectometres, crashes and pedestrians knocked down, tickets and takings, and the
    three ratings OMSI shows (`--driver`, F9). **(done)**
    Also: water surfaces from `.map.water`, wet roads from the `[moisture]` texture sidecar,
    crossings warped onto the ground with `[crossing_heightdeformation]`, and `[maplight]`
    reading as the brightness it declares (a petrol station's red sign used to wash a whole
    street red at night). **(done)**
-   Also: the painted ground — every `[groundtex]` above the first is blended over the tile
+   Also: the painted ground - every `[groundtex]` above the first is blended over the tile
    through the alpha mask the editor's brush writes to `texture/map/tile_x_y.map.<n>.dds`,
    with the ground texture and its detail texture repeating as often as `global.cfg` says;
    water from the map's own `texture/water.tga`. **(done)**
@@ -209,7 +209,7 @@ budget.
    Next: bus stop shelters with waiting people inside, wear over a duty (bulb lifetimes,
    battery age), and the depot chooser that tells the workshop whether the bus is standing
    in a depot. **(current)**
-   Also: `[newanim]` blocks composed the way the original does (see docs/FORMATS.md) — the
+   Also: `[newanim]` blocks composed the way the original does (see docs/FORMATS.md) - the
    doors fold to the sides of the doorway again and every other two-stage part (gear
    selector, parking brake, sun blind, ignition key) sits where it belongs; people on foot
    stand on the top surface rather than on the road under the kerb; Shift+U puts the bus
@@ -223,11 +223,11 @@ budget.
    from above and reports where the picture shows ground instead of road (0 of ~400 points
    on both stock maps). **(done)**
    Known gaps: a click reaches a switch through whatever is drawn in front of it (the
-   steering wheel rim) — an occlusion test was tried and dropped because it made a third of
+   steering wheel rim) - an occlusion test was tried and dropped because it made a third of
    the switches unreachable from the default seat.
    Also (Sept 2026, the "problems" pass): keyboard steering swings back like a damped
    spring whose pull grows with speed; the rigid body holds a braked bus still (static
-   friction below 0.15 m/s, sleep under 3 cm/s) — it used to creep for ever;
+   friction below 0.15 m/s, sleep under 3 cm/s) - it used to creep for ever;
    `Axle_Suspension_*` is minus the compression (positive = wheel down), so the wheels
    stay in their arches; Z/X/C indicators with the `blinker_*` → `kw_blinker_*` alias
    table; the outside camera at 10 m, clipped against the ground and the obstacle boxes;
@@ -246,7 +246,7 @@ budget.
    and the Tauri launcher in `launcher/` (profile with hours/XP/level, bus with 3D
    preview and liveries, depot, line, tour, roadbook with the IBIS codes, time, date,
    weather, settings). **(done)**
-   The round of work after that — the report of about thirty problems — has a section of
+   The round of work after that - the report of about thirty problems - has a section of
    its own below.
 3. Day/night: sun from date/time, envir.cfg light colours A/B/C, nightmaps, `[maplight]`
    point lights in a screen-independent light grid, `[light_enh]` coronas, vehicle
@@ -266,9 +266,9 @@ time, each merge saying which side of a conflict was kept and why. By area:
 * **Content, archives and mods.** A `.zip` laid out like OMSI 2 is *mounted* instead of
   unpacked (`omsi-cfg::vfs`, ZIP64, case-insensitive, `\` as `/`), so every loader reads
   through the same calls whether a file is in a folder or in an archive; the content roots
-  keep their order inside archives too. Keyword lines are matched the way `Omsi.exe`
-  matches them — the whole line, spelled as the original spells it, with the `.hof` and
-  `ailists.cfg` exceptions — `-<DISABLED>-` blocks are skipped, `[newanim]` and
+  keep their order inside archives too. Keyword lines are matched the way OMSI
+  matches them - the whole line, spelled as the original spells it, with the `.hof` and
+  `ailists.cfg` exceptions - `-<DISABLED>-` blocks are skipped, `[newanim]` and
   `[new_attachment]` sub-commands are whole lines anywhere after their block, and file
   names resolve as Windows resolves them (see FORMATS.md). The script VM follows the
   original where mods depend on it (`{if}` keeps its condition, `$length` keeps its
@@ -282,10 +282,10 @@ time, each merge saying which side of a conflict was kept and why. By area:
   staged neighbours (`omsi-app::tiles::Streamer`), and the result matches a whole-map load:
   `[attachObj]` objects, spline attachment rows and their repeaters, chrono changes by ID,
   `[spline_h]` heights, objects standing on the final ground, the terrain cut only under
-  flush surfaces. Everything a tile owns comes and goes with it — collision meshes and
+  flush surfaces. Everything a tile owns comes and goes with it - collision meshes and
   height profiles, poles, lanes and their light programs (whose clocks keep running),
   waiting places and the pavement network, parked cars matched to lanes as the lanes
-  arrive — and a timetable bus waits for the part of its route it is on. Freed GPU slots
+  arrive - and a timetable bus waits for the part of its route it is on. Freed GPU slots
   are recycled; `OMSI_CHURN=x,y` is the offscreen check that a picture drawn from recycled
   slots is the right one.
 * **Memory.** See the *Memory* section above: textures compressed on the GPU, the
@@ -395,127 +395,122 @@ Reported: the LiAZ 5292 dead and its name garbled, the PAZ 32051 dying after the
 the Procity's displays dark and its air hissing for ever, the Lion's City A21's doors
 flapping, the C2's BVG screen and air hiss, the Citaro Facelift's dark IBIS and hiss, the
 Sprinter 412D without a body, the Sprinter 312D that would not move off, the Scania's
-windows. Each was traced to a general cause, most of them read off `Omsi.exe`:
+windows. Each was traced to a general cause, most of them read off OMSI:
 
-* **Script VM** — division by zero gives 0 (the exe's `divide` stores 0; clearing the
+* **Script VM** - division by zero gives 0 (the exe's `divide` stores 0; clearing the
   stack flattened the LiAZ's battery every frame); `random` is `Random(Abs(Round(x)))`.
-* **Sounds** (`TSound` update) — a triggered entry plays once per trigger and ignores its
+* **Sounds** (`TSound` update) - a triggered entry plays once per trigger and ignores its
   conditions; without a trigger it loops while its conditions hold, and `[noloop]` makes it
   play once on the rising edge (the endless ECAS/parking-brake hiss); loopsound pitch from
   the sample rate with DirectSound's 100 Hz floor; the rear section of an articulated bus
   plays its own sound config (the C2 G's engine).
-* **Code pages** — text is read in the code page it was written in (UTF-8, 1251, 1250,
+* **Code pages** - text is read in the code page it was written in (UTF-8, 1251, 1250,
   1252 detected per file, `omsi-cfg::codepage`); misread file names are found by their
   other spellings; font glyphs match across code pages.
-* **Pack versions** — a vehicle pack installed in two versions (content folder and a map
+* **Pack versions** - a vehicle pack installed in two versions (content folder and a map
   archive) no longer mixes files; a bus that borrows meshes from a pack that is not
   installed says so (the Ahlheim Citaro needs Urbino_II).
-* **Meshes and textures** — o3d skips unknown bytes like the exe (protected v7 meshes);
+* **Meshes and textures** - o3d skips unknown bytes like the exe (protected v7 meshes);
   `.x` data objects may be named; 4-bit bitmaps with 17 palette entries; DDS with
   D3DFORMAT fourccs; absolute texture paths of the author's machine.
-* **Engine inputs** — `AutoClutch` is 1 as in the exe's default options (manual gearboxes
+* **Engine inputs** - `AutoClutch` is 1 as in the exe's default options (manual gearboxes
   kept throwing their gear out); `Weather_Temperature` is known before `{init}` (engines
   were made at 0 °C). Shift+digit door keys send `_off` on release like a keyboard.cfg
   key. Shift+U waits for the engine to catch, checks it keeps running and presses a
   display's own power switch.
-* **Checks** — `examples/bus_audit` loads and starts every vehicle of every content root
+* **Checks** - `examples/bus_audit` loads and starts every vehicle of every content root
   (445 here: all buses start; the failures left are AI types and the Urbino_II-less
   hybrid, which starts its engine by itself once the air is up); a scripted drive test of
   68 mod buses in the game moved all of them (the N4021 and the Citaro 21M only after
   their compressors had filled the tanks, as the scripts want).
-* **Open** — the Scania Citywide's "raised, grey windows" did not reproduce in any view
+* **Open** - the Scania Citywide's "raised, grey windows" did not reproduce in any view
   (its door-window texture `верх.png` was missing before the code-page fix); the C2's
   ATRON works once booted (~30 s after the electrics) and the card is put in.
 
 ### Round 6 (Sept 23 2026): shadows, online interface, persistent traffic, clouds, rain
 
-* **Shadows** — a close cascade (32 m around the camera, 3 cm texels) in the right half of
+* **Shadows** - a close cascade (32 m around the camera, 3 cm texels) in the right half of
   the near map's atlas: the near cascade's 14 cm texels made a driving bus's shadow step
   from texel to texel. The player bus's outer skin is outside even where it lies inside
   the bus's box (`weather_outside_n`): the box's side plane cut the leaning side wall into
   a glossy and a matt half. SSAO's radius shrinks close to the camera.
-* **Online** — `ui.rs`: Roboto text with an outline; a Roblox-like chat (V shows/hides,
+* **Online** - `ui.rs`: Roboto text with an outline; a Roblox-like chat (V shows/hides,
   `/` or a click types, rustrict filter, 200 lines, wheel scrolls), the name of the button
   under the mouse next to the cursor, name tags over the other players' buses; the HUD's
   LAN block is one line; the others see the driver profile's name. Settings `chat`,
   `tooltips`, `name_tags`, `show_fps`, `clouds`.
-* **Traffic** — random cars out of range become `DormantCar`s that keep driving along the
+* **Traffic** - random cars out of range become `DormantCar`s that keep driving along the
   network and wake up where they have got to; only a finished car leaves the map; the map
   is filled by metres of road. AI buses serve a stop they queue for behind a standing bus,
   keep out of bays wider than 5.5 m (no more lawn), move their IBIS on to the next stop,
   and light up in fog, rain, snow and overcast.
-* **Sky and glass** — the weather's cloud type from `Weather/clouds.cfg` (alpha of
+* **Sky and glass** - the weather's cloud type from `Weather/clouds.cfg` (alpha of
   Cumulus_1..3), fair-weather cumulus when none is chosen, ray-marched volumetric cumulus
   in enhanced; raindrops on the windows drawn procedurally (sitting, drying and running
   drops) instead of the sliding texture.
-* **Displays** — a flat, colourless `[CTCTexture]` placeholder takes the first scheme's
+* **Displays** - a flat, colourless `[CTCTexture]` placeholder takes the first scheme's
   texture in the model's own look (the Procity's LED matrix); put into service after dark
   switches the saloon lights on; text/script texture slots of scenery objects are not
   looked up on disk.
-* **Performance** — only alpha-tested pipelines keep `discard` (`ALPHA_TEST` override):
+* **Performance** - only alpha-tested pipelines keep `discard` (`ALPHA_TEST` override):
   early-z / Apple's hidden surface removal for everything else (main pass −8 %).
   `OMSI_PROFILE` counts triangles per pass; `bus_audit --long` checks two minutes of running.
-* **Open** — the Scania Citywide's windows and the LiAZ's display gap match the model data
+* **Open** - the Scania Citywide's windows and the LiAZ's display gap match the model data
   exactly (checked by a software rasteriser of the o3d files and textures); the remaining
   difference to the original could not be pinned without a picture of the original.
   Plugin DLLs of OMSI and its mods are native (Delphi/C++), not .NET.
 
-### Round 7 (Sept 23 2026): reverse engineering instead of guessing
+### Round 7 (Sept 23 2026): routes
 
-* **omsi-re** (`tools/omsi-re`) — our own decompiler workbench for Omsi.exe (Delphi 2009+,
-  32-bit): Delphi classes from the VMTs, RTTI enums, AnsiString/UnicodeString/C strings,
-  11 400 functions found by recursive descent (case tables, handlers, prologues), xrefs,
-  callers/callees, instruction search, and C-like pseudo-code without Delphi's range and
-  overflow checks; names learnt go into `names.txt`. The whole exe in 0.3 s.
-* **Routes** (`docs/RE_ROUTES.md`) — chrono `[deactivate_lines]` is a count and names (the
+* **Routes** (`docs/ROUTES.md`) - chrono `[deactivate_lines]` is a count and names (the
   count took lines "1", "2", "17" off); a scenario is in force only with a date, both ends
   inclusive, found in the game's order; lines from the last scenario back, taken off only
   by later ones; tour masks: bit 8 school holidays, bit 9 school days (were swapped). AI
   hof choice and `SetLineTo`/`AI_target_index` documented.
-* **Glass** — a slot named like glass without `[matl_alpha]` is opaque as in OMSI (the
+* **Glass** - a slot named like glass without `[matl_alpha]` is opaque as in OMSI (the
   LiAZ's display surround and window frames showed the sky).
-* **Clouds** — one seamless cloud field texture per weather (made on the CPU, equalised
+* **Clouds** - one seamless cloud field texture per weather (made on the CPU, equalised
   shape, billows, heights, the weather's picture); enhanced: flat-based cumulus with round
   tops found by march + bisection, no grain, ~0.05 ms; vanilla: a flat layer lit by the
   scene's own light, a closed deck when overcast.
-* **Frame time** — shadow PCF exits early outside penumbrae (5 taps instead of 16), the
+* **Frame time** - shadow PCF exits early outside penumbrae (5 taps instead of 16), the
   far cascade is cached again (every 4th frame), casters at the LOD the camera shows,
   culling hysteresis (15 % size, 5 % distance) against popping. Enhanced Spandau at
   1600x900: all GPU passes 7.0-7.9 → 6.1-6.3 ms.
-* **Open** — the Scania's windows still look different from the user's screenshot, which
+* **Open** - the Scania's windows still look different from the user's screenshot, which
   shows another paint (BVG 4492) than the pack's own textures; a night tour chosen before
   midnight starts on its last (past) trip instead of the first one after midnight (fixed in
   round 8).
 
 ### Round 8 (Sept 23 2026): plugins, lamps, culling, script robustness
 
-* **Plugins** (`crates/omsi-plugin`, `docs/PLUGINS.md`) — `plugins/*.opl` and their DLLs,
-  driven as Omsi.exe drives them (`sub_6920a8` reads, `sub_69376c` loads, `sub_693054`
+* **Plugins** (`crates/omsi-plugin`, `docs/PLUGINS.md`) - `plugins/*.opl` and their DLLs,
+  driven as OMSI drives them (the original reads, the original loads, the original
   calls every frame: system variables, vehicle variables, UTF-16 string buffers, trigger
   edges as key down/up). A library the process can load runs in-process; OMSI's 32-bit
   Windows DLLs run in `omsi-plugin-host32.exe` (MinGW build, Wine off Windows), verified
   end to end with a Delphi-style stdcall DLL under Wine.
-* **Saloon lamps** — Omsi.exe's D3D point lights (`sub_5fabbc`): colour/255, attenuation
+* **Saloon lamps** - OMSI's D3D point lights: colour/255, attenuation
   1/(d²/range²), no cut-off, on/off at 0.5; every `[matl_lightmap]` of a material kept
   (the effect has `gMatlLightMapOn0..3`), the slot's map made of the circuits switched on.
   The LiAZ's saloon was lit by its second circuit's map only.
-* **Culling** — one held screen size per object (±6 %) decides for all its meshes and LOD
+* **Culling** - one held screen size per object (±6 %) decides for all its meshes and LOD
   levels, a camera inside an object keeps its top level, the top level never drops out.
   The flicker log of a 40 s drive went from 15 events to none.
-* **Scripts** — a bus keeping its own cabin air (`heizung.osc`) is left to it (the engine
+* **Scripts** - a bus keeping its own cabin air (`heizung.osc`) is left to it (the engine
   model on top ran the 312D's to infinity, NaN in the engine); `OMSI_DEBUG_NAN`;
   `bus_audit` reports non-finite variables (none left in 445 vehicles).
-* **IBIS** — trials give up after 10 s (`OMSI_IBIS_BUDGET`) and the duty is set directly:
+* **IBIS** - trials give up after 10 s (`OMSI_IBIS_BUDGET`) and the duty is set directly:
   the C2's Atron RBL kept a worker busy 150 s with the displays blank.
-* **Night tours** — a tour after midnight picked in the evening starts at its first trip,
+* **Night tours** - a tour after midnight picked in the evening starts at its first trip,
   and a duty counts the clock across midnight (the day before or after, whichever is
   nearer the trip under way): 13N picked at 23:00 began on its last, past trip.
-* **Debugging** — `OMSI_WATCH_VARS=a,b` logs changes of the player's bus variables in the
+* **Debugging** - `OMSI_WATCH_VARS=a,b` logs changes of the player's bus variables in the
   window; `crates/omsi-o3d/examples/{bounds,matinfo,panels,sides}`.
 
 ### Round 9 (Sept 24 2026): navigator, launcher, passengers, the LiAZ matrix
 
-* **Navigator** (`omsi-app::navigator`) — written anew after ETS2's Route Advisor: a
+* **Navigator** (`omsi-app::navigator`) - written anew after ETS2's Route Advisor: a
   tilted 3D map drawn by `omsi-ui` into a texture of its own (4x MSAA, premultiplied
   overlay). Roads are built per area into a GPU buffer whose ribbons are extruded in the
   vertex shader to the larger of their width in metres and a minimum in pixels, so the
@@ -531,23 +526,23 @@ windows. Each was traced to a general cause, most of them read off `Omsi.exe`:
   heavy or jammed; rebuilt when a level on the route changes) with chevrons every 28 m in a
   contrasting colour; ribbons get round joints past 20° (the clamped mitre notched
   hairpins and loops). The way from the depot is searched at once, targets only the route
-  up to the next stop (it used to join wherever the route was nearest — often mid-line),
+  up to the next stop (it used to join wherever the route was nearest - often mid-line),
   and falls back to a road past the stop when the route's own lanes before it are cut off
   (line 31's first lane at Maulbeerallee has nothing linked into it). Street names: OMSI
   maps have none, but their street name signs (`StreetSign_*`, 670 on Spandau) carry the
   name as the object's text string; a plate runs along the street it names (sign heading
-  = road heading + 90°, settled from pairs of same-name signs 150–700 m apart: 1281 of
+  = road heading + 90°, settled from pairs of same-name signs 150-700 m apart: 1281 of
   1429 within 15°), and the name is carried along straight continuations for 1.5 km each
   way (3876 of Spandau's 17545 lanes). The duty starts with the first trip whose first stop
   is reachable in time (straight line × 1.35 at 25 km/h plus a minute); stops beyond the
   loaded tiles learn their place from the navigator's map.
-* **`omsi-ui`** — Roboto in five weights of its variable font (with substitutes for the
+* **`omsi-ui`** - Roboto in five weights of its variable font (with substitutes for the
   symbols it lacks), Material Symbols (Rounded, filled; `assets/icons/material`,
   rasterised by resvg), a shelf-packed RGBA atlas uploaded by region, a painter of
   anti-aliased shapes (rounded boxes, soft shadows, arcs, gradients, text, icons; world
   ribbons, discs and shapes) and the wgpu pipeline for them (layers with their own camera,
   viewport and rounded clip). `examples/headless` checks it without the game.
-* **Launcher** (`omsi-app::launcher` + `crates/omsi-launcher-core`) — the Tauri launcher
+* **Launcher** (`omsi-app::launcher` + `crates/omsi-launcher-core`) - the Tauri launcher
   replaced by the game's own window: `openomsi` without arguments opens it. The showroom is a
   scene of the game renderer (the bus placed by `World::add_vehicle` after a worker read it
   and put its textures on the GPU ahead; the game's sky and lighting of the chosen time and
@@ -555,22 +550,22 @@ windows. Each was traced to a general cause, most of them read off `Omsi.exe`:
   is an immediate-mode toolkit on `omsi-ui` rendered into a premultiplied overlay texture.
   The data side kept its functions and `--cli`. Drawn at full rate with focus, ten times a
   second without, not at all while hidden. `OMSI_LAUNCHER_PAGE/SHOT/EXIT/INPUT`.
-* **Passengers** — the trace (`OMSI_TRACE_PAX=<csv>`) showed people posed every 2nd–15th
+* **Passengers** - the trace (`OMSI_TRACE_PAX=<csv>`) showed people posed every 2nd-15th
   frame beyond 12 m (the body moved in steps, planted feet shivered), a boarding jump of up
   to 0.6 m (placed on the door's outside point), a drop off the step when getting off, turns
-  at a constant 320°/s and a swinging foot snapping 30–40 cm onto a step when its target
+  at a constant 320°/s and a swinging foot snapping 30-40 cm onto a step when its target
   crossed the step's edge. Now: posed every frame within 45 m, the mesh never left behind
   the body, boarding from where they stand at their walking speed, getting off at their own
   height, turns eased by the angle left, the landing height eased (1.8 m/s) with the landing
   waiting for it and the rise/drop curves blended.
-* **LiAZ 5292 line matrix** — its `Matrix_D.osc` pads a one-digit line to four characters
-  and then keeps the right three (`$SetLengthR` keeps the right end — re-read in Omsi.exe:
-  op 0x25 at 0x5d584a is `Copy(s, len-n+1, n)`), so 1–9 were blank and 5E showed `   E`.
+* **LiAZ 5292 line matrix** - its `Matrix_D.osc` pads a one-digit line to four characters
+  and then keeps the right three (`$SetLengthR` keeps the right end - re-read in OMSI:
+  op 0x25 at 0x5d584a is `Copy(s, len-n+1, n)`), so 1-9 were blank and 5E showed `   E`.
   `omsi_script::compat` rewrites that script's number as `"03" $IntToStrEnh` → `005E`,
   recognised by its text; the AI's `SetLineTo` is zero-padded to match.
 
 Round 12 (Sept 25 2026, user bug list): sound `[volcurve] -1/-2` (TSound: time since active /
-directional factor) — the LiAZ 5292's engine was silent under way; LiAZ letter lines 052D;
+directional factor) - the LiAZ 5292's engine was silent under way; LiAZ letter lines 052D;
 fonts fall back to the other case / unaccented letter; I = all saloon circuits; L also side
 lights where they have a switch of their own; terrain cells split (i,j)-(i+1,j+1) as in
 `.map.terrain_0.rdy`; wheels and feet on a `[surface]` object's drawn faces (depot yard) and
@@ -605,52 +600,52 @@ within 30 m posed every frame (mirrors), queues leave the door at an angle facin
 **Driver**: fingers curled round the rim (`curl_hands`), hands laid on the rim
 (`PoseInput::grip_frames`). `OMSI_INPUT orbit <m>`. **(done)**
 
-Round 14 (Sept 25 2026, the audit's bug list; branch `r3-fixes`): **situations** — the tile grid
+Round 14 (Sept 25 2026, the audit's bug list; branch `r3-fixes`): **situations** - the tile grid
 is set from the map before a situation's place is turned into metres (Spandau's "Linie 5" put
 the bus kilometres off the map), the orientation is a quaternion (heading 2·atan2(qy, qw);
 it was read as half the angle), saving writes `[actuWeather]`, `[TT_active]`, the duty and only
-the player's vehicle; **timetable** — past midnight the traffic clock runs on, departures are
+the player's vehicle; **timetable** - past midnight the traffic clock runs on, departures are
 compared on it (`day_base`) and the date's tours chosen anew (no bus came after 24:00);
-`car_use/*.ocu` applied as Omsi.exe does (sub_73cd50), fleet numbers unique; **ticket packs** —
+`car_use/*.ocu` applied as OMSI does, fleet numbers unique; **ticket packs** -
 stamper and buying share from one draw, tickets by age (default 40) and day tickets by the
 time of day, the passengers' voices (greeting, TooLate, the ticket, thanks, BadChange);
-**`[lht]`** mirrored (priority, passing, keeping to the side, navigator, pavements); **audio** —
-no gap where a loop turns, at most 200 voices mixed; **NaN** — non-finite numbers read as 0,
+**`[lht]`** mirrored (priority, passing, keeping to the side, navigator, pavements); **audio** -
+no gap where a loop turns, at most 200 voices mixed; **NaN** - non-finite numbers read as 0,
 float sorts with `total_cmp`, a panic hook; quicksave and screenshots into the content folder;
 the personnel file's distance carried over; the smallest note for the fare. **(done)**
-Round 14b: the complaints of a dark, hot, cold or muggy saloon (sub_62a6a0's own thresholds),
+Round 14b: the complaints of a dark, hot, cold or muggy saloon,
 greetings and complaints only in the player's bus, `Cabinair_relHum` a fraction as in the exe;
 stamping at the validators (`[stamper]`, the bus's `ev_Stamper` sound); voice parameters queued
 for the mixer's next block instead of waiting on the voice list's lock. A bus driven off the
 edge of a map falls (the "615 km/h" of a 90 s offscreen drive on Grundorf was the fall).
 **(done)** A situation's further vehicles are placed since round 15.
 
-Round 15 (Sept 25 2026, the diagnostic's list): **keys** — F5-F8 are the destination sign keys
+Round 15 (Sept 25 2026, the diagnostic's list): **keys** - F5-F8 are the destination sign keys
 again (they also quicksaved, refuelled, washed and repaired - F8 moved the clock on), the
-services are in the game menu and follow Omsi.exe (sub_7d4d64: pump and wash only in a
+services are in the game menu and follow OMSI (the original: pump and wash only in a
 `[petrolstation]` box, the workshop's travel time only away from one), F4 is the map camera;
-**sound** — a `[loopsound]`'s fifth line is its volume, `[next_random]` keeps an entry by the
-fleet number's characteristic (sub_7f1ed4, also `NrSpecRandom`), `Snd_OutsideVol` lets the
+**sound** - a `[loopsound]`'s fifth line is its volume, `[next_random]` keeps an entry by the
+fleet number's characteristic, `Snd_OutsideVol` lets the
 outside in through open doors, underpasses echo (`[triggerbox_setreverb]`, a Schroeder reverb);
 **sun** from `timezone.txt` (zone, place, summer time); **grip** from `StreetCond` and the
 temperature (black ice); **nothing written into the original** (personnel files, key bindings);
-**particles** — `[smoke]` and `[particle_emitter]` (TRauch: exhaust, coolant, spray, chimneys,
-the fireworks) drawn with `Texture/rauch.tga`; **coronas** — z offset, rotating 0/1/2, inner
-cone, star, double brightness; `[nomaplighting]`; **railways** — trains throw the switches
+**particles** - `[smoke]` and `[particle_emitter]` (TRauch: exhaust, coolant, spray, chimneys,
+the fireworks) drawn with `Texture/rauch.tga`; **coronas** - z offset, rotating 0/1/2, inner
+cone, star, double brightness; `[nomaplighting]`; **railways** - trains throw the switches
 (`[switchdir]`), signals from `signalroutes.cfg` (Signal/NextSignal), `train_*coupling`;
-`[blockpath]` conflicts; **ticket desk** — `[view_ticketselling]`/`[view_schedule]` cameras,
-`change_give`/`change_take`; **options** — maintenance (`wearlifespan` as sub_82f4b4 maps it,
+`[blockpath]` conflicts; **ticket desk** - `[view_ticketselling]`/`[view_schedule]` cameras,
+`change_give`/`change_take`; **options** - maintenance (`wearlifespan` as the original maps it,
 AI never wears), random traffic share, timetable and parked car limits, real clock/date,
-collision switches, head movement; **game menu** — weather, clock, load the quicksave, drive
+collision switches, head movement; **game menu** - weather, clock, load the quicksave, drive
 the next vehicle; a situation's further vehicles placed; force feedback rumble from
 `FF_Vib_Amp`; the duty start opens the map once. **(done)** Still open: the map and timetable
 editor, placing new vehicles and coupling them by hand, `[LightMapMapping]` exactly (objects are
 lit by lamps tinted from the tile's light map), a corona's own bitmap, fade time and fog cone,
 LAN timetable and passenger sync.
 
-Round 15b (Sept 25 2026, the rest of that list): **light pictures** — a `[light_enh_2]`'s own
-bitmap, its `timeconst` fade, and the fog as Omsi.exe draws it (sub_59f534, sub_59fbbc,
-sub_5a0068, sub_59fda0): the glow as wide as the light's size, ((1-ambient)²+0.8)·0.6·brightness
+Round 15b (Sept 25 2026, the rest of that list): **light pictures** - a `[light_enh_2]`'s own
+bitmap, its `timeconst` fade, and the fog as OMSI draws it (the original,
+the original): the glow as wide as the light's size, ((1-ambient)²+0.8)·0.6·brightness
 linear in the angle between the half cone angles and clamped to 1, `licht.bmp` by default; the
 star (effect bit 1) `light_effect1.bmp` turned to the viewer at 2.5 times the size; below 2 km
 visibility (and without effect bit 2) a `licht.bmp` halo of 3·√(100/vis)·glow·size seen from in
@@ -658,63 +653,63 @@ front, and the cone: a flat fan from the lamp spanning the outer half angle, tur
 light's axis to face the viewer, twice the halo's radius, `light_cone.bmp` mapped as the fan's
 vertices do, 0.3 of the colour, seen from the side. The scenery lamps had kept only one sprite
 per light (sprites were zipped with the lights' switches): `model_lights_owned`. Headlights are
-a plain spot; **`[LightMapMapping]`** — the tile light map as an atlas lighting the splines and
-mapped objects in vanilla (it had been added as white light); **vehicles** — any vehicle placed
+a plain spot; **`[LightMapMapping]`** - the tile light map as an atlas lighting the splines and
+mapped objects in vanilla (it had been added as white light); **vehicles** - any vehicle placed
 from the game menu, coupling and uncoupling by hand; **parked cars** pull out (the AI car of
-the parked object's folder takes its place, indicating, beside a lane only); **LAN** —
+the parked object's folder takes its place, indicating, beside a lane only); **LAN** -
 protocol 5: the tour a player drives in `INFO` (the host's timetable leaves it to them), riders
 of the players' buses in the world frames (`PLAYER_BUS`) and every player's people relayed to
-the others; **object editor** — move, turn and delete a tile's `[object]`s in the game, saved as
+the others; **object editor** - move, turn and delete a tile's `[object]`s in the game, saved as
 tile copies in the content folder (UTF-16 kept), a copy finding its `.terrain` in the map's own
 folder. **(done)** Still open: the full map and timetable editor (splines, ground, new objects,
 timetables), a parked car in its lane pulling out of a row.
 
-Round 16 (Sept 25 2026, the user's bug list): **launcher** — opens without the original game
+Round 16 (Sept 25 2026, the user's bug list): **launcher** - opens without the original game
 (on Setup, which asks for it; only a session needs it) and finds it by itself in more places
 (`omsi_cfg::find_original_install`: beside the program, every Steam library in
 `libraryfolders.vdf`, Windows drives, Wine/CrossOver/Whisky bottles, the user's folders);
-**fog** — none inside the player's bus (`fog_distance` takes the part of the view ray inside
+**fog** - none inside the player's bus (`fog_distance` takes the part of the view ray inside
 its box off the fogged distance; the saloon and the door panes went milky in ground fog);
-**driver** — drawn in the mirrors from his own seat (`Instance::mirror_only`), each hand on its
+**driver** - drawn in the mirrors from his own seat (`Instance::mirror_only`), each hand on its
 own half of the wheel locked to the rim (push-pull, lifted round the outside to regrip, the rim
 sliding through the hands when the wheel is flicked), a fist round the rim, the seat slid at
-most 16 cm and the rest reached by leaning; **passengers** — greetings and complaints only when
-the same voice file has not been heard for 10 s (Omsi.exe sub_625c70, the list at 0x861244;
+most 16 cm and the rest reached by leaning; **passengers** - greetings and complaints only when
+the same voice file has not been heard for 10 s (the original, the list at 0x861244;
 the ticket, "thanks" and the missing change are never held back), riders tilt with the floor
 (pitch, bank), their interior light eases in and out, money held out only at the desk, no twin
-figures side by side, each notices an arriving bus 0.2–2.4 s after it stopped; **AI** — bends
+figures side by side, each notices an arriving bus 0.2-2.4 s after it stopped; **AI** - bends
 sampled at fixed places of the road (the car-fixed 2.5 m grid made the allowed speed fall in
 steps: braking hard with nothing ahead), lower speed limits ahead reached gently, timetable buses
 pull away when the script says the doors are shut (`AI_Scheduled_AtStation` back to 0, at most
 12 s), vehicles appear and vanish only out of sight within 350 m whatever the camera looks at
 (mirrors), AI cars park in the spaces parked cars left (`Traffic::park_in`,
 `World::return_parked`), `OMSI_TRACE_AI` says why a car is held (`why`, `why_gap`, `phase`),
-`OMSI_DEBUG_CAR=<id>` logs a car's speed profile; **bus wheels** — a kerb under part of the tread
+`OMSI_DEBUG_CAR=<id>` logs a car's speed profile; **bus wheels** - a kerb under part of the tread
 lifts the hub by that share (`tread_step`), tyre meshes seated on the physical hub when a mod's
-suspension animation leaves them in the asphalt (the LiAZ: -3.8 cm); **LAN mods** — the host's
+suspension animation leaves them in the asphalt (the LiAZ: -3.8 cm); **LAN mods** - the host's
 non-stock content in use goes to joining players for the session (`lan_mods`: list by index over
 TCP on the session's port number, SHA-256, executables/plugins refused by name and by content,
-a sandbox content root without plugins, removed at the end); **performance** — light picture
+a sandbox content root without plugins, removed at the end); **performance** - light picture
 lookups cached, mirrors at most 75 pictures a second (plainly shaded in Enhanced: 12.7 -> 0.6 ms
 GPU), one staging buffer for skinned meshes, the cockpit hover ray only when the aim changed:
 Spandau centre 109 -> 156 fps (vanilla), 58 -> 76 fps (Enhanced). **(done)**
 
-Round 17 (Sept 26 2026, the user's bug list): **glass in fog** — the inner face of the player
+Round 17 (Sept 26 2026, the user's bug list): **glass in fog** - the inner face of the player
 bus's own panes mirrors the dark cab, not the bright sky probe/sphere map (the doors, seen at a
 grazing angle from the driver's seat, went a milky grey sheet in fog and snow; both renderers,
-`near_player_vehicle` moved to shader.wgsl); **Urbino headlamps** — a mesh whose normals disagree
+`near_player_vehicle` moved to shader.wgsl); **Urbino headlamps** - a mesh whose normals disagree
 with its winding only until they are turned by the file's own matrix (a half turn about x: the
 Urbino's lamps, fog lamps, day lights, VDV screens) is drawn as wound, not turned round
-(`mesh_from_o3d`; `examples/turned` lists such files); **driver** — the hands hold the rim and
+(`mesh_from_o3d`; `examples/turned` lists such files); **driver** - the hands hold the rim and
 turn with it (angle from the wheel's own `[newanim]` variable × factor, each hand soft-clamped to
 its comfortable arc, the rim sliding through beyond), no more push-pull regrips; the wheel's
 centre is the middle of its rim ring on the axis, not the animation origin (the Urbino's origin
 is the column foot, 12 cm under the hub); the first-person cab view draws a second mesh set
 without head, trunk and upper arms (`without_head`, the whole figure stays in the mirrors);
-**suspension** — each wheel has its own mass (12 % of its corner) between a stiff tyre (900 kN/m,
+**suspension** - each wheel has its own mass (12 % of its corner) between a stiff tyre (900 kN/m,
 preloaded by the static load so the ride height is unchanged) and the strut; the ground under a
 tyre rises no faster than the tyre can climb (2.4 × speed); the wheel falls against the body's
-own acceleration (`accel_body.z`); `OMSI_SUSP_TRACE=<csv>`; **performance (Enhanced)** — sky
+own acceleration (`accel_body.z`); `OMSI_SUSP_TRACE=<csv>`; **performance (Enhanced)** - sky
 cube face every 4th frame, near shadow cascade every other frame (matrix kept in
 `shadow_near_cache`, close part cleared by `shadow_clear_pipeline`), close cascade ≤ 2048
 texels (`SHADOW_CLOSE_MAX`, scale in camera `post.w`), faded-out blended layers skipped, one
@@ -724,7 +719,7 @@ freezing-wet Urbino cab 39.5 -> 68.6, night 73.7 -> 108.6, outside 53.6 -> 69.1 
 (the GPU clocks down between its waited frames): measure in a window with `OMSI_GPU_TIMERS=1
 OMSI_PROFILE=1`. **(done)**
 
-Round 17b (Sept 26 2026): **driver's grip and steering** — each hand's frame on the rim is built
+Round 17b (Sept 26 2026): **driver's grip and steering** - each hand's frame on the rim is built
 from its own forearm (the knuckles across the rim as near the forearm's line as a diagonal grip
 allows, `DIAGONAL` 40°, palm over the rim), not a fixed frame on the rim that bent the wrists up
 to 80°; `curl_hands` closes the fingers together (`SQUEEZE`) and swings the thumb in under the
@@ -735,7 +730,7 @@ turns); the wheel held still 0.6 s brings the hands back to rest one at a time. 
 left the hands frozen while the rim spun on through them. `OMSI_DRIVER_HANDS=<l>,<r>` holds the
 hands at fixed angles for close-ups. **(done)**
 
-Round 17c (Sept 26 2026): **driver's hands, smoother** — a fist's roll round the rim is its own
+Round 17c (Sept 26 2026): **driver's hands, smoother** - a fist's roll round the rim is its own
 eased angle (`ROLL` -60…100°, 0.12 s) that falls back to the plain grip over the top where the
 forearm runs along the rim (there the palm flipped over from frame to frame, up to 5000°/s; now
 ≤ 540°/s, the wheel's own turn), each hand's frame eased (0.07 s); regrips unhurried (0.38 s +
@@ -744,7 +739,7 @@ the rim slides up to 25° past a hand's arc meanwhile. First-person view: whole 
 floating cuffs, the shoulders' tops (0.24 m round the joint) left out. `OMSI_DEBUG_DRIVER` logs
 `HANDT` rows (wrist target, hand frame) per frame. **(done)**
 
-Round 17d (Sept 26 2026): **driver, no first person; steadier hands** — the `driver_first_person`
+Round 17d (Sept 26 2026): **driver, no first person; steadier hands** - the `driver_first_person`
 setting is gone (game, launcher, launcher-core): in the cab view the figure is only in the
 mirrors, as in OMSI, and the second mesh set without head is removed. The fists had the wrong
 hand's chirality (palm = along × dir: the thumb pointed down the rim, the fingers were held in
@@ -757,22 +752,22 @@ out over the outer edge, 90 = knuckles away from the driver, palm to the wheel's
 keyboard steering's return snaps to the middle only under 0.0003 (was 0.002 = 2°): worst jolt
 69 -> 18 mm, the rest the wheel's own reversal. **(done)**
 
-Round 19 (Sept 26 2026): **the user's list** — rain: a texture's `.cfg` is the requested name's
-(`str_asphdrk.bmp.cfg` beside `.dds`, Omsi.exe sub_7f7590), junction objects get `[moisture]`,
+Round 19 (Sept 26 2026): **the user's list** - rain: a texture's `.cfg` is the requested name's
+(`str_asphdrk.bmp.cfg` beside `.dds`, the original), junction objects get `[moisture]`,
 puddles spread to the whole road as it soaks (puddles.tga against 255·(1−wetness),
-sub_7fc58c); window drops fixed to the glass (grid snapped to eighth turns); enhanced clouds
+the original); window drops fixed to the glass (grid snapped to eighth turns); enhanced clouds
 from one sky-cube eye with parallax correction; traffic: the player's rear sections, placed
 vehicles and a body in reach stop cars, cars/buses at the network's end leave, stale junction
 claims hold nobody (`OMSI_CHECK_OVERLAP`, `OMSI_DEBUG_STUCK`); LAN duty placement for joining
 players; entry spawn on the road surface; `[illumination_interior]` inherited by the next mesh
-(sub_5efae8); NaN guards for Vulkan/D3D (fast-math hid them on Metal); LAN remote buses get
+; NaN guards for Vulkan/D3D (fast-math hid them on Metal); LAN remote buses get
 display texts, window rain and a driver; walking inside the bus (cabin corridor), drag-only
 controls toggle by click, door groups close together; a running gait; **dedicated server**
 (`openomsi --server server.cfg`, wgpu no-op device) with WebSocket transport, `/status`,
 `/icon.png`, Cloudflare quick tunnels (also for Connect by Code); launcher Multiplayer page
 (Connect by Code / Servers) and a server-locked Drive page with Leave Server. **(done)**
 
-Round 20 (Sept 26 2026): multiplayer passengers — another player's bus is entered only
+Round 20 (Sept 26 2026): multiplayer passengers - another player's bus is entered only
 through an open door, G sits in its nearest free seat, the walker's place aboard a player's
 bus goes over the network (`Walker::aboard`, trailing optional wire fields), the bus is drawn
 from inside for whoever is in it (viewpoint 2 meshes, opaque slots, skinning, `lighting.inside`),
@@ -788,29 +783,29 @@ the whole target), scrolling settings; offline machine translation of untranslat
 clock; tour names as the map writes them; NFC file-name matching; cached OMSI_* env; frame
 limit at the screen's refresh rate by default. **(done)**
 
-Round 21 (Sept 27 2026, the diagnostic audit and its fixes): **security** — relay posts
+Round 21 (Sept 27 2026, the diagnostic audit and its fixes): **security** - relay posts
 signed with a session-derived HMAC on a hashed topic (no nonce or session id on the public
 relay), returning players known by nonce only, server administration by challenge-response
 with a lockout and rights ending with the player, NaN refused in admin commands, the mods
 server and WebSocket gateway capped in connections with bounded request lines and streamed
 files, hex-only store names, cloudflared and the translation model pinned and SHA-256
 checked, downloaded plugins held in `Mods/plugins-not-enabled`, a mod file never deletes an
-installed folder, plugin string buffers padded; **crashes and hangs** — the tile loader
+installed folder, plugin string buffers padded; **crashes and hangs** - the tile loader
 survives a panic and lets go of tiles it cannot make, bad triangle indices dropped, damaged
 .x/DDS/TGA/terrain files refused before they allocate or index, no 3 s wait on joining,
 LAN status written off the frame, controllers merged per device with DirectInput slots;
-**per Omsi.exe** (see RE notes in the commits) — cant in percent within `[halfcantwidth]`,
+**per OMSI** (see RE notes in the commits) - cant in percent within `[halfcantwidth]`,
 `GetTime` as play time, `$IntToStrEnh`, (L.M.)/(S.M.) as system variables, (S.S.) writes,
 STLoadTex/STTextOut/Refresh_Strings, driver ratings as the exe's counters (late > 180 s on
 arrival, early < −120 s on departure, driving 100(1−P)), Brakeforce, all-exit termini,
 TrafficPriority, FF_Vib_Period, tank_percent, Colorscheme, `[NightMapMode]` hours and InUse,
 the legacy `[ailist]`, registrations.txt, `[shadow]` casters as an option, wheels that
 slip and lock (achse_inertia_inv, default 0.002) so the brake scripts' ABS works, the sprung
-seat, `laststn.osn` with a Continue button; **simulation** — long frames sliced, odometer
+seat, `laststn.osn` with a Continue button; **simulation** - long frames sliced, odometer
 carry, articulated sections pitching and leaning, coupled parts along their own headings,
 gridlock broken, pedestrians' gap acceptance, teleports not counted as driving; **rendering**
-— size-keyed targets evicted by use, safe normals, device loss ends the session cleanly,
-lookups forget misses when content changes, DX10 DDS; **game** — Options, Line and tour,
+- size-keyed targets evicted by use, safe normals, device loss ends the session cleanly,
+lookups forget misses when content changes, DX10 DDS; **game** - Options, Line and tour,
 Driver and Fleet number in the game menu, Ctrl+click on the city map places the bus, the
 volume setting reaches the mixer, OMSI 2's options.cfg imported on a first start, the
 navigator shows what a jam costs, no compiler warnings. **(done)**
@@ -822,21 +817,21 @@ face only), a controller axis/button editor with calibration and a steering spri
 Colorscheme for scenery objects and people, parallel scenery scripts, real reflections in
 the driver's windows, one Grundorf road point that shows ground (0.4 %, older than this round).
 
-Round 22 (Sept 27 2026, the rest of the audit's open list): **world** — the date is followed
-at midnight as Omsi.exe does (chrono scenarios that start or end have their tiles read
-again, the season's textures change with the date and with snow); **driving** — rail
+Round 22 (Sept 27 2026, the rest of the audit's open list): **world** - the date is followed
+at midnight as OMSI does (chrono scenarios that start or end have their tiles read
+again, the season's textures change with the date and with snow); **driving** - rail
 vehicles (`[rail_body_osc]`, `[contact_shoe]`, `[boogies]`) are bound to the track: placed on
 the nearest rail lane, moved along it by their speed, taking the indicator's branch, else
 the switch's setting, else the straightest, and throwing the points they take; coupled parts
 follow a trail along the rails; a train whose scripts give no drive gets a plain traction
-and brake (`rail_drive.rs`); **controllers** — the launcher's Controls → Game controllers
+and brake (`rail_drive.rs`); **controllers** - the launcher's Controls → Game controllers
 tab edits `gamectrler.cfg` (axes with function and direction, live bars, buttons by
-pressing them, a dead zone, `[FFScale]`), written to the content folder; **editors** — the
+pressing them, a dead zone, `[FFScale]`), written to the content folder; **editors** - the
 object editor copies objects (C) and changes a copy's type (V), and shapes the ground
 (Page Up/Down, F flattens, [ ] brush size; `.map.terrain` copies in the content folder,
-which tile companions now prefer); the launcher's Timetable page edits a map's lines —
-tours, departures, trips and profiles, copying a tour N minutes later — saved as `.ttl`
-(a stock map's TTData copied whole into the content folder first); **rendering** — cube
+which tile companions now prefer); the launcher's Timetable page edits a map's lines -
+tours, departures, trips and profiles, copying a tour N minutes later - saved as `.ttl`
+(a stock map's TTData copied whole into the content folder first); **rendering** - cube
 map DDS files become sphere maps from all six faces, real reflections (the scene around the
 bus rendered into six faces, one per frame, sampled by the vanilla and enhanced glass;
 setting `real_reflections`, imported from OMSI's `performance_realreflexions`), scenery
@@ -849,62 +844,62 @@ making road pieces regenerates their meshes, lanes and terrain cuts), a trip's r
 (`.ttr`) and stop times in the timetable editor, `relrange` (no stock use, meaning
 unclear), `Snd_Microphone` (the exe toggles the OS microphone line; deliberately not done).
 
-Round 23 (Sept 27 2026, the player's bug list and a diagnostic of ~70 more): **lights** —
-fog cones mapped as Omsi.exe maps `light_cone.bmp` (sub_59f534: rim uv = sin a, 1 − cos a;
+Round 23 (Sept 27 2026, the player's bug list and a diagnostic of ~70 more): **lights** -
+fog cones mapped as OMSI maps `light_cone.bmp` (the original: rim uv = sin a, 1 − cos a;
 no "V" of light from every lamp); headlights light light-mapped roads in the classic
 picture (a vehicle's point lights are flagged, `point_lights(map_k)`) and more strongly in
 Enhanced; Shift+U after dark switches them on; the driver is lit by the lamps near the seat
-(`VehicleInstance::interior_light_at`); **mirrors** — the envmap photo dims with the night
+(`VehicleInstance::interior_light_at`); **mirrors** - the envmap photo dims with the night
 outside the classic picture, a mirror's own picture (params.y 0.9) is not brightened like a
 display, the plain light of an enhanced session's mirror frame is taken down at night; at
 least 8 redraws a second per mirror, two a frame at most, also near the bus from outside;
-**weather** — nothing under any vehicle's roof gets snow or wet (`Instance::roof`), no rain
-falls inside other players' and timetable buses, drops on panes fade out over 4–12 m;
-**on foot** — stepping out, through doors and into buses is walked (`Transit`), a double
+**weather** - nothing under any vehicle's roof gets snow or wet (`Instance::roof`), no rain
+falls inside other players' and timetable buses, drops on panes fade out over 4-12 m;
+**on foot** - stepping out, through doors and into buses is walked (`Transit`), a double
 decker's driver stands up on the lower deck, riders leave a bus the driver walked away from
-(`ALL_OUT_STOP`); **LAN** — fine doors (1/255) and the walker's course in the state's tail,
+(`ALL_OUT_STOP`); **LAN** - fine doors (1/255) and the walker's course in the state's tail,
 the player's own figure (`Pose::figure`, INFO field 13) for their walker and their driver,
 an interpolation delay that follows the state rate, the walker extrapolated, remote
 headlights from `Spot_Select`, a joining bus placed after the host's list, no switches of
 another player's bus offered to a rider, cloudflared stopped at the end (and a stale one at
-the start), the router's UPnP forwarding taken back; **AI** — a timetable bus that waits 40 s
+the start), the router's UPnP forwarding taken back; **AI** - a timetable bus that waits 40 s
 for route that never joins drives on and leaves (Spandau lane 1242), a car given up in a
-gridlock leaves after four minutes even in view; **timetable** — an entry point on the route
+gridlock leaves after four minutes even in view; **timetable** - an entry point on the route
 before the first stop reaches it, stop names from the trip file when the stop object is not
-known; **money** — notes as well as coins, exact fare exact; **keys** — a release goes to
+known; **money** - notes as well as coins, exact fare exact; **keys** - a release goes to
 what the press started, F12 yields to a bus binding, the blinker keys follow the lever;
-**clouds** drift on over midnight; **launcher** — decomposed accents composed (macOS file
+**clouds** drift on over midnight; **launcher** - decomposed accents composed (macOS file
 names), the METAR airport nearest the map, the Timetable page on the chosen map, saving for
 maps in archives, "Reset timetable". **(done)** Found to be content, not openOMSI: Novi
 Sad's `.ttr` tracks jump between tiles (id 9277167 on tiles 441 and 167 in a row), a missing
 `IK218N` script, missing fonts. Still open: the frame rate at 2560×1080 with 4× MSAA in
-Enhanced on Novi Sad (~25–30 fps offscreen, GPU main pass ~12 ms), the "camera too far
+Enhanced on Novi Sad (~25-30 fps offscreen, GPU main pass ~12 ms), the "camera too far
 forward" after getting in again and the Ctrl+Shift cab light on the EN92 (not reproduced),
 a player seated in a timetable bus is still not drawn for the others.
 
-Round 24 (Sept 27 2026, the player's second list): **vehicles** — Esc → Remove this vehicle
+Round 24 (Sept 27 2026, the player's second list): **vehicles** - Esc → Remove this vehicle
 (`App::remove_driven_vehicle`: riders step out, the player stands by the cab), on foot with
 no bus of one's own (`--on-foot`, launcher "Start on foot"), G at a placed vehicle's cab takes
 its wheel (walked in: `Transit::walk_in` + `Then`), Place a vehicle follows the mouse on the
 ground (`placing.rs`: wheel/Q/E turn, R round, click sets down, refused inside another
 vehicle), placed vehicles run while on foot, a bus change keeps the riders in their own bus
 (`Humans::player_bus_swapped`, placed buses as `placed_bus_id(uid)`), a bus that falls
-through the world is put back where it last stood (`admin::guard_fall`); **vans** — a
+through the world is put back where it last stood (`admin::guard_fall`); **vans** - a
 `[boundingbox]` far larger than the model is cut to it (W906: 12 → 6.4 m, the invisible walls
 at nose and tail), a van's driver gets out and in by the cab door (`vehicle_cab_door`), exits
-only through a door within reach (`DOOR_OUT_REACH`); **passengers** — exit queues stay on the
+only through a door within reach (`DOOR_OUT_REACH`); **passengers** - exit queues stay on the
 walkways (`Cabin::exit_queue_place`; people stood over the W906's bonnet), `OMSI_CHECK_WALLS`;
-**Shift+U off** — the engine stop (`kw_m_engineshutdown`) held until the rpm is at rest, then
-the power; **pause menu** — scrolls (wheel, arrows, a scroll bar), new lines (remove the
-placed vehicles, get up, back on the wheels, city map); **admin** — bring everybody, repair /
-refuel / wash one or all, back on the wheels, clock presets, traffic; **object editor** —
+**Shift+U off** - the engine stop (`kw_m_engineshutdown`) held until the rpm is at rest, then
+the power; **pause menu** - scrolls (wheel, arrows, a scroll bar), new lines (remove the
+placed vehicles, get up, back on the wheels, city map); **admin** - bring everybody, repair /
+refuel / wash one or all, back on the wheels, clock presets, traffic; **object editor** -
 mouse pick / drag / wheel turn, host only in LAN play, edits sent as `objedit` / `objadd`
-commands (and all again every 10 s); **LAN** — doors opened by hand (clickable leaves) synced;
-**light** — mirrors at night match the enhanced window (sky weights dimmed too), the cab's
+commands (and all again every 10 s); **LAN** - doors opened by hand (clickable leaves) synced;
+**light** - mirrors at night match the enhanced window (sky weights dimmed too), the cab's
 SSAO at a third (the dashboard was black beside a lit cash desk), snow fog darkens at night,
-MB 412D start sound clamped to 0 dB; **GPU memory** — automatic texture budget
+MB 412D start sound clamped to 0 dB; **GPU memory** - automatic texture budget
 min(RAM/8, adapter guess), textures awaiting compression up at half size (Novi Sad loading
-peak 1.9 → 1.2 GB), faster trimming, presets keep the frame-rate governor on; **PBR** —
+peak 1.9 → 1.2 GB), faster trimming, presets keep the frame-rate governor on; **PBR** -
 `omsi_texture::pbr`: doubled letters `_nn` (+`_gl`), `_rr`/`_gg`, `_mm`, `_aa` (or the
 long names `_normal`, `_roughness`, `_metallic`, `_ao`), `_orm`/`_arm`/`_mra` beside a
 diffuse texture (single letters are OMSI's night maps; a normal map must also look like one), normal mapping by a derivative tangent frame in enhanced.wgsl. Not reproduced: stray

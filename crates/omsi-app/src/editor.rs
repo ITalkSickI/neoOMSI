@@ -1,7 +1,7 @@
 //! The object editor: a small part of what OMSI's map editor does, inside the game. The
 //! scenery objects a tile places itself (its `[object]` records) can be picked, moved,
 //! turned and deleted where they stand, and the tiles changed are written as copies into
-//! the content folder — which the game reads before the installation — never into the
+//! the content folder - which the game reads before the installation - never into the
 //! original map. New objects are made as copies of one that is there (C), and a copy
 //! takes the shape of any other object of its folder (V): each is a new `[object]` record
 //! after its model's. The ground is shaped with a brush where the view points (raised,
@@ -328,7 +328,7 @@ impl Editor {
             Action::Ground(d) => format!("Ground lowered {:.2} m", -d),
             _ => format!("Ground flattened to {:.2} m", target),
         };
-        (format!("{what} (brush {:.1} m, {} tile(s)) — Ctrl+S saves", r, changed.len()), changed)
+        (format!("{what} (brush {:.1} m, {} tile(s)) - Ctrl+S saves", r, changed.len()), changed)
     }
 
     /// Write every tile with edits as a copy under `content` (the map's own folder there),

@@ -23,9 +23,9 @@ pub struct Settings {
     /// Which corner the navigator sits in: `bottom-left` (default), `bottom-right`,
     /// `top-left` or `top-right`.
     pub navigator_corner: String,
-    /// How passengers board: `auto` — they pay at the cash desk and take the ticket
-    /// themselves; `pay` — they wait at the desk for the driver to sell the ticket (the
-    /// ticket key or the printer); `walk` — they just walk into the saloon (a flat-fare
+    /// How passengers board: `auto` - they pay at the cash desk and take the ticket
+    /// themselves; `pay` - they wait at the desk for the driver to sell the ticket (the
+    /// ticket key or the printer); `walk` - they just walk into the saloon (a flat-fare
     /// or ticket-machine service).
     pub boarding: String,
     /// Procedural detail (fractal) texturing of the ground and large walls when close.
@@ -47,8 +47,8 @@ pub struct Settings {
     /// Anti-aliasing of the enhanced picture after tone mapping: `fxaa` (default) or `off`.
     pub post_aa: String,
     /// OMSI's maintenance condition (`[wear_lifespan]`): 0 infinite (no wear), 1 very bad,
-    /// 2 bad, 3 normal, 4 good — the player's bus's `wearlifespan` 1.5e6, 0.01, 0.1, 1, 10
-    /// (Omsi.exe sub_82f4b4); AI vehicles never wear.
+    /// 2 bad, 3 normal, 4 good - the player's bus's `wearlifespan` 1.5e6, 0.01, 0.1, 1, 10
+    ///; AI vehicles never wear.
     pub maintenance: u8,
     /// `[AIUnschedFactor]`: the share of the random traffic (percent of the map's density).
     pub ai_unsched_factor: f32,
@@ -67,7 +67,7 @@ pub struct Settings {
     /// as a Retina window does). The HUD is always drawn at full size.
     pub render_scale: f32,
     /// Language of the texts the game shows about the cockpit: `ENG` (default), `DEU` or
-    /// `FRA` — OMSI's own language file codes.
+    /// `FRA` - OMSI's own language file codes.
     pub language: String,
     /// What passengers say: `all`, `tickets` (only what they ask for) or `off`.
     pub pax_voices: String,
@@ -124,7 +124,7 @@ pub struct Settings {
     /// neural translation model (downloaded once, ~620 MB), for the languages OMSI has no
     /// language files of.
     pub machine_translation: bool,
-    /// Which meshes cast sun shadows: "all" solid ones, or "omsi" — only those the models
+    /// Which meshes cast sun shadows: "all" solid ones, or "omsi" - only those the models
     /// mark `[shadow]`, as OMSI 2's shadows do.
     pub shadow_casters: String,
     /// Dead zone round the centre of a set-up game controller's axes (0..0.3).
@@ -256,8 +256,8 @@ impl Settings {
         s
     }
 
-    /// The settings as the file holds them. The game only ever reads the file — the
-    /// launcher's settings page writes it — so this is here for the round-trip test that
+    /// The settings as the file holds them. The game only ever reads the file - the
+    /// launcher's settings page writes it - so this is here for the round-trip test that
     /// every key read is written back.
     #[cfg(test)]
     pub fn to_text(&self) -> String {
@@ -353,7 +353,7 @@ mod tests {
 }
 
 impl Settings {
-    /// The player's bus's `wearlifespan` for the maintenance condition (Omsi.exe's table).
+    /// The player's bus's `wearlifespan` for the maintenance condition (OMSI's table).
     pub fn wear_lifespan(&self) -> f32 {
         [1.5e6, 0.01, 0.1, 1.0, 10.0][self.maintenance.min(4) as usize]
     }

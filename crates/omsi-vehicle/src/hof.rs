@@ -85,7 +85,7 @@ impl Hof {
                 }
                 "addterminus_list" => {
                     // One row per terminus, tab separated: a flag column (`{ALLEX}` or
-                    // empty), the code, the ident and the display strings — every one of the
+                    // empty), the code, the ident and the display strings - every one of the
                     // 3 549 rows of the stock and installed depot files has the flag column,
                     // empty ones included. Reading the code from the flag column gave every
                     // terminus without `{ALLEX}` the code 0 and its code as ident: typed
@@ -185,7 +185,7 @@ pub fn depot_in(dir: &Path, name: &str) -> Option<Hof> {
 /// A depot file belongs to a map, not to a bus model: it lists the map's termini, stops and
 /// IBIS codes. A mod bus brings only the depot of the map it was made on (the O530 Citaro
 /// pack has Grundorf.hof alone), and on another map every code of the timetable was then
-/// unknown to its IBIS — no line and no destination on any display. OMSI players copy the
+/// unknown to its IBIS - no line and no destination on any display. OMSI players copy the
 /// map's .hof into such a folder; this finds the copy that is already installed with
 /// another bus.
 pub fn depot_anywhere(name: &str) -> Option<Hof> {

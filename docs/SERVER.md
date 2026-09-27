@@ -34,12 +34,12 @@ What is still to come from the plan below: a world without the renderer's data s
 (the server keeps the tiles' meshes in memory for nothing), tiles streamed by the players'
 interest (today `radius = 0` loads the whole map), a password, admin commands.
 
-# Dedicated server — the original concept
+# Dedicated server - the original concept
 
 Today a session is hosted by a player's game: the host simulates the shared world (AI
 traffic, timetable buses, people, traffic lights) around every player and streams it to the
 clients (`omsi-net::world`, `omsi-app::lan_world`). A dedicated server is the same host role
-without a player, a window or a sound card, running on a machine that is always on — like a
+without a player, a window or a sound card, running on a machine that is always on - like a
 Minecraft server. This document fixes how it is to be built, so that the pieces written now
 fit it.
 

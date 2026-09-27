@@ -136,7 +136,7 @@ impl TextAlign {
             // a plain [texttexture] (0) is centred like 4: over the letters without the gap
             // behind the last one, halved downwards. The LiAZ 5292's line display maps its
             // three digit cells at u 0.078/0.306/0.535 of a 166 px texture (13, 51, 89 px)
-            // and its letter cell at u 0.554 of the 512 px one (283.6 px) — exactly where
+            // and its letter cell at u 0.554 of the 512 px one (283.6 px) - exactly where
             // "092 " and "092D" land this way; centring the gap too put every cell 5-6 px
             // (2 px) to the left, the "0" lost its left side and read as "D92".
             _ => ((width - visible) as f32 / 2.0).floor(),

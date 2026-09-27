@@ -6,7 +6,7 @@
 //! the entry `OMSI 2/maps/Ahlheim 5/global.cfg` inside it, and every loader that reads
 //! through [`read`] / [`exists`] / [`list_dir`] cannot tell it from an unpacked folder.
 //!
-//! * The central directory is read once into an index (ZIP64 included — archives past 4 GB
+//! * The central directory is read once into an index (ZIP64 included - archives past 4 GB
 //!   need it); an entry is then one positioned read plus a stored copy or an inflate.
 //! * Lookups are case-insensitive, as on Windows, and `\` separators in entry names count
 //!   as `/`.
@@ -216,9 +216,9 @@ impl ZipArchive {
     /// them). Only a folder that does not lie inside a content folder can be the root: a
     /// bus's `Vehicles/MAN_Lion/` has `Sound` and `Texture` sub-folders as well, and so has a
     /// scenery pack's `Sceneryobjects/Pack/`. Of the candidates, the one with the most
-    /// content folders among its children wins — counting first the names found only at the
+    /// content folders among its children wins - counting first the names found only at the
     /// top of an installation (`Vehicles`, `maps` ...), then those an add-on has inside too
-    /// (`Sound`, `Texture`, `Scripts`) — then the shallowest, then the first by name.
+    /// (`Sound`, `Texture`, `Scripts`) - then the shallowest, then the first by name.
     fn content_prefix<'a>(names: impl Iterator<Item = &'a str>) -> String {
         const SHARED: [&str; 3] = ["Texture", "Sound", "Scripts"];
         let is_content = |c: &str| crate::CONTENT_FOLDERS.iter().any(|f| f.eq_ignore_ascii_case(c));

@@ -1,5 +1,5 @@
-//! The launcher's bus preview: the chosen bus drawn by the game's own renderer — its
-//! model, paint and materials — on the plain (Vanilla+) path without the costly passes,
+//! The launcher's bus preview: the chosen bus drawn by the game's own renderer - its
+//! model, paint and materials - on the plain (Vanilla+) path without the costly passes,
 //! under the light of the chosen time and weather, into a picture the launcher shows
 //! in a card. It is drawn again only when something changed (another bus, paint, light,
 //! the preview turned by the mouse), never every frame.
