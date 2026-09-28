@@ -158,9 +158,7 @@ impl Shared {
             if let Some(p) = v.params.position {
                 let d = p - listener.position;
                 let dist = d.length().max(0.1);
-                // full within the range, then falling a little faster than 1/d - a plain
-                // 1/d kept an aircraft's engine audible for kilometres
-                spatial_gain = (v.params.range / dist).min(1.0).powf(1.6);
+                spatial_gain = distance_gain(v.params.range, dist);
                 let side = d.normalize_or_zero().dot(listener.right);
                 let pan = side.clamp(-1.0, 1.0);
                 left = ((1.0 - pan) * 0.5).sqrt() * 1.2;
@@ -304,7 +302,7 @@ pub const MAX_VOICES: usize = 200;
 
 /// How loud voice `v` reaches the listener (its gain and distance), to rank voices by.
 fn heard_gain(v: &Voice, listener: &Listener) -> f32 {
-    let spatial = v.params.position.map(|p| (v.params.range / (p - listener.position).length().max(0.1)).min(1.0).powf(1.6)).unwrap_or(1.0);
+    let spatial = v.params.position.map(|p| distance_gain(v.params.range, (p - listener.position).length())).unwrap_or(1.0);
     v.params.gain * spatial
 }
 
@@ -601,11 +599,7 @@ impl AudioEngine {
         let spatial = v
             .params
             .position
-            .map(|p| {
-                (v.params.range / (p - listener.position).length().max(0.1))
-                    .min(1.0)
-                    .powf(1.6)
-            })
+            .map(|p| distance_gain(v.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
         Some((v.params, v.params.gain * spatial))
     }
@@ -745,5 +739,24 @@ impl Reverb {
                 out[f * ch + c] = x + y * mix;
             }
         }
+    }
+}
+
+/// How loud a sound `dist` metres away arrives, with `range` its `[3d]` reference distance:
+/// OMSI hands it to DirectSound 3D as the minimum distance with the default roll-off, so it
+/// is full up to that distance and then falls as 1/d (6 dB per doubling). Ours fell as
+/// (range/d)^1.6: at ten times the distance a sound was 4 % instead of 10 % - nearly
+/// everything was too quiet, a blinker relay half a metre from the head included.
+pub fn distance_gain(range: f32, dist: f32) -> f32 {
+    (range.max(0.01) / dist.max(0.01)).min(1.0)
+}
+
+#[cfg(test)]
+mod distance_tests {
+    #[test]
+    fn inverse_distance_beyond_the_reference() {
+        assert_eq!(super::distance_gain(2.0, 1.0), 1.0);
+        assert!((super::distance_gain(2.0, 4.0) - 0.5).abs() < 1e-6);
+        assert!((super::distance_gain(1.0, 10.0) - 0.1).abs() < 1e-6);
     }
 }

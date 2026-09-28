@@ -76,6 +76,25 @@ pub(crate) fn keyboard_cfg(root: &Path) -> PathBuf {
     root.join("Inputs/keyboard.cfg")
 }
 
+/// The keys (scan codes without a modifier) the player's own `keyboard.cfg` (the content
+/// folder's, written by the launcher) binds to something the original's does not bind to
+/// them: see `App::own_keys`.
+pub(crate) fn own_keys(root: &Path) -> std::collections::HashSet<i32> {
+    let mine = keyboard_cfg(root);
+    let original = root.join("Inputs/keyboard.cfg");
+    if mine == original {
+        return Default::default();
+    }
+    let (Ok(m), Ok(o)) = (omsi_content::KeyboardCfg::load(&mine), omsi_content::KeyboardCfg::load(&original)) else { return Default::default() };
+    let orig: std::collections::HashSet<(String, i32, i32)> = o.vehicles.iter().chain(o.game.iter()).map(|b| (b.action.to_ascii_lowercase(), b.scan_code, b.modifier)).collect();
+    m.vehicles
+        .iter()
+        .chain(m.game.iter())
+        .filter(|b| b.modifier == 0 && b.scan_code != 0 && !orig.contains(&(b.action.to_ascii_lowercase(), b.scan_code, b.modifier)))
+        .map(|b| b.scan_code)
+        .collect()
+}
+
 pub(crate) fn content_dir() -> Option<PathBuf> {
     if let Some(d) = omsi_cfg::env::var_os("OMSI_CONTENT") {
         return Some(PathBuf::from(d));
@@ -88,7 +107,7 @@ pub(crate) fn content_dir() -> Option<PathBuf> {
     } else {
         dir
     };
-    Some(dir)
+    Some(omsi_cfg::content_folder_of(&dir))
 }
 
 /// Where the last working installation was remembered.

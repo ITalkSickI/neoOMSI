@@ -33,11 +33,11 @@ Every commit to `main` is built by GitHub Actions and published on the
 
 | Platform | File |
 | --- | --- |
-| Windows x64 | `openOMSI-<version>-windows-x64.zip` - run `openomsi.exe` |
-| macOS (Apple silicon) | `openOMSI-<version>-macos-arm64.zip` - open `openOMSI.app` |
-| Linux x64 | `openOMSI-<version>-linux-x64.zip` - run `openomsi` |
+| Windows x64 / ARM64 | `openOMSI-<version>-windows-x64.zip` / `-windows-arm64.zip` - run `openomsi.exe` |
+| macOS (Apple silicon / Intel) | `openOMSI-<version>-macos-arm64.zip` / `-macos-x64.zip` - open `openOMSI.app` |
+| Linux x64 / ARM64 | `openOMSI-<version>-linux-x64.zip` / `-linux-arm64.zip` - run `openomsi` |
 | Android (arm64, 8.0+) | `openOMSI-<version>-android-arm64.apk` - see [docs/ANDROID.md](docs/ANDROID.md) |
-| Dedicated server (Linux x64) | `openOMSI-<version>-server-linux-x64.zip` - see [docs/SERVER.md](docs/SERVER.md) |
+| Dedicated server | `openOMSI-<version>-server-linux-x64.zip` (also `-linux-arm64`, `-windows-x64`, `-windows-arm64`) - see [docs/SERVER.md](docs/SERVER.md) |
 
 Start the game, point the launcher to your OMSI 2 folder once, pick a map, a bus and a duty,
 and drive. Mods go into the folder next to the game (or through the launcher's **Mods**
@@ -75,6 +75,7 @@ pages live in [`docs/`](docs):
 | [Plugins](docs/PLUGINS.md) | Lua plugins (API and examples), OMSI plugin DLLs and the 32-bit plugin host |
 | [Dedicated server](docs/SERVER.md) | hosting a session without a window |
 | [Versioning & releases](docs/VERSIONING.md) | the `MAJOR.MINOR.COMMIT` scheme and the CI |
+| [Changelog](CHANGELOG.md) | what changed in each version |
 
 ## Building from source
 

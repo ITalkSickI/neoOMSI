@@ -190,10 +190,16 @@ pub fn asset_name(version: &str) -> Option<String> {
         "android-arm64.apk"
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "windows-x64.zip"
+    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
+        "windows-arm64.zip"
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         "macos-arm64.zip"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "macos-x64.zip"
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         "linux-x64.zip"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "linux-arm64.zip"
     } else {
         return None;
     };

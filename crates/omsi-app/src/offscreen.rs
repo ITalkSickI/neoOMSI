@@ -1587,7 +1587,8 @@ pub(crate) fn run_offscreen(
             };
             let q = ep.quat;
             let qyaw = (2.0 * q[1].atan2(q[3])).to_degrees();
-            log::info!("entry {:3} \"{}\": object heading {:.1}, record quaternion yaw {:.1} (q {:?}), record pos {:?}", ep.index, ep.name, rot[0], qyaw, q, ep.pos);
+            let rec = crate::spawn::recorded_entry_pos(ep, pos);
+            log::info!("entry {:3} \"{}\": object heading {:.1}, record quaternion yaw {:.1} (q {:?}), object at ({:.1}, {:.1}, {:.1}), recorded at {:?}", ep.index, ep.name, rot[0], qyaw, q, pos.x, pos.y, pos.z, rec.map(|r| (r.x, r.y, r.z)));
             let road = world.ground_height(pos.x, pos.y);
             let walk = world.walk_height(pos.x, pos.y);
             let terrain = world.ground_terrain(pos.x, pos.y);

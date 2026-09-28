@@ -17,6 +17,8 @@ use std::sync::Arc;
 pub struct Footfall {
     pub position: DVec3,
     pub inside: bool,
+    /// On the floor of the player's own bus.
+    pub own_bus: bool,
 }
 
 pub struct Ambience {
@@ -153,7 +155,7 @@ impl Ambience {
         }
         self.rain(engine, precip, inside);
         self.hum(engine, inside, engine_running);
-        self.footsteps(engine, dt, street_cond, listener, footfalls);
+        self.footsteps(engine, dt, street_cond, listener, inside, footfalls);
     }
 
     /// The rain in the street: it only rains audibly, snow is silent. Heard at a quarter
@@ -233,6 +235,7 @@ impl Ambience {
         dt: f32,
         street_cond: f32,
         listener: DVec3,
+        listener_inside: bool,
         footfalls: &[Footfall],
     ) {
         if self.steps.is_empty() {
@@ -259,13 +262,17 @@ impl Ambience {
             } else {
                 (1.0 - 0.55 * snow + 0.1 * wet, 1.0 - 0.12 * snow)
             };
+            // a step on the other side of the bus's bodywork from the listener - the pavement
+            // heard from the driver's seat, the saloon heard from the street - comes through
+            // it: quieter and dull (it used to sound as if the people walked in the bus)
+            let (through, lowpass) = if f.own_bus != listener_inside { (0.3, 600.0) } else { (1.0, 0.0) };
             let params = VoiceParams {
-                gain: self.step_volume * gain * (0.8 + 0.4 * self.rand()),
+                gain: self.step_volume * gain * through * (0.8 + 0.4 * self.rand()),
                 pitch: pitch * (0.94 + 0.12 * self.rand()),
                 looping: false,
                 position: Some(f.position.as_vec3()),
                 range: self.step_range,
-                lowpass_hz: 0.0,
+                lowpass_hz: lowpass,
             };
             engine.play(clip, params);
             played += 1;

@@ -280,6 +280,12 @@ impl State {
         if map.is_empty() {
             return;
         }
+        // (every change of the date comes here: the depot file of that date)
+        let hof = self.default_hof();
+        if hof != self.choice.hof {
+            log::info!("depot file for {date}: {hof}");
+            self.choice.hof = hof;
+        }
         self.loading_lines = true;
         self.lines_for = (map.clone(), date.clone());
         self.spawn(move || {
@@ -578,7 +584,7 @@ impl State {
                 if omsi_cfg::missing_original_essentials(std::path::Path::new(&self.config.root)).is_empty() {
                     self.set_status(format!("{e}\nSet the OMSI 2 folder under Setup."), true);
                 } else {
-                    self.set_status("The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.", true);
+                    self.set_status(root_problem(&self.config.root), true);
                 }
             }
             Msg::Lines { map, date, lines } => {
@@ -753,8 +759,15 @@ impl State {
 
     /// The depot file a bus uses on the chosen map: the map's own when the bus has it (or
     /// has none: the game borrows it), else the bus's first.
+    /// The depot file for the chosen bus: the one the map's own buses use on the chosen date
+    /// (the chrono scenarios change it: Berlin's 1994 depot has line 137 where 1986's had
+    /// 92), which the bus has, else its first.
     pub fn default_hof(&self) -> String {
-        let want = self.map().map(|m| m.hof.clone()).unwrap_or_default();
+        let on_date = self.map().and_then(|m| {
+            let dir = omsi_cfg::resolve_path(std::path::Path::new(&self.config.root), &m.file);
+            omsi_map::ailists::depot_hof_on(dir.parent()?, omsi_map::ailists::date_code(&self.choice.date)?)
+        });
+        let want = on_date.or_else(|| self.map().map(|m| m.hof.clone())).unwrap_or_default();
         let Some(v) = self.bus() else { return want };
         v.hofs.iter().find(|h| h.eq_ignore_ascii_case(&want)).cloned().or(Some(want).filter(|w| !w.is_empty())).or_else(|| v.hofs.first().cloned()).unwrap_or_default()
     }
@@ -838,4 +851,22 @@ pub fn fmt_bytes(b: u64) -> String {
 
 pub fn short_map(m: &str) -> String {
     m.trim_start_matches("maps/").trim_end_matches("/global.cfg").to_string()
+}
+
+/// Why `root` is not an OMSI 2 to play on, said so that the player knows what to choose.
+pub fn root_problem(root: &str) -> String {
+    let root = root.trim();
+    let p = std::path::Path::new(root);
+    let missing = omsi_cfg::missing_original_essentials(p);
+    if root.is_empty() {
+        "The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles in it) under Setup and press Save.".to_string()
+    } else if !p.exists() {
+        format!("{root} does not exist: choose the folder of the original OMSI 2 (with Omsi.exe, maps and Vehicles in it) under Setup.")
+    } else if missing.iter().any(|m| m.contains("content folder")) || p.join("openomsi.exe").exists() || p.join("openomsi").is_file() {
+        format!("{root} is openOMSI's own folder, not OMSI 2's: choose the folder of the original game (with Omsi.exe in it) under Setup.")
+    } else if missing.is_empty() {
+        String::new()
+    } else {
+        format!("{root} is not a complete OMSI 2 - it lacks {}. openOMSI plays on the original's stock content: choose the folder of a complete installation under Setup.", missing.iter().take(3).cloned().collect::<Vec<_>>().join(", "))
+    }
 }

@@ -88,8 +88,10 @@ enum Role {
     Cockpit,
     /// Looking round (or, not moved far, a tap on the picture).
     Look,
-    /// The mouse, while a menu or the city map has the screen.
+    /// The mouse, while the city map has the screen.
     Mouse,
+    /// The game menu's (or the chooser's) list: a drag scrolls it, a tap picks a line.
+    Menu,
 }
 
 struct Touched {
@@ -368,6 +370,8 @@ impl App {
         let t = &self.touch;
         let role = if let Some(k) = t.button_at(p) {
             Role::Button(k, t.buttons[k].btn)
+        } else if self.game_menu.is_some() || self.chooser.is_some() {
+            Role::Menu
         } else if menu_mode {
             Role::Mouse
         } else if t.stick_r > 0.0 && p.distance(t.stick_c) <= t.stick_r * 1.3 {
@@ -401,6 +405,10 @@ impl App {
                 self.on_cursor(p.x, p.y);
                 self.left_button(event_loop, true);
             }
+            // (the line under the finger lights up; it is picked when the finger comes up
+            // without having moved - a finger that came down to scroll used to pick the
+            // line it landed on)
+            Role::Menu => self.on_cursor(p.x, p.y),
             Role::Wheel(..) => self.touch.steering = true,
             _ => {}
         }
@@ -458,12 +466,18 @@ impl App {
                     return self.touch_pinch();
                 }
                 self.on_cursor(p.x, p.y);
-                // (a menu's list scrolls with a drag)
-                if role == Role::Mouse && self.game_menu.is_some() {
-                    let d = (p.y - last.y) / (36.0 * u);
-                    if d.abs() > 0.0 {
-                        self.menu_wheel(d);
-                    }
+            }
+            // the list follows the finger, line for line
+            Role::Menu => {
+                if self.touch.fingers[k].moved {
+                    // (no line lit under a finger that scrolls)
+                    self.on_cursor(-1e4, -1e4);
+                    let (start, row_h) = self.ui.as_ref().map(|u| (u.menu_start as f32, u.menu_row_h.max(1.0))).unwrap_or((0.0, 1.0));
+                    let top = self.menu_top.unwrap_or(start) - (p.y - last.y) / row_h;
+                    let (n, rows) = (self.menu_len() as f32, self.ui.as_ref().map(|u| u.menu_rows).unwrap_or(0) as f32);
+                    self.menu_top = Some(top.clamp(0.0, (n - rows).max(0.0)));
+                } else {
+                    self.on_cursor(p.x, p.y);
                 }
             }
             Role::Look => {
@@ -519,6 +533,16 @@ impl App {
             Role::Cockpit | Role::Mouse => {
                 self.on_cursor(p.x, p.y);
                 self.left_button(event_loop, false);
+            }
+            Role::Menu => {
+                if !f.moved && !cancelled {
+                    self.on_cursor(p.x, p.y);
+                    self.left_button(event_loop, true);
+                    self.left_button(event_loop, false);
+                } else {
+                    // (the fraction of a line left over is rounded, as the menu shows it)
+                    self.menu_top = self.menu_top.map(f32::round);
+                }
             }
             Role::Look => {
                 // a tap on the picture: a click there (a switch the finger missed by a hair
@@ -626,7 +650,6 @@ impl App {
                     _ => "driver",
                 }
                 .into();
-                self.look = (0.0, 0.0);
                 let v = match self.view.as_str() {
                     "driver" => "Driver's view",
                     "outside" => "Outside view",

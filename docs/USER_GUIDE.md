@@ -76,18 +76,23 @@ write to (Program Files, an app opened straight from Downloads on macOS) is repo
 what to do. `OMSI_NO_UPDATE=1` switches the check off; `OMSI_UPDATE_URL` points it at another
 release description (GitHub's format; `file://` works, for testing).
 
-**O** switches mouse steering on and off, as in OMSI: the cursor's place across the whole
-window is the steering from full left to full right lock, above the middle is the throttle and
-below it the brake. Above 10 km/h the same hand movement turns the wheels less and less (at
-50 km/h a fifth as far), so the wheel feels heavier the faster the bus goes; for the first
-second after switching it on the wheel eases towards the cursor.
+**O** switches mouse steering on and off, as in OMSI (Omsi.exe's own formula): the cursor's
+place across the whole window is the steering from full left to full right lock
+(`[inv_min_turnradius]` of the bus), from the middle up to the top edge is the throttle and
+down to the bottom edge the brake. Above 10 km/h the same hand movement turns the wheels less
+and less (at 50 km/h a fifth as far), so the wheel feels heavier the faster the bus goes; for
+the first second after switching it on the wheel and the pedals ease towards the cursor.
+Settings → Controls & sound → *Mouse steering* makes it more or less sensitive (100 % = OMSI).
 
 Left-click a cockpit switch to operate it, hold the button and move the mouse to turn a knob,
 or roll the mouse wheel over it (that is the `<event>_drag` OMSI fires); the name of the switch
 under the cursor is shown in the HUD.
 Right-drag the mouse to look around in any view (the head turns inside, the camera swings
-around the bus outside), I/J/K/L does the same from the keyboard, the wheel zooms, Home
-recentres. F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
+around the bus outside), I/J/K/L does the same from the keyboard; each view keeps its own
+direction (turning the outside camera leaves the driver's head where it was), **Space** looks
+ahead again in every view (OMSI's `view_reset_all_directions`), Home recentres the view shown.
+The mouse wheel (and **=** / **-**, a pinch on a phone) zooms: outside the camera comes closer,
+inside the bus the view narrows, as in OMSI. F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
 sign and roller blind keys as in OMSI, Alt+S quick save, F9 write the run into the personnel
 file, WASD+QE in the free camera, left click on cockpit elements, **V** the chat line in a
 LAN session. Esc opens the game menu: drive the next placed vehicle, place any vehicle of
@@ -120,13 +125,29 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   the session summaries the game writes to `~/.openomsi/sessions`.
 * **Settings** - everything in `settings.cfg` below, saved as it changes; keys the page
   does not manage are kept as they are.
-* **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red.
+* **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red. The
+  keys are the game's with *Driving keys: Custom controls* (Settings); with a ready-made
+  layout (W A S D, arrows) those keys drive and win over the list - the page says so, and
+  changing a key switches to Custom controls by itself. *Game controllers*: wheels, pedals,
+  joysticks and button boxes as in OMSI's `gamectrler.cfg` - a connected device not set up
+  yet has **Set up**, and **Set up step by step** finds its axes (turn the wheel left, press
+  each pedal); every button of the device is listed (press one to jump to it). On Windows the
+  devices are read through DirectInput, as OMSI does, so every wheel Windows lists works
+  (a wheel's force feedback: the centring that grows with the speed, the heavy steering of a
+  bus standing still and the scripts' shaking, `FF_Vib_Amp`); a wheel nobody has set up
+  steers with its X axis.
 * **Sessions** - every game started from the launcher, with its log, a **Stop** that lets
   it save its run (SIGTERM, up to 8 s, and only a stuck game is killed) and, for a LAN
   session, the code to copy, who is playing and the chat.
 * **Mods** - installing mods and archives (see *Mods and the content folder*); a folder or
   .zip dropped on the window is installed.
-* **Setup** - where the original installation and the game binary are.
+* **Timetable** - a map's lines, their tours and trips. Changes stay while you move between
+  lines and are saved together (*Save all*); **New line** makes a line, **Repeat** turns a tour
+  into a whole day of them (every *n* minutes up to a last departure).
+* **Setup** - where the original installation and the game binary are. The OMSI 2 folder may
+  be given as a path with quotes, as `Omsi.exe` itself or as a folder inside it; unpacked into
+  the OMSI 2 folder itself, openOMSI keeps its own content in an `openOMSI` folder there and
+  never writes to the game's.
 
 ```bash
 scripts/build-macos.sh   # or build-windows.cmd / build-linux.sh: the game opens the launcher
@@ -154,13 +175,15 @@ and `drive_keys`, plus `render_scale` (`auto` or a fraction: the picture is draw
 and upscaled), `post_aa` (`fxaa`, the enhanced renderer's, or `off`), `view_distance` (m,
 how far the tiles are kept loaded), `texture_memory` (MB - OMSI's `texmemlimit` is read
 under that name too; an eighth of the machine's memory when unset), `texture_compression`
-(BC1-BC3 on the GPU, on by default) and `language` (`ENG`, `DEU`, `FRA`: the language the
-HUD names cockpit switches in). The file also carries a `version`; older files that say
+(BC1-BC3 on the GPU, on by default), `reflections` (the materials' reflection maps,
+`[matl_envmap]` - off, paint, chrome and glass mirror nothing), `mouse_sens` (mouse steering,
+1 = OMSI's) and `language` (`ENG`, `DEU`, `FRA`: the language the HUD names cockpit switches
+in). The file also carries a `version`; older files that say
 `boarding=pay` because that was the launcher's old default are read as `auto`.
 
 `drive_keys` is a control preset: `simple` (W/S/A/D and the arrow keys drive; the default),
-`wasd`, `arrows`, or `omsi` - only the original layout of `Inputs/keyboard.cfg` (Shift +
-numpad), nothing added. **T** sells the ticket a passenger asks for on a bus without a
+`wasd`, `arrows`, or `omsi` ("Custom controls") - only the layout of `Inputs/keyboard.cfg`
+(OMSI's Shift + numpad, or what the Controls page made of it), nothing added. **T** sells the ticket a passenger asks for on a bus without a
 ticket printer (the original's `ticket_give` key).
 
 `boarding` is how passengers board: `auto` (default) - they walk to the standing place the

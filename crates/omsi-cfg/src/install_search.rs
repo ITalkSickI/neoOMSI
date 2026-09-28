@@ -173,15 +173,70 @@ fn shallow_scan() -> Option<PathBuf> {
     None
 }
 
+/// The folders a path the player gave may mean: what was typed or pasted (Windows' "Copy as
+/// path" puts quotes round it), the folder of a file named instead of its folder (`Omsi.exe`,
+/// or openOMSI's own program when openOMSI was unpacked into the OMSI folder), the folders
+/// above a subfolder chosen by mistake (`maps`, `Vehicles\MAN_SD200`), and an OMSI folder
+/// inside the one chosen.
+pub fn root_guesses(given: &Path) -> Vec<PathBuf> {
+    let s = given.to_string_lossy();
+    let s = s.trim().trim_matches(|c| c == '"' || c == '\'' ).trim();
+    if s.is_empty() {
+        return Vec::new();
+    }
+    let p = PathBuf::from(s);
+    let dir = if p.is_file() { p.parent().map(Path::to_path_buf).unwrap_or(p.clone()) } else { p.clone() };
+    let mut v = vec![dir.clone()];
+    v.extend(dir.ancestors().skip(1).take(3).map(Path::to_path_buf));
+    for n in NAMES {
+        v.push(dir.join(n));
+    }
+    v
+}
+
 /// The first complete installation among `first` (the caller's own guesses, in order) and
 /// then every usual place.
 pub fn find_original_install(first: &[PathBuf]) -> Option<PathBuf> {
     let mut seen = std::collections::HashSet::new();
     first
         .iter()
-        .cloned()
+        .flat_map(|p| root_guesses(p))
         .chain(candidates())
         .filter(|p| !p.as_os_str().is_empty() && seen.insert(p.clone()))
         .find(|p| is_install(p))
         .or_else(shallow_scan)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_or_a_quoted_path_means_its_folder() {
+        let dir = std::env::temp_dir().join("openomsi-root-guess");
+        let _ = std::fs::create_dir_all(dir.join("maps"));
+        let exe = dir.join("openomsi.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(root_guesses(&exe)[0], dir);
+        let quoted = PathBuf::from(format!("\"{}\" ", dir.display()));
+        assert_eq!(root_guesses(&quoted)[0], dir);
+        // a subfolder: the folder above is tried next
+        assert_eq!(root_guesses(&dir.join("maps"))[1], dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn openomsi_unpacked_into_the_omsi_folder_keeps_its_content_apart() {
+        let dir = std::env::temp_dir().join("openomsi-in-omsi");
+        let _ = std::fs::create_dir_all(dir.join("maps"));
+        std::fs::write(dir.join("Omsi.exe"), b"").unwrap();
+        // a marker an older openOMSI left there does not make it "not the game"
+        std::fs::write(dir.join(crate::CONTENT_MARKER), b"").unwrap();
+        assert_eq!(crate::content_folder_of(&dir), dir.join("openOMSI"));
+        assert!(!crate::missing_original_essentials(&dir).iter().any(|m| m.contains("content folder")));
+        let other = std::env::temp_dir().join("openomsi-plain");
+        let _ = std::fs::create_dir_all(&other);
+        assert_eq!(crate::content_folder_of(&other), other);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

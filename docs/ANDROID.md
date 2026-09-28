@@ -28,8 +28,12 @@ maps, buses and mods. Only the way it is worked is new:
 Everything else is in the cab itself, as in OMSI: a tap works the switch under the finger (the
 IBIS, the ticket printer, the light switches), a finger dragged from a switch turns it (knobs,
 the ignition key, the sun blind), a drag elsewhere looks round, two fingers zoom. On foot and
-with the free camera a stick at the bottom left walks (pushed to the edge: runs). While the
-game menu, a list or the city map is open, the fingers are the mouse. The back key is Escape.
+with the free camera a stick at the bottom left walks (pushed to the edge: runs). The game
+menu and its lists scroll with the finger and a tap picks a line (a finger put down to scroll
+no longer picks the line it lands on); on the city map the fingers are the mouse. The back key
+is Escape. The launcher is laid out for the phone: the text at least at the system's own
+size, the settings in one column, and a finger on a list that has reached its end scrolls
+the page on.
 A game controller connected by Bluetooth works as on the computer.
 
 The buttons fire the actions of `Inputs/keyboard.cfg` (or the keys that stand for them, e.g.

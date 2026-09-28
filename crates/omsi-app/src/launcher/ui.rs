@@ -750,8 +750,16 @@ impl Ui {
         let max = (content - r.h).max(0.0);
         let mut target = self.scroll.get(&(id ^ 0xabc)).copied().unwrap_or(off);
         if self.hover(r) && self.input.wheel.y.abs() > 0.0 && !self.wheel_taken {
-            target -= self.input.wheel.y * 42.0;
-            self.wheel_taken = true;
+            // what the list cannot use (it is at its end) goes on to the list or page
+            // around it: a finger on a list at its end scrolls the phone's page on
+            let want = target - self.input.wheel.y * 42.0;
+            let left = want - want.clamp(0.0, max);
+            target = want - left;
+            if left.abs() < 0.5 {
+                self.wheel_taken = true;
+            } else {
+                self.input.wheel.y = -left / 42.0;
+            }
         }
         // dragging the bar
         if max > 0.0 {

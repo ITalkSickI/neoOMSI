@@ -69,9 +69,13 @@ rfd = "0.15"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Windows: the game controllers through DirectInput, as OMSI reads them (see `dinput`)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_System_LibraryLoader"] }
+
 # the interface's machine translation (`mt`): CTranslate2 with Meta's NLLB model, as the
-# `trad` crate does it (Apple's Accelerate for the maths)
-[target.'cfg(target_os = "macos")'.dependencies]
+# `trad` crate does it (Apple's Accelerate for the maths; Apple silicon only)
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ct2rs = { version = "0.9.17", default-features = false, features = ["tokenizers", "accelerate", "ruy"] }
 
 # Android: winit's NativeActivity backend, the system log, and JNI for the few things only

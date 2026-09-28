@@ -3854,7 +3854,7 @@ mod tests {
 
     #[test]
     fn berlin_5e_uses_its_real_terminus_when_no_hof_route_exists() {
-        let path = std::path::Path::new("../../OMSI 2 Original/Vehicles/MAN_SD202/Berlin.hof");
+        let path = std::path::Path::new("../../../OMSI 2 Original/Vehicles/MAN_SD202/Berlin.hof");
         let Ok(hof) = omsi_vehicle::Hof::load(path) else {
             return;
         };
@@ -3872,7 +3872,7 @@ mod tests {
     #[test]
     fn berlin_5e_does_not_turn_hof_route_505_into_s5() {
         let path =
-            std::path::Path::new("../../OMSI 2 Original/Vehicles/MAN_NL_NG/Spandau 89-11.hof");
+            std::path::Path::new("../../../OMSI 2 Original/Vehicles/MAN_NL_NG/Spandau 89-11.hof");
         let Ok(hof) = omsi_vehicle::Hof::load(path) else {
             return;
         };

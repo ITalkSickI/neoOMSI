@@ -277,6 +277,41 @@ pub fn chrono_deactivated_lines(chrono_dirs: &[PathBuf]) -> Vec<(String, PathBuf
     out
 }
 
+/// The map's `ailists.cfg` with the updates of the given (active) chrono folders
+/// (`ailists_#upd.cfg`, else a full `ailists.cfg` of the scenario): a group of the same name
+/// gets the new vehicles, and a depot the depot file (`.hof`) the scenario names - Berlin's
+/// buses change to "Spandau 1994" on 29 May 1994.
+pub fn ailists_with_chrono(map_dir: &Path, chrono_dirs: &[PathBuf]) -> AiLists {
+    let mut ailists = AiLists::load(&omsi_cfg::resolve_path(map_dir, "ailists.cfg")).unwrap_or_default();
+    for c in chrono_dirs {
+        for name in ["ailists_#upd.cfg", "ailists.cfg"] {
+            if let Ok(extra) = AiLists::load(&c.join(name)) {
+                for g in extra.groups {
+                    match ailists.groups.iter_mut().find(|x| x.name.eq_ignore_ascii_case(&g.name) && x.is_depot == g.is_depot) {
+                        Some(base) => {
+                            base.vehicles.extend(g.vehicles);
+                            base.typgroups.extend(g.typgroups);
+                            if g.hof.is_some() {
+                                base.hof = g.hof;
+                            }
+                        }
+                        None => ailists.groups.push(g),
+                    }
+                }
+                break;
+            }
+        }
+    }
+    ailists
+}
+
+/// The depot file (`.hof` name) the map's own buses use on `date` (YYYYMMDD): the first
+/// depot's, with the chrono scenarios of that date.
+pub fn depot_hof_on(map_dir: &Path, date: i32) -> Option<String> {
+    let l = ailists_with_chrono(map_dir, &active_chrono_dirs(map_dir, date));
+    l.groups.iter().filter(|g| g.is_depot).chain(l.groups.iter()).find_map(|g| g.hof.clone())
+}
+
 /// A date as the game and the launcher write it (`YYYY-MM-DD`) as the chrono's `YYYYMMDD`.
 pub fn date_code(date: &str) -> Option<i32> {
     let v: Vec<i32> = date.split('-').filter_map(|x| x.trim().parse().ok()).collect();
@@ -414,5 +449,20 @@ mod legacy_tests {
         assert_eq!(a.groups.len(), 1);
         assert_eq!(a.groups[0].name, "NotInGroup");
         assert_eq!(a.groups[0].vehicles.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod chrono_hof_tests {
+    #[test]
+    fn berlin_changes_its_depot_file_with_the_date() {
+        let dir = std::path::Path::new("../../../OMSI 2 Original/maps/Berlin-Spandau");
+        if !dir.is_dir() {
+            return;
+        }
+        let at = |d| super::depot_hof_on(dir, d).unwrap_or_default();
+        assert_eq!(at(19940601), "Spandau 1994");
+        assert_ne!(at(19870101), "Spandau 1994");
+        assert_eq!(at(19891201), "Spandau 1989-12");
     }
 }

@@ -31,13 +31,27 @@ pub struct PagesView {
 /// the one shown, a button being waited for.
 #[derive(Default)]
 pub struct PadsView {
-    pub gilrs: Option<gilrs::Gilrs>,
+    pub io: Option<crate::controllers::Devices>,
+    /// The set-up assistant, while it runs.
+    pub wizard: Option<Wizard>,
     pub tried: bool,
     pub devices: Option<Vec<crate::controllers::DeviceCfg>>,
     pub selected: usize,
     /// Waiting for a button of the shown device to be pressed (to add its binding).
     pub capturing: bool,
     pub dirty: bool,
+}
+
+/// The set-up assistant of a device: the player lets go of everything, then turns the wheel
+/// to the left and presses each pedal in turn; what moved most each time is that control
+/// (and which way it runs), as OMSI's options dialog has the player choose by hand.
+pub struct Wizard {
+    pub step: usize,
+    /// Where each axis rests, and where it stood at each step (left, throttle, brake,
+    /// clutch).
+    pub rest: [Option<f32>; 8],
+    pub at: Vec<[Option<f32>; 8]>,
+    pub error: Option<String>,
 }
 
 // --- profile --------------------------------------------------------------------------------
@@ -261,9 +275,14 @@ pub fn settings(l: &mut Launcher, area: Rect) {
     let dirty = &mut l.state.settings_dirty;
     let mut upd = UpdateRow { status: l.update.status(), check: false };
     // (a window lower than the columns scrolls them; they were cut off at the bottom)
+    // (three columns side by side; where they would be too narrow to read - a phone - one
+    // under the other, each as high as it was the frame before)
+    let stacked = body.w < 900.0;
     l.ui.scroll_area("settings-page", body, &mut |ui, v| {
-        let h = SETTINGS_H.max(v.h);
-        settings_columns(ui, s, dirty, Rect::new(v.x, v.y, v.w - 8.0, h), &mut upd);
+        let hs = SETTINGS_COL_H.with(|c| c.get());
+        let h = if stacked { hs.iter().sum::<f32>() + GAP * 4.0 } else { hs.iter().fold(v.h, |a, b| a.max(*b)) };
+        let used = settings_columns(ui, s, dirty, Rect::new(v.x, v.y, v.w - 8.0, h), &mut upd, stacked.then_some(hs));
+        SETTINGS_COL_H.with(|c| c.set(used));
         h
     });
     if upd.check {
@@ -271,10 +290,21 @@ pub fn settings(l: &mut Launcher, area: Rect) {
     }
 }
 
-fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd: &mut UpdateRow) {
+thread_local! {
+    /// How high each settings column came out (the stacked layout's heights).
+    static SETTINGS_COL_H: std::cell::Cell<[f32; 3]> = const { std::cell::Cell::new([SETTINGS_H; 3]) };
+}
+
+/// The settings' three columns in `body`: side by side, or with `stacked` (each one's height)
+/// one under the other. Returns the height each needed.
+fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd: &mut UpdateRow, stacked: Option<[f32; 3]>) -> [f32; 3] {
     let cols = 3;
     let cw = (body.w - GAP * 2.0 * (cols as f32 - 1.0)) / cols as f32;
-    let colr = |k: usize| Rect::new(body.x + k as f32 * (cw + GAP * 2.0), body.y, cw, body.h);
+    let colr = |k: usize| match stacked {
+        Some(hs) => Rect::new(body.x, body.y + hs[..k].iter().sum::<f32>() + k as f32 * GAP * 2.0, body.w, hs[k]),
+        None => Rect::new(body.x + k as f32 * (cw + GAP * 2.0), body.y, cw, body.h),
+    };
+    let mut used = [0.0f32; 3];
     // graphics
     let c0 = colr(0);
     ui.panel(c0);
@@ -298,6 +328,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         sel_setting(ui, s, dirty, "s-casters", row(&mut y), "Shadows cast by", "shadow_casters", &[("all", "Every solid mesh"), ("omsi", "[shadow] meshes, as OMSI")]);
         toggle_setting(ui, s, dirty, row(&mut y), "Detail texturing up close", "detail_textures");
     }
+    toggle_setting(ui, s, dirty, row(&mut y), "Reflection maps (paint, chrome, glass)", "reflections");
     toggle_setting(ui, s, dirty, row(&mut y), "Clouds", "clouds");
     toggle_setting(ui, s, dirty, row(&mut y), "Fullscreen", "fullscreen");
     toggle_setting(ui, s, dirty, row(&mut y), "V-sync", "vsync");
@@ -323,6 +354,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     y += 32.0;
     sel_setting(ui, s, dirty, "s-maint", row(&mut y), "Maintenance", "maintenance", &[("0", "Infinite (no wear)"), ("1", "Very bad"), ("2", "Bad"), ("3", "Normal"), ("4", "Good")]);
     sel_setting(ui, s, dirty, "s-unsched", row(&mut y), "Random traffic", "ai_unsched_factor", &[("25", "25%"), ("50", "50%"), ("75", "75%"), ("100", "100%"), ("150", "150%"), ("200", "200%")]);
+    used[0] = y - c0.y + 14.0;
     // navigator & interface
     let c1 = colr(1);
     ui.panel(c1);
@@ -442,6 +474,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
             crate::updater::open_url(crate::updater::REPO_URL);
         }
     }
+    used[1] = y - c1.y + 14.0;
     // passengers, controls, sound
     let c2 = colr(2);
     ui.panel(c2);
@@ -471,6 +504,11 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         s["volume"] = json!((vol * 100.0).round() / 100.0);
         *dirty = 0.3;
     }
+    let mut ms = get(s, "mouse_sens").as_f64().unwrap_or(1.0) as f32;
+    if ui.slider("s-mouse", row(&mut y), &mut ms, 0.25, 2.0, 0.05, "Mouse steering (O)", &|v| if (v - 1.0).abs() < 0.01 { "OMSI".to_string() } else { format!("{:.0}%", v * 100.0) }) {
+        s["mouse_sens"] = json!((ms * 100.0).round() / 100.0);
+        *dirty = 0.3;
+    }
     toggle_setting(ui, s, dirty, row(&mut y), "Doppler effect", "doppler");
     for (key, label, id) in [("vol_ai", "Traffic", "s-volai"), ("vol_scenery", "Surroundings", "s-volsc")] {
         let mut v = get(s, key).as_f64().unwrap_or(1.0) as f32;
@@ -492,7 +530,8 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     // (in multiplayer the host's or the server's speed counts)
     sel_setting(ui, s, dirty, "s-timespeed", row(&mut y), "Time speed (not in multiplayer)", "time_speed", &[("1", "Real time"), ("2", "x2"), ("4", "x4"), ("8", "x8"), ("15", "x15"), ("30", "x30")]);
     // (the keys are on the Controls page)
-    let _ = y;
+    used[2] = y - c2.y + 14.0;
+    used
 }
 
 fn mb(v: i64) -> String {
@@ -597,6 +636,33 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         }
         l.ui.input.raw_key = None;
     }
+    // The keys below are the ones the game uses only with "Custom controls" (Settings →
+    // Driving keys); the ready-made layouts keep W A S D / the arrows for driving. Say so,
+    // with the switch right here - and changing a key switches by itself (see `save_keys`).
+    let preset = l.state.settings.get("drive_keys").and_then(|v| v.as_str()).unwrap_or("simple").to_string();
+    let body = if preset != "omsi" {
+        let name = match preset.as_str() {
+            "wasd" => "W A S D only",
+            "arrows" => "Arrow keys only",
+            _ => "W A S D + arrows",
+        };
+        let bw = if body.w < 700.0 { 150.0 } else { 200.0 };
+        let text = format!("Driving keys: {name} (Settings). Those keys drive the bus and win over the list below. Change any key here and your own layout (Custom controls) is used from then on.");
+        let tw = body.w - bw - 70.0;
+        let th = l.ui.paragraph_height(&text, tw, 12.5, Weight::Medium);
+        let bar = Rect::new(body.x, body.y, body.w, (th + 22.0).max(54.0));
+        l.ui.p().rounded(bar, 8.0, ACCENT.alpha(0.1));
+        l.ui.p().rounded_border(bar, 8.0, 1.0, ACCENT.alpha(0.45));
+        l.ui.icon("info", Vec2::new(bar.x + 22.0, bar.center().y), 20.0, ACCENT);
+        l.ui.paragraph(&text, Vec2::new(bar.x + 42.0, bar.center().y - th * 0.5), tw, 12.5, Weight::Medium, TEXT_SOFT);
+        if l.ui.button("kb-use-custom", Rect::new(bar.right() - bw - 10.0, bar.center().y - 18.0, bw, 36.0), "Use these keys", Some("keyboard"), ButtonKind::Primary) {
+            use_custom_keys(l);
+        }
+        let used = bar.h + 12.0;
+        Rect::new(body.x, body.y + used, body.w, body.h - used)
+    } else {
+        body
+    };
     let half = (body.w - GAP * 2.0) * 0.5;
     for (sec, (title, sub, key)) in [("Driving & the bus", "The bus's own keys", "vehicles"), ("The game", "Menus, views, pausing", "game")].iter().enumerate() {
         let r = Rect::new(body.x + sec as f32 * (half + GAP * 2.0), body.y, half, body.h);
@@ -669,10 +735,11 @@ pub fn controls(l: &mut Launcher, area: Rect) {
 /// The game controllers tab (see `PadsView`).
 fn game_controllers(l: &mut Launcher, body: Rect) {
     use crate::controllers::{DeviceCfg, Func};
+    let hwnd = l.window.as_deref().and_then(crate::controllers::window_handle);
     let pv = &mut l.pages.pads;
     if !pv.tried {
         pv.tried = true;
-        pv.gilrs = gilrs::Gilrs::new().map_err(|e| log::info!("game controllers: {e}")).ok();
+        pv.io = Some(crate::controllers::Devices::new(hwnd, false));
     }
     if pv.devices.is_none() {
         let root = std::path::PathBuf::from(&l.state.config.root);
@@ -681,19 +748,15 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     }
     // what the devices do now (and a button pressed while one is awaited)
     let mut pressed: Option<(String, usize)> = None;
-    if let Some(g) = pv.gilrs.as_mut() {
-        while let Some(ev) = g.next_event() {
-            if let gilrs::EventType::ButtonPressed(_, code) = ev.event {
-                let pad = g.gamepad(ev.id);
-                pressed = Some((pad.name().to_string(), crate::controllers::button_number(&pad, code)));
+    let mut connected: Vec<crate::controllers::Connected> = Vec::new();
+    if let Some(io) = pv.io.as_mut() {
+        for (name, n, down) in io.poll() {
+            if down {
+                pressed = Some((name, n));
             }
         }
+        connected = io.connected();
     }
-    let connected: Vec<(String, Vec<(usize, f32)>)> = pv
-        .gilrs
-        .as_ref()
-        .map(|g| g.gamepads().map(|(_, p)| (p.name().to_string(), crate::controllers::di_slots(&p.state().axes().map(|(c, d)| (c.into_u32(), d.value())).collect::<Vec<_>>()))).collect())
-        .unwrap_or_default();
     let devices = pv.devices.get_or_insert_with(Vec::new);
     // devices connected but not set up yet can be added
     let list_w = (body.w * 0.32).min(360.0);
@@ -701,33 +764,49 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let right = Rect::new(body.x + list_w + GAP * 2.0, body.y, body.w - list_w - GAP * 2.0, body.h);
     l.ui.panel(left);
     let inner = l.ui.heading(Rect::new(left.x + 18.0, left.y + 14.0, left.w - 36.0, left.h - 28.0), "Devices", Some("sports_esports"));
-    let mut y = inner.y;
     let mut add: Option<String> = None;
-    for (i, d) in devices.iter().enumerate() {
-        let on = connected.iter().any(|c| crate::controllers::names_match(&d.name, &c.0));
-        let r = Rect::new(inner.x, y, inner.w, 44.0);
-        if l.ui.row(&format!("pad-{i}"), r, pv.selected == i) {
-            pv.selected = i;
-            pv.capturing = false;
-        }
-        l.ui.text_in(&d.name, Rect::new(r.x + 12.0, r.y, r.w - 40.0, r.h), 13.0, Weight::Medium, TEXT, Align::Left);
-        l.ui.icon(if on { "check_circle" } else { "radio_button_unchecked" }, Vec2::new(r.right() - 18.0, r.center().y), 16.0, if on { OK } else { TEXT_FAINT });
-        y += 48.0;
+    let mut sel = pv.selected;
+    let list_r = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 108.0);
+    {
+        let ui = &mut l.ui;
+        let devices = &*devices;
+        let connected = &connected;
+        ui.scroll_area("pad-list", list_r, &mut |ui, v| {
+            let mut y = v.y;
+            for (i, d) in devices.iter().enumerate() {
+                let on = connected.iter().any(|c| crate::controllers::names_match(&d.name, &c.name));
+                let r = Rect::new(v.x + 6.0, y, v.w - 12.0, 44.0);
+                if ui.row(&format!("pad-{i}"), r, sel == i) {
+                    sel = i;
+                }
+                ui.text_in(&d.name, Rect::new(r.x + 12.0, r.y, r.w - 40.0, r.h), 13.0, Weight::Medium, if on { TEXT } else { TEXT_DIM }, Align::Left);
+                ui.icon(if on { "check_circle" } else { "remove" }, Vec2::new(r.right() - 18.0, r.center().y), 16.0, if on { OK } else { TEXT_FAINT });
+                y += 48.0;
+            }
+            for c in connected.iter().filter(|c| !devices.iter().any(|d| crate::controllers::names_match(&d.name, &c.name))) {
+                let r = Rect::new(v.x + 6.0, y, v.w - 12.0, 38.0);
+                if ui.button(&format!("pad-add-{}", c.name), r, &format!("Set up {}", c.name), Some("add"), ButtonKind::Primary) {
+                    add = Some(c.name.clone());
+                }
+                y += 44.0;
+            }
+            if devices.is_empty() && connected.is_empty() {
+                y += 4.0 + ui.paragraph("No game controller is connected, and none is set up. Connect a wheel, pedals or a joystick; a gamepad works without setting up (left stick steers, the triggers are the pedals).", Vec2::new(v.x + 6.0, y + 4.0), v.w - 12.0, 13.0, Weight::Regular, TEXT_DIM);
+            }
+            y - v.y
+        });
     }
-    for c in connected.iter().filter(|c| !devices.iter().any(|d| crate::controllers::names_match(&d.name, &c.0))) {
-        let r = Rect::new(inner.x, y, inner.w, 38.0);
-        if l.ui.button(&format!("pad-add-{}", c.0), r, &format!("Set up {}", c.0), Some("add"), ButtonKind::Normal) {
-            add = Some(c.0.clone());
-        }
-        y += 44.0;
-    }
-    if devices.is_empty() && connected.is_empty() {
-        l.ui.paragraph("No game controller is connected, and none is set up. Connect a wheel, pedals or a joystick; a gamepad works without setting up (left stick steers, the triggers are the pedals).", Vec2::new(inner.x, y + 4.0), inner.w, 13.0, Weight::Regular, TEXT_DIM);
+    if sel != pv.selected {
+        pv.selected = sel;
+        pv.capturing = false;
+        pv.wizard = None;
     }
     if let Some(name) = add {
         devices.push(DeviceCfg { name, second: "0".into(), ..Default::default() });
         pv.selected = devices.len() - 1;
         pv.dirty = true;
+        // a new device starts with the assistant
+        pv.wizard = Some(Wizard { step: 0, rest: [None; 8], at: Vec::new(), error: None });
     }
     // the dead zone (a setting of the game's)
     let dz_r = Rect::new(inner.x, inner.bottom() - 98.0, inner.w, 34.0);
@@ -750,57 +829,93 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     l.ui.panel(right);
     let Some(d) = devices.get_mut(pv.selected) else { return };
     let inner = l.ui.heading(Rect::new(right.x + 18.0, right.y + 14.0, right.w - 36.0, right.h - 28.0), &d.name.clone(), Some("tune"));
-    let live = connected.iter().find(|c| crate::controllers::names_match(&d.name, &c.0)).map(|c| c.1.clone()).unwrap_or_default();
+    let live_dev = connected.iter().find(|c| crate::controllers::names_match(&d.name, &c.name));
+    let live: Vec<(usize, f32)> = live_dev.map(|c| c.axes.clone()).unwrap_or_default();
+    // every button the device has gets its line (DirectInput says how many)
+    if let Some(n) = live_dev.map(|c| c.buttons).filter(|n| *n > d.buttons.len()) {
+        d.buttons.resize(n, (String::new(), "0".into()));
+    }
+    // the assistant, over the device's page
+    if let Some(w) = pv.wizard.as_mut() {
+        let done = wizard(&mut l.ui, inner, w, d, &live, live_dev.is_some());
+        match done {
+            Some(true) => {
+                pv.wizard = None;
+                pv.dirty = true;
+                l.state.set_status("Set up: press Save to keep it (the buttons can be given their keys below).", false);
+            }
+            Some(false) => pv.wizard = None,
+            None => {}
+        }
+        return;
+    }
+    if l.ui.button("pad-wizard", Rect::new(inner.right() - 220.0, inner.y - 36.0, 220.0, 30.0), "Set up step by step", Some("touch_app"), ButtonKind::Normal) {
+        pv.wizard = Some(Wizard { step: 0, rest: [None; 8], at: Vec::new(), error: None });
+    }
     const AXES: [&str; 8] = ["X axis", "Y axis", "Z axis", "X rotation", "Y rotation", "Z rotation", "Slider 1", "Slider 2"];
     let funcs: Vec<String> = Func::LABELS.iter().map(|s| s.to_string()).collect();
-    let mut y = inner.y;
-    let lab_w = 110.0;
-    let bar_w = (inner.w - lab_w - 200.0 - 110.0 - 3.0 * GAP).max(60.0);
-    for a in 0..8 {
-        let r = Rect::new(inner.x, y, inner.w, ROW);
-        l.ui.label(Rect::new(r.x, r.y, lab_w, r.h), AXES[a]);
-        let bar = Rect::new(r.x + lab_w + GAP, r.y + 12.0, bar_w, r.h - 24.0);
-        l.ui.p().rounded(bar, 4.0, Color::WHITE.alpha(0.06));
-        if let Some((_, v)) = live.iter().find(|(k, _)| *k == a) {
-            let x = bar.x + (v.clamp(-1.0, 1.0) + 1.0) * 0.5 * bar.w;
-            l.ui.p().rounded(Rect::new(x - 2.0, bar.y - 3.0, 4.0, bar.h + 6.0), 2.0, ACCENT);
-        }
-        let mut sel = (Func::code(d.axes[a].map(|x| x.0)) + 1) as usize;
-        if l.ui.select(&format!("pad-axis-{a}"), Rect::new(bar.right() + GAP, r.y, 200.0, r.h), &mut sel, &funcs) {
-            let inv = d.axes[a].map(|x| x.1).unwrap_or(false);
-            d.axes[a] = Func::from_code(sel as i32 - 1).map(|f| (f, inv));
-            pv.dirty = true;
-        }
-        let mut inv = d.axes[a].map(|x| x.1).unwrap_or(false);
-        if d.axes[a].is_some() && l.ui.toggle(&format!("pad-inv-{a}"), Rect::new(bar.right() + GAP + 200.0 + GAP, r.y, 110.0, r.h), &mut inv, "Reversed") {
-            if let Some(x) = d.axes[a].as_mut() {
-                x.1 = inv;
-            }
-            pv.dirty = true;
-        }
-        y += ROW + 6.0;
-    }
-    // buttons: their key actions
-    y += 10.0;
-    l.ui.text_in("Buttons", Rect::new(inner.x, y, inner.w, 20.0), 14.0, Weight::Bold, TEXT, Align::Left);
-    y += 26.0;
     let mut actions: Vec<String> = vec!["<none>".into()];
     actions.extend(l.state.keybindings.get("vehicles").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|b| b.get("action").and_then(|x| x.as_str()).map(String::from)).collect::<Vec<_>>()).unwrap_or_default());
     actions.dedup();
-    let rows_h = inner.bottom() - y - 50.0;
-    let per_row = ROW + 4.0;
-    let fit = (rows_h / per_row).max(1.0) as usize;
-    let cols = 2usize;
-    let cw = (inner.w - GAP) / cols as f32;
-    for (b, (act, _)) in d.buttons.iter_mut().enumerate().take(fit * cols) {
-        let (col, row) = (b / fit, b % fit);
-        let r = Rect::new(inner.x + col as f32 * (cw + GAP), y + row as f32 * per_row, cw, ROW);
-        l.ui.label(Rect::new(r.x, r.y, 90.0, r.h), &format!("Button {}", b + 1));
-        let mut sel = actions.iter().position(|a| a.eq_ignore_ascii_case(act)).unwrap_or(0);
-        if l.ui.select(&format!("pad-btn-{b}"), Rect::new(r.x + 90.0, r.y, r.w - 90.0, r.h), &mut sel, &actions) {
-            *act = if sel == 0 { String::new() } else { actions[sel].clone() };
-            pv.dirty = true;
+    let mut dirty = false;
+    // (the axes, then every button of the device: the list scrolls - it stopped at the ten
+    // buttons that fitted)
+    let list = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 50.0);
+    l.ui.scroll_area("pad-detail", list, &mut |ui, v| {
+        let x0 = v.x + 6.0;
+        let w = v.w - 16.0;
+        let mut y = v.y;
+        let lab_w = if w < 520.0 { 84.0 } else { 110.0 };
+        let inv_w = 110.0;
+        let sel_w = (w - lab_w - inv_w - 60.0 - 3.0 * GAP).clamp(120.0, 200.0);
+        let bar_w = (w - lab_w - sel_w - inv_w - 3.0 * GAP).max(30.0);
+        for a in 0..8 {
+            let r = Rect::new(x0, y, w, ROW);
+            ui.label(Rect::new(r.x, r.y, lab_w, r.h), AXES[a]);
+            let bar = Rect::new(r.x + lab_w + GAP, r.y + 12.0, bar_w, r.h - 24.0);
+            ui.p().rounded(bar, 4.0, Color::WHITE.alpha(0.06));
+            if let Some((_, v)) = live.iter().find(|(k, _)| *k == a) {
+                let x = bar.x + (v.clamp(-1.0, 1.0) + 1.0) * 0.5 * bar.w;
+                ui.p().rounded(Rect::new(x - 2.0, bar.y - 3.0, 4.0, bar.h + 6.0), 2.0, ACCENT);
+            }
+            let mut sel = (Func::code(d.axes[a].map(|x| x.0)) + 1) as usize;
+            if ui.select(&format!("pad-axis-{a}"), Rect::new(bar.right() + GAP, r.y, sel_w, r.h), &mut sel, &funcs) {
+                let inv = d.axes[a].map(|x| x.1).unwrap_or(false);
+                d.axes[a] = Func::from_code(sel as i32 - 1).map(|f| (f, inv));
+                dirty = true;
+            }
+            let mut inv = d.axes[a].map(|x| x.1).unwrap_or(false);
+            if d.axes[a].is_some() && ui.toggle(&format!("pad-inv-{a}"), Rect::new(bar.right() + GAP + sel_w + GAP, r.y, inv_w, r.h), &mut inv, "Reversed") {
+                if let Some(x) = d.axes[a].as_mut() {
+                    x.1 = inv;
+                }
+                dirty = true;
+            }
+            y += ROW + 6.0;
         }
+        // buttons: their key actions
+        y += 10.0;
+        ui.text_in("Buttons", Rect::new(x0, y, w, 20.0), 14.0, Weight::Bold, TEXT, Align::Left);
+        y += 26.0;
+        let cols = if w < 560.0 { 1usize } else { 2 };
+        let cw = (w - GAP * (cols - 1) as f32) / cols as f32;
+        let per_row = ROW + 4.0;
+        let rows = d.buttons.len().div_ceil(cols);
+        for (b, (act, _)) in d.buttons.iter_mut().enumerate() {
+            let (col, row) = (b / rows.max(1), b % rows.max(1));
+            let r = Rect::new(x0 + col as f32 * (cw + GAP), y + row as f32 * per_row, cw, ROW);
+            ui.label(Rect::new(r.x, r.y, 90.0, r.h), &format!("Button {}", b + 1));
+            let mut sel = actions.iter().position(|a| a.eq_ignore_ascii_case(act)).unwrap_or(0);
+            if ui.select(&format!("pad-btn-{b}"), Rect::new(r.x + 90.0, r.y, r.w - 90.0, r.h), &mut sel, &actions) {
+                *act = if sel == 0 { String::new() } else { actions[sel].clone() };
+                dirty = true;
+            }
+        }
+        y += rows as f32 * per_row;
+        y - v.y + 8.0
+    });
+    if dirty {
+        pv.dirty = true;
     }
     // a button pressed on the device: its line (added up to it)
     if let Some((name, n)) = pressed {
@@ -821,6 +936,131 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     }
 }
 
+/// The steps of the set-up assistant (see `Wizard`): what the player is asked each time.
+const WIZARD_STEPS: [(&str, &str); 5] = [
+    ("Let go of everything", "Take your hands off the wheel and your feet off the pedals (the wheel in the middle), then press Next."),
+    ("Steering", "Turn the wheel (or move the stick) all the way to the LEFT and hold it there, then press Next."),
+    ("Throttle", "Press the throttle pedal all the way down and hold it, then press Next. No pedals: Skip."),
+    ("Brake", "Press the brake pedal all the way down and hold it, then press Next. No brake pedal: Skip."),
+    ("Clutch", "Press the clutch pedal all the way down and hold it, then press Next. No clutch: Skip."),
+];
+
+/// One frame of the assistant in `r`; Some(true) when it has set the device up, Some(false)
+/// when the player gave up.
+fn wizard(ui: &mut Ui, r: Rect, w: &mut Wizard, d: &mut crate::controllers::DeviceCfg, live: &[(usize, f32)], connected: bool) -> Option<bool> {
+    let (title, text) = WIZARD_STEPS[w.step];
+    ui.text_in(&format!("Step {} of {}: {title}", w.step + 1, WIZARD_STEPS.len()), Rect::new(r.x, r.y, r.w, 26.0), 17.0, Weight::Bold, TEXT, Align::Left);
+    let mut y = r.y + 34.0;
+    y += ui.paragraph(text, Vec2::new(r.x, y), r.w, 13.5, Weight::Regular, TEXT_SOFT) + 10.0;
+    if !connected {
+        y += ui.paragraph("The device is not connected: plug it in (the list on the left marks it green).", Vec2::new(r.x, y), r.w, 13.0, Weight::Medium, DANGER);
+    }
+    if let Some(e) = &w.error {
+        y += ui.paragraph(e, Vec2::new(r.x, y), r.w, 13.0, Weight::Medium, DANGER) + 6.0;
+    }
+    // the axes as they stand, so that the player sees the device answer
+    for (k, v) in live {
+        let bar = Rect::new(r.x + 90.0, y + 8.0, (r.w - 100.0).max(40.0), 8.0);
+        ui.text_in(["X", "Y", "Z", "Rx", "Ry", "Rz", "Slider 1", "Slider 2"][*k], Rect::new(r.x, y, 84.0, 24.0), 12.0, Weight::Medium, TEXT_DIM, Align::Left);
+        ui.p().rounded(bar, 4.0, Color::WHITE.alpha(0.06));
+        let x = bar.x + (v.clamp(-1.0, 1.0) + 1.0) * 0.5 * bar.w;
+        ui.p().rounded(Rect::new(x - 2.0, bar.y - 4.0, 4.0, bar.h + 8.0), 2.0, ACCENT);
+        y += 26.0;
+    }
+    let now = |live: &[(usize, f32)]| {
+        let mut a = [None; 8];
+        for (k, v) in live {
+            a[*k] = Some(*v);
+        }
+        a
+    };
+    let by = r.bottom() - 40.0;
+    if ui.button("wiz-cancel", Rect::new(r.x, by, 120.0, 36.0), "Cancel", None, ButtonKind::Ghost) {
+        return Some(false);
+    }
+    let skip = w.step >= 2 && ui.button("wiz-skip", Rect::new(r.right() - 260.0, by, 110.0, 36.0), "Skip", None, ButtonKind::Normal);
+    let next = ui.button("wiz-next", Rect::new(r.right() - 140.0, by, 140.0, 36.0), if w.step + 1 == WIZARD_STEPS.len() { "Finish" } else { "Next" }, Some("chevron_right"), ButtonKind::Primary);
+    if !(next || skip) {
+        return None;
+    }
+    let cur = now(live);
+    w.error = None;
+    if w.step == 0 {
+        if live.is_empty() {
+            w.error = Some("The device shows no axis yet: move the wheel and the pedals a little, let go, and press Next again.".into());
+            return None;
+        }
+        w.rest = cur;
+    } else if skip {
+        w.at.push([None; 8]);
+    } else {
+        // the axis that moved most since everything was let go (one taken before is not
+        // taken again - but the throttle's axis may turn out to be the brake's too)
+        let used: Vec<usize> = w.at.iter().filter_map(|a| moved_most(&w.rest, a, &[]).map(|m| m.0)).collect();
+        let exclude: Vec<usize> = if w.step == 3 { used.iter().copied().take(1).collect() } else { used.clone() };
+        match moved_most(&w.rest, &cur, &exclude) {
+            Some(_) => w.at.push(cur),
+            None => {
+                w.error = Some("Nothing moved far enough. Hold it all the way, then press Next (or Skip).".into());
+                return None;
+            }
+        }
+    }
+    w.step += 1;
+    if w.step < WIZARD_STEPS.len() {
+        return None;
+    }
+    d.axes = wizard_result(&w.rest, &w.at);
+    Some(true)
+}
+
+/// The axes the assistant found: `rest` where everything rested, `at` where the axes stood
+/// with the wheel turned left, the throttle, the brake and the clutch pressed (all None: that
+/// step skipped).
+fn wizard_result(rest: &[Option<f32>; 8], at: &[[Option<f32>; 8]]) -> [Option<(crate::controllers::Func, bool)>; 8] {
+    use crate::controllers::Func;
+    let mut axes: [Option<(Func, bool)>; 8] = [None; 8];
+    let steer = at.first().and_then(|a| moved_most(rest, a, &[]));
+    if let Some((k, delta)) = steer {
+        // turned left the value falls: else the axis runs the other way
+        axes[k] = Some((Func::Steering, delta > 0.0));
+    }
+    let taken: Vec<usize> = steer.map(|s| vec![s.0]).unwrap_or_default();
+    let pedal = |i: usize, ex: &[usize]| at.get(i).and_then(|a| moved_most(rest, a, ex));
+    let throttle = pedal(1, &taken);
+    let brake = pedal(2, &taken);
+    match (throttle, brake) {
+        // one axis for both (pedals on a single axis): the throttle one way, the brake the other
+        (Some((kt, dt)), Some((kb, db))) if kt == kb && dt * db < 0.0 => axes[kt] = Some((Func::ThrottleBrake, dt > 0.0)),
+        _ => {
+            // a pedal pressed goes towards 1
+            if let Some((k, dl)) = throttle {
+                axes[k] = Some((Func::Throttle, dl < 0.0));
+            }
+            if let Some((k, dl)) = brake.filter(|b| Some(b.0) != throttle.map(|t| t.0)) {
+                axes[k] = Some((Func::Brake, dl < 0.0));
+            }
+        }
+    }
+    let mut ex = taken.clone();
+    ex.extend(throttle.map(|t| t.0));
+    ex.extend(brake.map(|t| t.0));
+    if let Some((k, dl)) = pedal(3, &ex) {
+        axes[k] = Some((Func::Clutch, dl < 0.0));
+    }
+    axes
+}
+
+/// The axis that moved most from `rest` to `now` (at least a sixth of its travel), not one of
+/// `exclude`: (slot, how far, signed).
+fn moved_most(rest: &[Option<f32>; 8], now: &[Option<f32>; 8], exclude: &[usize]) -> Option<(usize, f32)> {
+    (0..8)
+        .filter(|k| !exclude.contains(k))
+        .filter_map(|k| Some((k, now[k]? - rest[k].unwrap_or(0.0))))
+        .filter(|(_, d)| d.abs() > 0.33)
+        .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+}
+
 /// Write the devices to the content folder's `Inputs/gamectrler.cfg` (OMSI 2's own is only
 /// read; the game takes the content folder's first).
 fn save_gamectrler(devices: &[crate::controllers::DeviceCfg]) -> Result<std::path::PathBuf, String> {
@@ -832,6 +1072,17 @@ fn save_gamectrler(devices: &[crate::controllers::DeviceCfg]) -> Result<std::pat
     Ok(p)
 }
 
+/// Settings → Driving keys: "Custom controls", the keys of the Controls page.
+fn use_custom_keys(l: &mut Launcher) -> bool {
+    if l.state.settings.get("drive_keys").and_then(|v| v.as_str()) == Some("omsi") {
+        return false;
+    }
+    l.state.settings["drive_keys"] = json!("omsi");
+    l.state.settings_dirty = 0.3;
+    l.state.set_status("Driving keys: Custom controls - the game uses the keys of this page.", false);
+    true
+}
+
 fn save_keys(l: &mut Launcher) {
     match core::save_keybindings(&l.state.keybindings) {
         Ok(()) => {
@@ -839,7 +1090,13 @@ fn save_keys(l: &mut Launcher) {
             if let Ok(k) = core::get_keybindings() {
                 l.state.keybindings = k;
             }
-            l.state.set_status("Key bindings saved.", false);
+            // a key changed is a key the player wants to use: with a ready-made layout it
+            // would be ignored wherever that layout has a key of its own
+            if use_custom_keys(l) {
+                l.state.set_status("Key bindings saved; Driving keys switched to Custom controls so the game uses them.", false);
+            } else {
+                l.state.set_status("Key bindings saved.", false);
+            }
         }
         Err(e) => {
             l.state.keybindings_error = format!("{e:#}");
@@ -1277,5 +1534,38 @@ pub fn tutorials(l: &mut Launcher, area: Rect) {
     }
     if let Some(n) = start {
         l.state.launch_tutorial(n);
+    }
+}
+
+#[cfg(test)]
+mod wizard_tests {
+    use crate::controllers::Func;
+
+    #[test]
+    fn a_wheel_with_three_pedals() {
+        // X the wheel; Y throttle, Z brake, Rz clutch - pedals reading 1 up, -1 down (as the
+        // G25's run, "reversed")
+        let rest = [Some(0.0), Some(1.0), Some(1.0), None, None, Some(1.0), None, None];
+        let mut left = rest;
+        left[0] = Some(-1.0);
+        let mut thr = rest;
+        thr[1] = Some(-1.0);
+        let mut brk = rest;
+        brk[2] = Some(-1.0);
+        let mut clu = rest;
+        clu[5] = Some(-1.0);
+        let a = super::wizard_result(&rest, &[left, thr, brk, clu]);
+        assert_eq!(a[0], Some((Func::Steering, false)));
+        assert_eq!(a[1], Some((Func::Throttle, true)));
+        assert_eq!(a[2], Some((Func::Brake, true)));
+        assert_eq!(a[5], Some((Func::Clutch, true)));
+    }
+
+    #[test]
+    fn pedals_on_one_axis_and_a_wheel_the_other_way() {
+        let rest = [Some(0.0), Some(0.0), None, None, None, None, None, None];
+        let a = super::wizard_result(&rest, &[[Some(0.9), Some(0.0), None, None, None, None, None, None], [Some(0.0), Some(-1.0), None, None, None, None, None, None], [Some(0.0), Some(1.0), None, None, None, None, None, None], [None; 8]]);
+        assert_eq!(a[0], Some((Func::Steering, true)));
+        assert_eq!(a[1], Some((Func::ThrottleBrake, false)));
     }
 }

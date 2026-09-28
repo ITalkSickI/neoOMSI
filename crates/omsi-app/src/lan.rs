@@ -666,15 +666,16 @@ pub fn open_public_gateway(session: &LanSession, info: omsi_net::ws::ServerInfo,
             log::info!("LAN: no tunnel: players whose routers cannot be reached join by the code alone");
             return;
         };
-        let url = t.url.clone();
+        let mut url = t.url.clone();
         if let Ok(mut w) = WS_PATH.lock() {
             if let Some(w) = w.as_mut() {
                 w.tunnel = Some(t);
             }
         }
-        // (posted when cloudflared has said the address, and again now and then: the relay
-        // keeps it for hours, a joining game takes the latest)
+        // (posted when cloudflared has said the address, and again every half hour: the
+        // relay keeps it for hours, a joining game takes the latest - and counts the posts)
         let mut posted: Option<(String, Instant)> = None;
+        let mut checked = Instant::now();
         loop {
             let now = url.lock().ok().and_then(|u| u.clone());
             match (now, &posted) {
@@ -682,7 +683,7 @@ pub fn open_public_gateway(session: &LanSession, info: omsi_net::ws::ServerInfo,
                     omsi_net::bridge::post_tunnel(sid, &u);
                     posted = Some((u, Instant::now()));
                 }
-                (Some(u), Some((p, t))) if *p != u || t.elapsed() > Duration::from_secs(600) => {
+                (Some(u), Some((p, t))) if *p != u || t.elapsed() > Duration::from_secs(1800) => {
                     omsi_net::bridge::post_tunnel(sid, &u);
                     posted = Some((u, Instant::now()));
                 }
@@ -690,6 +691,25 @@ pub fn open_public_gateway(session: &LanSession, info: omsi_net::ws::ServerInfo,
             }
             if Arc::strong_count(&url) == 1 {
                 return;
+            }
+            // cloudflared ended (Cloudflare drops a quick tunnel now and then, the network
+            // went away): a new one, with a new address, posted again - the session stayed
+            // unreachable through the tunnel for the rest of the evening
+            if checked.elapsed() > Duration::from_secs(15) {
+                checked = Instant::now();
+                let dead = WS_PATH.lock().ok().and_then(|mut w| w.as_mut().and_then(|w| w.tunnel.as_mut().map(|t| !t.alive()))).unwrap_or(false);
+                if dead {
+                    log::warn!("LAN: the tunnel ended; starting a new one");
+                    if let Some(t) = omsi_net::tunnel::Tunnel::start(port) {
+                        url = t.url.clone();
+                        posted = None;
+                        if let Ok(mut w) = WS_PATH.lock() {
+                            if let Some(w) = w.as_mut() {
+                                w.tunnel = Some(t);
+                            }
+                        }
+                    }
+                }
             }
             std::thread::sleep(Duration::from_secs(2));
         }

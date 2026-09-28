@@ -1147,6 +1147,9 @@ pub struct RenderOptions {
     /// Only the meshes the models mark `[shadow]` cast sun shadows, as in OMSI 2 (else every
     /// solid mesh does).
     pub omsi_shadow_casters: bool,
+    /// The materials' reflection maps (`[matl_envmap]`: the shine of paint, chrome and
+    /// glass). Off, nothing mirrors the sky photo - some players find it too strong.
+    pub reflections: bool,
 }
 
 impl Default for RenderOptions {
@@ -1162,6 +1165,7 @@ impl Default for RenderOptions {
             min_obj_size: 0.013,
             max_obj_dist: 0.0,
             omsi_shadow_casters: false,
+            reflections: true,
         }
     }
 }
@@ -4268,6 +4272,8 @@ impl Renderer {
         moisture: f32,
         extra: MaterialExtra,
     ) -> MaterialId {
+        // (the reflection maps switched off: as a material without one)
+        let envmap = envmap.filter(|_| self.options.reflections);
         // the mask and the bump map only ever change the reflection
         let env_mask = extra.env_mask.filter(|_| envmap.is_some());
         let bump = extra.bump.filter(|_| envmap.is_some());
@@ -8983,7 +8989,11 @@ impl<'w> SurfaceState<'w> {
             } else {
                 wgpu::PresentMode::AutoNoVsync
             },
-            desired_maximum_frame_latency: 2,
+            // (with V-sync two frames waiting for the screen put every steering movement and
+            // key two frames - 33 ms at 60 Hz, more on a laptop's graphics chip that is behind
+            // anyway - on the screen late: the "input delay" players felt. One is enough to
+            // keep the chip busy there.)
+            desired_maximum_frame_latency: if vsync { 1 } else { 2 },
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };

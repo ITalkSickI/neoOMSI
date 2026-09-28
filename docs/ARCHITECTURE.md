@@ -928,6 +928,62 @@ variables, position, on-screen messages, events, timers, watches, `omsi.data` sa
 Driven with the DLL plugins from `Plugins::frame`; the game's side (dt, vehicle name,
 position, message) is `PluginIo`'s new default methods. Tests: `crates/omsi-plugin/tests/lua.rs`.
 
+### 0.1.8 (Sept 28 2026): controls, controllers, multiplayer that lasts, phones, more builds
+
+* **Keys** (`launcher/pages.rs`): the Controls page shows which `drive_keys` layout is in use;
+  a changed binding switches it to `omsi` (Custom controls), since a ready-made layout's keys
+  win (`input_script.rs`). Space is no longer reserved by the W A S D layout: it is OMSI's
+  `view_reset_all_directions`. `App::view_looks` keeps a look direction per view
+  (`sync_view_look` on every change of view); `App::view_zoom` narrows the field of view of
+  the driver's and passenger views (the wheel, = / -, a pinch).
+* **Mouse control** (0x6f4284..0x6f447b, `Panel1MouseMove` 0x82c5f8): the cursor is the
+  panel's client position; steering = (2x/w - 1) / max(1, km/h / 10) x
+  `[inv_min_turnradius]` into `inv_lenkradius` (+0x73c, read by the integrator 0x7e27c0);
+  throttle max(0, 1 - 2y/h), brake max(0, 2y/h - 1) (`throttle` +0x5dc, `bremspedal` +0x5e0),
+  all three eased for a second after switching on. `mouse_sens` scales ours.
+* **Game controllers** (`controllers.rs`, `dinput.rs`): `Devices` joins gilrs (gamepads; every
+  device on macOS and Linux) and on Windows DirectInput 8 (`DI8DEVCLASS_GAMECTRL`, a data
+  format of 8 axes, 4 POVs, 128 buttons, axes -10000..10000, the device list read on a thread
+  every 3 s). Button numbers come from the system's code (HID usage - 1, evdev BTN_JOYSTICK /
+  TRIGGER_HAPPY, the WGI index); they used to be the rank among buttons pressed so far. Force
+  feedback on a DirectInput wheel is one constant force set each frame: centring
+  -x (0.25 + 0.5 min(1, v/50)), drag -dx/dt 0.05 (1 + 2 max(0, 1 - v/20)), the scripts'
+  `FF_Vib_Amp`/`FF_Vib_Period` as a sine, scaled by the device's `[FFScale]`; the wheel's own
+  autocentre is switched off (as OMSI does). The set-up assistant (`launcher/pages.rs`,
+  `wizard_result`) records rest, left lock and each pedal and picks the axis that moved most.
+* **Multiplayer** (`omsi-net::bridge`, `lan.rs`): UPnP forwardings are asked for an hour and
+  renewed every 20 minutes (they were asked once for 7200 s); the ntfy.sh rendezvous is polled
+  every 6 s (host) / 2 s (joining), posts only on change or every 15 minutes, and backs off
+  10 s .. 5 min after a refusal (the old once-a-second poll ran into the relay's limits within
+  an hour or two); a cloudflared that exits is restarted and its new address posted.
+* **Depot files by date** (`omsi-map::ailists::ailists_with_chrono`, `depot_hof_on`): the
+  launcher's HOF follows the chrono scenarios of the chosen date, as the game's AI already did.
+* **Installations** (`omsi-cfg::install_search::root_guesses`, `content_folder_of`): a given
+  path is trimmed of quotes, a file means its folder, the folders above and an OMSI folder
+  inside are tried; a program unpacked into the OMSI 2 folder uses `<OMSI>/openOMSI` as its
+  content folder, and a folder with `Omsi.exe` counts as the game even if an older build
+  marked it as a content folder.
+* **Phones**: launcher scale at least the system's (`ui_scale`), settings stacked in one column
+  below 900 points, scroll areas pass what they cannot use on to the page; the game menu has
+  its own scroll offset (`App::menu_top`) that a finger drags, a tap picks.
+* **Sound** (`omsi-audio`): `mixer::distance_gain` = min(1, ref / d), DirectSound 3D's
+  inverse distance with `[3d]`'s reference as the minimum distance (was (ref/d)^1.6);
+  `SoundSet::outside_gain` / `lowpass_of` muffle only foreign vehicles' sets (`exterior`),
+  never the player bus's own entries; `ambience::Footfall::own_bus` dulls steps on the other
+  side of the player bus's body from the listener.
+* **Keys** (`startup::own_keys`): bindings of the content folder's `keyboard.cfg` that the
+  original's does not have are the player's; the presets and their extras skip those keys.
+* **Materials**: `material_alpha` takes a slot's alpha mode from its first plain `[matl]`,
+  not from a `[matl_change]` record ahead of it (script-texture masks of LED matrices).
+* **Spline-attached objects**: `MapIndex` places a `[splineAttachement]` row's first object on
+  its spline for `object_positions`, and the placed first instance replaces it; entry points
+  use the `global.cfg` record's height where it differs from their object's by over 1.5 m at
+  the same place (`spawn::recorded_entry_pos`).
+* **Builds**: `release.yml` builds Windows x64/ARM64 (MSVC, ARM64 on the x64 runner), macOS
+  arm64/x86_64 (both on the Apple silicon runner; the machine translation is Apple silicon
+  only), Linux x64/ARM64 (`ubuntu-22.04-arm`), Android, and packs the server for Linux and
+  Windows (`scripts/server/start.cmd`).
+
 ### 0.1.7 (Sept 28 2026): the bus as its `.bus` file makes it, sharp screens, trees, steering, updates
 
 Reverse engineered from Omsi.exe and put in place of our own guesses:

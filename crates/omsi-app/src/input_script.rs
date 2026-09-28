@@ -177,10 +177,12 @@ impl App {
             // counts)
             if pressed && !repeat {
                 let m = shift_now as i32 | (ctrl as i32) * 2 | (alt as i32) * 4;
+                let own = keys::dik_code(code).is_some_and(|s| self.own_keys.contains(&s));
                 let ours = self.args.drive_keys != "omsi"
                     && m == 0
+                    && !own
                     && (fallback_action(code, &self.args.drive_keys).is_some()
-                        || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL | KeyCode::Space));
+                        || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
                 if let Some(scan) = keys::dik_code(code).filter(|_| !ours) {
                     let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.modifier == m).map(|b| b.action.clone());
                     if let Some(a) = action {
@@ -254,6 +256,11 @@ impl App {
                     _ => {}
                 }
             }
+            // the extra keys of the ready-made layouts (below): not with Custom controls, not on
+            // a key the player bound, not with a modifier held
+            let extras = self.args.drive_keys != "omsi"
+                && !keys::dik_code(code).is_some_and(|s| self.own_keys.contains(&s))
+                && !self.keys.iter().any(|k| matches!(k, KeyCode::ControlLeft | KeyCode::ControlRight | KeyCode::AltLeft | KeyCode::AltRight | KeyCode::ShiftLeft | KeyCode::ShiftRight));
             if pressed && !repeat {
                 // Z / X / C: indicator left / hazard / right, where the hand rests
                 // (OMSI's own layout wants Shift and the numpad for them). Each is a
@@ -262,6 +269,7 @@ impl App {
                 // triggers for left/right rather than a toggle (hazard already has a
                 // dedicated toggle trigger, `blinker_warn_toggle`).
                 if self.view != "free"
+                    && extras
                     && matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC)
                 {
                     if let Some(p) = self.player.as_mut() {
@@ -321,8 +329,7 @@ impl App {
                 // each: 7, 8, 9 - see Player::toggle_saloon_lights).
                 if self.view != "free"
                     && !repeat
-                    && !(self.keys.contains(&KeyCode::AltLeft)
-                        || self.keys.contains(&KeyCode::AltRight))
+                    && extras
                     && code == KeyCode::KeyI
                 {
                     if let Some(p) = self.player.as_mut() {
@@ -434,7 +441,9 @@ impl App {
                 }
             }
             // the arrow keys drive when a bus is being driven (the free camera keeps them)
-            let wasd = self.args.drive_keys.as_str();
+            // (a key the player bound to something else is theirs, not the preset's)
+            let own = keys::dik_code(code).is_some_and(|s| self.own_keys.contains(&s));
+            let wasd = if own { "omsi" } else { self.args.drive_keys.as_str() };
             let shift_held =
                 self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
             if let Some(p) = self.player.as_mut() {
@@ -582,7 +591,21 @@ impl App {
 
     /// Turn the view by (dx, dy) degrees, as dragging with the right button does: the free
     /// camera turns, inside the bus the head turns, outside the camera swings around it.
+    /// Keeps `look` with the view it belongs to: on a change of view the direction of the
+    /// view left is put away and the one of the view entered comes back (straight ahead
+    /// the first time).
+    pub(crate) fn sync_view_look(&mut self) {
+        swap_view_look(&mut self.look, &mut self.view_looks, &mut self.look_view, &self.view);
+    }
+
+    /// Zoom the view inside the bus by `notches` of the mouse wheel (in: positive).
+    pub(crate) fn zoom_by(&mut self, notches: f32) {
+        let z = self.view_zoom.entry(self.view.clone()).or_insert(1.0);
+        *z = (*z * (1.0 - 0.08 * notches.clamp(-5.0, 5.0))).clamp(0.2, 1.6);
+    }
+
     pub(crate) fn look_by(&mut self, dx: f32, dy: f32) {
+        self.sync_view_look();
         if self.view == "foot" {
             self.foot_look(dx, dy);
             return;
@@ -969,21 +992,13 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             self.paused = true;
         }
         self.game_menu = Some(0);
+        self.menu_top = None;
     }
 
     pub(crate) fn close_game_menu(&mut self) {
         self.game_menu = None;
+        self.menu_top = None;
         self.paused = self.menu_prev_pause;
-    }
-
-    /// The chooser's lines on the screen: a window of up to 15 around the chosen one, and
-    /// where that window starts.
-    pub(crate) fn chooser_window(&self) -> (usize, &[(String, String)]) {
-        let sel = self.chooser.unwrap_or(0);
-        let list = self.admin_list.as_ref().unwrap_or(&self.vehicle_list);
-        let n = list.len();
-        let start = sel.saturating_sub(7).min(n.saturating_sub(15));
-        (start, &list[start..(start + 15).min(n)])
     }
 
     /// Show one of the menu's lists in the chooser (see `game_lists`).
@@ -997,6 +1012,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
     fn chooser_key(&mut self, code: KeyCode) {
         let n = self.admin_list.as_ref().unwrap_or(&self.vehicle_list).len().max(1);
         let sel = self.chooser.unwrap_or(0);
+        self.menu_top = None;
         match code {
             KeyCode::Escape => {
                 self.chooser = None;
@@ -1338,6 +1354,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         }
         let n = self.game_menu_items().len();
         let sel = self.game_menu.unwrap_or(0);
+        self.menu_top = None;
         match code {
             KeyCode::Escape => self.close_game_menu(),
             KeyCode::ArrowUp | KeyCode::KeyW => self.game_menu = Some((sel + n - 1) % n),
@@ -1356,6 +1373,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             return;
         }
         self.wheel_acc -= steps as f32;
+        self.menu_top = None;
         let (sel, n) = match self.chooser {
             Some(c) => (c, self.admin_list.as_ref().unwrap_or(&self.vehicle_list).len()),
             None => (self.game_menu.unwrap_or(0), self.game_menu_items().len()),
@@ -1367,11 +1385,19 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         }
     }
 
+    /// How many lines the menu shows now (the chooser's list, else the game menu's).
+    pub(crate) fn menu_len(&self) -> usize {
+        match self.chooser {
+            Some(_) => self.admin_list.as_ref().unwrap_or(&self.vehicle_list).len(),
+            None => self.game_menu_items().len(),
+        }
+    }
+
     /// Do what line `k` of the game menu says.
     pub(crate) fn menu_choose(&mut self, event_loop: &ActiveEventLoop, k: usize) {
+        self.menu_top = None;
         if self.chooser.is_some() {
-            let (start, _) = self.chooser_window();
-            self.chooser_pick(start + k);
+            self.chooser_pick(k);
             return;
         }
         match self.game_menu_items().get(k).map(|m| m.0) {
@@ -1695,6 +1721,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                             p.cam_choice.0 = c;
                             self.view = "driver".into();
                         }
+                        self.sync_view_look();
                         self.look = (0.0, 0.0);
                     } else if !schedule {
                         self.service_msg = Some(("This bus has no ticket desk camera".into(), 3.0));
@@ -1702,7 +1729,12 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 }
             }
             "view_toggle_informationdisplay" => self.info_bar = !self.info_bar,
-            "view_reset_direction" | "view_reset_all_directions" => self.look = (0.0, 0.0),
+            "view_reset_direction" => self.look = (0.0, 0.0),
+            // (Space in Inputs/keyboard.cfg: every view looks ahead again)
+            "view_reset_all_directions" => {
+                self.look = (0.0, 0.0);
+                self.view_looks.clear();
+            }
             "view_toggle_viewpoint" | "view_interiorcam_plus" | "view_interiorcam_minus" => {
                 let Some(p) = self.player.as_mut() else { return true };
                 let def = &p.vehicle.ty.def;
@@ -1719,6 +1751,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 self.mouse_drive = !self.mouse_drive;
                 // (the wheel eases from where it is to the cursor for the first second)
                 self.mouse_steer = (self.player.as_ref().map(|p| p.vehicle.physics.controls.steering).unwrap_or(0.0), 1.0);
+                self.mouse_pedals = self.player.as_ref().map(|p| (p.vehicle.physics.controls.throttle, p.vehicle.physics.controls.brake)).unwrap_or((0.0, 0.0));
                 let msg = if self.mouse_drive { "Mouse steering on: across steers, up is the throttle, down the brake (O turns it off)" } else { "Mouse steering off" };
                 self.service_msg = Some((msg.into(), 4.0));
             }
@@ -2050,3 +2083,14 @@ pub(crate) const GAME_MENU: [(&str, &str); 27] = [
     ("editor", "Object editor"),
     ("quit", "End the session"),
 ];
+
+/// `App::sync_view_look` for where `self` is borrowed in parts.
+pub(crate) fn swap_view_look(look: &mut (f32, f32), looks: &mut std::collections::HashMap<String, (f32, f32)>, look_view: &mut String, view: &str) {
+    if look_view != view {
+        let old = std::mem::replace(look_view, view.to_string());
+        if !old.is_empty() {
+            looks.insert(old, *look);
+        }
+        *look = looks.get(view).copied().unwrap_or((0.0, 0.0));
+    }
+}

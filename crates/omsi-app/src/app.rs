@@ -88,6 +88,9 @@ pub(crate) struct App {
     pub(crate) paused: bool,
     /// The game menu (Escape, OMSI's `open_mainmenue`): the chosen line of it.
     pub(crate) game_menu: Option<usize>,
+    /// The first line of the game menu (or chooser) shown, when a finger has scrolled it
+    /// (in lines, fractional while dragged); `None`: the chosen line is kept in view.
+    pub(crate) menu_top: Option<f32>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).
     pub(crate) controllers: Option<crate::controllers::Controllers>,
     /// OMSI's mouse control (`toggel_mouse_ctrl`, O): the cursor's place steers (across) and
@@ -96,6 +99,8 @@ pub(crate) struct App {
     /// Mouse steering: the steering it gives (fraction of the full lock) and how long (s)
     /// it still eases in after being switched on (OMSI: a second, see app_events).
     pub(crate) mouse_steer: (f32, f32),
+    /// The mouse's throttle and brake (eased in with the steering).
+    pub(crate) mouse_pedals: (f32, f32),
     /// The tutorial being run (`--tutorial`), loaded on the first frame.
     pub(crate) tutorial: Option<crate::tutorial::Tutorial>,
     /// OMSI's pedestrian ("ego") view: the free camera walking at eye height on whatever
@@ -133,6 +138,10 @@ pub(crate) struct App {
     pub(crate) route_arrows: crate::route_arrows::RouteArrows,
     /// OMSI's global key actions from `Inputs/keyboard.cfg` ([game]).
     pub(crate) game_keys: Vec<omsi_content::KeyBinding>,
+    /// Keys (DirectInput scan codes, no modifier) the player bound on the Controls page to
+    /// something the original's keyboard.cfg does not have there: a driving preset (W A S D,
+    /// the arrows) leaves them alone - D bound to the gearbox is the gearbox, not "steer right".
+    pub(crate) own_keys: std::collections::HashSet<i32>,
     /// Whether the game stood paused before the menu opened (closing it goes back to that).
     pub(crate) menu_prev_pause: bool,
     /// OMSI's information bar (`view_toggle_informationdisplay`, Ctrl+Y): time, speed, the
@@ -152,6 +161,14 @@ pub(crate) struct App {
     /// How far the player has turned the head (driver, passenger) or swung the outside
     /// camera around the bus, and how far that camera sits from it.
     pub(crate) look: (f32, f32),
+    /// Each view keeps its own `look` (as OMSI's cameras do): turning the outside camera
+    /// (F3) leaves the driver's head (F1) where it was. `look_view` is the view `look`
+    /// belongs to now; see `App::sync_view_look`.
+    pub(crate) view_looks: std::collections::HashMap<String, (f32, f32)>,
+    pub(crate) look_view: String,
+    /// The zoom of the views inside the bus (driver, passenger): their field of view is
+    /// the camera's times this (the mouse wheel, + and -, a pinch), per view.
+    pub(crate) view_zoom: std::collections::HashMap<String, f32>,
     pub(crate) orbit: f32,
     pub(crate) frames: u32,
     pub(crate) fps_t: Instant,

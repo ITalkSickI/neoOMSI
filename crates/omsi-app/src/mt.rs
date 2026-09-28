@@ -172,13 +172,13 @@ fn lookup(lang: &str, text: &str) -> Option<String> {
 }
 
 /// NLLB's output made fit for a label.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn clean(s: &str) -> String {
     s.replace("<unk>", "").trim().to_string()
 }
 
 fn worker() {
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
         let mut translator: Option<ct2rs::Translator<ct2rs::tokenizers::auto::Tokenizer>> = None;
         let mut idle_since = Instant::now();

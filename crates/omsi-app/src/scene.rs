@@ -1901,28 +1901,9 @@ impl World {
         }
         let chrono_dirs = omsi_map::active_chrono_dirs(&map_dir, date);
         // AI lists: the map's plus the chrono updates; depot entries filtered by validity date
-        let mut ailists = omsi_map::AiLists::load(&map_dir.join("ailists.cfg")).unwrap_or_default();
+        let mut ailists = omsi_map::ailists::ailists_with_chrono(&map_dir, &chrono_dirs);
         let mut ticket_pack = global.ticket_pack.clone();
         for c in &chrono_dirs {
-            for name in ["ailists_#upd.cfg", "ailists.cfg"] {
-                if let Ok(extra) = omsi_map::AiLists::load(&c.join(name)) {
-                    for g in extra.groups {
-                        match ailists.groups.iter_mut().find(|x| {
-                            x.name.eq_ignore_ascii_case(&g.name) && x.is_depot == g.is_depot
-                        }) {
-                            Some(base) => {
-                                base.vehicles.extend(g.vehicles);
-                                base.typgroups.extend(g.typgroups);
-                                if g.hof.is_some() {
-                                    base.hof = g.hof;
-                                }
-                            }
-                            None => ailists.groups.push(g),
-                        }
-                    }
-                    break;
-                }
-            }
             if let Some(cfg) = Some(omsi_cfg::resolve_path(c, "Chrono.cfg"))
                 .filter(|p| omsi_cfg::vfs::is_file(p))
                 .and_then(|p| omsi_cfg::CfgFile::read(&p).ok())
@@ -3496,7 +3477,9 @@ impl World {
             }
             let ot = o.ot.clone();
             let heading = Pose { pos, rot: xf }.heading();
-            if o.map_object {
+            // (a spline attachment row's first object stands for the row: an entry point or a
+            // stop put on a road is found by its id)
+            if o.map_object || o.instance == 0 {
                 self.object_positions
                     .lock()
                     .insert(o.id, (pos, [heading, 0.0, 0.0]));
@@ -7792,11 +7775,16 @@ pub(crate) fn material_alpha(
     slot: usize,
     overrides: &[MaterialDef],
 ) -> AlphaMode {
-    // the first plain [matl] override of this slot decides; without one: opaque
-    overrides
-        .iter()
-        .filter(|o| !o.item)
-        .find(|o| omsi_sim::vehicle::override_slot(materials, o) == Some(slot))
+    // the first plain [matl] override of this slot decides; without one: opaque. A
+    // `[matl_change]` record only opens the variants (`[matl_item]`) and says nothing of the
+    // slot's own look: a `[matl]` of the same slot after it does. (The LED matrices of
+    // churaPixel/Krüger++ open a change first and give the slot `[matl_alpha] 2` and the
+    // script texture as its mask in a `[matl]` after it: taken as opaque from the change,
+    // the mask cut nothing and the whole panel was lit.)
+    let mine: Vec<&MaterialDef> = overrides.iter().filter(|o| !o.item && omsi_sim::vehicle::override_slot(materials, o) == Some(slot)).collect();
+    mine.iter()
+        .find(|o| o.change.is_none())
+        .or(mine.first())
         .map(|o| alpha_mode(o.alpha))
         .unwrap_or(AlphaMode::Opaque)
 }

@@ -1,4 +1,5 @@
-# Builds openOMSI for Windows, macOS, Linux and Android (plus the dedicated server) on every push to
+# Builds openOMSI for Windows and Linux (x64, ARM64), macOS (Apple silicon, Intel) and Android
+# (plus the dedicated server for Linux and Windows) on every push to
 # main and publishes them as the release v<MAJOR.MINOR.COMMIT>; see docs/VERSIONING.md.
 # Pull requests run the same builds without publishing.
 name: Release
@@ -32,53 +33,94 @@ jobs:
   windows:
     needs: version
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            arch: x64
+          # ARM64 (Snapdragon laptops): built on the x64 runner with its ARM64 tools
+          - target: aarch64-pc-windows-msvc
+            arch: arm64
     env:
       OPENOMSI_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Build
         shell: cmd
-        run: scripts\build-windows.cmd
+        run: scripts\build-windows.cmd ${{ matrix.target }}
       - name: Package
         shell: pwsh
         run: |
-          $name = "openOMSI-$env:OPENOMSI_VERSION-windows-x64"
+          $name = "openOMSI-$env:OPENOMSI_VERSION-windows-${{ matrix.arch }}"
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item README.md, LICENSE dist/windows/
           Compress-Archive -Path dist/windows/* -DestinationPath "out/$name.zip"
+          # the dedicated server for Windows (Server 2016 and later): the same program
+          # started with --server, and start.cmd
+          New-Item -ItemType Directory -Force dist/server | Out-Null
+          Copy-Item dist/windows/openomsi.exe, scripts/server/start.cmd, LICENSE dist/server/
+          Copy-Item docs/SERVER.md dist/server/README.md
+          New-Item -ItemType File -Force dist/server/.openomsi-content | Out-Null
+          Compress-Archive -Path dist/server/* -DestinationPath "out/openOMSI-$env:OPENOMSI_VERSION-server-windows-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: windows-${{ matrix.arch }}
           path: out/*.zip
 
   macos:
     needs: version
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: arm64
+          # Intel Macs: built on the Apple silicon runner for x86_64
+          - target: x86_64-apple-darwin
+            arch: x64
     env:
       OPENOMSI_VERSION: ${{ needs.version.outputs.version }}
+      OPENOMSI_TARGET: ${{ matrix.target }}
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Build
         run: scripts/build-macos.sh
       - name: Package
         run: |
           mkdir -p out
           cp README.md LICENSE dist/macos/
-          cd dist/macos && ditto -c -k --sequesterRsrc . "../../out/openOMSI-$OPENOMSI_VERSION-macos-arm64.zip"
+          cd dist/macos && ditto -c -k --sequesterRsrc . "../../out/openOMSI-$OPENOMSI_VERSION-macos-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: macos
+          name: macos-${{ matrix.arch }}
           path: out/*.zip
 
   linux:
     needs: version
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     env:
       OPENOMSI_VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -97,17 +139,18 @@ jobs:
       - name: Build the server
         run: scripts/build-server.sh
       - name: Validate shaders
+        if: matrix.arch == 'x64'
         run: cargo test --locked --release -p omsi-render shaders_validate_and_match_the_uniforms
       - name: Package
         run: |
           mkdir -p out
           cp README.md LICENSE dist/linux/
           cp LICENSE dist/server/
-          (cd dist/linux && zip -qr "../../out/openOMSI-$OPENOMSI_VERSION-linux-x64.zip" .)
-          (cd dist/server && zip -qr "../../out/openOMSI-$OPENOMSI_VERSION-server-linux-x64.zip" .)
+          (cd dist/linux && zip -qr "../../out/openOMSI-$OPENOMSI_VERSION-linux-${{ matrix.arch }}.zip" .)
+          (cd dist/server && zip -qr "../../out/openOMSI-$OPENOMSI_VERSION-server-linux-${{ matrix.arch }}.zip" .)
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: linux-${{ matrix.arch }}
           path: out/*.zip
 
   android:
@@ -165,18 +208,33 @@ jobs:
       - name: Publish v${{ needs.version.outputs.version }}
         run: |
           ls -l out
+          # what changed: this version's section of CHANGELOG.md (up to the next version)
+          awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
+          if ! grep -q '[^[:space:]]' changes.md; then
+            echo "Small changes and fixes." > changes.md
+          fi
           cat > notes.md <<NOTES
-          **openOMSI $VERSION** - built from ${GITHUB_SHA::7}.
+          **openOMSI $VERSION**
 
           > **Early release, expect bugs.** openOMSI needs an original OMSI 2 installation to run; it contains no game content.
+
+          NOTES
+          cat changes.md >> notes.md
+          cat >> notes.md <<NOTES
+
+          ### Downloads
 
           | Platform | Download |
           | --- | --- |
           | Windows x64 | \`openOMSI-$VERSION-windows-x64.zip\` |
+          | Windows ARM64 | \`openOMSI-$VERSION-windows-arm64.zip\` |
           | macOS (Apple silicon) | \`openOMSI-$VERSION-macos-arm64.zip\` |
+          | macOS (Intel) | \`openOMSI-$VERSION-macos-x64.zip\` |
           | Linux x64 | \`openOMSI-$VERSION-linux-x64.zip\` |
+          | Linux ARM64 | \`openOMSI-$VERSION-linux-arm64.zip\` |
           | Android (arm64, 8.0+) | \`openOMSI-$VERSION-android-arm64.apk\` |
-          | Dedicated server | \`openOMSI-$VERSION-server-linux-x64.zip\` |
+          | Dedicated server, Linux | \`openOMSI-$VERSION-server-linux-x64.zip\`, \`openOMSI-$VERSION-server-linux-arm64.zip\` |
+          | Dedicated server, Windows | \`openOMSI-$VERSION-server-windows-x64.zip\`, \`openOMSI-$VERSION-server-windows-arm64.zip\` |
           NOTES
           git tag -f "v$VERSION" "$GITHUB_SHA"
           git push -f origin "v$VERSION"
@@ -189,6 +247,5 @@ jobs:
             gh release create "v$VERSION" out/*.zip out/*.apk \
               --verify-tag \
               --title "openOMSI $VERSION" \
-              --notes-file notes.md \
-              --generate-notes
+              --notes-file notes.md
           fi

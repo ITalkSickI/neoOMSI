@@ -3015,6 +3015,7 @@ dependencies = [
  "sha2",
  "ureq",
  "wgpu",
+ "windows 0.62.2",
  "winit",
  "winresource",
  "zip",

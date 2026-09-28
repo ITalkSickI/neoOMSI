@@ -233,11 +233,7 @@ pub fn content_dir() -> Option<PathBuf> {
             let c = load_config_raw();
             let game = find_game(&c.game)?;
             let dir = game.parent()?.to_path_buf();
-            if dir.ends_with("Contents/MacOS") {
-                dir.parent()?.parent()?.parent()?.to_path_buf()
-            } else {
-                dir
-            }
+            omsi_cfg::content_folder_of(&if dir.ends_with("Contents/MacOS") { dir.parent()?.parent()?.parent()?.to_path_buf() } else { dir })
         }
     };
     let _ = omsi_cfg::ensure_content_layout(&dir);
@@ -1461,7 +1457,7 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
         v[k] = d;
     }
     // openOMSI's own: what passengers say, OMSI's route arrows, getting up from the seat
-    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all"))] {
+    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all")), ("reflections", json!(true)), ("mouse_sens", json!(1.0))] {
         v[k] = d;
     }
     // updates from the GitHub releases: looked for when the launcher starts, installed
@@ -1492,7 +1488,8 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
             "drive_keys" | "navigator_corner" | "boarding" | "render_scale" | "pax_voices" => v[&k] = json!(val),
             "shadow_casters" => v[&k] = json!(if val.eq_ignore_ascii_case("omsi") { "omsi" } else { "all" }),
             "ctrl_deadzone" => v[&k] = json!(val.parse::<f64>().unwrap_or(0.0).clamp(0.0, 0.3)),
-            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" => v[&k] = json!(b(val)),
+            "mouse_sens" => v[&k] = json!(val.parse::<f64>().unwrap_or(1.0).clamp(0.25, 2.0)),
+            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" | "reflections" => v[&k] = json!(b(val)),
             "time_speed" => v[&k] = json!(val.trim_start_matches(['x', 'X']).parse::<f64>().map(|x| x.clamp(1.0, 30.0)).map(|x| if x.fract() == 0.0 { format!("{}", x as i64) } else { x.to_string() }).unwrap_or_else(|_| "1".into())),
             "language" => v[&k] = json!(language_code(val)),
             "graphics" | "renderer" => graphics = Some(graphics_mode(val)),
@@ -1684,7 +1681,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("head_movement", true),
     );
     let text = format!(
-        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\n",
+        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nreflections={}\nmouse_sens={}\n",
         match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
             "tickets" => "tickets",
             "off" => "off",
@@ -1702,6 +1699,8 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         f("ctrl_deadzone", 0.0).clamp(0.0, 0.3),
         b("update_check", true),
         b("update_auto", false),
+        b("reflections", true),
+        f("mouse_sens", 1.0).clamp(0.25, 2.0),
     );
     // what the page does not manage (keys of newer games, hand-written ones) stays as it
     // was in the file; other spellings of the keys just written go
@@ -2236,7 +2235,7 @@ pub fn local_now() -> Option<(i32, i32, i32, i32, i32)> {
 mod omsi_options_tests {
     #[test]
     fn the_originals_options_are_read() {
-        let root = std::path::Path::new("../../OMSI 2 Original");
+        let root = std::path::Path::new("../../../OMSI 2 Original");
         let Some(o) = super::omsi_options(root) else { return };
         assert_eq!(o.last_map.as_deref(), Some("maps/Berlin-Spandau/global.cfg"));
         assert_eq!(o.last_driver.as_deref(), Some("OMSI-Fan"));

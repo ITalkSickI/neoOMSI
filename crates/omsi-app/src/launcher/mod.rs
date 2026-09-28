@@ -212,7 +212,8 @@ impl Launcher {
     // what it needs (only starting a session needs the game)
     if omsi_cfg::missing_original_essentials(std::path::Path::new(&app.state.config.root)).len() > 0 {
         app.page = Page::Setup;
-        app.state.set_status("The original OMSI 2 was not found automatically. Choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.", true);
+        let why = state::root_problem(&app.state.config.root);
+        app.state.set_status(why, true);
     }
     if let Ok(p) = omsi_cfg::env::var("OMSI_LAUNCHER_PAGE") {
         if let Some((pg, _, _)) = PAGES.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(p.split(':').next().unwrap_or(""))) {
@@ -480,9 +481,10 @@ impl Launcher {
         let s = w.inner_size();
         let (lw, lh) = (s.width as f32 / dpi, s.height as f32 / dpi);
         if mobile::mobile() {
-            // a phone held across: the text at about its own size (the pages scroll where
-            // the screen is lower than they are), a tablet a little larger
-            return dpi * (lh / 440.0).clamp(0.75, 1.3);
+            // a phone held across: the text at least at the system's own size - smaller, it
+            // was hard to read and the buttons hard to hit (the pages scroll where the screen
+            // is lower than they are, and lay themselves out for its width), a tablet larger
+            return dpi * (lh / 400.0).clamp(1.0, 1.35);
         }
         // (the height counts a little less: on a wide, low screen - 2560 x 1080 - the text
         // stayed the size of a 1440 x 880 window's, tiny across the width; the pages scroll or
@@ -869,7 +871,10 @@ impl Launcher {
     pub fn page_title(&mut self, r: Rect, title: &str, sub: &str) -> Rect {
         self.ui.text(title, Vec2::new(r.x, r.y + 22.0), 22.0, Weight::Bold, TEXT, Align::Left);
         if !sub.is_empty() {
-            self.ui.text(sub, Vec2::new(r.x, r.y + 44.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
+            // (a narrow window: the line stops short of the tabs some pages put top right,
+            // it ran under them on a phone)
+            let w = if r.w < 1100.0 { r.w - 340.0 } else { r.w };
+            self.ui.text_in(sub, Rect::new(r.x, r.y + 34.0, w, 20.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
         }
         Rect::new(r.x, r.y + 64.0, r.w, (r.h - 64.0).max(0.0))
     }

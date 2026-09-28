@@ -410,13 +410,23 @@ impl ApplicationHandler for App {
                     }
                 }
                 // the game controllers: their axes this frame, their buttons' key actions
-                let ctl = self.controllers.get_or_insert_with(|| crate::controllers::Controllers::new(&self.args.root));
+                let hwnd = self.window.as_deref().and_then(crate::controllers::window_handle);
+                let ctl = self.controllers.get_or_insert_with(|| crate::controllers::Controllers::new(&self.args.root, hwnd));
                 ctl.deadzone = self.settings.ctrl_deadzone;
                 let analog = ctl.poll();
                 let actions = std::mem::take(&mut ctl.actions);
-                // the bus's force feedback (OMSI's FF_Vib_Amp)
-                let driving = self.player.as_ref().filter(|_| self.view == "driver");
-                ctl.feedback(driving.and_then(|p| p.vehicle.var("FF_Vib_Amp")).unwrap_or(0.0), driving.and_then(|p| p.vehicle.var("FF_Vib_Period")).unwrap_or(0.0));
+                if let Some(n) = ctl.notice.take() {
+                    self.service_msg = Some((n, 8.0));
+                }
+                // the bus's force feedback (OMSI's FF_Vib_Amp, and on a wheel its forces)
+                let driving = self.player.as_ref().filter(|_| self.view == "driver" && !self.paused);
+                ctl.feedback(crate::controllers::FfInput {
+                    on: driving.is_some(),
+                    kmh: driving.map(|p| p.vehicle.physics.velocity_kmh() as f32).unwrap_or(0.0),
+                    vib_amp: driving.and_then(|p| p.vehicle.var("FF_Vib_Amp")).unwrap_or(0.0),
+                    vib_period: driving.and_then(|p| p.vehicle.var("FF_Vib_Period")).unwrap_or(0.0),
+                    dt,
+                });
                 // OMSI's mouse control: the cursor's place across steers, above the middle
                 // of the window is the throttle, below it the brake.
                 // Steering as Omsi.exe has it (0x6f4284..0x6f447b): the whole width of the
@@ -429,16 +439,18 @@ impl ApplicationHandler for App {
                 if let (true, Some(s)) = (self.mouse_drive && self.view == "driver" && !self.mouse_look && self.game_menu.is_none(), self.surface.as_ref()) {
                     let (w, h) = (s.config.width as f32, s.config.height as f32);
                     let kmh = self.player.as_ref().map(|p| p.vehicle.physics.velocity_kmh()).unwrap_or(0.0);
-                    let target = crate::player::mouse_steering(self.cursor.0, w, kmh);
+                    let target = (crate::player::mouse_steering(self.cursor.0, w, kmh) * self.settings.mouse_sens).clamp(-1.0, 1.0);
+                    // the pedals as Omsi.exe has them: from the middle of the window to its
+                    // top edge the throttle, to the bottom one the brake, straight on
+                    let y = (2.0 * self.cursor.1 / h.max(1.0) - 1.0).clamp(-1.0, 1.0);
+                    let (pedal_t, pedal_b) = ((-y).max(0.0), y.max(0.0));
                     let (steer, fade) = &mut self.mouse_steer;
-                    if *fade > 0.0 {
-                        let k = (-std::f32::consts::LN_2 / *fade * dt).exp();
-                        *steer = target + (*steer - target) * k;
-                        *fade = (*fade - dt).max(0.0);
-                    } else {
-                        *steer = target;
-                    }
-                    let dy = (h * 0.5 - self.cursor.1) / (h * 0.4);
+                    let k = if *fade > 0.0 { (-std::f32::consts::LN_2 / *fade * dt).exp() } else { 0.0 };
+                    *steer = target + (*steer - target) * k;
+                    let (mt, mb) = &mut self.mouse_pedals;
+                    *mt = pedal_t + (*mt - pedal_t) * k;
+                    *mb = pedal_b + (*mb - pedal_b) * k;
+                    *fade = (*fade - dt).max(0.0);
                     analog.steering = Some(*steer);
                     // the mouse owns the wheel (OMSI sets the curvature from it every frame):
                     // a steering key's leftover turn must not take over whenever the cursor
@@ -446,9 +458,8 @@ impl ApplicationHandler for App {
                     if let Some(p) = self.player.as_mut() {
                         p.axes.steering = 0.0;
                     }
-                    let dead = |v: f32| ((v.abs() - 0.05) / 0.95).clamp(0.0, 1.0);
-                    analog.throttle = Some(if dy > 0.0 { dead(dy) } else { 0.0 });
-                    analog.brake = Some(if dy < 0.0 { dead(dy) } else { 0.0 });
+                    analog.throttle = Some(self.mouse_pedals.0);
+                    analog.brake = Some(self.mouse_pedals.1);
                 }
                 if let Some(p) = self.player.as_mut() {
                     p.analog = analog;
@@ -533,8 +544,12 @@ impl ApplicationHandler for App {
                     // (out of the seat: nobody at the wheel)
                     p.sync_driver(r, scene, dt, self.settings.driver && self.on_foot.is_none(), self.view == "driver");
                     if self.view != "free" && self.view != "foot" {
+                        crate::input_script::swap_view_look(&mut self.look, &mut self.view_looks, &mut self.look_view, &self.view);
                         if let Some(cam) = self.camera.as_ref() {
                             let mut cam = p.camera_look(&self.view, cam, self.look, self.orbit);
+                            if let Some(z) = self.view_zoom.get(&self.view) {
+                                cam.fov_deg = (cam.fov_deg * z).clamp(8.0, 120.0);
+                            }
                             if self.view == "outside" {
                                 if let Some(w) = self.world.as_ref() {
                                     cam = p.camera_clipped(cam, w, self.orbit, dt);
@@ -789,6 +804,7 @@ impl ApplicationHandler for App {
                     }
                 }
                 // looking around and zooming work in every view, not only the free camera
+                self.sync_view_look();
                 if self.player.is_some() && self.view != "free" {
                     // looking around with the keyboard: Alt + I/J/K/L (the plain letters
                     // belong to the bus - L is the headlights in Inputs/keyboard.cfg)
@@ -810,6 +826,15 @@ impl ApplicationHandler for App {
                     if self.view != "outside" {
                         self.look.0 = self.look.0.clamp(-140.0, 140.0);
                     }
+                    // = and - zoom inside the bus (the numpad's are door keys there)
+                    if matches!(self.view.as_str(), "driver" | "pax") {
+                        if self.keys.contains(&KeyCode::Equal) {
+                            self.zoom_by(3.0 * dt);
+                        }
+                        if self.keys.contains(&KeyCode::Minus) {
+                            self.zoom_by(-3.0 * dt);
+                        }
+                    }
                     // W/S and the wheel pull the outside camera in and out
                     if self.view == "outside" {
                         if self.keys.contains(&KeyCode::Equal)
@@ -826,6 +851,7 @@ impl ApplicationHandler for App {
                     if self.keys.contains(&KeyCode::Home) {
                         self.look = (0.0, 0.0);
                         self.orbit = ORBIT_DEFAULT;
+                        self.view_zoom.remove(&self.view);
                     }
                 }
                 if self.view != "free" {
@@ -1219,15 +1245,13 @@ impl ApplicationHandler for App {
                         } else {
                             Vec::new()
                         };
-                        // the vehicle chooser shows its window of vehicles in the menu's place
-                        // (as `chooser_window` has it, from the fields: `scene` is borrowed)
+                        // the vehicle chooser shows its vehicles in the menu's place (the menu
+                        // scrolls a long list)
                         let chooser_list = self.admin_list.as_ref().unwrap_or(&self.vehicle_list);
                         let (chooser_items, chooser_sel): (Vec<(&str, &str)>, Option<usize>) = match self.chooser {
                             Some(sel) => {
-                                let n = chooser_list.len();
-                                let start = sel.saturating_sub(7).min(n.saturating_sub(15));
-                                let items = chooser_list[start..(start + 15).min(n)].iter().map(|(name, path)| (path.as_str(), name.as_str())).collect();
-                                (items, Some(sel - start))
+                                let items = chooser_list.iter().map(|(name, path)| (path.as_str(), name.as_str())).collect();
+                                (items, Some(sel))
                             }
                             None => (Vec::new(), None),
                         };
@@ -1244,6 +1268,7 @@ impl ApplicationHandler for App {
                                 Some(k) => Some((k, &chooser_items[..])),
                                 None => self.game_menu.map(|k| (k, &menu_lines[..])),
                             },
+                            menu_top: self.menu_top,
                             timetable: self.timetable.then(|| timetable_rows(self.duty.as_ref(), self.player.as_ref().map(|p| p.vehicle.host.tt_delay as f64))).flatten(),
                             info: self.info_bar.then(|| info_line(&self.clock, self.player.as_ref(), self.duty.as_ref())),
                             tutorial: self.tutorial.as_ref().filter(|t| !t.hidden).and_then(|t| t.page().map(|p| (p.title.as_str(), p.text.as_str(), p.image.as_deref(), t.at, t.pages.len()))),
@@ -1730,6 +1755,9 @@ impl App {
         }
         if self.view == "outside" && self.player.is_some() {
             self.orbit = (self.orbit - amount * 1.5).clamp(ORBIT_MIN, ORBIT_MAX);
+        } else if matches!(self.view.as_str(), "driver" | "pax") && self.player.is_some() {
+            // inside the bus the wheel zooms, as in OMSI (the camera itself stays in the seat)
+            self.zoom_by(amount);
         } else if let Some(cam) = self.camera.as_mut() {
             let f = cam.forward();
             cam.position += (f * amount * 4.0).as_dvec3();

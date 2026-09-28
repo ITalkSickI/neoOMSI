@@ -130,6 +130,17 @@ pub(crate) fn spawn_player(
         match found {
             Some((pos, rot)) => {
                 vehicle.position = pos;
+                // the height the map's editor recorded for the entry point (global.cfg), when
+                // it is at the same place but on another level: an entry point under a bridge
+                // whose object came out on the deck put the bus on the bridge
+                if let Some(rec) = recorded_entry_pos(ep, pos) {
+                    let off = ((rec.x - pos.x).powi(2) + (rec.y - pos.y).powi(2)).sqrt();
+                    if off < 3.0 && (rec.z - pos.z).abs() > 1.5 {
+                        log::info!("entry point {}: the object stands at height {:.1}, the map recorded {:.1}: the recorded one", ep.index, pos.z, rec.z);
+                        vehicle.position.z = rec.z;
+                    }
+                }
+                let pos = vehicle.position;
                 // on the road surface there, not at the marker's own height: a marker
                 // placed on the terrain a little under (or over) the road left one axle in
                 // the asphalt and the bus stood tilted from the start; a surface metres away
@@ -563,4 +574,13 @@ pub(crate) fn paint_scheme(vt: &omsi_sim::VehicleType, paint: Option<&str>) -> O
         );
     }
     found
+}
+
+/// Where the map's `global.cfg` recorded an entry point (x, height, y within its tile), in
+/// world coordinates, taken in the tile of its object at `object` (Grundorf's records agree
+/// with their objects that way to a few decimetres).
+pub(crate) fn recorded_entry_pos(ep: &omsi_map::global::EntryPoint, object: DVec3) -> Option<DVec3> {
+    let s = omsi_map::tile_size();
+    let (tx, ty) = ((object.x / s).floor(), (object.y / s).floor());
+    ep.pos.iter().all(|v| v.is_finite()).then(|| DVec3::new(tx * s + ep.pos[0], ty * s + ep.pos[1], ep.pos[2]))
 }

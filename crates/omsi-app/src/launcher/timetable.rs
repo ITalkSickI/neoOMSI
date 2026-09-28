@@ -25,9 +25,16 @@ pub struct TimetableView {
     /// The departures being typed, one per trip of the shown tour.
     times: Vec<String>,
     times_for: Option<(usize, usize)>,
-    /// Minutes a copied tour runs after the one it copies.
+    /// Minutes a copied tour runs after the one it copies (and the repeat's interval).
     offset: String,
-    dirty: bool,
+    /// The repeat's last departure ("h:mm").
+    until: String,
+    /// The name typed for a new line.
+    new_line: String,
+    /// The lines changed and not saved yet (by name): kept while the player moves between
+    /// lines - the page used to drop a line's changes when another was clicked, and a day's
+    /// timetable took a save after every line.
+    dirty: std::collections::BTreeSet<String>,
     /// The reset button was pressed once: the next press puts the map's own timetable back.
     reset_armed: bool,
 }
@@ -116,6 +123,56 @@ fn reset_timetable(map_dir: &Path, map_folder: &str) -> Result<String, String> {
     }
 }
 
+/// Save every changed line of the map (see `save_target`); how many were saved, and the
+/// first error.
+fn save_all(tv: &mut TimetableView) -> (usize, Option<String>) {
+    let Some(data) = tv.data.as_mut() else { return (0, None) };
+    let folder = tv.map_dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    let original = omsi_cfg::resolve_path(&tv.map_dir, "TTData");
+    let mut saved = 0;
+    let mut err = None;
+    for line in data.lines.iter_mut().filter(|l| tv.dirty.contains(&l.name)) {
+        for t in &mut line.tours {
+            t.trips.sort_by(|a, b| a.departure.total_cmp(&b.departure));
+        }
+        match save_target(line, &folder, &original).and_then(|p| line.save(&p).map(|_| p).map_err(|e| e.to_string())) {
+            Ok(p) => {
+                line.path = p;
+                saved += 1;
+            }
+            Err(e) => {
+                err.get_or_insert(format!("line {}: {e}", line.name));
+            }
+        }
+    }
+    if err.is_none() {
+        tv.dirty.clear();
+    }
+    if saved > 0 {
+        omsi_cfg::content_changed();
+    }
+    (saved, err)
+}
+
+/// Copies of `base` every `every` minutes after it, as long as the copy's first departure is
+/// not after `until` (minutes of the day); numbered on from the highest. Returns how many.
+fn repeat_tour(tours: &mut Vec<Tour>, base: &Tour, every: f32, until: f32) -> usize {
+    let first = base.trips.first().map(|t| t.departure).unwrap_or(0.0);
+    let mut made = 0;
+    let mut k = 1.0;
+    while first + every * k <= until + 1e-3 && made < 500 {
+        let mut t = base.clone();
+        for x in &mut t.trips {
+            x.departure += every * k;
+        }
+        t.number = next_number(tours);
+        tours.push(t);
+        made += 1;
+        k += 1.0;
+    }
+    made
+}
+
 /// A new tour's number: one past the highest that is a number.
 fn next_number(tours: &[Tour]) -> String {
     (tours.iter().filter_map(|t| t.number.trim().parse::<i64>().ok()).max().unwrap_or(0) + 1).to_string()
@@ -149,10 +206,13 @@ pub fn draw(l: &mut Launcher, area: Rect) {
         tv.line = 0;
         tv.tour = 0;
         tv.times_for = None;
-        tv.dirty = false;
+        tv.dirty.clear();
     }
     if tv.offset.is_empty() {
         tv.offset = "20".into();
+    }
+    if tv.until.is_empty() {
+        tv.until = "22:00".into();
     }
     let col1 = (body.w * 0.24).min(300.0);
     let col2 = (body.w * 0.22).min(260.0);
@@ -168,8 +228,13 @@ pub fn draw(l: &mut Launcher, area: Rect) {
     let names: Vec<String> = maps.iter().map(|m| m.0.clone()).collect();
     let mut m = tv.map;
     if ui.select("tt-map", Rect::new(inner.x, inner.y, inner.w, ROW), &mut m, &names) {
-        if tv.dirty {
-            l.state.set_status("The changes to the line were dropped (not saved).", true);
+        // (another map: this one's changes are saved first, not lost)
+        if !tv.dirty.is_empty() {
+            let (saved, err) = save_all(tv);
+            match err {
+                Some(e) => l.state.set_status(format!("Not saved: {e}"), true),
+                None => l.state.set_status(format!("{saved} line(s) saved"), false),
+            }
         }
         tv.map = m;
         tv.loaded = None;
@@ -177,6 +242,10 @@ pub fn draw(l: &mut Launcher, area: Rect) {
     }
     // the map's own timetable back (below its lines; two presses)
     let reset_r = Rect::new(inner.x, inner.bottom() - ROW, inner.w, ROW);
+    // a new line: its name, then Add (the file is `<name>.ttl` in the map's TTData)
+    let new_r = Rect::new(inner.x, reset_r.y - ROW - 8.0, inner.w - 90.0, ROW);
+    ui.text_input("tt-new-line", new_r, &mut tv.new_line, "New line (name)", Some("add"));
+    let add_line = ui.button("tt-add-line", Rect::new(new_r.right() + 8.0, new_r.y, 82.0, ROW), "Add", None, ButtonKind::Normal);
     if ui.button("tt-reset", reset_r, if tv.reset_armed { "Press again to reset" } else { "Reset timetable" }, Some("restart_alt"), ButtonKind::Normal) {
         if tv.reset_armed {
             tv.reset_armed = false;
@@ -197,16 +266,34 @@ pub fn draw(l: &mut Launcher, area: Rect) {
         }
     }
     let Some(data) = tv.data.as_mut() else { return };
+    if add_line {
+        let name = tv.new_line.trim().to_string();
+        if name.is_empty() || name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+            status = Some(("Type the new line's name (it becomes the file name, so no / \\ : * ? \" < > |)".into(), true));
+        } else if data.lines.iter().any(|x| x.name.eq_ignore_ascii_case(&name)) {
+            status = Some((format!("Line {name} is there already"), true));
+        } else {
+            let path = omsi_cfg::resolve_path(&tv.map_dir, "TTData").join(format!("{name}.ttl"));
+            data.lines.push(Line { path, name: name.clone(), user_allowed: true, priority: 0, tours: Vec::new() });
+            data.lines.sort_by_key(|x| x.name.to_lowercase());
+            tv.line = data.lines.iter().position(|x| x.name == name).unwrap_or(0);
+            tv.tour = 0;
+            tv.times_for = None;
+            tv.dirty.insert(name.clone());
+            tv.new_line.clear();
+            status = Some((format!("Line {name} added: give it tours, then save"), false));
+        }
+    }
     let mut pick_line = None;
     let lines: Vec<(String, usize)> = data.lines.iter().map(|x| (x.name.clone(), x.tours.len())).collect();
-    let (sel_line, dirty) = (tv.line, tv.dirty);
-    ui.scroll_area("tt-lines", Rect::new(inner.x - 6.0, inner.y + ROW + 12.0, inner.w + 12.0, inner.h - 2.0 * ROW - 24.0), &mut |ui, v| {
+    let (sel_line, dirty) = (tv.line, &tv.dirty);
+    ui.scroll_area("tt-lines", Rect::new(inner.x - 6.0, inner.y + ROW + 12.0, inner.w + 12.0, inner.h - 3.0 * ROW - 32.0), &mut |ui, v| {
         for (i, (name, tours)) in lines.iter().enumerate() {
             let r = Rect::new(v.x + 6.0, v.y + i as f32 * 42.0, v.w - 16.0, 38.0);
             if ui.row(&format!("tt-line-{i}"), r, i == sel_line) {
                 pick_line = Some(i);
             }
-            let star = if i == sel_line && dirty { " •" } else { "" };
+            let star = if dirty.contains(name) { " •" } else { "" };
             ui.text_in(&format!("{name}{star}"), Rect::new(r.x + 12.0, r.y, r.w - 90.0, r.h), 13.0, Weight::Medium, TEXT, Align::Left);
             ui.text_in(&format!("{tours} tours"), Rect::new(r.right() - 90.0, r.y, 80.0, r.h), 11.5, Weight::Regular, TEXT_DIM, Align::Right);
         }
@@ -217,15 +304,7 @@ pub fn draw(l: &mut Launcher, area: Rect) {
         return;
     }
     if let Some(i) = pick_line {
-        if i != tv.line && tv.dirty {
-            status = Some(("The changes to the previous line were dropped (not saved).".into(), true));
-            // read it again as it is on disk
-            let p = data.lines[tv.line].path.clone();
-            if let Ok(fresh) = Line::load(&p) {
-                data.lines[tv.line] = fresh;
-            }
-            tv.dirty = false;
-        }
+        // (the line left keeps its changes: they are saved with the others)
         tv.line = i;
         tv.tour = 0;
         tv.times_for = None;
@@ -256,7 +335,7 @@ pub fn draw(l: &mut Launcher, area: Rect) {
     let mut pick_tour = None;
     let tours: Vec<(String, String, usize)> = line.tours.iter().map(|t| (t.number.clone(), t.trips.first().map(|x| fmt_time(x.departure)).unwrap_or_default(), t.trips.len())).collect();
     let sel_tour = tv.tour;
-    let list_h = inner.h - 3.0 * (ROW + 8.0) - 8.0;
+    let list_h = inner.h - 4.0 * (ROW + 8.0) - 8.0;
     ui.scroll_area(&format!("tt-tours-{line_name}"), Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, list_h), &mut |ui, v| {
         for (i, (num, first, n)) in tours.iter().enumerate() {
             let r = Rect::new(v.x + 6.0, v.y + i as f32 * 42.0, v.w - 16.0, 38.0);
@@ -279,7 +358,7 @@ pub fn draw(l: &mut Launcher, area: Rect) {
         let first = trips.first().cloned().unwrap_or_default();
         line.tours.push(Tour { number: next_number(&line.tours), ai_group, extra, trips: vec![TourTrip { trip: first, profile: 0, departure: 6.0 * 60.0 }] });
         tv.tour = line.tours.len() - 1;
-        tv.dirty = true;
+        tv.dirty.insert(line_name.clone());
     }
     y += ROW + 8.0;
     ui.text_input("tt-offset", Rect::new(inner.x, y, half, ROW), &mut tv.offset, "min", Some("schedule"));
@@ -293,9 +372,27 @@ pub fn draw(l: &mut Launcher, area: Rect) {
                 t.number = next_number(&line.tours);
                 line.tours.push(t);
                 tv.tour = line.tours.len() - 1;
-                tv.dirty = true;
+                tv.dirty.insert(line_name.clone());
             }
             (None, _) => status = Some(("Type the minutes the copy runs later (negative for earlier).".into(), true)),
+            _ => {}
+        }
+    }
+    y += ROW + 8.0;
+    // the whole day at once: copies of the tour every <min> minutes up to a last departure
+    ui.text_input("tt-until", Rect::new(inner.x, y, half, ROW), &mut tv.until, "until h:mm", Some("schedule"));
+    if ui.button("tt-repeat", Rect::new(inner.x + half + GAP, y, half, ROW), "Repeat", Some("autorenew"), ButtonKind::Normal) {
+        match (off.filter(|o| *o >= 1.0), parse_time(&tv.until), line.tours.get(tv.tour).cloned()) {
+            (Some(every), Some(until), Some(base)) => {
+                let made = repeat_tour(&mut line.tours, &base, every, until);
+                if made > 0 {
+                    tv.tour = line.tours.len() - 1;
+                    tv.dirty.insert(line_name.clone());
+                }
+                status = Some((format!("{made} tour(s) made, every {every} min up to {}", fmt_time(until)), false));
+            }
+            (None, _, _) => status = Some(("Type the minutes between the tours (1 or more) in the field above".into(), true)),
+            (_, None, _) => status = Some(("Type the last departure as h:mm".into(), true)),
             _ => {}
         }
     }
@@ -303,7 +400,7 @@ pub fn draw(l: &mut Launcher, area: Rect) {
     if ui.button("tt-del-tour", Rect::new(inner.x, y, inner.w, ROW), "Delete tour", Some("delete"), ButtonKind::Normal) && tv.tour < line.tours.len() {
         line.tours.remove(tv.tour);
         tv.tour = tv.tour.saturating_sub(1);
-        tv.dirty = true;
+        tv.dirty.insert(line_name.clone());
     }
     tv.tour = tv.tour.min(line.tours.len().saturating_sub(1));
 
@@ -399,28 +496,25 @@ pub fn draw(l: &mut Launcher, area: Rect) {
         }
     }
     if changed {
-        tv.dirty = true;
+        tv.dirty.insert(line_name.clone());
     }
-    let save_r = Rect::new(inner.right() - 160.0, by, 160.0, ROW);
-    if ui.button("tt-save", save_r, if tv.dirty { "Save line" } else { "Saved" }, Some("save"), if tv.dirty { ButtonKind::Primary } else { ButtonKind::Normal }) && tv.dirty {
+    let n = tv.dirty.len();
+    let save_r = Rect::new(inner.right() - 170.0, by, 170.0, ROW);
+    let label = match n {
+        0 => "Saved".to_string(),
+        1 => "Save".to_string(),
+        n => format!("Save all ({n} lines)"),
+    };
+    if ui.button("tt-save", save_r, &label, Some("save"), if n > 0 { ButtonKind::Primary } else { ButtonKind::Normal }) && n > 0 {
         if tv.times.iter().any(|t| parse_time(t).is_none()) {
             status = Some(("A departure is not a time (h:mm).".into(), true));
         } else {
-            for t in &mut line.tours {
-                t.trips.sort_by(|a, b| a.departure.total_cmp(&b.departure));
-            }
-            let folder = tv.map_dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-            let original = omsi_cfg::resolve_path(&tv.map_dir, "TTData");
-            match save_target(line, &folder, &original).and_then(|p| line.save(&p).map(|_| p).map_err(|e| e.to_string())) {
-                Ok(p) => {
-                    line.path = p.clone();
-                    tv.dirty = false;
-                    tv.times_for = None;
-                    omsi_cfg::content_changed();
-                    status = Some((format!("Line {line_name} saved to {}", p.display()), false));
-                }
-                Err(e) => status = Some((format!("Not saved: {e}"), true)),
-            }
+            let (saved, err) = save_all(tv);
+            tv.times_for = None;
+            status = Some(match err {
+                Some(e) => (format!("Not saved: {e}"), true),
+                None => (format!("{saved} line(s) saved"), false),
+            });
         }
     }
     if let Some((s, err)) = status {
@@ -448,5 +542,22 @@ mod tests {
         let t = |n: &str| Tour { number: n.into(), ..Default::default() };
         assert_eq!(next_number(&[t("1"), t("7"), t("x")]), "8");
         assert_eq!(next_number(&[]), "1");
+    }
+}
+
+#[cfg(test)]
+mod repeat_tests {
+    use super::*;
+
+    #[test]
+    fn a_tour_every_twenty_minutes_until_eight() {
+        let base = Tour { number: "1".into(), ai_group: "Busses".into(), extra: String::new(), trips: vec![TourTrip { trip: "a".into(), profile: 0, departure: 6.0 * 60.0 }, TourTrip { trip: "b".into(), profile: 0, departure: 6.5 * 60.0 }] };
+        let mut tours = vec![base.clone()];
+        let made = repeat_tour(&mut tours, &base, 20.0, 8.0 * 60.0);
+        // 6:20, 6:40 … 8:00
+        assert_eq!(made, 6);
+        assert_eq!(tours.last().unwrap().trips[0].departure, 8.0 * 60.0);
+        assert_eq!(tours.last().unwrap().trips[1].departure, 8.5 * 60.0);
+        assert_eq!(tours.last().unwrap().number, "7");
     }
 }

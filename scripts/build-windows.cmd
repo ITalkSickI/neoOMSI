@@ -1,21 +1,25 @@
 @echo off
-rem Build openOMSI for Windows x64 into dist\windows (openomsi.exe is the game and, started
-rem with no arguments, the launcher window). Needs Rust x86_64 MSVC (https://rustup.rs) and
-rem Visual Studio Build Tools with "Desktop development with C++" and the Windows SDK.
+rem Build openOMSI for Windows into dist\windows (openomsi.exe is the game and, started with
+rem no arguments, the launcher window): x64, or ARM64 with the target as the first argument
+rem (build-windows.cmd aarch64-pc-windows-msvc). Needs Rust with the MSVC toolchain
+rem (https://rustup.rs) and Visual Studio Build Tools with "Desktop development with C++"
+rem (for ARM64 also its ARM64 build tools and LLVM's clang) and the Windows SDK.
 rem To build the Windows version on a Mac, use scripts/build-windows-cross.sh instead.
 setlocal
 cd /d "%~dp0\.."
+set "TARGET=%~1"
+if "%TARGET%"=="" set "TARGET=x86_64-pc-windows-msvc"
 set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
 where cargo >nul 2>nul
 if errorlevel 1 (
   echo Install Rust from https://rustup.rs using the MSVC toolchain, then run this script again.
   exit /b 1
 )
-cargo build --locked --release --target x86_64-pc-windows-msvc -p omsi-app -p omsi-launcher-core
+cargo build --locked --release --target %TARGET% -p omsi-app -p omsi-launcher-core
 if errorlevel 1 goto :failed
 if not exist "dist\windows" mkdir "dist\windows"
-copy /y "target\x86_64-pc-windows-msvc\release\openomsi.exe" "dist\windows\openomsi.exe" >nul || goto :failed
-copy /y "target\x86_64-pc-windows-msvc\release\openomsi-launcher.exe" "dist\windows\openomsi-launcher.exe" >nul || goto :failed
+copy /y "target\%TARGET%\release\openomsi.exe" "dist\windows\openomsi.exe" >nul || goto :failed
+copy /y "target\%TARGET%\release\openomsi-launcher.exe" "dist\windows\openomsi-launcher.exe" >nul || goto :failed
 echo.
 echo Done. Run: "%CD%\dist\windows\openomsi.exe"
 exit /b 0

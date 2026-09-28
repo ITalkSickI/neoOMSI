@@ -7334,14 +7334,14 @@ impl Humans {
             // plants a foot while walking, so people standing at a stop stay quiet)
             let step = if p.anim.landed() && p.vel.length() > 0.3 {
                 match p.place {
-                    Place::Ground => Some((p.position, false)),
-                    Place::Bus(_, l) => world_of(l).map(|w| (w, true)),
+                    Place::Ground => Some((p.position, false, false)),
+                    Place::Bus(b, l) => world_of(l).map(|w| (w, true, b == BusId::Player)),
                 }
             } else {
                 None
             };
-            if let Some((position, inside)) = step {
-                self.footfalls.push(ambience::Footfall { position, inside });
+            if let Some((position, inside, own_bus)) = step {
+                self.footfalls.push(ambience::Footfall { position, inside, own_bus });
             }
             let log_it = match debug_pose() {
                 Some(Some(id)) => id == p.id,

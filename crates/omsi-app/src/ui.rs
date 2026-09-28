@@ -229,6 +229,8 @@ pub struct Frame<'a> {
     pub paused: bool,
     /// The game menu is open, with this line chosen (labels from `GAME_MENU`).
     pub menu: Option<(usize, &'a [(&'a str, &'a str)])>,
+    /// The first line shown when a finger scrolled the menu (`App::menu_top`).
+    pub menu_top: Option<f32>,
     /// The timetable window: its title and per stop (name, time, 0 served / 1 next / 2 ahead).
     pub timetable: Option<(String, Vec<(String, String, u8)>)>,
     /// The information bar along the top.
@@ -247,13 +249,17 @@ pub struct Ui {
     /// The first line of the menu shown (a long menu scrolls: `menu_rects[k]` is line
     /// `menu_start + k`).
     pub menu_start: usize,
+    /// How many lines the menu shows at once, and how high one is (physical pixels): a
+    /// finger's drag is turned into lines with it.
+    pub menu_rows: usize,
+    pub menu_row_h: f32,
     /// Pictures shown in the interface (a tutorial page's), by file.
     images: hashbrown::HashMap<std::path::PathBuf, Option<(TextureId, u32, u32)>>,
 }
 
 impl Ui {
     pub fn new() -> Option<Ui> {
-        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_start: 0, images: Default::default() })
+        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default() })
     }
 
     /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
@@ -468,8 +474,14 @@ impl Ui {
             let room = f.height * 0.92 - title_h - 16.0 * s;
             let row_h = (44.0 * s).min(room / items.len().max(1) as f32).max(34.0 * s);
             let rows = ((room / row_h).floor() as usize).clamp(1, items.len().max(1));
-            let start = if items.len() > rows { sel.saturating_sub(rows / 2).min(items.len() - rows) } else { 0 };
+            let start = match (items.len() > rows, f.menu_top) {
+                (false, _) => 0,
+                (true, Some(top)) => (top.max(0.0).round() as usize).min(items.len() - rows),
+                (true, None) => sel.saturating_sub(rows / 2).min(items.len() - rows),
+            };
             self.menu_start = start;
+            self.menu_rows = rows;
+            self.menu_row_h = row_h;
             let px = ((17.0 * s).min(row_h * 0.45)) as u32;
             let h = title_h + row_h * rows as f32 + 16.0 * s;
             let x = (f.width - w) * 0.5;

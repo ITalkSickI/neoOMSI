@@ -55,6 +55,8 @@ mod app_events;
 mod bus_service;
 mod camera_util;
 mod controllers;
+#[cfg(windows)]
+mod dinput;
 mod cli;
 mod diagnostics;
 mod duty_start;
@@ -433,9 +435,11 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         shot: None,
         paused: false,
         game_menu: None,
+        menu_top: None,
         controllers: None,
         mouse_drive: false,
         mouse_steer: (0.0, 0.0),
+        mouse_pedals: (0.0, 0.0),
         tutorial: None,
         ego: false,
         on_foot: None,
@@ -454,6 +458,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         list_kind: None,
         route_arrows: Default::default(),
         game_keys: omsi_content::KeyboardCfg::load(&crate::startup::keyboard_cfg(&args_root_for_keys)).map(|k| k.game).unwrap_or_default(),
+        own_keys: crate::startup::own_keys(&args_root_for_keys),
         menu_prev_pause: false,
         info_bar: false,
         pending_time: None,
@@ -463,6 +468,9 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         dragging: false,
         drag_delta: (0.0, 0.0),
         look: (0.0, 0.0),
+        view_looks: Default::default(),
+        look_view: String::new(),
+        view_zoom: Default::default(),
         orbit: ORBIT_DEFAULT,
         frames: 0,
         fps_t: Instant::now(),

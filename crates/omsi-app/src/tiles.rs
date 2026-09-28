@@ -92,6 +92,15 @@ impl MapIndex {
                     let ground = terrain.as_ref().map(|t| t.sample(o.pos[0].clamp(0.0, tile_size()) as f32, o.pos[1].clamp(0.0, tile_size()) as f32) as f64).unwrap_or(0.0);
                     part.objects.insert(o.id, ((*tx, *ty), DVec3::new(origin.x + o.pos[0], origin.y + o.pos[1], o.pos[2] + ground), o.rot));
                 }
+                // an object put on a spline (`[splineAttachement]`: an entry point or a stop
+                // on the road): where the row's first object stands on its own spline - enough
+                // to find it and load its tiles (the placed object gives the exact place; a
+                // Novi Sad entry point was "not in the map" before)
+                for a in tile.spline_attachments.iter().filter(|a| a.repeater.is_none()) {
+                    let Some(s) = tile.splines.get(a.spline_index.max(0) as usize) else { continue };
+                    let Some(first) = row_start(a, s, None).and_then(|st| place_on(a, s, origin, None, st).into_iter().next()) else { continue };
+                    part.objects.entry(a.id).or_insert(((*tx, *ty), first.pose.pos, [first.pose.heading(), 0.0, 0.0]));
+                }
                 part.tiles_read = 1;
                 Some((part, rows))
             })
