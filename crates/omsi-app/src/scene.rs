@@ -4031,8 +4031,12 @@ impl World {
                         // collision mesh (unless the object was bent onto the ground, then its
                         // bent meshes are), and a low object's collision mesh (a traffic
                         // island: a step, not a surface)
+                        // (a step only of an object that is solid at all - `[fixed]`, not
+                        // `[nocollision]`: the helper and sensor objects of mod maps carry low
+                        // collision meshes too, and the bus hopped over things nobody sees)
+                        let solid_step = (ot.sco.fixed || o.parked) && !ot.sco.no_collision;
                         match (surface, ot.collision.as_ref()) {
-                            (false, Some(c)) => {
+                            (false, Some(c)) if solid_step => {
                                 let top = c.positions.iter().map(|p| p.z).fold(f32::MIN, f32::max);
                                 if top <= LOW_OBJECT
                                     && top > 0.02
@@ -4299,6 +4303,12 @@ impl World {
             {
                 for m in mats {
                     push(&m.texture, &dirs, &mut names);
+                    // and its copy in the `night` folder, which `type_gpu` looks for: left to
+                    // the main thread, big night JPEGs of a mod map were decoded there, up to
+                    // 1.7 s for one object type (the freezes on Grande Porto, Novi Sad)
+                    if !is_null_texture(&m.texture) {
+                        push(&night_texture_name(&m.texture), &dirs, &mut names);
+                    }
                 }
                 for ov in overrides {
                     push(&ov.texture, &dirs, &mut names);
@@ -4554,11 +4564,7 @@ impl World {
                     // the object's [NightMapMode] says. Every stock building has them (the
                     // Buildings_RW1HH folder alone 60), and without them the city stood dark.
                     None if !is_null_texture(&m.texture) => {
-                        let name = m.texture.trim().replace('/', "\\");
-                        let rel = match name.rsplit_once('\\') {
-                            Some((dir, file)) => format!("{dir}\\night\\{file}"),
-                            None => format!("night\\{name}"),
-                        };
+                        let rel = night_texture_name(&m.texture);
                         let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
                         if omsi_texture::find_texture(&rel, &dirs_ref).is_some() {
                             t.auto_night = true;
@@ -4855,7 +4861,9 @@ impl World {
         let gpu = &mut *gpu_guard;
         self.ensure_ground(renderer, scene, gpu);
         let ground_mat = gpu.ground.as_ref().unwrap().ground_mat;
+        let slow = omsi_cfg::env::var_os("OMSI_DEBUG_UPLOAD").is_some();
         loop {
+            let t_item = std::time::Instant::now();
             if let Some(path) = u.textures.pop() {
                 if !gpu.textures.contains_key(&path) {
                     if let Some(img) = u.prepared.images.get(&path) {
@@ -4873,11 +4881,14 @@ impl World {
                             },
                         );
                         // the tile holds the texture until its object types take it over
+                        if slow && t_item.elapsed().as_millis() > 8 { log::info!("upload: texture {} ({}x{} {:?}) took {} ms", path.display(), img.width, img.height, img.format, t_item.elapsed().as_millis()); }
                         u.tg.shared_textures.push(path);
                     }
                 }
             } else if let Some(ot) = u.types.pop() {
+                let before = (gpu.sync_decodes, gpu.sync_decode_secs);
                 let key = self.type_gpu(renderer, scene, gpu, &ot, &u.prepared.images, ground_mat);
+                if slow && t_item.elapsed().as_millis() > 8 { log::info!("upload: object type {} took {} ms ({} meshes, {} textures decoded here in {:.0} ms)", ot.model_dir.display(), t_item.elapsed().as_millis(), ot.meshes.len(), gpu.sync_decodes - before.0, (gpu.sync_decode_secs - before.1) * 1000.0); }
                 if !u.tg.types.contains(&key) {
                     gpu.types.get_mut(&key).unwrap().users += 1;
                     u.tg.types.push(key);
@@ -10092,4 +10103,14 @@ fn field_height(m: &MeshData, x: f32, y: f32) -> Option<f32> {
         }
     }
     best
+}
+
+
+/// The name of a texture's night copy: the same file in a `night` folder beside it.
+fn night_texture_name(texture: &str) -> String {
+    let name = texture.trim().replace('/', "\\");
+    match name.rsplit_once('\\') {
+        Some((dir, file)) => format!("{dir}\\night\\{file}"),
+        None => format!("night\\{name}"),
+    }
 }

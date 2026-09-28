@@ -30,6 +30,8 @@ const HOLD: f32 = 0.35;
 /// Rate (1/s) at which it eases back out, and the fastest it may do so (m/s).
 const EASE: f32 = 3.0;
 const EASE_MAX: f32 = 14.0;
+/// Rate (1/s) at which it is pulled in towards a blocked length.
+const PULL_IN: f32 = 18.0;
 /// How far above the ground the camera stays (m).
 const GROUND_CLEARANCE: f64 = 0.6;
 
@@ -549,8 +551,11 @@ impl SpringArm {
             return self.len;
         }
         if target < self.len - 1e-4 {
-            // in at once: the camera must never stand inside a wall
-            self.len = target;
+            // in quickly, but not in one frame: a sudden jump of the camera read as a zoom
+            // whenever something passed behind it (a tenth of a second, the rest of the way
+            // at once when it is under 5 cm)
+            let quick = self.len + (target - self.len) * (1.0 - (-PULL_IN * dt).exp());
+            self.len = if quick - target < 0.05 { target } else { quick };
             self.hold = HOLD;
         } else if self.len >= self.want - 1e-3 {
             // not pulled in: the player's own zoom goes straight through
@@ -591,8 +596,10 @@ mod tests {
     fn snaps_in_and_eases_out() {
         let mut arm = SpringArm::default();
         assert_eq!(run(&mut arm, 10.0, 10.0, 0.5), 10.0);
-        // a wall at 4 m: in at once
-        assert_eq!(arm.update(10.0, 4.0, DVec3::ZERO, 1.0 / 60.0), 4.0);
+        // a wall at 4 m: in within a moment, not in one frame
+        let first = arm.update(10.0, 4.0, DVec3::ZERO, 1.0 / 60.0);
+        assert!(first > 4.0 && first < 10.0, "{first}");
+        assert_eq!(run(&mut arm, 10.0, 4.0, 0.5), 4.0);
         // clear again: still in during the hold, then out gradually, never past the target
         let held = run(&mut arm, 10.0, 10.0, 0.2);
         assert!((held - 4.0).abs() < 1e-4, "{held}");
@@ -620,7 +627,7 @@ mod tests {
         for k in 0..120 {
             let free = if k % 2 == 0 { 5.0 } else { 10.0 };
             let l = arm.update(10.0, free, DVec3::ZERO, 1.0 / 60.0);
-            if k > 0 {
+            if k > 40 {
                 max = max.max(l);
             }
         }

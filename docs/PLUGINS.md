@@ -54,6 +54,10 @@ by defining a global function `on_<event>`:
 | `vehicle` | name or `nil` | the player got into a vehicle, changed it, or left it |
 | `frame` | `dt` (seconds) | every frame of the game, after the bus's own scripts; not while paused |
 | `stop` | - | the game ends, or the file is about to be loaded again |
+| `key` | key name, `true`/`false` | a key went down / came up (`"KeyH"`, `"F5"`, `"Numpad8"`, ...) |
+| `next_stop` | new, old | the duty's next stop changed |
+| `view` | new, old | the view changed (`"driver"`, `"pax"`, `"outside"`, `"free"`, `"foot"`) |
+| `duty` | line, tour | a line and tour were taken (or given up: `nil`) |
 
 ```lua
 function on_frame(dt)
@@ -85,6 +89,27 @@ have, reads give `nil` and writes do nothing.
 | `omsi.trigger(name)` | a key press: fires the trigger, then `<name>_off` |
 | `omsi.press(name)` / `omsi.release(name)` | holds a key down / lets it go (`name`, later `name_off`) |
 | `omsi.position()` | `x, y, z, heading` of the bus (map metres, degrees), or nothing on foot |
+
+#### The game
+
+| Function | What it does |
+| --- | --- |
+| `omsi.info()` | a table of what the game is doing: `map`, `clock` (seconds since midnight), `day`, `year`, `view`, `paused`, `on_foot`, `multiplayer`, `traffic` (AI vehicles), `speed` (km/h), `delay` (s, late positive); on a duty also `line`, `tour`, `trip`, `trips`, `terminus`, `next_stop`, `next_stop_arrival`, `next_stop_departure` |
+| `omsi.clock()` | the game's time of day as `"HH:MM:SS"` |
+| `omsi.speed()` | the bus's speed in km/h (0 on foot) |
+| `omsi.distance(x, y)` | metres from the bus to a map point, or `nil` on foot |
+| `omsi.vars()` / `omsi.vars("str")` | the names of every variable / string variable of the bus's scripts |
+| `omsi.command(name)` | does what a line of the game menu does: `refuel`, `wash`, `repair`, `shot`, `save`, `load`, `weather`, `later`, `earlier`, `info`, `timetable`, `reset`, `couple`, `uncouple`; `true` when the game knows it |
+
+```lua
+-- H: the time and the next stop on the screen
+omsi.on("key", function(key, down)
+  if key == "KeyH" and down then
+    local i = omsi.info()
+    omsi.message(omsi.clock() .. (i.next_stop and ("  next: " .. i.next_stop) or ""), 4)
+  end
+end)
+```
 
 #### Time, timers and watches
 

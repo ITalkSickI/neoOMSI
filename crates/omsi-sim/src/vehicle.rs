@@ -213,6 +213,36 @@ pub fn load_paint_schemes(dir: &Path) -> Vec<PaintScheme> {
     schemes
 }
 
+/// Where a `[mesh]` file of a model lives: next to the model file as OMSI reads it, else -
+/// for add-ons laid out for another folder (Studio Polygon's `Configuration Files` sit
+/// beside `model`, and packs that borrow parts name them from the vehicle folder or the
+/// game folder) - the first of the vehicle folder, its `model` folder and the game folder
+/// that has it. The model folder's spelling when none does, for the warning.
+fn mesh_path(root: &Path, dir: &Path, model_dir: &Path, file: &str) -> PathBuf {
+    let first = omsi_cfg::resolve_path(model_dir, file);
+    if omsi_cfg::vfs::exists(&first) {
+        return first;
+    }
+    let model = omsi_cfg::resolve_path(dir, "model");
+    let parent = model_dir.parent().map(Path::to_path_buf);
+    for base in [Some(dir.to_path_buf()), Some(model), parent, Some(root.to_path_buf())].into_iter().flatten() {
+        let p = omsi_cfg::resolve_path(&base, file);
+        if omsi_cfg::vfs::exists(&p) {
+            return p;
+        }
+        // (a path that names its own folder again: "model\Configuration Files\..." given
+        // from inside `model`)
+        let trimmed = file.trim_start_matches(['\\', '/']);
+        if let Some(rest) = trimmed.split_once(['\\', '/']).map(|(_, r)| r) {
+            let p = omsi_cfg::resolve_path(&base, rest);
+            if omsi_cfg::vfs::exists(&p) {
+                return p;
+            }
+        }
+    }
+    first
+}
+
 impl VehicleType {
     pub fn load(root: &Path, bus_file: &Path) -> Result<VehicleType> {
         Self::load_with(root, bus_file, true)
@@ -260,7 +290,7 @@ impl VehicleType {
                 .map(|l| l.first_mesh)
                 .unwrap_or(model.meshes.len());
             for (i, md) in model.meshes[start..end].iter().enumerate() {
-                let p = omsi_cfg::resolve_path(&model_dir, &md.file);
+                let p = mesh_path(root, &dir, &model_dir, &md.file);
                 match omsi_o3d::load_mesh(&p) {
                     Ok(m) => {
                         let skin = if md.smooth_skin {

@@ -9,13 +9,15 @@
   <a href="https://github.com/turbo-devv/openOMSI/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/turbo-devv/openOMSI?label=version&color=f47f30&style=for-the-badge"></a>
   <a href="https://github.com/turbo-devv/openOMSI/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/turbo-devv/openOMSI/release.yml?branch=main&style=for-the-badge&label=build"></a>
   <a href="https://turbo-devv.github.io/openOMSI/"><img alt="Docs" src="https://img.shields.io/badge/docs-website-2d3138?style=for-the-badge"></a>
+  <a href="https://discord.gg/VG2EKVafYG"><img alt="Discord" src="https://img.shields.io/badge/discord-join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/turbo-devv/openOMSI?style=for-the-badge"></a>
 </p>
 
 > [!WARNING]
 > **Early release. Expect bugs.** openOMSI is in an early stage of development: things may be
 > missing, broken or change between versions. Please report problems in
-> [Issues](https://github.com/turbo-devv/openOMSI/issues).
+> [Issues](https://github.com/turbo-devv/openOMSI/issues) or on our
+> [Discord server](https://discord.gg/VG2EKVafYG).
 
 **openOMSI** is a from-scratch recreation of the bus simulator **OMSI 2**, written in Rust:
 64-bit, multithreaded, with a modern renderer (Metal / Vulkan / DirectX 12 through wgpu),

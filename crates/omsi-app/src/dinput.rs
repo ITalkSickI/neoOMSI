@@ -242,6 +242,27 @@ impl DirectInput {
                     self.events.push((d.name.clone(), b, now));
                 }
             }
+            // the hat switches as buttons after the 128 (up, right, down, left of each): the
+            // D-pad of a wheel rim - Moza's among others - is a hat, and could not be given a key
+            for k in 0..4 {
+                let dirs = |pov: u32| -> [bool; 4] {
+                    if pov == u32::MAX || pov & 0xFFFF == 0xFFFF {
+                        return [false; 4];
+                    }
+                    let a = (pov % 36000) as i32;
+                    let near = |c: i32| {
+                        let d = (a - c).rem_euclid(36000);
+                        d.min(36000 - d) < 6750
+                    };
+                    [near(0), near(9000), near(18000), near(27000)]
+                };
+                let (was, now) = (dirs(d.state.pov[k]), dirs(s.pov[k]));
+                for dir in 0..4 {
+                    if was[dir] != now[dir] {
+                        self.events.push((d.name.clone(), crate::controllers::HAT_BUTTONS + k * 4 + dir, now[dir]));
+                    }
+                }
+            }
             d.state = s;
         }
     }

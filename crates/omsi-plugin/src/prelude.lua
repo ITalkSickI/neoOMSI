@@ -6,6 +6,7 @@ local timers = {}        -- id -> {at, every, fn}
 local next_id = 1
 local watches = {}       -- id -> {kind, name, fn, last}
 local clock = 0
+local last_info = {}
 
 function omsi.on(event, fn)
   assert(type(event) == "string", "omsi.on: the event is a name")
@@ -89,7 +90,32 @@ function omsi._tick(dt)
       if old ~= nil or v ~= nil then w.fn(v, old) end
     end
   end
+  -- the keys pressed since the last frame, then what changed in the game's state
+  for _, k in ipairs(omsi._keys()) do omsi.emit("key", k[1], k[2]) end
+  if handlers.next_stop or handlers.view or handlers.duty or rawget(_G, "on_next_stop") or rawget(_G, "on_view") or rawget(_G, "on_duty") then
+    local i = omsi.info()
+    if i.next_stop ~= last_info.next_stop and i.next_stop ~= nil then omsi.emit("next_stop", i.next_stop, last_info.next_stop) end
+    if i.view ~= last_info.view then omsi.emit("view", i.view, last_info.view) end
+    if (i.line or "") .. "/" .. (i.tour or "") ~= (last_info.line or "") .. "/" .. (last_info.tour or "") then omsi.emit("duty", i.line, i.tour) end
+    last_info = i
+  end
   omsi.emit("frame", dt)
+end
+
+-- small helpers
+function omsi.speed()
+  return math.abs(omsi.var("Velocity") or 0)
+end
+
+function omsi.distance(x, y)
+  local px, py = omsi.position()
+  if not px then return nil end
+  return math.sqrt((px - x) ^ 2 + (py - y) ^ 2)
+end
+
+function omsi.clock()
+  local t = math.floor(omsi.info().clock or 0)
+  return string.format("%02d:%02d:%02d", t // 3600 % 24, t // 60 % 60, t % 60)
 end
 
 -- saved data: omsi.data is written on the way out and read back on the next start

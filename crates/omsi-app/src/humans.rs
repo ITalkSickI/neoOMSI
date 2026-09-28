@@ -1590,6 +1590,9 @@ enum Place {
     Bus(BusId, Vec3),
 }
 
+/// Seconds after which a passenger's request at an exit lapses (see `write_pax_vars`).
+const EXIT_REQ_LAPSE: f32 = 40.0;
+
 pub struct Person {
     id: u32,
     ty: Arc<HumanType>,
@@ -1820,6 +1823,8 @@ pub struct Humans {
     pub entry_req: Vec<bool>,
     /// `PAX_Exit<i>_Req`: somebody inside wants out through exit `i`.
     pub exit_req: Vec<bool>,
+    /// Seconds each passenger on the way out has asked for the door (see `EXIT_REQ_LAPSE`).
+    exit_req_time: hashbrown::HashMap<u32, f32>,
     /// Timetable stop index the stop request was already made for.
     requested_for: Option<i32>,
     sync_frame: u32,
@@ -2028,6 +2033,7 @@ impl Humans {
             ticket_points: 0,
             entry_req: Vec::new(),
             exit_req: Vec::new(),
+            exit_req_time: Default::default(),
             requested_for: None,
             sync_frame: 0,
             debug_last_next: -99,
@@ -4652,6 +4658,23 @@ impl Humans {
                 }
             }
         }
+        // how long each passenger on the way out has been asking for the door
+        {
+            let asking: Vec<u32> = self
+                .people
+                .iter()
+                .filter(|p| match p.state {
+                    State::AtExit { .. } | State::Aboard { goal: Goal::ExitWait(_), .. } => p.leaving_here,
+                    State::Aboard { goal: Goal::Exit(_), .. } => true,
+                    _ => false,
+                })
+                .map(|p| p.id)
+                .collect();
+            self.exit_req_time.retain(|id, _| asking.contains(id));
+            for id in asking {
+                *self.exit_req_time.entry(id).or_insert(0.0) += dt;
+            }
+        }
         // who asks for which door of the player's bus
         for r in self.entry_req.iter_mut().chain(self.exit_req.iter_mut()) {
             *r = false;
@@ -4667,6 +4690,9 @@ impl Humans {
                         *r = true;
                     }
                 }
+                // (a request lapses when the person has been at it far longer than stepping
+                // out takes - one held up somewhere kept the SD200's and the EN92's automatic
+                // rear door open for good: `haltewunsch` never went off)
                 State::AtExit {
                     bus: BusId::Player,
                     exit,
@@ -4675,7 +4701,7 @@ impl Humans {
                     bus: BusId::Player,
                     goal: Goal::ExitWait(exit),
                     ..
-                } if p.leaving_here => {
+                } if p.leaving_here && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                     if let Some(r) = self.exit_req.get_mut(exit) {
                         *r = true;
                     }
@@ -4687,7 +4713,7 @@ impl Humans {
                     bus: BusId::Player,
                     goal: Goal::Exit(exit),
                     ..
-                } => {
+                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                     if let Some(r) = self.exit_req.get_mut(exit) {
                         *r = true;
                     }
@@ -5011,7 +5037,7 @@ impl Humans {
                         bus,
                         goal: Goal::ExitWait(x),
                         ..
-                    } if bus == bn.id && p.leaving_here => {
+                    } if bus == bn.id && p.leaving_here && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                         if let Some(r) = exit.get_mut(x) {
                             *r = true;
                         }
@@ -5020,7 +5046,7 @@ impl Humans {
                         bus,
                         goal: Goal::Exit(x),
                         ..
-                    } if bus == bn.id => {
+                    } if bus == bn.id && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                         if let Some(r) = exit.get_mut(x) {
                             *r = true;
                         }

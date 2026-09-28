@@ -380,6 +380,9 @@ impl Ui {
             scene.overlays.push((plate, [x, y, x + w, y + h]));
             let t = self.text.label(r, scene, &clip_to(&self.text, title, px as f32 * 1.1, w - 20.0 * s), (px as f32 * 1.1) as u32, [255, 255, 255, 0]);
             scene.overlays.push((t.tex, [x + 10.0 * s, y + 6.0 * s, x + 10.0 * s + t.w as f32, y + 6.0 * s + t.h as f32]));
+            // (the names start after the widest time: "12:03-05" of a stop with a wait)
+            let time_w = rows.iter().map(|r| self.text.width(&r.1, px as f32)).fold(0.0f32, f32::max).max(40.0 * s);
+            let name_x = x + 10.0 * s + time_w + 12.0 * s;
             for (k, (name, time, state)) in rows.iter().skip(first).take(shown).enumerate() {
                 let ry = y + lh * (k as f32 + 1.3);
                 if *state == 1 {
@@ -393,8 +396,8 @@ impl Ui {
                 };
                 let tl = self.text.label(r, scene, time, px, color);
                 scene.overlays.push((tl.tex, [x + 10.0 * s, ry, x + 10.0 * s + tl.w as f32, ry + tl.h as f32]));
-                let nl = self.text.label(r, scene, &clip_to(&self.text, name, px as f32, w - 80.0 * s), px, color);
-                scene.overlays.push((nl.tex, [x + 64.0 * s, ry, x + 64.0 * s + nl.w as f32, ry + nl.h as f32]));
+                let nl = self.text.label(r, scene, &clip_to(&self.text, name, px as f32, x + w - name_x - 10.0 * s), px, color);
+                scene.overlays.push((nl.tex, [name_x, ry, name_x + nl.w as f32, ry + nl.h as f32]));
             }
         }
         // --- a tutorial page, on the right
@@ -488,7 +491,8 @@ impl Ui {
             let y = (f.height - h) * 0.5;
             let panel = self.text.plate(r, scene, 3);
             scene.overlays.push((panel, [x, y, x + w, y + h]));
-            let t = self.text.label(r, scene, if f.paused { "Paused" } else { "Menu" }, (22.0 * s) as u32, [255, 255, 255, 0]);
+            let title = if items.first().is_some_and(|i| i.0 == "less") { "More" } else if f.paused { "Paused" } else { "Menu" };
+            let t = self.text.label(r, scene, title, (22.0 * s) as u32, [255, 255, 255, 0]);
             scene.overlays.push((t.tex, [x + 20.0 * s, y + 16.0 * s, x + 20.0 * s + t.w as f32, y + 16.0 * s + t.h as f32]));
             // the scroll bar: where the lines shown lie in the whole menu
             if items.len() > rows {
@@ -504,15 +508,28 @@ impl Ui {
                 let l = self.text.label(r, scene, &more, (12.0 * s) as u32, [150, 150, 150, 0]);
                 scene.overlays.push((l.tex, [x + w - 16.0 * s - l.w as f32, y + 22.0 * s, x + w - 16.0 * s, y + 22.0 * s + l.h as f32]));
             }
-            for (k, (_, label)) in items.iter().enumerate().skip(start).take(rows) {
+            // (the line under the mouse is the one lit; the keyboard's choice only while the
+            // mouse is off the lines - both lit at once read as two choices)
+            let over = |rect: [f32; 4]| f.cursor.0 >= rect[0] && f.cursor.0 <= rect[2] && f.cursor.1 >= rect[1] && f.cursor.1 <= rect[3];
+            let any_hovered = (0..rows.min(items.len().saturating_sub(start))).any(|k| {
+                let ry = y + title_h + row_h * k as f32;
+                over([x + 8.0 * s, ry, x + w - 12.0 * s, ry + row_h - 6.0 * s])
+            });
+            for (k, (id, label)) in items.iter().enumerate().skip(start).take(rows) {
                 let ry = y + title_h + row_h * (k - start) as f32;
                 let rect = [x + 8.0 * s, ry, x + w - 12.0 * s, ry + row_h - 6.0 * s];
-                let hovered = f.cursor.0 >= rect[0] && f.cursor.0 <= rect[2] && f.cursor.1 >= rect[1] && f.cursor.1 <= rect[3];
-                if k == sel || hovered {
-                    let hl = self.text.plate(r, scene, if k == sel { 4 } else { 5 });
+                let hovered = over(rect);
+                let lit = hovered || (k == sel && !any_hovered);
+                // a thin line above "More..." / "End the session": the everyday lines apart
+                if matches!(*id, "more" | "quit") && k > start {
+                    let sep = self.text.plate(r, scene, 5);
+                    scene.overlays.push((sep, [x + 16.0 * s, ry - 3.5 * s, x + w - 20.0 * s, ry - 2.5 * s]));
+                }
+                if lit {
+                    let hl = self.text.plate(r, scene, 4);
                     scene.overlays.push((hl, rect));
                 }
-                let color = if k == sel { [20, 20, 20, 0] } else { [235, 235, 235, 0] };
+                let color = if lit { [20, 20, 20, 0] } else if *id == "quit" { [240, 150, 140, 0] } else { [235, 235, 235, 0] };
                 let l = self.text.label(r, scene, label, px, color);
                 let ly = ry + (row_h - 6.0 * s - l.h as f32) * 0.5;
                 scene.overlays.push((l.tex, [x + 20.0 * s, ly, x + 20.0 * s + l.w as f32, ly + l.h as f32]));

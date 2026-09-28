@@ -173,7 +173,7 @@ impl Ui {
         // a click outside the open dropdown closes it (the click does nothing else)
         if self.input.pressed {
             if let Some(p) = &self.popup {
-                if !popup_rect(p, self.size).contains(self.input.mouse) && !p.anchor.contains(self.input.mouse) {
+                if !popup_rect(p, self.size).contains(self.input.mouse) && !p.anchor.contains(self.input.mouse) && p.opened >= 1.0 {
                     self.popup = None;
                     self.input.pressed = false;
                 }
@@ -542,8 +542,11 @@ impl Ui {
         let rot = self.anim(id ^ 9, if open { 1.0 } else { 0.0 }, 0.08);
         self.icon(if rot > 0.5 { "expand_less" } else { "expand_more" }, Vec2::new(r.right() - 18.0, r.center().y), 20.0, if h { TEXT } else { TEXT_DIM });
         if clicked {
-            if open {
+            // (a phone's tap can come twice - as a touch and as the mouse click made of it:
+            // the second one closed the list it had just opened)
+            if open && self.popup.as_ref().is_some_and(|p| p.opened >= 1.0) {
                 self.popup = None;
+            } else if open {
             } else {
                 let sel = (*selected).min(options.len().saturating_sub(1));
                 let mut p = Popup { id, anchor: r, options: options.to_vec(), selected: sel, scroll: 0.0, opened: 0.0, picked: None };
@@ -861,7 +864,10 @@ impl Ui {
     fn draw_popup(&mut self) {
         let Some(mut p) = self.popup.take() else { return };
         let r = popup_rect(&p, self.size);
-        p.opened = (p.opened + self.dt / 0.12).min(1.0);
+        // the tap that opened the list must not also pick from it (on a small screen the
+        // list lies under the finger)
+        let fresh = p.opened < 0.5;
+        p.opened = (p.opened + self.dt / 0.3).min(1.0);
         let e = 1.0 - (1.0 - p.opened).powi(3);
         let rr = Rect::new(r.x, r.y - 6.0 * (1.0 - e), r.w, r.h);
         self.p().rounded(rr, 8.0, Color::rgba(28, 28, 28, e));
@@ -888,7 +894,7 @@ impl Ui {
             self.text_in(o, Rect::new(cell.x + 10.0, cell.y, cell.w - 36.0, cell.h), 13.0, Weight::Regular, TEXT, Align::Left);
             if h {
                 self.cursor = winit::window::CursorIcon::Pointer;
-                if self.input.released {
+                if self.input.released && !fresh {
                     p.picked = Some(k);
                 }
             }

@@ -582,7 +582,13 @@ impl RigidBody {
         let kappa = steer.clamp(-1.0, 1.0) * self.inv_min_turn_radius;
         let front = self.wheels.iter().map(|w| w.attach.y).fold(f32::MIN, f32::max);
         for w in self.wheels.iter_mut() {
-            w.steer = ((w.attach.y - self.rot_pnt_long) * kappa).atan().clamp(-1.05, 1.05);
+            // each tyre square to the line from the centre of the turn to itself - the inner
+            // one turned further than the outer (Ackermann). With both at the axle's angle the
+            // tyres of an axle pulled against each other through the side constraint: the
+            // scrub ate the drive, 60 % steering left a twentieth of the push and full lock
+            // none ("the engine revs but the bus gets slower the more I steer")
+            let across = (1.0 - w.attach.x * kappa).max(0.2);
+            w.steer = ((w.attach.y - self.rot_pnt_long) * kappa / across).atan().clamp(-1.05, 1.05);
             w.steered = w.steer != 0.0;
         }
         self.steer_deg = ((front - self.rot_pnt_long) * kappa).atan().clamp(-1.05, 1.05).to_degrees();

@@ -355,6 +355,7 @@ pub(crate) fn spawn_player(
         rail_bound,
         rail: None,
         head: Vec3::ZERO,
+        seat: Vec3::ZERO,
         take_change: false,
         toggled_up: Default::default(),
         side_lights_by_l: false,

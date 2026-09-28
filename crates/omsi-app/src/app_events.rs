@@ -69,6 +69,12 @@ impl ApplicationHandler for App {
                 ) {
                     lan::chat_type(&mut self.remotes, text);
                 }
+                // (the Lua plugins' `key` event; a key held down repeats nothing)
+                if let (PhysicalKey::Code(code), false) = (event.physical_key, event.repeat) {
+                    if self.plugin_keys.len() < 64 {
+                        self.plugin_keys.push((format!("{code:?}"), event.state == ElementState::Pressed));
+                    }
+                }
                 // a phone's back key is Escape (the game menu, out of the city map ...)
                 let physical = match event.physical_key {
                     PhysicalKey::Code(KeyCode::BrowserBack) => PhysicalKey::Code(KeyCode::Escape),
@@ -425,6 +431,8 @@ impl ApplicationHandler for App {
                 let hwnd = self.window.as_deref().and_then(crate::controllers::window_handle);
                 let ctl = self.controllers.get_or_insert_with(|| crate::controllers::Controllers::new(&self.args.root, hwnd));
                 ctl.deadzone = self.settings.ctrl_deadzone;
+                ctl.pedal_throttle = self.settings.pedal_throttle;
+                ctl.pedal_brake = self.settings.pedal_brake;
                 ctl.ff_invert = self.settings.ff_invert;
                 ctl.steer_gain = if self.settings.wheel_lock >= 45.0 { (self.settings.wheel_range / self.settings.wheel_lock).clamp(0.1, 20.0) } else { 1.0 };
                 if ctl.disabled.is_empty() && !self.settings.ctrl_off.is_empty() {
@@ -592,7 +600,30 @@ impl ApplicationHandler for App {
                     if self.view != "free" && self.view != "foot" {
                         crate::input_script::swap_view_look(&mut self.look, &mut self.view_looks, &mut self.look_view, &self.view);
                         if let Some(cam) = self.camera.as_ref() {
+                            p.seat = glam::Vec3::from_array(self.settings.seat);
+                            // head tracking: the head's turn on top of the look, its movement
+                            // on top of the seat (opentrack: x right, y up, z back, in cm)
+                            if self.settings.head_tracking && self.headtrack.is_none() {
+                                self.headtrack = crate::headtrack::HeadTracker::start(self.settings.head_tracking_port);
+                                if self.headtrack.is_none() {
+                                    self.settings.head_tracking = false;
+                                }
+                            }
+                            let tracked = self.headtrack.as_ref().and_then(|h| h.pose()).filter(|_| self.settings.head_tracking && matches!(self.view.as_str(), "driver" | "pax"));
+                            if let Some(t) = tracked {
+                                p.seat += glam::Vec3::new(t.pos[0], -t.pos[2], t.pos[1]).clamp(glam::Vec3::splat(-60.0), glam::Vec3::splat(60.0)) / 100.0;
+                            }
                             let mut cam = p.camera_look(&self.view, cam, self.look, self.orbit);
+                            if let Some(mut t) = tracked {
+                                for (k, axis) in ["yaw", "pitch", "roll"].iter().enumerate() {
+                                    if self.settings.head_tracking_invert.contains(axis) {
+                                        t.rot[k] = -t.rot[k];
+                                    }
+                                }
+                                cam.yaw += t.rot[0].clamp(-170.0, 170.0);
+                                cam.pitch = (cam.pitch + t.rot[1].clamp(-80.0, 80.0)).clamp(-89.0, 89.0);
+                                cam.roll += t.rot[2].clamp(-60.0, 60.0);
+                            }
                             // Settings → Field of view (0: the bus's own cameras)
                             if self.settings.fov >= 20.0 {
                                 cam.fov_deg = self.settings.fov.min(120.0);
@@ -600,7 +631,7 @@ impl ApplicationHandler for App {
                             if let Some(z) = self.view_zoom.get(&self.view) {
                                 cam.fov_deg = (cam.fov_deg * z).clamp(8.0, 120.0);
                             }
-                            if self.view == "outside" {
+                            if self.view == "outside" && self.settings.camera_collision {
                                 if let Some(w) = self.world.as_ref() {
                                     cam = p.camera_clipped(cam, w, self.orbit, dt);
                                 }
@@ -609,6 +640,11 @@ impl ApplicationHandler for App {
                             }
                             self.camera = Some(cam);
                         }
+                    } else if let Some(cam) = self.camera.as_mut() {
+                        // the free camera and the view on foot follow the setting too (they
+                        // stayed at 60 degrees whatever it said)
+                        let base = if self.settings.fov >= 20.0 { self.settings.fov.min(120.0) } else { 60.0 };
+                        cam.fov_deg = (base * self.view_zoom.get(&self.view).copied().unwrap_or(1.0)).clamp(8.0, 120.0);
                     }
                     let __th = Instant::now();
                     // (the cursor's aim into the cab: again when the cursor or the view
@@ -819,11 +855,29 @@ impl ApplicationHandler for App {
                 // the plugins' frame, with the bus's scripts done
                 let plugins = self.plugins.get_or_insert_with(crate::plugins::load);
                 if !plugins.is_empty() && !self.paused {
-                    let mut io = crate::plugins::Io { vehicle: self.player.as_mut().map(|p| &mut p.vehicle), dt, message: None };
+                    let info = crate::plugins::game_info(self);
+                    let keys = std::mem::take(&mut self.plugin_keys);
+                    let plugins = self.plugins.as_mut().unwrap();
+                    let mut io = crate::plugins::Io { vehicle: self.player.as_mut().map(|p| &mut p.vehicle), dt, message: None, info, commands: Vec::new(), keys };
                     plugins.frame(&mut io);
+                    let commands = std::mem::take(&mut io.commands);
                     if let Some(m) = io.message {
                         self.service_msg = Some(m);
                     }
+                    // what the plugins asked the game to do: lines of the game menu
+                    for c in commands {
+                        if let Some(k) = self.game_menu_items().iter().position(|m| m.0 == c) {
+                            let was = self.game_menu;
+                            self.menu_prev_pause = self.paused;
+                            self.menu_choose(event_loop, k);
+                            // (an action leaves the menu as it found it)
+                            if self.chooser.is_none() && was.is_none() {
+                                self.game_menu = None;
+                            }
+                        }
+                    }
+                } else {
+                    self.plugin_keys.clear();
                 }
                 // OMSI_WATCH_VARS=a,b: every change of those variables of the player's bus
                 if let (Some(p), Ok(list)) = (self.player.as_ref(), omsi_cfg::env::var("OMSI_WATCH_VARS")) {
@@ -876,6 +930,26 @@ impl ApplicationHandler for App {
                     }
                     if self.view != "outside" {
                         self.look.0 = self.look.0.clamp(-140.0, 140.0);
+                    }
+                    // Ctrl+Shift+Page Up / Page Down held: the clock runs forwards / backwards,
+                    // a quarter of an hour per second at first, faster the longer it is held
+                    // (the menu's whole hours were the only way)
+                    {
+                        let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+                        let shift = self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
+                        let dir = match (self.keys.contains(&KeyCode::PageUp), self.keys.contains(&KeyCode::PageDown)) {
+                            (true, false) => 1.0,
+                            (false, true) => -1.0,
+                            _ => 0.0,
+                        };
+                        let client = self.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client);
+                        if ctrl && shift && dir != 0.0 && !client {
+                            self.clock_hold += dt;
+                            let rate = 900.0 * (1.0 + self.clock_hold * 1.5).min(8.0);
+                            self.shift_clock(dir * rate as f64 * dt as f64);
+                        } else {
+                            self.clock_hold = 0.0;
+                        }
                     }
                     // = and - zoom inside the bus (the numpad's are door keys there)
                     if matches!(self.view.as_str(), "driver" | "pax") {
@@ -1853,20 +1927,33 @@ fn timetable_rows(duty: Option<&crate::schedule::PlayerDuty>, delay: Option<f64>
     let hm = |t: f64| format!("{:02}:{:02}", ((t / 3600.0) as i64).rem_euclid(24), ((t % 3600.0) / 60.0) as i64);
     let delay = delay.unwrap_or(0.0);
     let title = format!(
-        "{} › {}   {}{}:{:02}",
+        "{} › {}   {}{}:{:02}   ({}/{})",
         if trip.line.trim().is_empty() { d.line.trim() } else { trip.line.trim() },
         trip.terminus.trim(),
         if delay < 0.0 { "−" } else { "+" },
         (delay.abs() / 60.0) as i64,
-        (delay.abs() % 60.0) as i64
+        (delay.abs() % 60.0) as i64,
+        d.trip_index + 1,
+        d.trips.len()
     );
-    let rows = trip
+    // (as a driver's paper timetable: the departure, the arrival at the last stop; a stop
+    // with a wait shows both)
+    let last = trip.stops.iter().rposition(|s| s.stops);
+    let mut rows: Vec<(String, String, u8)> = trip
         .stops
         .iter()
         .enumerate()
         .filter(|(_, s)| s.stops)
-        .map(|(k, s)| (s.name.trim().to_string(), hm(s.arr), if k < d.next_stop { 0 } else if k == d.next_stop { 1 } else { 2 }))
+        .map(|(k, s)| {
+            let time = if Some(k) == last { hm(s.arr) } else if s.dep - s.arr >= 60.0 { format!("{}-{}", hm(s.arr), &hm(s.dep)[3..]) } else { hm(s.dep) };
+            (s.name.trim().to_string(), time, if k < d.next_stop { 0 } else if k == d.next_stop { 1 } else { 2 })
+        })
         .collect();
+    // the trip after this one
+    if let Some(next) = d.trips.get(d.trip_index + 1) {
+        let name = format!("› {} {}", if next.line.trim().is_empty() { d.line.trim() } else { next.line.trim() }, next.terminus.trim());
+        rows.push((name, hm(next.departure), 0));
+    }
     Some((title, rows))
 }
 

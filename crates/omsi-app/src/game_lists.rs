@@ -15,6 +15,8 @@ pub(crate) enum ListKind {
     Tours(String),
     Drivers,
     Numbers,
+    /// The termini of the bus's depot file, for its destination display.
+    Destinations,
 }
 
 /// The time speeds, traffic amounts and passenger shares the options step through.
@@ -22,6 +24,8 @@ const SPEEDS: [f64; 5] = [1.0, 2.0, 4.0, 8.0, 15.0];
 pub(crate) const TRAFFIC: [usize; 7] = [0, 10, 20, 30, 50, 80, 120];
 const PAX: [f32; 6] = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0];
 const VOLUME: [f32; 6] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
+/// The pedal strengths the options step through (see `settings::pedal_curve`).
+const PEDAL: [f32; 7] = [0.5, 0.7, 0.85, 1.0, 1.25, 1.5, 2.0];
 
 fn on_off(b: bool) -> &'static str {
     if b {
@@ -58,6 +62,18 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Collisions with vehicles"), tr(on_off(s.collision_vehicles))), "coll_vehicles".into()));
             out.push((format!("{}: {}", tr("Steering with the mouse"), tr(on_off(app.mouse_drive))), "mouse".into()));
             out.push((format!("{}: {}", tr("Frame rate"), tr(on_off(s.show_fps))), "fps".into()));
+            out.push((format!("{}: {}", tr("Camera collisions"), tr(on_off(s.camera_collision))), "camcoll".into()));
+            out.push((format!("{} (opentrack UDP {}): {}", tr("Head tracking"), s.head_tracking_port, tr(on_off(s.head_tracking))), "headtrack".into()));
+            out.push((format!("{}: x{}", tr("Throttle pedal strength"), s.pedal_throttle), "pedal_t".into()));
+            out.push((format!("{}: x{}", tr("Brake pedal strength"), s.pedal_brake), "pedal_b".into()));
+            let seat = |v: f32| format!("{:+.0} cm", v * 100.0);
+            out.push((format!("{} ({})", tr("Seat forward"), seat(s.seat[1])), "seat 1 0.05".into()));
+            out.push((format!("{} ({})", tr("Seat back"), seat(s.seat[1])), "seat 1 -0.05".into()));
+            out.push((format!("{} ({})", tr("Seat up"), seat(s.seat[2])), "seat 2 0.05".into()));
+            out.push((format!("{} ({})", tr("Seat down"), seat(s.seat[2])), "seat 2 -0.05".into()));
+            out.push((format!("{} ({})", tr("Seat right"), seat(s.seat[0])), "seat 0 0.05".into()));
+            out.push((format!("{} ({})", tr("Seat left"), seat(s.seat[0])), "seat 0 -0.05".into()));
+            out.push((tr("Reset the seat position"), "seat_reset".into()));
         }
         ListKind::Lines => {
             if let Some(sch) = app.schedule.as_ref() {
@@ -86,6 +102,17 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             for name in driver_names(app) {
                 let mark = if app.career.path.as_ref().and_then(|p| p.file_stem()).is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case(&name)) { format!("  {}", tr("(now)")) } else { String::new() };
                 out.push((format!("{name}{mark}"), format!("driver {name}")));
+            }
+        }
+        ListKind::Destinations => {
+            if let Some(hof) = app.player.as_ref().and_then(|p| p.vehicle.host.hof.clone()) {
+                for t in hof.termini.iter() {
+                    let name = t.strings.iter().find(|s| !s.trim().is_empty()).cloned().unwrap_or_else(|| t.code.to_string());
+                    out.push((format!("{:>3}  {}", t.code, name.trim()), format!("dest {}", t.code)));
+                }
+            }
+            if out.is_empty() {
+                out.push((tr("This bus has no depot file (.hof) with destinations"), "back".into()));
             }
         }
         ListKind::Numbers => {
@@ -176,6 +203,36 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     s.show_fps = !s.show_fps;
                     Some(("show_fps", (s.show_fps as u8).to_string()))
                 }
+                "headtrack" => {
+                    s.head_tracking = !s.head_tracking;
+                    Some(("head_tracking", (s.head_tracking as u8).to_string()))
+                }
+                "camcoll" => {
+                    s.camera_collision = !s.camera_collision;
+                    Some(("camera_collision", (s.camera_collision as u8).to_string()))
+                }
+                "pedal_t" => {
+                    s.pedal_throttle = next_step(&PEDAL, s.pedal_throttle);
+                    Some(("pedal_throttle", s.pedal_throttle.to_string()))
+                }
+                "pedal_b" => {
+                    s.pedal_brake = next_step(&PEDAL, s.pedal_brake);
+                    Some(("pedal_brake", s.pedal_brake.to_string()))
+                }
+                "seat" => {
+                    let mut it = arg.split_whitespace();
+                    let k: usize = it.next().and_then(|x| x.parse().ok()).unwrap_or(0).min(2);
+                    let d: f32 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+                    s.seat[k] = ((s.seat[k] + d) * 100.0).round().clamp(-150.0, 150.0) / 100.0;
+                    Some((["seat_x", "seat_y", "seat_z"][k], s.seat[k].to_string()))
+                }
+                "seat_reset" => {
+                    s.seat = [0.0; 3];
+                    for k in ["seat_x", "seat_y", "seat_z"] {
+                        remember_setting(k, "0");
+                    }
+                    None
+                }
                 _ => None,
             };
             // kept for the next game too, as OMSI keeps its options
@@ -202,6 +259,21 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
         ListKind::Drivers => {
             switch_driver(app, arg);
             Some(ListKind::Drivers)
+        }
+        ListKind::Destinations => {
+            if let Some(p) = app.player.as_mut() {
+                let hof = p.vehicle.host.hof.clone();
+                let code: i32 = arg.trim().parse().unwrap_or(-1);
+                if let Some(t) = hof.as_ref().and_then(|h| h.termini.iter().find(|t| t.code == code)) {
+                    // (the line on the IBIS stays; only the destination changes)
+                    let line = p.vehicle.var("IBIS_LinieKurs").filter(|l| *l > 0.0).map(|l| format!("{}", l as i64)).unwrap_or_default();
+                    let name = t.strings.first().cloned().unwrap_or_default();
+                    crate::schedule::set_player_destination_directly(&mut p.vehicle, hof.as_deref(), &line, &name);
+                    log::info!("destination display set by hand: {code} {} (terminus code now {:?})", name.trim(), p.vehicle.var("IBIS_TerminusCode"));
+                    app.service_msg = Some((format!("Destination: {}", name.trim()), 3.0));
+                }
+            }
+            None
         }
         ListKind::Numbers => {
             if let (Some((n, reg)), Some(p)) = (arg.split_once('\u{1}'), app.player.as_mut()) {

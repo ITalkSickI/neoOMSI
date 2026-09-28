@@ -993,6 +993,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         }
         self.game_menu = Some(0);
         self.menu_top = None;
+        self.menu_more = false;
     }
 
     pub(crate) fn close_game_menu(&mut self) {
@@ -1045,7 +1046,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                         self.chooser = Some(k.min(self.admin_list.as_ref().map(|l| l.len().saturating_sub(1)).unwrap_or(0)));
                     }
                 }
-                None if action != "back" && matches!(kind, crate::game_lists::ListKind::Tours(_) | crate::game_lists::ListKind::Numbers) => self.close_game_menu(),
+                None if action != "back" && matches!(kind, crate::game_lists::ListKind::Tours(_) | crate::game_lists::ListKind::Numbers | crate::game_lists::ListKind::Destinations) => self.close_game_menu(),
                 None => {}
             }
             return;
@@ -1356,6 +1357,11 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         let sel = self.game_menu.unwrap_or(0);
         self.menu_top = None;
         match code {
+            // (from the full list back to the short one first)
+            KeyCode::Escape if self.menu_more => {
+                self.menu_more = false;
+                self.game_menu = Some(0);
+            }
             KeyCode::Escape => self.close_game_menu(),
             KeyCode::ArrowUp | KeyCode::KeyW => self.game_menu = Some((sel + n - 1) % n),
             KeyCode::ArrowDown | KeyCode::KeyS => self.game_menu = Some((sel + 1) % n),
@@ -1373,16 +1379,12 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             return;
         }
         self.wheel_acc -= steps as f32;
-        self.menu_top = None;
-        let (sel, n) = match self.chooser {
-            Some(c) => (c, self.admin_list.as_ref().unwrap_or(&self.vehicle_list).len()),
-            None => (self.game_menu.unwrap_or(0), self.game_menu_items().len()),
-        };
-        let to = (sel as i64 - steps).clamp(0, n.saturating_sub(1) as i64) as usize;
-        match self.chooser {
-            Some(_) => self.chooser = Some(to),
-            None => self.game_menu = Some(to),
-        }
+        // the list scrolls under the mouse; what is chosen stays chosen (the wheel used to
+        // walk the highlight up and down the lines)
+        let n = self.menu_len() as f32;
+        let (start, rows) = self.ui.as_ref().map(|u| (u.menu_start as f32, u.menu_rows as f32)).unwrap_or((0.0, n));
+        let top = (self.menu_top.unwrap_or(start) - steps as f32).clamp(0.0, (n - rows).max(0.0));
+        self.menu_top = Some(top);
     }
 
     /// How many lines the menu shows now (the chooser's list, else the game menu's).
@@ -1401,6 +1403,14 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             return;
         }
         match self.game_menu_items().get(k).map(|m| m.0) {
+            Some("more") => {
+                self.menu_more = true;
+                self.game_menu = Some(0);
+            }
+            Some("less") => {
+                self.menu_more = false;
+                self.game_menu = Some(0);
+            }
             Some("place") => {
                 if self.vehicle_list.is_empty() {
                     self.vehicle_list = crate::menu::Menu::new(&self.args.root, &self.args.map).vehicles;
@@ -1453,6 +1463,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             Some("duty") => self.open_list(crate::game_lists::ListKind::Lines),
             Some("driver") => self.open_list(crate::game_lists::ListKind::Drivers),
             Some("number") => self.open_list(crate::game_lists::ListKind::Numbers),
+            Some("dest") => self.open_list(crate::game_lists::ListKind::Destinations),
             Some("uncouple") => {
                 self.close_game_menu();
                 self.uncouple();
@@ -1490,12 +1501,17 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 self.close_game_menu();
                 self.switch_vehicle();
             }
-            Some(k @ ("later" | "earlier")) => {
+            Some(k @ ("later" | "earlier" | "later10" | "earlier10")) => {
                 self.close_game_menu();
                 if self.lan.as_ref().map(|l| l.role == omsi_net::Role::Client).unwrap_or(false) {
                     self.service_msg = Some(("In a LAN session the host sets the clock".into(), 3.0));
                 } else {
-                    self.shift_clock(if k == "later" { 3600.0 } else { -3600.0 });
+                    self.shift_clock(match k {
+                        "later" => 3600.0,
+                        "earlier" => -3600.0,
+                        "later10" => 600.0,
+                        _ => -600.0,
+                    });
                 }
             }
             Some("load") => {
@@ -1984,9 +2000,10 @@ pub(crate) fn parse_input_script() -> Vec<(f32, String)> {
 
 /// The game menu on a server (`--lan-join https://…`): the world's clock and weather are the
 /// server's, and the way out leaves the server.
-pub(crate) const SERVER_GAME_MENU: [(&str, &str); 19] = [
+pub(crate) const SERVER_GAME_MENU: [(&str, &str); 20] = [
     ("resume", "Resume"),
     ("options", "Options..."),
+    ("dest", "Destination display..."),
     ("switch", "Drive the next vehicle"),
     ("place", "Place a vehicle..."),
     ("couple", "Couple"),
@@ -2027,7 +2044,7 @@ impl crate::App {
         }
         // without a bus of one's own: nothing of a bus's to offer
         if self.player.is_none() {
-            v.retain(|x| !matches!(x.0, "remove" | "couple" | "uncouple" | "refuel" | "wash" | "repair" | "duty" | "number" | "getout" | "reset"));
+            v.retain(|x| !matches!(x.0, "remove" | "couple" | "uncouple" | "refuel" | "wash" | "repair" | "duty" | "number" | "dest" | "getout" | "reset"));
             if self.placed.is_empty() {
                 v.retain(|x| x.0 != "switch");
             }
@@ -2047,19 +2064,33 @@ impl crate::App {
         }
         // (a client's clock and weather are the host's)
         if self.lan.as_ref().map(|l| l.role == omsi_net::Role::Client).unwrap_or(false) {
-            v.retain(|x| !matches!(x.0, "weather" | "later" | "earlier" | "editor"));
+            v.retain(|x| !matches!(x.0, "weather" | "later" | "earlier" | "later10" | "earlier10" | "editor"));
+        }
+        // the everyday lines first; the rest behind "More..." (27 lines to scroll through
+        // was the pause menu players found confusing)
+        if self.menu_more {
+            v.retain(|x| !MENU_BASIC.contains(&x.0) || x.0 == "quit");
+            v.insert(0, ("less", "< Back"));
+        } else {
+            v.retain(|x| MENU_BASIC.contains(&x.0));
+            let at = v.iter().position(|x| x.0 == "quit").unwrap_or(v.len());
+            v.insert(at, ("more", "More..."));
         }
         v
     }
 }
 
+/// The lines the game menu shows before "More...".
+const MENU_BASIC: [&str; 12] = ["resume", "tobus", "options", "duty", "dest", "map", "timetable", "getout", "reset", "save", "admin", "quit"];
+
 /// The lines of the game menu: (what, label).
-pub(crate) const GAME_MENU: [(&str, &str); 27] = [
+pub(crate) const GAME_MENU: [(&str, &str); 30] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("duty", "Line and tour..."),
     ("driver", "Driver..."),
     ("number", "Fleet number..."),
+    ("dest", "Destination display..."),
     ("switch", "Drive the next vehicle"),
     ("place", "Place a vehicle..."),
     ("couple", "Couple"),
@@ -2073,6 +2104,8 @@ pub(crate) const GAME_MENU: [(&str, &str); 27] = [
     ("load", "Load the quicksave"),
     ("weather", "Next weather"),
     ("later", "Clock +1 hour"),
+    ("later10", "Clock +10 minutes"),
+    ("earlier10", "Clock -10 minutes"),
     ("earlier", "Clock -1 hour"),
     ("shot", "Screenshot"),
     ("timetable", "Timetable"),

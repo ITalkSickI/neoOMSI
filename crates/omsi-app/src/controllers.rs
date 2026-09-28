@@ -164,6 +164,10 @@ pub(crate) struct Connected {
     pub buttons: usize,
 }
 
+/// The first button number of the hat switches' directions (4 hats x up, right, down, left).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const HAT_BUTTONS: usize = 128;
+
 /// The devices of every kind: gilrs (gamepads everywhere; on macOS and Linux every device),
 /// and on Windows DirectInput for everything a gamepad is not (`crate::dinput`) - many wheels
 /// never show up in the system's newer interface that gilrs uses there.
@@ -171,6 +175,11 @@ pub(crate) struct Devices {
     gilrs: Option<Gilrs>,
     #[cfg(windows)]
     di: Option<crate::dinput::DirectInput>,
+    /// macOS: every axis element of every wheel and joystick, as last read (see `mac_hid`)
+    #[cfg(target_os = "macos")]
+    hid: Option<crate::mac_hid::MacHid>,
+    #[cfg(target_os = "macos")]
+    hid_axes: Vec<(String, Vec<(u32, f32)>)>,
 }
 
 impl Devices {
@@ -186,6 +195,10 @@ impl Devices {
             gilrs,
             #[cfg(windows)]
             di,
+            #[cfg(target_os = "macos")]
+            hid: crate::mac_hid::MacHid::new(),
+            #[cfg(target_os = "macos")]
+            hid_axes: Vec::new(),
         }
     }
 
@@ -219,6 +232,10 @@ impl Devices {
             d.poll();
             out.append(&mut d.events);
         }
+        #[cfg(target_os = "macos")]
+        if let Some(h) = self.hid.as_mut() {
+            self.hid_axes = h.read();
+        }
         out
     }
 
@@ -248,7 +265,25 @@ impl Devices {
                 if v.iter().any(|c: &Connected| names_match(&c.name, pad.name())) {
                     continue;
                 }
-                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&pad.state().axes().map(|(c, d)| (c.into_u32(), d.value())).collect::<Vec<_>>()), gamepad, ff: pad.is_ff_supported(), buttons: 0 });
+                #[allow(unused_mut)]
+                let mut axes: Vec<(u32, f32)> = pad.state().axes().map(|(c, d)| (c.into_u32(), d.value())).collect();
+                // (macOS: the device's own axis elements where it is found among them - two
+                // of one usage stay two)
+                #[cfg(target_os = "macos")]
+                if !gamepad {
+                    if let Some((_, a)) = self.hid_axes.iter().find(|(n, _)| names_match(n, pad.name())) {
+                        axes = a.clone();
+                    }
+                }
+                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), buttons: 0 });
+            }
+        }
+        // (and a wheel gilrs does not list at all: one whose only axes are the simulation
+        // page's steering and pedals)
+        #[cfg(target_os = "macos")]
+        for (name, axes) in &self.hid_axes {
+            if !v.iter().any(|c| names_match(&c.name, name)) {
+                v.push(Connected { name: name.clone(), axes: di_slots(axes), gamepad: false, ff: false, buttons: 0 });
             }
         }
         v
@@ -296,6 +331,9 @@ pub struct Controllers {
     pub enabled: bool,
     /// The settings' dead zone round the centre of a set-up device's axes (0..0.3).
     pub deadzone: f32,
+    /// The pedals' response curves (Settings → pedal strength; 1 = as the pedal reads).
+    pub pedal_throttle: f32,
+    pub pedal_brake: f32,
     /// Devices switched off (Settings: `ctrl_off`): not read at all.
     pub disabled: Vec<String>,
     /// Force feedback the other way round (Settings: `ff_invert`).
@@ -325,7 +363,7 @@ impl Controllers {
         for c in devices.connected() {
             log::info!("game controller: {} ({})", c.name, if cfg.iter().any(|d| names_match(&d.name, &c.name)) { "set up in gamectrler.cfg" } else if c.gamepad { "as a gamepad" } else { "not set up: its X axis steers" });
         }
-        Controllers { devices, cfg, deadzone: 0.0, disabled: Vec::new(), ff_invert: false, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
+        Controllers { devices, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
     }
 
     /// Read the devices: the analog controls, and the button actions into `actions`.
@@ -371,12 +409,12 @@ impl Controllers {
                                     steer = Some((c.name.clone(), v.clamp(-1.0, 1.0), c.ff));
                                 }
                             }
-                            Func::Throttle => set(&mut out.throttle, pedal),
-                            Func::Brake => set(&mut out.brake, pedal),
+                            Func::Throttle => set(&mut out.throttle, crate::settings::pedal_curve(pedal, self.pedal_throttle)),
+                            Func::Brake => set(&mut out.brake, crate::settings::pedal_curve(pedal, self.pedal_brake)),
                             Func::Clutch => set(&mut out.clutch, pedal),
                             Func::ThrottleBrake => {
-                                set(&mut out.throttle, (-v).max(0.0));
-                                set(&mut out.brake, v.max(0.0));
+                                set(&mut out.throttle, crate::settings::pedal_curve((-v).max(0.0), self.pedal_throttle));
+                                set(&mut out.brake, crate::settings::pedal_curve(v.max(0.0), self.pedal_brake));
                             }
                         }
                     }
@@ -417,8 +455,8 @@ impl Controllers {
                 let rt = pad.button_data(gilrs::Button::RightTrigger2).map(|d| d.value()).unwrap_or(0.0);
                 let lt = pad.button_data(gilrs::Button::LeftTrigger2).map(|d| d.value()).unwrap_or(0.0);
                 out.steering.get_or_insert(dead(x));
-                out.throttle.get_or_insert(rt.clamp(0.0, 1.0));
-                out.brake.get_or_insert(lt.clamp(0.0, 1.0));
+                out.throttle.get_or_insert(crate::settings::pedal_curve(rt, self.pedal_throttle));
+                out.brake.get_or_insert(crate::settings::pedal_curve(lt, self.pedal_brake));
             }
         }
         let before = self.steer.as_ref().filter(|s| steer.as_ref().is_some_and(|n| n.0 == s.0)).map(|s| s.1);
@@ -559,7 +597,9 @@ pub(crate) fn di_slots(axes: &[(u32, f32)]) -> Vec<(usize, f32)> {
     let mut out: Vec<(usize, f32)> = Vec::new();
     let mut rest = Vec::new();
     for (c, v) in sorted {
-        match known(c).filter(|k| !used[*k]) {
+        // (a second slider of the same usage is DirectInput's slider 1)
+        let k = known(c).map(|k| if used[k] && k == 6 && !used[7] && cfg!(target_os = "macos") && c == 0x10036 { 7 } else { k });
+        match k.filter(|k| !used[*k]) {
             Some(k) => {
                 used[k] = true;
                 out.push((k, v));

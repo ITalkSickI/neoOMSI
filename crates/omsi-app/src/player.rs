@@ -53,6 +53,8 @@ pub(crate) struct Player {
     /// Where the driver's head is thrown by the bus's accelerations (vehicle frame, m):
     /// OMSI's `[driverview_moving]`.
     pub(crate) head: Vec3,
+    /// The driver's seat moved (Settings → seat position; bus frame, m).
+    pub(crate) seat: Vec3,
     pub(crate) take_change: bool,
     /// Keys whose `_toggle` this bus does as `_up`/`_down` (see `action`): turned up last.
     pub(crate) toggled_up: hashbrown::HashSet<String>,
@@ -1196,7 +1198,7 @@ impl Player {
             Some(c) => {
                 // inside: the head turns, the seat does not move
                 let (eye, yaw, pitch) = self.vehicle.camera_world(c);
-                let eye = if view == "driver" { eye + self.vehicle.body_rotation().transform_vector3(self.head).as_dvec3() } else { eye };
+                let eye = if view == "driver" { eye + self.vehicle.body_rotation().transform_vector3(self.head + self.seat).as_dvec3() } else { eye };
                 // near 0.25 rather than 0.1: the depth buffer has to reach 6 km, and the
                 // nearer the near plane the coarser it gets out there - the flicker between
                 // the road and the ground at a distance is that precision running out
@@ -1265,6 +1267,9 @@ pub(crate) fn sync_vehicle_transforms(
         let def = &vehicle.ty.model.meshes[vehicle.ty.meshes[i].def_index];
         let vp = def.viewpoint;
         let vp_ok = vp == 0 || (inside && vp & 2 != 0) || (!inside && vp & 1 != 0);
+        // the outside of the bus seen from the cab: not in the picture, but in the mirrors,
+        // which look at the bus from outside (its flanks were missing from them)
+        let mirror = inside && vp & 1 != 0 && vp & 2 == 0;
         let mut alpha = p.slot_alpha.clone();
         for (slot, mat) in scene.instances[*inst].materials.iter().enumerate() {
             if scene
@@ -1278,7 +1283,8 @@ pub(crate) fn sync_vehicle_transforms(
             }
         }
         // (a shadow blob is left out by the renderer while it draws the sun's shadows)
-        renderer.set_params(scene, *inst, &alpha, p.visible && vp_ok, &p.slot_uv);
+        renderer.set_params(scene, *inst, &alpha, p.visible && (vp_ok || mirror), &p.slot_uv);
+        renderer.set_mirror_only(scene, *inst, mirror);
         renderer.set_slot_light(scene, *inst, &p.slot_light);
         renderer.set_slot_night(scene, *inst, &p.slot_night);
         renderer.set_interior(scene, *inst, p.interior);
@@ -1290,6 +1296,7 @@ pub(crate) fn sync_vehicle_transforms(
             let def = &t.ty.model.meshes[t.ty.meshes[i].def_index];
             let vp = def.viewpoint;
             let vp_ok = vp == 0 || (inside && vp & 2 != 0) || (!inside && vp & 1 != 0);
+            let mirror = inside && vp & 1 != 0 && vp & 2 == 0;
             let mut alpha = p.slot_alpha.clone();
             for (slot, mat) in scene.instances[*inst].materials.iter().enumerate() {
                 if scene
@@ -1302,7 +1309,8 @@ pub(crate) fn sync_vehicle_transforms(
                     }
                 }
             }
-            renderer.set_params(scene, *inst, &alpha, p.visible && vp_ok, &p.slot_uv);
+            renderer.set_params(scene, *inst, &alpha, p.visible && (vp_ok || mirror), &p.slot_uv);
+            renderer.set_mirror_only(scene, *inst, mirror);
             renderer.set_slot_light(scene, *inst, &p.slot_light);
             renderer.set_slot_night(scene, *inst, &p.slot_night);
             renderer.set_interior(scene, *inst, p.interior);

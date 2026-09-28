@@ -148,6 +148,11 @@ pub struct Rig {
     pub wrist: [Vec3; 2],
     pub waist: Vec3,
     pub neck: Vec3,
+    /// What the head turns about: at the neck's height, under the middle of the head. The
+    /// `[links]` neck point lies at the back of the neck (13 cm behind the middle of the
+    /// head of aXYZ man02), and the head turned about it swung off the collar - a broken
+    /// neck whenever the passenger looked to the side.
+    pub head_pivot: Vec3,
     /// Between the hip joints.
     pub pelvis: Vec3,
     pub thigh: f32,
@@ -187,9 +192,16 @@ impl Rig {
         // the right shin's vertices (the foot is part of it)
         let mut shin: Vec<Vec3> = Vec::new();
         let mut top = f32::MIN;
+        let (mut head_sum, mut head_n) = (Vec3::ZERO, 0u32);
         for m in meshes {
             for p in &m.data.positions {
                 top = top.max(p.z);
+            }
+            for (i, inf) in m.skin.iter().enumerate() {
+                if (0..inf.n as usize).any(|k| inf.slot[k] as usize == HEAD && inf.weight[k] > 0.5) {
+                    head_sum += m.data.positions[i];
+                    head_n += 1;
+                }
             }
             for (i, inf) in m.skin.iter().enumerate() {
                 if (0..inf.n as usize)
@@ -268,6 +280,15 @@ impl Rig {
             wrist: [mirror(wrist), wrist],
             waist: j.waist,
             neck: j.neck,
+            head_pivot: if head_n > 20 {
+                let c = head_sum / head_n as f32;
+                // (a little behind the middle, where the spine meets the skull; never
+                // further than 12 cm from the linked point)
+                let y = j.neck.y + (c.y - j.neck.y).clamp(-0.12, 0.12) * 0.75;
+                Vec3::new(j.neck.x, y, j.neck.z)
+            } else {
+                j.neck
+            },
             pelvis: Vec3::new(0.0, hip.y, hip.z),
             thigh: (knee - hip).length().max(0.2),
             shin: (ankle - knee).length().max(0.2),
@@ -1859,7 +1880,7 @@ impl Pose {
         let head_world =
             yaw_quat(self.head.x.clamp(-72.0, 72.0)) * Quat::from_rotation_x(d(head_pitch));
         let head_rel = limit_quat(trunk_rot.inverse() * head_world, d(80.0));
-        let head_m = trunk_m * about(rig.neck, head_rel);
+        let head_m = trunk_m * about(rig.head_pivot, head_rel);
 
         // --- legs ---
         let mut out_bones = [Affine3A::IDENTITY; SLOTS];

@@ -3036,6 +3036,8 @@ dependencies = [
  "libc",
  "log",
  "ndk-context",
+ "objc2-core-foundation",
+ "objc2-io-kit",
  "omsi-audio",
  "omsi-cfg",
  "omsi-content",

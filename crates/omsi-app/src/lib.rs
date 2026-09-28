@@ -10,6 +10,9 @@
 //! window of one process.
 
 mod admin;
+mod headtrack;
+#[cfg(target_os = "macos")]
+mod mac_hid;
 #[cfg(target_os = "android")]
 mod android;
 mod platform;
@@ -437,6 +440,10 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         paused: false,
         game_menu: None,
         menu_top: None,
+        menu_more: false,
+        plugin_keys: Vec::new(),
+        clock_hold: 0.0,
+        headtrack: None,
         controllers: None,
         mouse_drive: false,
         mouse_steer: (0.0, 0.0),

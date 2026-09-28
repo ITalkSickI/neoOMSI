@@ -6,6 +6,87 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 
 ## 0.1.10 - 2026-09-28
 
+### Performance and crashes
+- Big mod maps (Grande Porto, Novi Sad) no longer freeze for up to two seconds while
+  driving: the night copies of object textures (`night\` folder) were decoded on the
+  thread that draws. They are now read with the rest of a tile in the background; the
+  slowest object upload on Novi Sad went from 1760 ms to 24 ms.
+- Fixed the crash "Error in Buffer::get_mapped_range: Validation Error" (Windows): the
+  vertex updates of a frame no longer go through one staging buffer that could outgrow the
+  graphics card's buffer limit.
+
+### Driving and physics
+- Steering no longer eats the engine's power: both front wheels turned by the same angle
+  and the tyres fought each other, so at 60 % steering a bus barely moved and at full lock
+  not at all. The inner wheel now turns further than the outer one (Ackermann) - buses
+  and cars take tight corners at the speed you give them.
+- Modded maps: the bus no longer hops over invisible things. Only solid objects (`[fixed]`,
+  not `[nocollision]`) give the wheels a step to climb; the low collision meshes of helper
+  and sensor objects did too.
+- Trains stay on their track: a track under a bridge counted as a "neighbouring lane", and
+  a train changed lanes down through the viaduct.
+- The automatic rear door (MAN SD200, NL202/EN92) closes after the passengers are out:
+  one passenger held up on the way out kept the stop request on for good.
+
+### Vehicles and mods
+- Add-ons that name their meshes from another folder than their model (Studio Polygon's
+  `Configuration Files`, packs that borrow from the vehicle folder or the game folder) find
+  them.
+- The side mirrors show the bus's own flanks, as in OMSI (the outside-only meshes are drawn
+  in the mirrors from the cab).
+- Esc → *Destination display...*: choose any destination of the bus's depot file by hand
+  (roller blinds, matrix displays, custom blinds).
+
+### Controllers (macOS)
+- Wheels and pedals are read from their HID elements: two axes of the same kind stay two
+  (HORI Truck Control System: the brake pedal moved the accelerator), a 16-bit wheel uses
+  its whole range (no dead zone of a quarter turn), and the simulation page's steering,
+  clutch, accelerator and brake are read on wheels that use it.
+- Windows: the hat switches (D-pads of wheel rims, Moza among them) can be given keys like
+  buttons (*Hat 1 up* ... on the Controllers page).
+
+### Settings
+- *Throttle pedal strength* / *Brake pedal strength*: a softer or stronger response of the
+  analog pedals (launcher, and Esc → Options).
+- *Seat position*: the driver's eye forward/back, up/down, left/right, with *Reset the seat
+  position* (launcher, and Esc → Options).
+- *Camera collisions*: the outside camera no longer jumps in when something passes behind
+  it (it is pulled in over a tenth of a second); switched off, it goes through everything,
+  as in OMSI.
+- The field of view applies to the free camera and the view on foot too.
+
+### Passengers
+- The aXYZ man in the grey jacket no longer looks as if his neck were broken: a head turns
+  about a point under its middle, not about the `[links]` neck point at the back of the
+  neck, which swung the head off the collar whenever he looked to the side.
+
+### Head tracking and time
+- Head tracking: Settings → *Head tracking* takes the head's pose from opentrack's
+  "UDP over network" output (port 4242) - TrackIR, Tobii, webcams and phones through
+  opentrack. `head_tracking_invert=yaw,pitch,roll` in `settings.cfg` turns an axis round.
+- The clock can be changed gradually: hold Ctrl+Shift+Page Up / Page Down (faster the longer
+  it is held), or Esc → More → *Clock +10 minutes* / *-10 minutes*.
+
+### Interface
+- The pause menu shows the everyday lines first (*Resume, Options, Line and tour,
+  Destination display, City map, Timetable, Save, ...*); the rest is under *More...*.
+  The mouse wheel scrolls the menu instead of moving the highlight, and only the line under
+  the mouse is lit.
+- The timetable shows departure times (a stop with a wait shows both), the trip number of
+  the tour and the next trip.
+- Android: dropdowns no longer close (or pick something) the moment they open.
+
+### Lua plugins
+- `omsi.info()` (map, clock, view, speed, delay, line, tour, trip, next stop, ...),
+  `omsi.command(name)` (refuel, wash, repair, screenshot, save, weather, clock ...),
+  `omsi.vars()`, `omsi.clock()`, `omsi.speed()`, `omsi.distance(x, y)`, and the events
+  `key`, `next_stop`, `view` and `duty`. See [Plugins](docs/PLUGINS.md).
+
+### Website
+- A link to the Discord server on the website and in the README.
+- The website shows the releases (with their notes and downloads) and the issues (open and
+  closed, searchable, with their discussion) on pages of its own.
+
 ### AI traffic
 - A car already in a crossing on its green no longer stops again at a light of a path it
   joins inside that crossing (the cross traffic's red, an invisible stop line mid-turn).

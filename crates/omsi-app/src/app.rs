@@ -91,6 +91,14 @@ pub(crate) struct App {
     /// The first line of the game menu (or chooser) shown, when a finger has scrolled it
     /// (in lines, fractional while dragged); `None`: the chosen line is kept in view.
     pub(crate) menu_top: Option<f32>,
+    /// The game menu shows all its lines ("More..."), not only the everyday ones.
+    pub(crate) menu_more: bool,
+    /// Keys pressed (true) and let go since the Lua plugins' last frame.
+    pub(crate) plugin_keys: Vec<(String, bool)>,
+    /// Seconds Ctrl+Shift+Page Up/Down has been held (the clock runs faster the longer).
+    pub(crate) clock_hold: f32,
+    /// Head tracking (Settings → head tracking), started with the first frame that wants it.
+    pub(crate) headtrack: Option<crate::headtrack::HeadTracker>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).
     pub(crate) controllers: Option<crate::controllers::Controllers>,
     /// OMSI's mouse control (`toggel_mouse_ctrl`, O): the cursor's place steers (across) and

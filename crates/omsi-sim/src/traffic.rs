@@ -446,7 +446,7 @@ impl Network {
             (Some(x), Some(y)) => x.tile == y.tile && x.id == y.id && x.path != y.path,
             _ => false,
         };
-        if same && (lb.start() - la.start()).truncate().length() < 8.0 && wrap_deg(lb.start_heading() - la.start_heading()).abs() < 45.0 {
+        if same && (lb.start() - la.start()).truncate().length() < 8.0 && (lb.start().z - la.start().z).abs() < 1.0 && wrap_deg(lb.start_heading() - la.start_heading()).abs() < 45.0 {
             return true;
         }
         // (a lane of another spline beside it counts as well: mod maps lay a bus lane or a
@@ -465,7 +465,11 @@ impl Network {
             let (p, h) = la.at(s);
             let Some((sb, d)) = lb.nearest_point(p) else { continue };
             let inside = sb > 0.5 && sb < lb.length() - 0.5;
-            if inside && d > 0.8 && d < 5.5 && wrap_deg(lb.at(sb).1 - h).abs() < 30.0 {
+            // (on the same level: a track or road under a bridge lies a few metres off in 3D
+            // too, and a train "changed lanes" down onto the line under its viaduct)
+            let (q, hb) = lb.at(sb);
+            let level = (q.z - p.z).abs() < 1.0;
+            if inside && level && d > 0.8 && d < 5.5 && wrap_deg(hb - h).abs() < 30.0 {
                 along += step;
             }
         }

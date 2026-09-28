@@ -3633,42 +3633,19 @@ impl Renderer {
         }
     }
 
-    /// Copy the vertex data `update_mesh` collected into the meshes: one staging buffer,
-    /// one copy per mesh, recorded at the start of `encoder` (submitted before any pass).
-    fn flush_pending_meshes(&self, scene: &Scene, encoder: &mut wgpu::CommandEncoder) {
+    /// Copy the vertex data `update_mesh` collected into the meshes. Written through the
+    /// queue, mesh by mesh (the writes land before the frame's commands run): one staging
+    /// buffer for the whole frame outgrew the device's buffer limit on big maps, its
+    /// creation failed validation and mapping it panicked (Windows, Vulkan).
+    fn flush_pending_meshes(&self, scene: &Scene, _encoder: &mut wgpu::CommandEncoder) {
         let pending = std::mem::take(&mut *self.pending_meshes.borrow_mut());
-        if pending.is_empty() {
-            return;
-        }
-        let total: u64 = pending.iter().map(|(_, b)| (b.len() as u64).div_ceil(4) * 4).sum();
-        if total == 0 {
-            return;
-        }
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("mesh uploads"),
-            size: total,
-            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::MAP_WRITE,
-            mapped_at_creation: true,
-        });
-        let mut offsets = Vec::with_capacity(pending.len());
-        {
-            let mut all = vec![0u8; total as usize];
-            let mut at = 0usize;
-            for (_, b) in &pending {
-                all[at..at + b.len()].copy_from_slice(b);
-                offsets.push(at as u64);
-                at += b.len().div_ceil(4) * 4;
-            }
-            staging.slice(..).get_mapped_range_mut().copy_from_slice(&all);
-        }
-        staging.unmap();
-        for ((id, b), off) in pending.iter().zip(offsets) {
+        for (id, b) in &pending {
             let Some(m) = scene.meshes.get(*id) else { continue };
             let len = (b.len() as u64) / 4 * 4;
             if len == 0 || m.vertex_buf.size() < len {
                 continue;
             }
-            encoder.copy_buffer_to_buffer(&staging, off, &m.vertex_buf, 0, len);
+            self.queue.write_buffer(&m.vertex_buf, 0, &b[..len as usize]);
         }
     }
 

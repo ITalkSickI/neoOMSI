@@ -73,6 +73,11 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_System_LibraryLoader"] }
 
+# macOS: the axes of wheels and pedals straight from their HID elements (see `mac_hid`)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFSet", "CFString", "CFDictionary", "CFNumber"] }
+objc2-io-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "hid"] }
+
 # the interface's machine translation (`mt`): CTranslate2 with Meta's NLLB model, as the
 # `trad` crate does it (Apple's Accelerate for the maths; Apple silicon only)
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]

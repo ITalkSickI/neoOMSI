@@ -638,6 +638,32 @@ pub trait PluginIo {
     }
     /// A line of text on the screen for `seconds` (Lua plugins).
     fn message(&mut self, _text: &str, _seconds: f32) {}
+    /// What the game is doing, as (key, value) pairs for `omsi.info()` (Lua plugins): the
+    /// map, the clock, the duty, the view... Values are numbers or text.
+    fn info(&self) -> Vec<(&'static str, InfoValue)> {
+        Vec::new()
+    }
+    /// A game action by its game-menu id (`refuel`, `shot`, ...), run after the frame
+    /// (Lua plugins). False when the game does not know it.
+    fn command(&mut self, _what: &str) -> bool {
+        false
+    }
+    /// The names of the player's bus's script variables and string variables (Lua plugins).
+    fn var_names(&self) -> (Vec<String>, Vec<String>) {
+        (Vec::new(), Vec::new())
+    }
+    /// Keys pressed (true) and let go since the last frame, by winit's key name (Lua plugins).
+    fn keys(&self) -> Vec<(String, bool)> {
+        Vec::new()
+    }
+}
+
+/// A value of [`PluginIo::info`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum InfoValue {
+    Num(f64),
+    Text(String),
+    Bool(bool),
 }
 
 /// Every plugin of the plugins folders.

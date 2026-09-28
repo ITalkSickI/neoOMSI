@@ -537,6 +537,30 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         s["ff_invert"] = json!(false);
         *dirty = 0.3;
     }
+    // the pedals' response: softer (below 1) or stronger (above 1) than the pedal reads
+    for (key, label, id) in [("pedal_throttle", "Throttle pedal strength", "s-pedt"), ("pedal_brake", "Brake pedal strength", "s-pedb")] {
+        let mut v = get(s, key).as_f64().unwrap_or(1.0) as f32;
+        if ui.slider(id, row(&mut y), &mut v, 0.5, 2.0, 0.05, label, &|v| if (v - 1.0).abs() < 0.01 { "Normal".to_string() } else if v < 1.0 { format!("Softer x{v:.2}") } else { format!("Stronger x{v:.2}") }) {
+            s[key] = json!((v * 100.0).round() / 100.0);
+            *dirty = 0.3;
+        }
+    }
+    // the driver's eye, moved from the bus's own camera
+    for (key, label, id) in [("seat_y", "Seat forward / back", "s-seaty"), ("seat_z", "Seat up / down", "s-seatz"), ("seat_x", "Seat right / left", "s-seatx")] {
+        let mut v = get(s, key).as_f64().unwrap_or(0.0) as f32;
+        if ui.slider(id, row(&mut y), &mut v, -0.6, 0.6, 0.01, label, &|v| format!("{:+.0} cm", v * 100.0)) {
+            s[key] = json!((v * 100.0).round() / 100.0);
+            *dirty = 0.3;
+        }
+    }
+    if ui.button("s-seatreset", row(&mut y), "Reset the seat position", Some("restart_alt"), ButtonKind::Normal) {
+        for k in ["seat_x", "seat_y", "seat_z"] {
+            s[k] = json!(0.0);
+        }
+        *dirty = 0.3;
+    }
+    toggle_setting(ui, s, dirty, row(&mut y), "Camera collisions (outside view)", "camera_collision");
+    toggle_setting(ui, s, dirty, row(&mut y), "Head tracking (TrackIR and others through opentrack, UDP 4242)", "head_tracking");
     let mut fov = get(s, "fov").as_f64().unwrap_or(0.0) as f32;
     if ui.slider("s-fov", row(&mut y), &mut fov, 0.0, 120.0, 1.0, "Field of view", &|v| if v < 20.0 { "Default".to_string() } else { format!("{v:.0}°") }) {
         s["fov"] = json!(if fov < 20.0 { 0.0 } else { fov.round() });
@@ -957,7 +981,11 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         for (b, (act, _)) in d.buttons.iter_mut().enumerate() {
             let (col, row) = (b / rows.max(1), b % rows.max(1));
             let r = Rect::new(x0 + col as f32 * (cw + GAP), y + row as f32 * per_row, cw, ROW);
-            ui.label(Rect::new(r.x, r.y, 90.0, r.h), &format!("Button {}", b + 1));
+            let label = match b.checked_sub(crate::controllers::HAT_BUTTONS) {
+                Some(h) => format!("Hat {} {}", h / 4 + 1, ["up", "right", "down", "left"][h % 4]),
+                None => format!("Button {}", b + 1),
+            };
+            ui.label(Rect::new(r.x, r.y, 90.0, r.h), &label);
             let mut sel = actions.iter().position(|a| a.eq_ignore_ascii_case(act)).unwrap_or(0);
             if ui.select(&format!("pad-btn-{b}"), Rect::new(r.x + 90.0, r.y, r.w - 90.0, r.h), &mut sel, &actions) {
                 *act = if sel == 0 { String::new() } else { actions[sel].clone() };
@@ -972,7 +1000,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     }
     // a button pressed on the device: its line (added up to it)
     if let Some((name, n)) = pressed {
-        if crate::controllers::names_match(&d.name, &name) && n < 128 {
+        if crate::controllers::names_match(&d.name, &name) && n < crate::controllers::HAT_BUTTONS + 16 {
             while d.buttons.len() <= n {
                 d.buttons.push((String::new(), "0".into()));
                 pv.dirty = true;
