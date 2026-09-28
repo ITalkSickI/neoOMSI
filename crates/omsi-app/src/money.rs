@@ -113,7 +113,7 @@ impl Money {
         let n = c.coins.len();
         let file = if coin < n { c.coins.get(coin)?.0.clone() } else { c.bills.get(coin - n)?.0.clone() };
         let m = omsi_o3d::load_mesh(&omsi_cfg::resolve_path(&self.dir, &file)).map_err(|e| log::warn!("{e}")).ok()?;
-        let dirs = [self.dir.clone(), world.root.join("Texture")];
+        let dirs = [self.dir.clone(), omsi_cfg::resolve_path(&world.root, "Texture")];
         let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
         let mats: Vec<MaterialId> = m
             .materials

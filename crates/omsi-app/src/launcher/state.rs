@@ -63,6 +63,8 @@ pub struct Choice {
     pub bus: String,
     pub paint: String,
     pub hof: String,
+    /// The depot file was chosen by hand (else it follows the map and the date).
+    pub hof_manual: bool,
     pub map: String,
     /// The start: the entry point's place in the map's list, or -1 = automatic (nearest to
     /// the duty's first stop by road).
@@ -95,6 +97,7 @@ impl Default for Choice {
             bus: String::new(),
             paint: String::new(),
             hof: String::new(),
+            hof_manual: false,
             map: String::new(),
             entry: -1,
             line: None,
@@ -161,6 +164,9 @@ pub struct State {
     pub keybindings: serde_json::Value,
     pub keybindings_error: String,
     pub instances: Vec<core::Instance>,
+    /// A game started from here ended on an error: what it said, and the end of its log
+    /// (see `crash_of`), for the dialog that asks to report it.
+    pub crash: Option<(String, String)>,
     pub jobs: Vec<core::install::Progress>,
     pub mods: Option<core::ModsStatus>,
     pub mods_asked: bool,
@@ -219,6 +225,7 @@ impl State {
             keybindings,
             keybindings_error: String::new(),
             instances: Vec::new(),
+            crash: None,
             jobs: Vec::new(),
             mods: None,
             mods_asked: false,
@@ -280,9 +287,10 @@ impl State {
         if map.is_empty() {
             return;
         }
-        // (every change of the date comes here: the depot file of that date)
+        // (every change of the date comes here: the depot file of that date, unless one was
+        // chosen by hand)
         let hof = self.default_hof();
-        if hof != self.choice.hof {
+        if hof != self.choice.hof && !self.choice.hof_manual {
             log::info!("depot file for {date}: {hof}");
             self.choice.hof = hof;
         }
@@ -649,6 +657,16 @@ impl State {
                             }
                         }
                         self.jobs = p.jobs;
+                        // a game that was running and is not any more: did it end on an error?
+                        for old in self.instances.iter().filter(|i| i.running) {
+                            let still = p.instances.iter().any(|n| n.pid == old.pid && n.running);
+                            if !still && !self.stopping.contains(&old.pid) {
+                                if let Some(c) = crash_of(std::path::Path::new(&old.log)) {
+                                    core::log_to_file(&format!("game {} ended on an error: {}", old.pid, c.0));
+                                    self.crash = Some(c);
+                                }
+                            }
+                        }
                         self.instances = p.instances;
                         for i in &self.instances {
                             if !i.running {
@@ -778,7 +796,12 @@ impl State {
         }
         self.choice.bus = file.to_string();
         self.choice.paint.clear();
-        self.choice.hof = self.default_hof();
+        // (a hand-picked depot file stays when the new bus has one of that name)
+        let keep = self.choice.hof_manual && self.bus().is_some_and(|v| v.hofs.iter().any(|h| h.eq_ignore_ascii_case(&self.choice.hof)));
+        if !keep {
+            self.choice.hof_manual = false;
+            self.choice.hof = self.default_hof();
+        }
         self.touched();
     }
 
@@ -868,5 +891,52 @@ pub fn root_problem(root: &str) -> String {
         String::new()
     } else {
         format!("{root} is not a complete OMSI 2 - it lacks {}. openOMSI plays on the original's stock content: choose the folder of a complete installation under Setup.", missing.iter().take(3).cloned().collect::<Vec<_>>().join(", "))
+    }
+}
+
+/// What a game's log says when the game ended on an error: the error (a panic, "no graphics
+/// adapter", a fatal message) and the last lines of the log. None for a game that ended as
+/// it should.
+pub fn crash_of(log: &std::path::Path) -> Option<(String, String)> {
+    let text = std::fs::read(log).ok()?;
+    let text = String::from_utf8_lossy(&text[text.len().saturating_sub(64 * 1024)..]).to_string();
+    let lines: Vec<&str> = text.lines().collect();
+    // (a lost graphics device ends the game in order - it saves the run - but it is a crash
+    // for the player all the same: the driver gave up)
+    let lost = lines.iter().rposition(|l| l.contains("the graphics device was lost"));
+    if lost.is_none() && lines.iter().any(|l| l.contains("game ends")) {
+        return None;
+    }
+    let at = lost.or_else(|| lines.iter().rposition(|l| l.contains("the game stopped on an error") || l.contains(" ERROR ")))?;
+    let first = lines[at].split_once("] ").map(|x| x.1).unwrap_or(lines[at]).trim();
+    // (a panic's message is on the following lines)
+    let mut what = first.to_string();
+    for l in lines.iter().skip(at + 1).take(6) {
+        if l.trim().is_empty() || l.trim_start().starts_with("0:") {
+            break;
+        }
+        what.push(' ');
+        what.push_str(l.trim());
+    }
+    let tail = lines[lines.len().saturating_sub(150)..].join("\n");
+    Some((what.chars().take(600).collect(), tail))
+}
+
+#[cfg(test)]
+mod crash_tests {
+    #[test]
+    fn a_panic_is_found_and_a_clean_end_is_not() {
+        let dir = std::env::temp_dir().join("openomsi-crash-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join("game.log");
+        std::fs::write(&p, "[t INFO x] loading\n[t ERROR openomsi_game] the game stopped on an error (build x): panicked at a.rs:1:1:\n    index out of bounds\n\n   0: std::backtrace\n").unwrap();
+        let (what, tail) = super::crash_of(&p).unwrap();
+        assert!(what.contains("index out of bounds"), "{what}");
+        assert!(tail.contains("loading"));
+        std::fs::write(&p, "[t INFO x] loading\n[t INFO openomsi_game::app_events] game ends\n").unwrap();
+        assert!(super::crash_of(&p).is_none());
+        std::fs::write(&p, "[t ERROR omsi_render] the graphics device was lost (Unknown): Unexpected error variant\n[t INFO openomsi_game::app_events] game ends\n").unwrap();
+        assert!(super::crash_of(&p).unwrap().0.contains("device was lost"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

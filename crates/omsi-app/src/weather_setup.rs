@@ -76,7 +76,7 @@ pub(crate) fn setup_sky(
     // texture, whose alpha is the clouds' shape; `Texture\clouds.tga` when there is none
     let kind = weather.map(|w| w.clouds.0.trim().to_string()).unwrap_or_default();
     let typed = cloud_texture(&args.root, &kind);
-    let cover = typed.or_else(|| omsi_texture::decode_file(&args.root.join("Texture").join("clouds.tga")).ok());
+    let cover = typed.or_else(|| omsi_texture::decode_file(&omsi_cfg::resolve_path(&args.root, "Texture\\clouds.tga")).ok());
     let t = std::time::Instant::now();
     let field = cloud_field(cover.as_ref());
     log::debug!("cloud field made in {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
@@ -222,7 +222,7 @@ fn cloud_texture(root: &Path, kind: &str) -> Option<omsi_texture::Image> {
         }
     }
     let file = file?;
-    let mut img = omsi_texture::decode_file(&omsi_cfg::resolve_path(&root.join("Texture"), &file)).ok()?;
+    let mut img = omsi_texture::decode_file(&omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&root, "Texture"), &file)).ok()?;
     if img.has_alpha {
         for px in img.rgba.chunks_mut(4) {
             let a = px[3];

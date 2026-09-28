@@ -1,7 +1,7 @@
 # openOMSI on Android
 
 openOMSI runs on Android phones and tablets (arm64, Android 8.0 or newer, a GPU with
-Vulkan 1.1). It is the same game as on the computer: the same renderer, simulation, scripts,
+Vulkan 1.1; on a phone without Vulkan openOMSI tries OpenGL ES 3). It is the same game as on the computer: the same renderer, simulation, scripts,
 maps, buses and mods. Only the way it is worked is new:
 
 - **one app, one window**: the launcher and the game share a window. Start is pressed in the

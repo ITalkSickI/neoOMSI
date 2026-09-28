@@ -147,12 +147,42 @@ pub(crate) fn graphics_instance() -> wgpu::Instance {
         descriptor.backend_options.noop = wgpu::NoopBackendOptions { enable: true };
         return wgpu::Instance::new(descriptor);
     }
-    descriptor.backends = if cfg!(target_os = "macos") {
-        wgpu::Backends::METAL
+    // The graphics interface: Metal on a Mac; elsewhere Vulkan first, and where the
+    // graphics chip or its driver has none (an older card - a GeForce GT 530 -, an old phone)
+    // DirectX 12 on Windows and then OpenGL. Settings → Graphics API (`graphics_api`) or
+    // OMSI_BACKEND=vulkan|dx12|gl picks one: a driver whose Vulkan misbehaves is got round.
+    let wanted = omsi_cfg::env::var("OMSI_BACKEND").ok().unwrap_or_else(|| crate::settings::Settings::load().graphics_api);
+    let order: Vec<wgpu::Backends> = if cfg!(target_os = "macos") {
+        vec![wgpu::Backends::METAL]
     } else {
-        wgpu::Backends::VULKAN
+        let all: Vec<wgpu::Backends> = if cfg!(windows) {
+            vec![wgpu::Backends::VULKAN, wgpu::Backends::DX12, wgpu::Backends::GL]
+        } else {
+            vec![wgpu::Backends::VULKAN, wgpu::Backends::GL]
+        };
+        let first = match wanted.trim().to_ascii_lowercase().as_str() {
+            "vulkan" => Some(wgpu::Backends::VULKAN),
+            "dx12" | "directx" | "d3d12" if cfg!(windows) => Some(wgpu::Backends::DX12),
+            "gl" | "opengl" | "gles" => Some(wgpu::Backends::GL),
+            _ => None,
+        };
+        // (the one asked for first, the others after it: a machine without it still starts)
+        first.into_iter().chain(all.into_iter().filter(|b| Some(*b) != first)).collect()
     };
-    wgpu::Instance::new(descriptor)
+    let mut last = None;
+    for b in order {
+        let mut d = wgpu::InstanceDescriptor::new_without_display_handle();
+        d.backends = b;
+        let instance = wgpu::Instance::new(d);
+        let adapters = pollster::block_on(instance.enumerate_adapters(b));
+        if !adapters.is_empty() {
+            log::info!("graphics: {:?} ({})", b, adapters.iter().map(|a| a.get_info().name).collect::<Vec<_>>().join(", "));
+            return instance;
+        }
+        log::info!("graphics: no {b:?} adapter here");
+        last = Some(instance);
+    }
+    last.unwrap_or_else(|| wgpu::Instance::new(descriptor))
 }
 
 /// The commit this binary was built from (see `build.rs`), so a log or a screenshot says

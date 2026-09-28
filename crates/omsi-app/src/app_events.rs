@@ -266,6 +266,15 @@ impl ApplicationHandler for App {
                     return;
                 }
                 if !self.drive_start(event_loop) {
+                    // the session goes on while the map loads: a big map's first area took
+                    // longer than the host waits for a silent player
+                    if let Some(l) = self.lan.as_mut() {
+                        let planned = omsi_net::Pose {
+                            bus: self.args.bus.clone().unwrap_or_default().replace('\\', "/"),
+                            ..Default::default()
+                        };
+                        l.keepalive(dt, &planned);
+                    }
                     return;
                 }
                 let __t = Instant::now();
@@ -413,6 +422,11 @@ impl ApplicationHandler for App {
                 let hwnd = self.window.as_deref().and_then(crate::controllers::window_handle);
                 let ctl = self.controllers.get_or_insert_with(|| crate::controllers::Controllers::new(&self.args.root, hwnd));
                 ctl.deadzone = self.settings.ctrl_deadzone;
+                ctl.ff_invert = self.settings.ff_invert;
+                ctl.steer_gain = if self.settings.wheel_lock >= 45.0 { (self.settings.wheel_range / self.settings.wheel_lock).clamp(0.1, 20.0) } else { 1.0 };
+                if ctl.disabled.is_empty() && !self.settings.ctrl_off.is_empty() {
+                    ctl.disabled = self.settings.ctrl_off.split('|').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+                }
                 let analog = ctl.poll();
                 let actions = std::mem::take(&mut ctl.actions);
                 if let Some(n) = ctl.notice.take() {
@@ -436,22 +450,49 @@ impl ApplicationHandler for App {
                 // goes. For a second after mouse steering is switched on the wheel eases
                 // towards the cursor (a half-life of the time that is left), then follows it.
                 let mut analog = analog;
-                if let (true, Some(s)) = (self.mouse_drive && self.view == "driver" && !self.mouse_look && self.game_menu.is_none(), self.surface.as_ref()) {
+                // (in every view of the bus - driver, outside, passenger - as in OMSI, where
+                // switching the camera leaves the mouse steering on; not on foot or flying)
+                let bus_view = matches!(self.view.as_str(), "driver" | "outside" | "pax");
+                if let (true, Some(s)) = (self.mouse_drive && bus_view && !self.mouse_look && self.game_menu.is_none(), self.surface.as_ref()) {
                     let (w, h) = (s.config.width as f32, s.config.height as f32);
-                    let kmh = self.player.as_ref().map(|p| p.vehicle.physics.velocity_kmh()).unwrap_or(0.0);
+                    // (the speed the divisor takes, smoothed over 0.4 s: the bus's own speed
+                    // trembles by fractions of a km/h from frame to frame on its springs and
+                    // tyres, and at 30 km/h the wheel twitched with it by itself)
+                    let raw_kmh = self.player.as_ref().map(|p| p.vehicle.physics.velocity_kmh()).unwrap_or(0.0);
+                    let k_v = 1.0 - (-dt / 0.4).exp();
+                    self.mouse_kmh += (raw_kmh - self.mouse_kmh) * k_v;
+                    let kmh = self.mouse_kmh;
                     let target = (crate::player::mouse_steering(self.cursor.0, w, kmh) * self.settings.mouse_sens).clamp(-1.0, 1.0);
                     // the pedals as Omsi.exe has them: from the middle of the window to its
                     // top edge the throttle, to the bottom one the brake, straight on
                     let y = (2.0 * self.cursor.1 / h.max(1.0) - 1.0).clamp(-1.0, 1.0);
                     let (pedal_t, pedal_b) = ((-y).max(0.0), y.max(0.0));
                     let (steer, fade) = &mut self.mouse_steer;
-                    let k = if *fade > 0.0 { (-std::f32::consts::LN_2 / *fade * dt).exp() } else { 0.0 };
+                    // (after the first second the wheel follows the cursor within ~60 ms: the
+                    // cursor comes in bursts, and taken as it came the wheel moved in steps)
+                    let k = if *fade > 0.0 { (-std::f32::consts::LN_2 / *fade * dt).exp() } else { (-dt / 0.06).exp() };
                     *steer = target + (*steer - target) * k;
                     let (mt, mb) = &mut self.mouse_pedals;
                     *mt = pedal_t + (*mt - pedal_t) * k;
                     *mb = pedal_b + (*mb - pedal_b) * k;
                     *fade = (*fade - dt).max(0.0);
                     analog.steering = Some(*steer);
+                    // OMSI_TRACE_STEER=<csv>: the mouse steering frame by frame
+                    if let Some(path) = omsi_cfg::env::var_os("OMSI_TRACE_STEER") {
+                        use std::io::Write;
+                        static TRACE: std::sync::Mutex<Option<std::fs::File>> = std::sync::Mutex::new(None);
+                        let mut g = TRACE.lock().unwrap_or_else(|e| e.into_inner());
+                        if g.is_none() {
+                            *g = std::fs::File::create(&path).ok();
+                            if let Some(f) = g.as_mut() {
+                                let _ = writeln!(f, "t,dt,cursor_x,kmh,target,steer,steer_deg");
+                            }
+                        }
+                        let deg = self.player.as_ref().map(|p| p.vehicle.physics.steer_deg).unwrap_or(0.0);
+                        if let Some(f) = g.as_mut() {
+                            let _ = writeln!(f, "{:.3},{:.4},{:.1},{:.2},{:.4},{:.4},{:.3}", self.clock.run_time, dt, self.cursor.0, kmh, target, self.mouse_steer.0, deg);
+                        }
+                    }
                     // the mouse owns the wheel (OMSI sets the curvature from it every frame):
                     // a steering key's leftover turn must not take over whenever the cursor
                     // passes the middle - the wheel jumped there
@@ -462,6 +503,8 @@ impl ApplicationHandler for App {
                     analog.brake = Some(self.mouse_pedals.1);
                 }
                 if let Some(p) = self.player.as_mut() {
+                    p.axes.linear = self.settings.steering_linear;
+                    p.axes.old_steering = self.settings.old_steering;
                     p.analog = analog;
                     if self.game_menu.is_none() {
                         for (name, down) in actions {
@@ -547,6 +590,10 @@ impl ApplicationHandler for App {
                         crate::input_script::swap_view_look(&mut self.look, &mut self.view_looks, &mut self.look_view, &self.view);
                         if let Some(cam) = self.camera.as_ref() {
                             let mut cam = p.camera_look(&self.view, cam, self.look, self.orbit);
+                            // Settings → Field of view (0: the bus's own cameras)
+                            if self.settings.fov >= 20.0 {
+                                cam.fov_deg = self.settings.fov.min(120.0);
+                            }
                             if let Some(z) = self.view_zoom.get(&self.view) {
                                 cam.fov_deg = (cam.fov_deg * z).clamp(8.0, 120.0);
                             }
@@ -629,6 +676,7 @@ impl ApplicationHandler for App {
                         .or(self.camera.as_ref().map(|c| c.position))
                         .unwrap_or(DVec3::ZERO);
                     // (the riders leave a bus the driver has walked away from)
+                    h.free_roam = self.duty.is_none();
                     h.driver_away = self.on_foot.as_ref().is_some_and(|f| {
                         let own = Some(crate::humans::BusId::Player);
                         f.seat.map(|s| s.0) != own && f.inside.map(|i| i.0) != own

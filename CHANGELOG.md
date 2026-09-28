@@ -4,6 +4,81 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.9 - 2026-09-28
+
+### Graphics cards and crashes
+- A graphics validation error no longer ends the game: it is written to the log and the game
+  goes on.
+- "The graphics device was lost" (RTX 4060 reports, a few seconds into big maps) is the
+  Vulkan driver giving up. On Windows the game can now draw with DirectX 12 instead:
+  Settings → *Graphics API*, or *Use DirectX 12* in the launcher after such a crash.
+- Graphics cards without Vulkan (GeForce GT 530 and other older ones) run the game: it asks
+  Vulkan, then DirectX 12 (Windows), then OpenGL, and takes the first that draws. Settings →
+  *Graphics API* chooses one; the Windows download brings DirectX 12's shader compiler.
+- Phones where every mesh came out flat and far away (the bus in the launcher too): the
+  shaders no longer read the objects' matrices in the way some phone GPUs get wrong.
+- Cards below the usual limits get a smaller shadow map, and textures larger than the card
+  takes are scaled down instead of stopping the game.
+- When a game ends on an error, the launcher says so, with *Copy report*, *Report on
+  GitHub* and, after a lost graphics device on Windows, *Use DirectX 12*.
+
+### Collisions
+- Only the objects OMSI makes solid stop the bus (`[fixed]` ones and poles). Signs on stop
+  poles, gantries and the bridges of mod maps not marked so were invisible walls - under the
+  bridges of Saint Servant, for example.
+- Collisions with objects can be switched off, as in OMSI: Settings → *Collisions with
+  objects*, or Esc → Options in the game (OMSI's own `no_collision` setting is taken over).
+
+### Steering, pedals and controllers
+- Mouse steering works in the outside and passenger views too, and the wheel follows the
+  cursor smoothly: it crept on by itself and came back in steps.
+- New settings, off by default: *Steering linearity* (the steering keys turn the wheel at
+  OMSI's steady pace) and *Old Steering* (the wheel stays where you leave it, as in OMSI 2 -
+  turn it back yourself).
+- The clutch key works as in OMSI: the pedal goes down at once and comes up slowly.
+- Settings → *Wheel rotation* and *Full lock at*: a wheel of 900° can steer like a real bus
+  (the full lock at, say, 540° of the wheel), *Reset wheel settings* goes back to OMSI's
+  (the whole wheel is the full lock). *Invert force feedback* for wheels that push the wrong
+  way (G29).
+- Settings → *Field of view* for the views from the bus (Default: the bus's own cameras);
+  the mouse wheel, = and - still zoom as in OMSI.
+- A steering wheel listed twice (Logitech G29: once as a wheel, once as a gamepad) is listed
+  once, and *Use this device* on the Controllers page switches any device off.
+
+### Multiplayer
+- A joining game plays on the host's map when it is installed, whichever map was chosen
+  before joining. On big add-on maps it often stayed on its own map - where nobody met it:
+  - the host lists its mods for the joining players after it starts, which takes a while on
+    a big map, and the joining game gave up waiting for that list after 25 s;
+  - a host busy loading a heavy area answered later than the 3 s the joining game waited;
+  - a dedicated server answered nobody until it had loaded its whole map.
+- The host answers joining players while it loads its world, and a joining game stays in
+  the session while its own map loads.
+- A joining game with everything the host uses installed no longer needs 3 GB of free disk.
+- Mods installed into openOMSI's content folder inside the OMSI 2 folder are passed on to
+  joining players (they were taken for OMSI's own files).
+- A player's info (bus, destination, display texts) always fits one datagram: long paths and
+  texts made it too big to arrive, and the others never saw which bus the player drove.
+
+### Maps and vehicles
+- Parked cars, people and objects whose `Texture` or `model` folder is spelt with another
+  case are no longer white or missing on Linux (TH_Zafira and others).
+- The warning lamps' glass of the Thüringer Wald buses (S 315 UL, S 317 UL, O 550) and the
+  MB O 407 is see-through again instead of a row of white tiles ("glas" is glass too).
+- Free roam (no duty): people only board a bus that shows a destination, not one showing
+  nothing or "not in service".
+- Drive → *Depot file*: the depot file (HOF) can be chosen by hand; *Automatic* follows the
+  map and the date.
+
+### Sound
+- A limiter on the whole mix: many loud sounds at once no longer clip (heard as squeaks and
+  crackles).
+
+### Launcher
+- Icons missing on some phones: the launcher's picture atlas grows when a screen needs more
+  room than it had (high-resolution phones).
+- The README has an installation guide and what to do when something goes wrong.
+
 ## 0.1.8 - 2026-09-28
 
 ### Controls

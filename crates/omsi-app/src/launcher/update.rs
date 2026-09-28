@@ -160,6 +160,61 @@ impl Launcher {
     }
 }
 
+impl Launcher {
+    /// A game started from here ended on an error: what it said, and the ways to report it
+    /// (the end of its log copied, or a GitHub issue opened with it).
+    pub(super) fn draw_crash_dialog(&mut self) {
+        let Some((what, tail)) = self.state.crash.clone() else { return };
+        let size = self.ui.size;
+        let full = Rect::new(0.0, 0.0, size.x, size.y);
+        self.ui.solid(full);
+        self.ui.p().rect(full, omsi_ui::Color::rgba(0, 0, 0, 0.62));
+        let w = (size.x - 48.0).min(640.0);
+        let lost = what.contains("graphics device was lost");
+        let hint = if lost {
+            if cfg!(windows) {
+                "The graphics driver stopped the game. Updating the graphics driver usually helps; you can also let the game draw with DirectX 12 instead of Vulkan (the button below, or Settings → Graphics API)."
+            } else {
+                "The graphics driver stopped the game. Updating the graphics driver usually helps; Settings → Graphics API can switch to OpenGL."
+            }
+        } else {
+            "Copy the report (the end of the game's log), or open a GitHub issue with it: it tells what went wrong on this computer."
+        };
+        let text = format!("{what}\n\n{hint}");
+        let th = self.ui.paragraph_height(&text, w - 48.0, 13.0, Weight::Regular).min(size.y * 0.5);
+        let h = (140.0 + th).min(size.y - 24.0);
+        let r = Rect::new((size.x - w) * 0.5, (size.y - h) * 0.5, w, h);
+        self.ui.panel(r);
+        let inner = Rect::new(r.x + 24.0, r.y + 20.0, r.w - 48.0, r.h - 40.0);
+        self.ui.icon("error", Vec2::new(inner.x + 14.0, inner.y + 14.0), 26.0, DANGER);
+        self.ui.text_in("The game closed on an error", Rect::new(inner.x + 38.0, inner.y, inner.w - 38.0, 28.0), 18.0, Weight::Bold, TEXT, Align::Left);
+        self.ui.push_clip(Rect::new(inner.x, inner.y + 40.0, inner.w, th + 4.0), 0.0);
+        self.ui.paragraph(&text, Vec2::new(inner.x, inner.y + 40.0), inner.w, 13.0, Weight::Regular, TEXT_DIM);
+        self.ui.pop_clip();
+        let by = inner.bottom() - 38.0;
+        if self.ui.button("crash-close", Rect::new(inner.right() - 110.0, by, 110.0, 38.0), "Close", None, ButtonKind::Normal) {
+            self.state.crash = None;
+        }
+        if self.ui.button("crash-copy", Rect::new(inner.right() - 270.0, by, 150.0, 38.0), "Copy report", Some("content_copy"), ButtonKind::Primary) {
+            self.ui.clipboard_out = Some(format!("openOMSI {} ({})\n{what}\n\n{tail}", updater::current_version(), std::env::consts::OS));
+            self.state.set_status("The report is copied: paste it into a GitHub issue or a message.", false);
+        }
+        let api = self.state.settings.get("graphics_api").and_then(|v| v.as_str()).unwrap_or("auto").to_string();
+        if lost && cfg!(windows) && api != "dx12" && self.ui.button("crash-dx12", Rect::new(inner.x + 200.0, by, 170.0, 38.0), "Use DirectX 12", Some("monitor"), ButtonKind::Normal) {
+            self.state.settings["graphics_api"] = serde_json::json!("dx12");
+            self.state.settings_dirty = 0.3;
+            self.state.crash = None;
+            self.state.set_status("The game draws with DirectX 12 from the next start (Settings → Graphics API to change it back).", false);
+        }
+        if self.ui.button("crash-issue", Rect::new(inner.x, by, 190.0, 38.0), "Report on GitHub", Some("open_in_new"), ButtonKind::Ghost) {
+            let title = format!("Crash: {}", what.chars().take(80).collect::<String>());
+            let body = format!("openOMSI {} on {}\n\n```\n{what}\n```\n\n(Paste the report here - Copy report in the launcher.)", updater::current_version(), std::env::consts::OS);
+            let enc = |t: &str| t.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+            updater::open_url(&format!("{}/issues/new?title={}&body={}", updater::REPO_URL, enc(&title), enc(&body)));
+        }
+    }
+}
+
 fn mb(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / 1_000_000.0)
 }

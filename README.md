@@ -48,6 +48,58 @@ and, with your yes, downloads it, replaces the program and starts again (on Andr
 the system's installer). Settings → Updates switches the check off or installs without
 asking.
 
+## Installation
+
+**You need an installed OMSI 2** (Steam or retail, any version) with its stock content -
+the maps Grundorf and Berlin-Spandau and the stock buses (MAN SD200/SD202, NL). openOMSI
+brings no game content of its own; it plays the original's maps, buses and mods.
+
+1. **Download** the file for your system from
+   [Releases](https://github.com/turbo-devv/openOMSI/releases) (table above) and unpack it
+   into a folder of its own that you can write to - your Documents, a games folder, or the
+   OMSI 2 folder itself. Not `Program Files`: the launcher could not update itself there.
+2. **Start it.**
+   * **Windows:** `openomsi.exe`. Windows SmartScreen may warn about an unknown app: *More
+     info* → *Run anyway*.
+   * **macOS:** open `openOMSI.app`. The first time, macOS may refuse an app from the
+     internet: right-click → *Open* → *Open*, or run
+     `xattr -dr com.apple.quarantine /path/to/openOMSI.app` once.
+   * **Linux:** `./openomsi` (run `chmod +x openomsi` if it does not start). It needs a
+     Vulkan or OpenGL driver (Mesa: `mesa-vulkan-drivers`, or your GPU vendor's driver).
+   * **Android:** see [docs/ANDROID.md](docs/ANDROID.md) - the OMSI 2 folder is copied onto the
+     phone first.
+3. **Point it at OMSI 2.** The launcher usually finds the installation by itself (Steam
+   libraries, the usual folders). If not, open **Setup** and choose the OMSI 2 folder - the
+   one with `Omsi.exe`, `maps` and `Vehicles` in it (the folder, or `Omsi.exe` itself) - and
+   press **Save**. The Steam version is under
+   `…\Steam\steamapps\common\OMSI 2`.
+4. **Drive:** pick a bus, a map and a duty on the **Drive** page and press **Start the duty**.
+
+**Mods** are installed on the **Mods** page (a folder or a `.zip`, or dropped on the window) or
+by putting them into the `Mods` folder next to the game; the OMSI 2 folder is never written
+to.
+
+### When something goes wrong
+
+* **"The original OMSI 2 was not found"** - choose the folder under Setup (step 3); the
+  message says what the chosen folder lacks.
+* **The game closes after a few seconds, or "the graphics device was lost"** - update the
+  graphics driver (NVIDIA, AMD or Intel's own, not the one Windows installs). On Windows you
+  can also switch to DirectX 12: Settings → Graphics API (the launcher offers it after such a
+  crash).
+* **An older graphics card** (no Vulkan): openOMSI falls back to DirectX 12 and then OpenGL by
+  itself; Settings → Graphics API chooses one.
+* **Stuck at a bridge or an invisible wall** on a mod map: Esc → Options → *Collisions with
+  objects* switches collisions with the map's objects off (Settings has it too).
+* **Multiplayer: you do not meet the others** - both players need the host's map (a map in
+  the OMSI 2 folder is not passed on; one from the Mods page is). The joining game switches
+  to the host's map by itself and says in the HUD when it is not installed.
+* **Keys do not do what you set:** Controls - the page shows which driving keys are in use;
+  a key you change there takes effect at once.
+* **Anything else:** when the game ends on an error, the launcher shows it with *Copy report*
+  and *Report on GitHub*. The logs are in `~/.openomsi` (Windows: `C:\Users\<you>\.openomsi`),
+  `game.log` for the last game.
+
 ## Goals
 
 1. **1:1 behaviour.** Every content format of the original - maps, splines, scenery objects,

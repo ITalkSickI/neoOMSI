@@ -558,10 +558,12 @@ impl VehicleType {
 
     pub fn texture_dirs(&self, root: &Path) -> Vec<PathBuf> {
         vec![
-            self.def.dir().join("Texture"),
-            self.model_dir.join("Texture"),
+            // (the folder as it is spelled on the disk: many add-ons ship `texture`, which a
+            // case-sensitive file system - Linux, a phone - does not find as `Texture`)
+            omsi_cfg::resolve_path(self.def.dir(), "Texture"),
+            omsi_cfg::resolve_path(&self.model_dir, "Texture"),
             self.model_dir.clone(),
-            root.join("Texture"),
+            omsi_cfg::resolve_path(root, "Texture"),
         ]
     }
 }

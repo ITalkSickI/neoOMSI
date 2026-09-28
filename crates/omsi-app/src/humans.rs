@@ -1860,6 +1860,9 @@ pub struct Humans {
     /// The player has got up and left the wheel: a standing bus with a door open is left
     /// by its riders as at a terminus (see `ALL_OUT_STOP`).
     pub driver_away: bool,
+    /// The player drives no duty (free roam): people board the player's bus only when it
+    /// shows a destination - a bus with none (or "not in service") is not theirs.
+    pub free_roam: bool,
     /// Buses whose validator somebody used since the app last looked (`take_stamped`).
     stamped: Vec<BusId>,
     /// Pedestrians to keep strolling near the player (scaled by `density`).
@@ -2043,6 +2046,7 @@ impl Humans {
             last_buses: Vec::new(),
             avatar_only: false,
             driver_away: false,
+            free_roam: false,
             stamped: Vec::new(),
             pedestrians: 14,
             stroll_timer: 0.0,
@@ -3535,8 +3539,18 @@ impl Humans {
             // away: a frame-time spike must not "leave" and re-enter the stop.
             let speed = b.physics.velocity_kmh() as f64 / 3.6;
             let limit = if self.served_stop.is_some() { 4.0 } else { 0.5 };
-            let (entry_open, exit_open) =
+            let (mut entry_open, exit_open) =
                 Self::doors_open(b, cabin.entries.len(), cabin.exits.len());
+            // free roam: only a bus that shows where it goes takes people in
+            if self.free_roam {
+                let shows = match (b.var("target_index_int"), b.host.hof.as_ref()) {
+                    (Some(i), Some(hof)) if i.is_finite() && i >= 0.0 => hof.termini.get(i.round() as usize).is_some_and(|t| !t.all_exit),
+                    _ => false,
+                };
+                if !shows {
+                    entry_open.iter_mut().for_each(|o| *o = false);
+                }
+            }
             let all_exit_here = match (b.var("target_index_int"), b.host.hof.as_ref()) {
                 (Some(i), Some(hof)) if i.is_finite() && i >= 0.0 => hof.termini.get(i.round() as usize).is_some_and(|t| t.all_exit),
                 _ => false,

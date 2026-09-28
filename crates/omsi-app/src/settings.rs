@@ -58,6 +58,8 @@ pub struct Settings {
     pub ai_max_parked: u32,
     /// `[no_collision_vehToVeh]` off: the player's bus collides with the traffic.
     pub collision_vehicles: bool,
+    /// `[no_collision]` off: the player's bus collides with the map's solid objects.
+    pub collision_objects: bool,
     /// `[no_collision_pedastrians]` off: people are knocked down.
     pub collision_pedestrians: bool,
     /// `[driverview_moving]`: the driver's head moves with the bus (braking, bends, bumps).
@@ -129,11 +131,29 @@ pub struct Settings {
     pub shadow_casters: String,
     /// Dead zone round the centre of a set-up game controller's axes (0..0.3).
     pub ctrl_deadzone: f32,
+    /// Game controllers switched off, by name (`|` between them).
+    pub ctrl_off: String,
+    /// Keyboard steering at OMSI's steady pace (`KeyboardAxes::linear`).
+    pub steering_linear: bool,
+    /// The wheel stays where the keys left it (`KeyboardAxes::old_steering`).
+    pub old_steering: bool,
     /// The materials' reflection maps (`RenderOptions::reflections`).
     pub reflections: bool,
     /// Mouse steering: how far the wheel turns for the same hand movement (1 = OMSI's: the
     /// window's width is the full lock).
     pub mouse_sens: f32,
+    /// The graphics interface: `auto` (Vulkan, else DirectX 12, else OpenGL), `vulkan`,
+    /// `dx12` or `gl` (see `startup::graphics_instance`).
+    pub graphics_api: String,
+    /// Force feedback pushes the other way (a Logitech G29 on some drivers).
+    pub ff_invert: bool,
+    /// The steering wheel's own rotation, lock to lock (degrees; a G29 turns 900).
+    pub wheel_range: f32,
+    /// How far the wheel is turned, lock to lock, for the bus's full lock (degrees); 0 = the
+    /// whole of the wheel's rotation, as OMSI.
+    pub wheel_lock: f32,
+    /// Field of view of the views from the bus (degrees; 0 = the bus's own cameras).
+    pub fov: f32,
 }
 
 impl Default for Settings {
@@ -150,7 +170,7 @@ impl Default for Settings {
 impl Settings {
     /// The defaults of a computer.
     fn desktop() -> Self {
-        Self { msaa: 4, anisotropy: 8, ssao: true, shadows: true, shadow_size: 2048, navigator: true, navigator_opacity: 0.85, navigator_corner: "bottom-left".into(), boarding: "auto".into(), detail_textures: true, exact_fare: true, enhanced: false, graphics: "vanilla_plus".into(), fullscreen: false, vsync: true, volume: 0.6, drive_keys: "simple".into(), post_aa: "fxaa".into(), render_scale: 0.0, language: "ENG".into(), pax_voices: "all".into(), nav_arrows: false, get_up: false, texture_compression: true, texture_memory: 0, auto_clutch: true, min_obj_size: 0.013, max_obj_dist: -1.0, max_fps: 0, chat: true, tooltips: true, name_tags: true, show_fps: false, clouds: true, pax_density: 1.0, vol_ai: 1.0, vol_scenery: 1.0, mirror_size: 256, doppler: true, driver: true, maintenance: 0, ai_unsched_factor: 1.0, ai_max_scheduled: 0, ai_max_parked: 0, collision_vehicles: true, collision_pedestrians: true, head_movement: true, time_speed: 1.0, machine_translation: false, shadow_casters: "all".into(), ctrl_deadzone: 0.0, reflections: true, mouse_sens: 1.0 }
+        Self { msaa: 4, anisotropy: 8, ssao: true, shadows: true, shadow_size: 2048, navigator: true, navigator_opacity: 0.85, navigator_corner: "bottom-left".into(), boarding: "auto".into(), detail_textures: true, exact_fare: true, enhanced: false, graphics: "vanilla_plus".into(), fullscreen: false, vsync: true, volume: 0.6, drive_keys: "simple".into(), post_aa: "fxaa".into(), render_scale: 0.0, language: "ENG".into(), pax_voices: "all".into(), nav_arrows: false, get_up: false, texture_compression: true, texture_memory: 0, auto_clutch: true, min_obj_size: 0.013, max_obj_dist: -1.0, max_fps: 0, chat: true, tooltips: true, name_tags: true, show_fps: false, clouds: true, pax_density: 1.0, vol_ai: 1.0, vol_scenery: 1.0, mirror_size: 256, doppler: true, driver: true, maintenance: 0, ai_unsched_factor: 1.0, ai_max_scheduled: 0, ai_max_parked: 0, collision_vehicles: true, collision_objects: true, collision_pedestrians: true, head_movement: true, time_speed: 1.0, machine_translation: false, shadow_casters: "all".into(), ctrl_deadzone: 0.0, ctrl_off: String::new(), steering_linear: false, old_steering: false, reflections: true, mouse_sens: 1.0, graphics_api: "auto".into(), ff_invert: false, wheel_range: 900.0, wheel_lock: 0.0, fov: 0.0 }
     }
 }
 
@@ -243,12 +263,21 @@ impl Settings {
                 "ai_max_scheduled" | "aimaxcountscheduled" => s.ai_max_scheduled = v.parse().unwrap_or(s.ai_max_scheduled),
                 "ai_max_parked" | "aimaxcountparked" => s.ai_max_parked = v.parse().unwrap_or(s.ai_max_parked),
                 "collision_vehicles" => s.collision_vehicles = b(v),
+                "collision_objects" => s.collision_objects = b(v),
                 "collision_pedestrians" => s.collision_pedestrians = b(v),
                 "head_movement" | "driverview_moving" => s.head_movement = b(v),
                 "time_speed" => s.time_speed = v.trim_start_matches(['x', 'X']).parse::<f64>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(1.0, 30.0)).unwrap_or(s.time_speed),
                 "machine_translation" => s.machine_translation = b(v),
                 "ctrl_deadzone" => s.ctrl_deadzone = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 0.3)).unwrap_or(s.ctrl_deadzone),
                 "reflections" | "envmap" => s.reflections = b(v),
+                "graphics_api" => s.graphics_api = v.trim().to_ascii_lowercase(),
+                "ctrl_off" => s.ctrl_off = v.trim().to_string(),
+                "steering_linear" => s.steering_linear = b(v),
+                "old_steering" => s.old_steering = b(v),
+                "ff_invert" => s.ff_invert = b(v),
+                "wheel_range" => s.wheel_range = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(90.0, 2880.0)).unwrap_or(s.wheel_range),
+                "wheel_lock" => s.wheel_lock = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| if x < 45.0 { 0.0 } else { x.min(2880.0) }).unwrap_or(s.wheel_lock),
+                "fov" => s.fov = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| if x < 20.0 { 0.0 } else { x.min(120.0) }).unwrap_or(s.fov),
                 "mouse_sens" => s.mouse_sens = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 2.0)).unwrap_or(s.mouse_sens),
                 "shadow_casters" => s.shadow_casters = if v.eq_ignore_ascii_case("omsi") { "omsi".into() } else { "all".into() },
                 "post_aa" => s.post_aa = if matches!(v.to_ascii_lowercase().as_str(), "off" | "0" | "none" | "false") { "off".into() } else { "fxaa".into() },

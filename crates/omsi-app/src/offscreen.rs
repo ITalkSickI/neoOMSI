@@ -31,7 +31,7 @@ pub(crate) fn run_offscreen(
     crate::lights::load_smoke_texture(&mut renderer, &args.root);
     crate::lights::set_corona_root(&args.root);
     let mut scene = renderer.new_scene();
-    let (world, mut camera) = load_world(args, &renderer, &mut scene)?;
+    let (world, mut camera) = lan::answering_while(&mut lan_off, args.bus.as_deref(), || load_world(args, &renderer, &mut scene))?;
     let lan_seed = lan_off.as_ref().map(lan::population_seed);
     let mut traffic = if args.traffic > 0 || args.schedule || crate::rail_drive::args_rail(args) {
         let mut t = traffic::Traffic::new(&args.root, &world, args.traffic)?;
@@ -52,13 +52,15 @@ pub(crate) fn run_offscreen(
         None
     };
     if let Some(s) = schedule.as_mut() {
-        s.precache(
-            &world,
-            &renderer,
-            &mut scene,
-            traffic.as_mut(),
-            parse_time(&args.time),
-        );
+        lan::answering_while(&mut lan_off, args.bus.as_deref(), || {
+            s.precache(
+                &world,
+                &renderer,
+                &mut scene,
+                traffic.as_mut(),
+                parse_time(&args.time),
+            )
+        });
         if let (Some(t), true) = (traffic.as_mut(), omsi_cfg::env::var_os("OMSI_CHECK_TRIPS").is_some()) {
             s.check_routes(&world, t);
         }
@@ -1607,6 +1609,8 @@ pub(crate) fn run_offscreen(
     if omsi_cfg::env::var_os("OMSI_CHECK_OBSTACLES").is_some() {
         if let Some(t) = traffic.as_ref() {
             let boxes = world.collision.lock().clone();
+            // (parked cars stand beside the lanes by design; the traffic steers round them)
+            let parked: std::collections::HashSet<i64> = world.tile_state.lock().values().flat_map(|st| st.parked_boxes.iter().map(|b| b.id).collect::<Vec<_>>()).collect();
             let mut hits: std::collections::BTreeMap<i64, (omsi_sim::collision::Obb, usize, DVec3)> = Default::default();
             let mut probes = 0usize;
             for l in t
@@ -1631,7 +1635,7 @@ pub(crate) fn run_offscreen(
                     let up = right.cross(fwd);
                     let solid = omsi_sim::collision::Box3 { center: p + up * 1.775, axes: [right, fwd, up], half: DVec3::new(1.2, 1.0, 1.425) };
                     for b in boxes.obstacles_near_solid(&probe, Some(&solid)) {
-                        if b.overlaps(&probe) {
+                        if b.overlaps(&probe) && !parked.contains(&b.id) {
                             hits.entry(b.id).or_insert((b, 0, p)).1 += 1;
                         }
                     }

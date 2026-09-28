@@ -76,6 +76,8 @@ pub struct Gpu {
     samples: u32,
     format: wgpu::TextureFormat,
     atlas_size: u32,
+    /// (to make the atlas texture anew when the atlas grows)
+    device: wgpu::Device,
 }
 
 impl Gpu {
@@ -144,7 +146,7 @@ impl Gpu {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
-        let mut g = Gpu { pipeline, tex_layout, uniform, uniform_group, sampler, buffers: Vec::new(), textures: Vec::new(), msaa: None, samples, format, atlas_size: atlas_size.max(1) };
+        let mut g = Gpu { pipeline, tex_layout, uniform, uniform_group, sampler, buffers: Vec::new(), textures: Vec::new(), msaa: None, samples, format, atlas_size: atlas_size.max(1), device: device.clone() };
         let atlas = vec![0u8; (atlas_size * atlas_size * 4) as usize];
         g.add_texture_internal(device, None, atlas_size, atlas_size, &atlas);
         g
@@ -241,8 +243,26 @@ impl Gpu {
     /// Send the atlas's changed region to the GPU.
     pub fn upload_atlas(&mut self, queue: &wgpu::Queue, atlas: &mut Atlas) {
         if atlas.size != self.atlas_size {
-            log::warn!("omsi-ui: atlas of {} px, texture of {}", atlas.size, self.atlas_size);
-            return;
+            // the atlas grew (see `Atlas::begin_frame`): its texture is made anew at its size
+            let device = self.device.clone();
+            let size = atlas.size;
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("omsi-ui atlas"),
+                size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            let group = self.group(&device, &view);
+            if let Some(slot) = self.textures.first_mut() {
+                *slot = Some(Tex { texture: Some(texture), group, size: (size, size) });
+            }
+            self.atlas_size = size;
+            atlas.mark_all_dirty();
         }
         if let Some(r) = atlas.take_dirty() {
             if let Some(Some(Tex { texture: Some(t), .. })) = self.textures.first() {

@@ -440,7 +440,7 @@ impl HumanType {
             extra_dirs.push(d);
         }
         // the sub-folders of the human's folder and of its texture folder, last
-        for base in [dir.to_path_buf(), dir.join("texture")] {
+        for base in [dir.to_path_buf(), omsi_cfg::resolve_path(dir, "texture")] {
             for (n, is_dir) in omsi_cfg::vfs::list_dir(&base).unwrap_or_default() {
                 if is_dir && !n.to_string_lossy().eq_ignore_ascii_case("model") {
                     let d = base.join(n);
@@ -466,14 +466,14 @@ impl HumanType {
         let human_dir = self.model_dir.parent().unwrap_or(&self.model_dir);
         let hum_dir = self.def.path.parent().unwrap_or(human_dir);
         let mut dirs = vec![
-            self.model_dir.join("texture"),
+            omsi_cfg::resolve_path(&self.model_dir, "texture"),
             self.model_dir.clone(),
-            human_dir.join("texture"),
+            omsi_cfg::resolve_path(human_dir, "texture"),
             human_dir.to_path_buf(),
-            hum_dir.join("texture"),
+            omsi_cfg::resolve_path(hum_dir, "texture"),
             hum_dir.to_path_buf(),
-            self.model_dir.join("../texture"),
-            root.join("Texture"),
+            omsi_cfg::resolve_path(&self.model_dir, "..\\texture"),
+            omsi_cfg::resolve_path(root, "Texture"),
         ];
         dirs.dedup();
         dirs.extend(self.extra_dirs.iter().cloned());

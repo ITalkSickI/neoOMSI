@@ -108,6 +108,8 @@ struct Shared {
     listener: Mutex<Listener>,
     /// The echo of an underpass, fed from the mix.
     reverb: Mutex<Reverb>,
+    /// The master limiter's gain now (1 = none).
+    limiter: Mutex<f32>,
     sample_rate: u32,
     channels: usize,
     /// `OMSI_MUTE`: everything is mixed as usual (voices play and end), nothing is heard -
@@ -268,6 +270,22 @@ impl Shared {
         if listener.reverb_mix > 0.001 && listener.reverb_time > 0.05 {
             self.reverb.lock().process(out, ch, self.sample_rate, listener.reverb_time.min(3.0), listener.reverb_mix.min(1.0));
         }
+        // The master limiter: a busy street sums past full scale, and cut off hard there the
+        // sound crackled and squeaked. Loud moments are turned down (at once) and back up
+        // (over half a second), and what still peaks is rounded off, not cut.
+        {
+            let mut g = self.limiter.lock();
+            let frames = (out.len() / ch.max(1)).max(1);
+            let release = (-1.0 / (0.5 * self.sample_rate as f32)).exp();
+            for f in 0..frames {
+                let peak = (0..ch).map(|c| out[f * ch + c].abs()).fold(0.0f32, f32::max);
+                let want = if peak * *g > 0.9 { 0.9 / peak } else { 1.0 };
+                *g = if want < *g { want } else { want + (*g - want) * release };
+                for c in 0..ch {
+                    out[f * ch + c] = soft_clip(out[f * ch + c] * *g);
+                }
+            }
+        }
         for s in out.iter_mut() {
             *s = if self.muted { 0.0 } else { s.clamp(-1.0, 1.0) };
         }
@@ -374,7 +392,7 @@ impl AudioEngine {
                         voices: Mutex::new(Vec::new()),
                         updates: Mutex::new(Vec::new()),
                         listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()),
+                        reverb: Mutex::new(Reverb::default()), limiter: Mutex::new(1.0),
                         sample_rate: rate,
                         channels,
                         muted: muted(),
@@ -423,7 +441,7 @@ impl AudioEngine {
                 voices: Mutex::new(Vec::new()),
                 updates: Mutex::new(Vec::new()),
                 listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()),
+                        reverb: Mutex::new(Reverb::default()), limiter: Mutex::new(1.0),
                 sample_rate: rate,
                 channels,
                 muted: muted(),
@@ -637,7 +655,7 @@ mod tests {
 
     fn shared() -> Shared {
         Shared { voices: Mutex::new(Vec::new()), updates: Mutex::new(Vec::new()), listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()), sample_rate: 48_000, channels: 1, muted: false }
+                        reverb: Mutex::new(Reverb::default()), limiter: Mutex::new(1.0), sample_rate: 48_000, channels: 1, muted: false }
     }
 
     fn voice(clip: Arc<Clip>, gain: f32) -> Voice {
@@ -758,5 +776,25 @@ mod distance_tests {
         assert_eq!(super::distance_gain(2.0, 1.0), 1.0);
         assert!((super::distance_gain(2.0, 4.0) - 0.5).abs() < 1e-6);
         assert!((super::distance_gain(1.0, 10.0) - 0.1).abs() < 1e-6);
+    }
+}
+
+/// Past 0.9 a sample is bent smoothly towards 1 instead of being cut off there.
+fn soft_clip(x: f32) -> f32 {
+    let a = x.abs();
+    if a <= 0.9 {
+        x
+    } else {
+        x.signum() * (0.9 + 0.1 * ((a - 0.9) / 0.1).tanh())
+    }
+}
+
+#[cfg(test)]
+mod limiter_tests {
+    #[test]
+    fn soft_clip_is_smooth_and_bounded() {
+        assert_eq!(super::soft_clip(0.5), 0.5);
+        assert!(super::soft_clip(3.0) <= 1.0 && super::soft_clip(-3.0) >= -1.0);
+        assert!(super::soft_clip(0.95) > 0.9 && super::soft_clip(0.95) < 0.95);
     }
 }

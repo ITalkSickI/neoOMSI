@@ -329,6 +329,13 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         toggle_setting(ui, s, dirty, row(&mut y), "Detail texturing up close", "detail_textures");
     }
     toggle_setting(ui, s, dirty, row(&mut y), "Reflection maps (paint, chrome, glass)", "reflections");
+    // (a Mac has Metal only; elsewhere a driver's Vulkan that misbehaves, or a card without
+    // it, is got round here)
+    if cfg!(windows) {
+        sel_setting(ui, s, dirty, "s-api", row(&mut y), "Graphics API", "graphics_api", &[("auto", "Automatic"), ("vulkan", "Vulkan"), ("dx12", "DirectX 12"), ("gl", "OpenGL")]);
+    } else if !cfg!(target_os = "macos") {
+        sel_setting(ui, s, dirty, "s-api", row(&mut y), "Graphics API", "graphics_api", &[("auto", "Automatic"), ("vulkan", "Vulkan"), ("gl", "OpenGL")]);
+    }
     toggle_setting(ui, s, dirty, row(&mut y), "Clouds", "clouds");
     toggle_setting(ui, s, dirty, row(&mut y), "Fullscreen", "fullscreen");
     toggle_setting(ui, s, dirty, row(&mut y), "V-sync", "vsync");
@@ -504,9 +511,35 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         s["volume"] = json!((vol * 100.0).round() / 100.0);
         *dirty = 0.3;
     }
+    toggle_setting(ui, s, dirty, row(&mut y), "Steering linearity (keys at OMSI's steady pace)", "steering_linear");
+    toggle_setting(ui, s, dirty, row(&mut y), "Old Steering (the wheel stays, turn it back yourself)", "old_steering");
     let mut ms = get(s, "mouse_sens").as_f64().unwrap_or(1.0) as f32;
     if ui.slider("s-mouse", row(&mut y), &mut ms, 0.25, 2.0, 0.05, "Mouse steering (O)", &|v| if (v - 1.0).abs() < 0.01 { "OMSI".to_string() } else { format!("{:.0}%", v * 100.0) }) {
         s["mouse_sens"] = json!((ms * 100.0).round() / 100.0);
+        *dirty = 0.3;
+    }
+    // steering wheels: the wheel's own rotation and how much of it is the bus's full lock
+    // (a real bus: about two and a half turns), force feedback the other way round
+    let mut range = get(s, "wheel_range").as_f64().unwrap_or(900.0) as f32;
+    if ui.slider("s-wrange", row(&mut y), &mut range, 180.0, 1800.0, 30.0, "Wheel rotation", &|v| format!("{v:.0}°")) {
+        s["wheel_range"] = json!(range.round());
+        *dirty = 0.3;
+    }
+    let mut lock = get(s, "wheel_lock").as_f64().unwrap_or(0.0) as f32;
+    if ui.slider("s-wlock", row(&mut y), &mut lock, 0.0, 1800.0, 30.0, "Full lock at", &|v| if v < 45.0 { "OMSI".to_string() } else { format!("{v:.0}°") }) {
+        s["wheel_lock"] = json!(if lock < 45.0 { 0.0 } else { lock.round() });
+        *dirty = 0.3;
+    }
+    toggle_setting(ui, s, dirty, row(&mut y), "Invert force feedback", "ff_invert");
+    if ui.button("s-wreset", row(&mut y), "Reset wheel settings", Some("restart_alt"), ButtonKind::Normal) {
+        s["wheel_range"] = json!(900.0);
+        s["wheel_lock"] = json!(0.0);
+        s["ff_invert"] = json!(false);
+        *dirty = 0.3;
+    }
+    let mut fov = get(s, "fov").as_f64().unwrap_or(0.0) as f32;
+    if ui.slider("s-fov", row(&mut y), &mut fov, 0.0, 120.0, 1.0, "Field of view", &|v| if v < 20.0 { "Default".to_string() } else { format!("{v:.0}°") }) {
+        s["fov"] = json!(if fov < 20.0 { 0.0 } else { fov.round() });
         *dirty = 0.3;
     }
     toggle_setting(ui, s, dirty, row(&mut y), "Doppler effect", "doppler");
@@ -525,6 +558,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     toggle_setting(ui, s, dirty, row(&mut y), "Start at the real time", "use_real_time");
     toggle_setting(ui, s, dirty, row(&mut y), "Start on today's date", "use_real_date");
     toggle_setting(ui, s, dirty, row(&mut y), "Collisions with vehicles", "collision_vehicles");
+    toggle_setting(ui, s, dirty, row(&mut y), "Collisions with objects (walls, poles)", "collision_objects");
     toggle_setting(ui, s, dirty, row(&mut y), "Collisions with people", "collision_pedestrians");
     toggle_setting(ui, s, dirty, row(&mut y), "Head moves with the bus", "head_movement");
     // (in multiplayer the host's or the server's speed counts)
@@ -767,6 +801,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let mut add: Option<String> = None;
     let mut sel = pv.selected;
     let list_r = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 108.0);
+    let offs: Vec<String> = l.state.settings.get("ctrl_off").and_then(|v| v.as_str()).unwrap_or("").split('|').map(str::to_string).filter(|s| !s.is_empty()).collect();
     {
         let ui = &mut l.ui;
         let devices = &*devices;
@@ -775,12 +810,17 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             let mut y = v.y;
             for (i, d) in devices.iter().enumerate() {
                 let on = connected.iter().any(|c| crate::controllers::names_match(&d.name, &c.name));
+                let switched_off = offs.iter().any(|o| o.eq_ignore_ascii_case(&d.name));
                 let r = Rect::new(v.x + 6.0, y, v.w - 12.0, 44.0);
                 if ui.row(&format!("pad-{i}"), r, sel == i) {
                     sel = i;
                 }
                 ui.text_in(&d.name, Rect::new(r.x + 12.0, r.y, r.w - 40.0, r.h), 13.0, Weight::Medium, if on { TEXT } else { TEXT_DIM }, Align::Left);
-                ui.icon(if on { "check_circle" } else { "remove" }, Vec2::new(r.right() - 18.0, r.center().y), 16.0, if on { OK } else { TEXT_FAINT });
+                if switched_off {
+                    ui.text_in("off", Rect::new(r.right() - 40.0, r.y, 30.0, r.h), 11.5, Weight::Bold, TEXT_FAINT, Align::Right);
+                } else {
+                    ui.icon(if on { "check_circle" } else { "remove" }, Vec2::new(r.right() - 18.0, r.center().y), 16.0, if on { OK } else { TEXT_FAINT });
+                }
                 y += 48.0;
             }
             for c in connected.iter().filter(|c| !devices.iter().any(|d| crate::controllers::names_match(&d.name, &c.name))) {
@@ -848,6 +888,19 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             None => {}
         }
         return;
+    }
+    // this device on or off (a second listing of the same wheel, a device not to be used)
+    {
+        let offs: Vec<String> = l.state.settings.get("ctrl_off").and_then(|v| v.as_str()).unwrap_or("").split('|').map(str::to_string).filter(|s| !s.is_empty()).collect();
+        let mut on = !offs.iter().any(|o| o.eq_ignore_ascii_case(&d.name));
+        if l.ui.toggle("pad-on", Rect::new(inner.right() - 400.0, inner.y - 36.0, 170.0, 30.0), &mut on, "Use this device") {
+            let mut offs: Vec<String> = offs.into_iter().filter(|o| !o.eq_ignore_ascii_case(&d.name)).collect();
+            if !on {
+                offs.push(d.name.clone());
+            }
+            l.state.settings["ctrl_off"] = json!(offs.join("|"));
+            l.state.settings_dirty = 0.3;
+        }
     }
     if l.ui.button("pad-wizard", Rect::new(inner.right() - 220.0, inner.y - 36.0, 220.0, 30.0), "Set up step by step", Some("touch_app"), ButtonKind::Normal) {
         pv.wizard = Some(Wizard { step: 0, rest: [None; 8], at: Vec::new(), error: None });

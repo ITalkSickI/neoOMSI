@@ -332,6 +332,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
     lan_mods::remove_stale();
     if let Some(l) = lan.as_mut() {
         lan::share_mods(&mut args, l);
+        lan::take_host_map(&mut args, l);
     }
     if let (Some(cfg), Some(l)) = (server_cfg.as_ref(), lan.as_ref()) {
         lan::open_public_gateway(l, server::info_of(cfg), cfg.web_port, cfg.tunnel);
@@ -440,6 +441,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         mouse_drive: false,
         mouse_steer: (0.0, 0.0),
         mouse_pedals: (0.0, 0.0),
+        mouse_kmh: 0.0,
         tutorial: None,
         ego: false,
         on_foot: None,

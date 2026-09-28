@@ -225,15 +225,24 @@ impl Devices {
     /// The devices connected, with their axes as last read.
     pub fn connected(&self) -> Vec<Connected> {
         let mut v = Vec::new();
+        // (Windows: an Xbox-type pad is gilrs's - the system's own layout -, everything else
+        // DirectInput's; a wheel that a community mapping makes a "gamepad" in gilrs was
+        // listed twice, "Logitech G29" beside "G29 Driving Force Racing Wheel")
+        let xinput_pads = self.gilrs.as_ref().is_some_and(|g| g.gamepads().any(|(_, p)| p.mapping_source() == gilrs::MappingSource::Driver));
         #[cfg(windows)]
         if let Some(d) = self.di.as_ref() {
-            v.extend(d.devices.iter().map(|d| Connected { name: d.name.clone(), axes: d.axes(), gamepad: false, ff: d.has_ff(), buttons: d.buttons.min(128) }));
+            v.extend(
+                d.devices
+                    .iter()
+                    .filter(|d| !(xinput_pads && xinput_name(&d.name)))
+                    .map(|d| Connected { name: d.name.clone(), axes: d.axes(), gamepad: false, ff: d.has_ff(), buttons: d.buttons.min(128) }),
+            );
         }
+        let _ = xinput_pads;
         if let Some(g) = self.gilrs.as_ref() {
             for (_, pad) in g.gamepads() {
                 let gamepad = pad.mapping_source() != gilrs::MappingSource::None;
-                // (DirectInput lists the rest)
-                if self.direct_input() && !gamepad {
+                if self.direct_input() && pad.mapping_source() != gilrs::MappingSource::Driver {
                     continue;
                 }
                 if v.iter().any(|c: &Connected| names_match(&c.name, pad.name())) {
@@ -244,6 +253,13 @@ impl Devices {
         }
         v
     }
+}
+
+/// A DirectInput name of an Xbox-type pad (which gilrs lists with the system's layout).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn xinput_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("xbox") || n.contains("xinput") || n.starts_with("controller (")
 }
 
 /// The handle of `window` for DirectInput (Windows; elsewhere nothing is needed).
@@ -280,6 +296,13 @@ pub struct Controllers {
     pub enabled: bool,
     /// The settings' dead zone round the centre of a set-up device's axes (0..0.3).
     pub deadzone: f32,
+    /// Devices switched off (Settings: `ctrl_off`): not read at all.
+    pub disabled: Vec<String>,
+    /// Force feedback the other way round (Settings: `ff_invert`).
+    pub ff_invert: bool,
+    /// The wheel's rotation over the rotation that is the bus's full lock (Settings:
+    /// `wheel_range` / `wheel_lock`; 1 = the whole wheel is the full lock, as OMSI).
+    pub steer_gain: f32,
     /// Key actions of buttons pressed (true) and released (false) since the last poll.
     pub actions: Vec<(String, bool)>,
     /// Devices told about in the log (and on the screen) as not set up.
@@ -302,13 +325,16 @@ impl Controllers {
         for c in devices.connected() {
             log::info!("game controller: {} ({})", c.name, if cfg.iter().any(|d| names_match(&d.name, &c.name)) { "set up in gamectrler.cfg" } else if c.gamepad { "as a gamepad" } else { "not set up: its X axis steers" });
         }
-        Controllers { devices, cfg, deadzone: 0.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
+        Controllers { devices, cfg, deadzone: 0.0, disabled: Vec::new(), ff_invert: false, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
     }
 
     /// Read the devices: the analog controls, and the button actions into `actions`.
     pub fn poll(&mut self) -> Analog {
         let mut out = Analog::default();
         for (name, n, down) in self.devices.poll() {
+            if self.off(&name) {
+                continue;
+            }
             if let Some(action) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.buttons.get(n)).filter(|a| !a.0.is_empty()) {
                 self.actions.push((action.0.clone(), down));
             }
@@ -319,7 +345,8 @@ impl Controllers {
         // the devices set up in gamectrler.cfg first; a device the file does not know only
         // gives what none of them does - a pad lying beside a set-up wheel held the steering
         // at its own centre, whichever the system listed first
-        let mut pads: Vec<(Option<&DeviceCfg>, Connected)> = self.devices.connected().into_iter().map(|c| (self.cfg.iter().find(|d| names_match(&d.name, &c.name)), c)).collect();
+        let off = self.disabled.clone();
+        let mut pads: Vec<(Option<&DeviceCfg>, Connected)> = self.devices.connected().into_iter().filter(|c| !off.iter().any(|d| names_match(d, &c.name))).map(|c| (self.cfg.iter().find(|d| names_match(&d.name, &c.name)), c)).collect();
         pads.sort_by_key(|(cfg, _)| cfg.is_none());
         let mut steer: Option<(String, f32, bool)> = None;
         let dz = self.deadzone.clamp(0.0, 0.3);
@@ -338,6 +365,7 @@ impl Controllers {
                         let pedal = ((v + 1.0) * 0.5).clamp(0.0, 1.0);
                         match f {
                             Func::Steering => {
+                                let v = v * self.steer_gain;
                                 set(&mut out.steering, v.clamp(-1.0, 1.0));
                                 if steer.is_none() {
                                     steer = Some((c.name.clone(), v.clamp(-1.0, 1.0), c.ff));
@@ -364,7 +392,7 @@ impl Controllers {
                         self.notice = Some(format!("{} is not set up: it steers; set up its pedals and buttons in the launcher (Controls → Game controllers)", c.name));
                     }
                     if let Some((_, v)) = c.axes.iter().find(|(k, _)| *k == 0) {
-                        let v = v.signum() * ((v.abs() - dz.max(0.02)).max(0.0) / (1.0 - dz.max(0.02)));
+                        let v = v.signum() * ((v.abs() - dz.max(0.02)).max(0.0) / (1.0 - dz.max(0.02))) * self.steer_gain;
                         out.steering.get_or_insert(v.clamp(-1.0, 1.0));
                         if steer.is_none() {
                             steer = Some((c.name.clone(), v.clamp(-1.0, 1.0), c.ff));
@@ -374,9 +402,14 @@ impl Controllers {
             }
         }
         // gamepads: the left stick steers, the triggers are the pedals
+        let di = self.devices.direct_input();
+        let off = self.disabled.clone();
         if let Some(g) = self.devices.gilrs.as_ref() {
             for (_, pad) in g.gamepads() {
                 if pad.mapping_source() == gilrs::MappingSource::None || self.cfg.iter().any(|d| names_match(&d.name, pad.name())) {
+                    continue;
+                }
+                if (di && pad.mapping_source() != gilrs::MappingSource::Driver) || off.iter().any(|d| names_match(d, pad.name())) {
                     continue;
                 }
                 let x = pad.value(Axis::LeftStickX);
@@ -404,6 +437,7 @@ impl Controllers {
             // (the file's [FFScale] of the device: springs and drag, the effects)
             let (k_s, k_e) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
             let force = if on { wheel_force(&f, x, x0, &mut self.ff_t, k_s, k_e) } else { 0.0 };
+            let force = if self.ff_invert { -force } else { force };
             di.set_force(&name, force);
             return;
         }
@@ -450,6 +484,10 @@ impl Controllers {
             let _ = e.play();
             self.rumble = Some((e, amp, period));
         }
+    }
+
+    fn off(&self, name: &str) -> bool {
+        self.disabled.iter().any(|d| names_match(d, name))
     }
 
     /// Any controller there at all.

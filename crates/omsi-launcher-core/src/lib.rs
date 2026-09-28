@@ -187,6 +187,7 @@ pub fn omsi_options(root: &Path) -> Option<OmsiOptions> {
     // flags: present or not
     v["head_movement"] = json!(o.flag("driverview_moving"));
     v["collision_vehicles"] = json!(!o.flag("no_collision_vehtoveh"));
+    v["collision_objects"] = json!(!o.flag("no_collision"));
     v["driver"] = json!(o.flag("see_own_driver"));
     if let Some(x) = num("ticketselling") {
         v["boarding"] = json!(if x > 0.5 { "pay" } else { "auto" });
@@ -1453,11 +1454,11 @@ pub fn graphics_mode(v: &str) -> &'static str {
 pub fn settings_from_text(text: Option<&str>) -> Value {
     let mut v = json!({ "msaa": 4, "anisotropy": 8, "ssao": true, "shadows": true, "shadow_size": 2048, "navigator": true, "navigator_opacity": 0.85, "navigator_corner": "bottom-left", "boarding": "auto", "detail_textures": true, "exact_fare": true, "enhanced": false, "graphics": "vanilla_plus", "fullscreen": false, "vsync": true, "volume": 0.6, "drive_keys": "simple", "render_scale": "auto", "view_distance": "auto", "language": "ENG", "texture_memory": 0, "texture_compression": true, "chat": true, "tooltips": true, "name_tags": true, "show_fps": false, "clouds": true, "pax_density": 1.0, "vol_ai": 1.0, "vol_scenery": 1.0, "mirror_size": 256, "doppler": true, "driver": true, "max_fps": 0, "min_obj_size": 0.013, "max_obj_dist": "auto" });
     // OMSI's own options
-    for (k, d) in [("maintenance", json!(0)), ("ai_unsched_factor", json!(100)), ("ai_max_scheduled", json!(0)), ("ai_max_parked", json!(0)), ("use_real_time", json!(false)), ("use_real_date", json!(false)), ("use_real_year", json!(false)), ("collision_vehicles", json!(true)), ("collision_pedestrians", json!(true)), ("head_movement", json!(true))] {
+    for (k, d) in [("maintenance", json!(0)), ("ai_unsched_factor", json!(100)), ("ai_max_scheduled", json!(0)), ("ai_max_parked", json!(0)), ("use_real_time", json!(false)), ("use_real_date", json!(false)), ("use_real_year", json!(false)), ("collision_vehicles", json!(true)), ("collision_objects", json!(true)), ("collision_pedestrians", json!(true)), ("head_movement", json!(true))] {
         v[k] = d;
     }
     // openOMSI's own: what passengers say, OMSI's route arrows, getting up from the seat
-    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all")), ("reflections", json!(true)), ("mouse_sens", json!(1.0))] {
+    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all")), ("reflections", json!(true)), ("mouse_sens", json!(1.0)), ("graphics_api", json!("auto")), ("ctrl_off", json!("")), ("steering_linear", json!(false)), ("old_steering", json!(false)), ("ff_invert", json!(false)), ("wheel_range", json!(900.0)), ("wheel_lock", json!(0.0)), ("fov", json!(0.0))] {
         v[k] = d;
     }
     // updates from the GitHub releases: looked for when the launcher starts, installed
@@ -1483,13 +1484,18 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
             "pax_density" => v[&k] = json!(val.trim_end_matches('%').parse::<f64>().map(|x| if x > 5.0 { x / 100.0 } else { x }).unwrap_or(1.0)),
             "mirror_size" | "max_fps" => v[&k] = json!(val.parse::<f64>().map(|x| x as i64).unwrap_or(0)),
             "max_obj_dist" => v[&k] = if val.eq_ignore_ascii_case("auto") { json!("auto") } else { json!(val.parse::<f64>().map(|m| (m.round() as i64).to_string()).unwrap_or_else(|_| "auto".into())) },
-            "ssao" | "shadows" | "navigator" | "enhanced" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_pedestrians" | "head_movement" => v[&k] = json!(b(val)),
+            "ssao" | "shadows" | "navigator" | "enhanced" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_objects" | "collision_pedestrians" | "head_movement" => v[&k] = json!(b(val)),
             "maintenance" | "ai_unsched_factor" | "ai_max_scheduled" | "ai_max_parked" => v[&k] = json!(val.trim_end_matches('%').parse::<f64>().map(|x| x.max(0.0) as i64).unwrap_or(0)),
             "drive_keys" | "navigator_corner" | "boarding" | "render_scale" | "pax_voices" => v[&k] = json!(val),
+            "ctrl_off" => v[&k] = json!(val),
+            "graphics_api" => v[&k] = json!(match val.to_ascii_lowercase().as_str() { "vulkan" => "vulkan", "dx12" => "dx12", "gl" => "gl", _ => "auto" }),
             "shadow_casters" => v[&k] = json!(if val.eq_ignore_ascii_case("omsi") { "omsi" } else { "all" }),
             "ctrl_deadzone" => v[&k] = json!(val.parse::<f64>().unwrap_or(0.0).clamp(0.0, 0.3)),
             "mouse_sens" => v[&k] = json!(val.parse::<f64>().unwrap_or(1.0).clamp(0.25, 2.0)),
-            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" | "reflections" => v[&k] = json!(b(val)),
+            "wheel_range" => v[&k] = json!(val.parse::<f64>().unwrap_or(900.0).clamp(90.0, 2880.0)),
+            "wheel_lock" => v[&k] = json!(val.parse::<f64>().map(|x| if x < 45.0 { 0.0 } else { x.min(2880.0) }).unwrap_or(0.0)),
+            "fov" => v[&k] = json!(val.parse::<f64>().map(|x| if x < 20.0 { 0.0 } else { x.min(120.0) }).unwrap_or(0.0)),
+            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" | "reflections" | "steering_linear" | "old_steering" | "ff_invert" => v[&k] = json!(b(val)),
             "time_speed" => v[&k] = json!(val.trim_start_matches(['x', 'X']).parse::<f64>().map(|x| x.clamp(1.0, 30.0)).map(|x| if x.fract() == 0.0 { format!("{}", x as i64) } else { x.to_string() }).unwrap_or_else(|_| "1".into())),
             "language" => v[&k] = json!(language_code(val)),
             "graphics" | "renderer" => graphics = Some(graphics_mode(val)),
@@ -1668,7 +1674,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
     // OMSI's own options (options.cfg): maintenance ([wear_lifespan]), the AI counts and
     // the share of random traffic, the real clock and calendar, collisions, head movement
     let text = format!(
-        "{text}maintenance={}\nai_unsched_factor={}\nai_max_scheduled={}\nai_max_parked={}\nuse_real_time={}\nuse_real_date={}\nuse_real_year={}\ncollision_vehicles={}\ncollision_pedestrians={}\nhead_movement={}\n",
+        "{text}maintenance={}\nai_unsched_factor={}\nai_max_scheduled={}\nai_max_parked={}\nuse_real_time={}\nuse_real_date={}\nuse_real_year={}\ncollision_vehicles={}\ncollision_objects={}\ncollision_pedestrians={}\nhead_movement={}\n",
         n("maintenance", 0).clamp(0, 4),
         n("ai_unsched_factor", 100).clamp(0, 300),
         n("ai_max_scheduled", 0).max(0),
@@ -1677,11 +1683,12 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("use_real_date", false),
         b("use_real_year", false),
         b("collision_vehicles", true),
+        b("collision_objects", true),
         b("collision_pedestrians", true),
         b("head_movement", true),
     );
     let text = format!(
-        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nreflections={}\nmouse_sens={}\n",
+        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nreflections={}\nmouse_sens={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\n",
         match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
             "tickets" => "tickets",
             "off" => "off",
@@ -1701,6 +1708,19 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("update_auto", false),
         b("reflections", true),
         f("mouse_sens", 1.0).clamp(0.25, 2.0),
+        match v.get("graphics_api").and_then(|x| x.as_str()).unwrap_or("auto") {
+            "vulkan" => "vulkan",
+            "dx12" => "dx12",
+            "gl" => "gl",
+            _ => "auto",
+        },
+        v.get("ctrl_off").and_then(|x| x.as_str()).unwrap_or("").replace(['\n', '\r'], " "),
+        b("steering_linear", false),
+        b("old_steering", false),
+        b("ff_invert", false),
+        f("wheel_range", 900.0).clamp(90.0, 2880.0),
+        f("wheel_lock", 0.0).clamp(0.0, 2880.0),
+        f("fov", 0.0).clamp(0.0, 120.0),
     );
     // what the page does not manage (keys of newer games, hand-written ones) stays as it
     // was in the file; other spellings of the keys just written go

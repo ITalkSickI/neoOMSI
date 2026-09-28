@@ -693,7 +693,8 @@ impl Launcher {
         // the storage browser (or the update dialog) lies over the page: the page sees no
         // finger meanwhile
         let dialog = self.update_dialog_open();
-        let saved = (self.browser.is_some() || dialog).then(|| {
+        let crash = !dialog && self.state.crash.is_some();
+        let saved = (self.browser.is_some() || dialog || crash).then(|| {
             let i = self.ui.input.clone();
             self.ui.input.mouse = Vec2::new(-1e4, -1e4);
             self.ui.input.pressed = false;
@@ -742,6 +743,8 @@ impl Launcher {
             self.ui.input = i;
             if dialog {
                 self.draw_update_dialog();
+            } else if crash {
+                self.draw_crash_dialog();
             } else {
                 self.draw_browser();
             }

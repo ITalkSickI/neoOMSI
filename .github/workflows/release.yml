@@ -55,6 +55,21 @@ jobs:
       - name: Build
         shell: cmd
         run: scripts\build-windows.cmd ${{ matrix.target }}
+      # Microsoft's shader compiler for DirectX 12 (dxcompiler.dll, dxil.dll beside the
+      # program): without it wgpu falls back to the old FXC, which is slow and refuses
+      # some of the game's shaders. DirectX 12 is the way round a Vulkan driver that fails.
+      - name: DirectX shader compiler
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R microsoft/DirectXShaderCompiler --pattern "dxc_*.zip" -D dxc
+          $zip = Get-ChildItem dxc/*.zip | Where-Object { $_.Name -notmatch "linux|pdb" } | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath dxc/x
+          $arch = if ("${{ matrix.arch }}" -eq "arm64") { "arm64" } else { "x64" }
+          Copy-Item "dxc/x/bin/$arch/dxcompiler.dll", "dxc/x/bin/$arch/dxil.dll" dist/windows/
+          Get-ChildItem dist/windows
       - name: Package
         shell: pwsh
         run: |

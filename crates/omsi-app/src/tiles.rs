@@ -138,7 +138,11 @@ impl MapIndex {
             }
             if let Some((acc, _)) = chain_distance(&index, master_spline, *spline, f64::MAX) {
                 checked += 1;
-                agree += (((acc - d) / interval + 1e-6).ceil().max(0.0) as usize == *first) as usize;
+                let ours = ((acc - d) / interval + 1e-6).ceil().max(0.0) as usize;
+                agree += (ours == *first) as usize;
+                if ours != *first && omsi_cfg::env::var_os("OMSI_DEBUG_REPEATERS").is_some() {
+                    log::info!("repeater {:?} on spline {spline}: the map says object {first}, the chain {ours} (chain {acc:.2} m, start {d:.2} m, interval {interval} m: the map's first at {:.2} m, ours at {:.2} m)", key, d + *first as f64 * interval - acc, d + ours as f64 * interval - acc);
+                }
             }
         }
         log::info!("map index: {} tiles read ({} unreadable), {} splines, {} objects, {} attachment rows ({} repeaters, {agree} of the {checked} on a known chain start where the map says), {} object and spline files in {:.2} s", index.tiles_read, index.tiles_failed, index.splines.len(), index.objects.len(), index.masters.len(), rows.1.len(), index.files.len(), t0.elapsed().as_secs_f64());

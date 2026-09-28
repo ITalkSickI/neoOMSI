@@ -147,7 +147,10 @@ budget.
    Traffic lights (crossing phase programs, lamp objects), CTC paint schemes, scheduled AI
    buses driving timetable tracks with stops (`omsi-app::schedule`, `--schedule --time`).
    Simple collisions: oriented obstacle boxes from placed objects ([boundingbox] or mesh
-   extents) stop the player vehicle and feed coll_* sysvars. **(done)**
+   extents) stop the player vehicle and feed coll_* sysvars. **(done)** As in Omsi.exe
+   (0x7af0a4) only `[fixed]` and `[crashmode_pole]` objects are solid (a collision mesh if
+   they have one, else their `[boundingbox]`), and none with `collision_objects=0` (OMSI's
+   `no_collision`).
    Passengers, first pass: skinned `.hum` models posed procedurally from the `[links]`
    joints (stand / walk / sit), waiting at `[busstop]` objects, boarding the player's bus
    through the open entry door into `[passpos]` seats, leaving at later stops
@@ -1006,7 +1009,18 @@ Reverse engineered from Omsi.exe and put in place of our own guesses:
   side slip, roll, roll frequency and settling per file.
 * **Mouse steering** (0x6f4284): the window's full width is the full lock, divided by
   max(1, km/h / 10); a one-second ease-in after switching on; the mouse owns the wheel (a
-  steering key's leftover no longer takes over when the cursor passes the middle).
+  steering key's leftover no longer takes over when the cursor passes the middle). The speed
+  in that divisor is smoothed over 0.4 s and the wheel eases towards its target in 60 ms: the
+  raw speed made the wheel creep on by itself and come back in steps.
+* **Keyboard steering and pedals** (sub_7e614c / sub_7d5124): OMSI's curvature grows by
+  0.00005 per ms a key is held (`steering_linear`), `old_steering` leaves it where it is when
+  the key is let go; the clutch key presses the pedal at once and it comes up at 0.7/s.
+* **Graphics device.** The instance asks Vulkan, then DirectX 12 (Windows), then OpenGL
+  (`graphics_api`, `OMSI_BACKEND`); a card below wgpu's default limits gets its own limits
+  (the shadow map and any texture larger than the card takes are scaled down to fit). A GPU
+  validation error is logged and the game goes on (wgpu's default handler ended it), and the
+  launcher says when a game ended on a lost device and offers DirectX 12. The Windows
+  download carries `dxcompiler.dll` and `dxil.dll` for DirectX 12's shader compiler.
 * **Mirrors**: `[add_camera_reflexion]` cameras sit in the body's own matrix (pitch and roll
   included, `Camera::roll`); `dist` puts the eye behind the point; the 8th value of
   `[add_camera_reflexion_2]` is the radius of the sphere OMSI tests against the view frustum

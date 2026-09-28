@@ -1233,7 +1233,7 @@ impl Renderer {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: surface, force_fallback_adapter: false, ..Default::default() })
             .await
-            .map_err(|e| anyhow!("no compatible Metal/Vulkan graphics adapter (on Windows, install the GPU vendor driver with Vulkan support): {e}"))?;
+            .map_err(|e| anyhow!("no graphics adapter that can draw the game was found (Metal, Vulkan, DirectX 12 or OpenGL 3.3 or later); updating the graphics driver often helps: {e}"))?;
         let info = adapter.get_info();
         // What the textures may take on this adapter (wgpu does not tell a card's memory):
         // a discrete card is taken for one of 2-4 GB, whose rest the pictures (the render
@@ -1286,6 +1286,21 @@ impl Renderer {
                 adapter.limits().max_storage_buffer_binding_size;
             limits.max_buffer_size = adapter.limits().max_buffer_size;
         }
+        // an older or smaller graphics chip (an OpenGL one, a GT 530) does not reach the
+        // WebGPU defaults: asked for them anyway, the device was never opened
+        if !limits.check_limits(&adapter.limits()) {
+            log::warn!("{}: below the standard limits; using what it has", info.name);
+            limits = adapter.limits();
+        }
+        // OMSI_GPU_LIMITS=default|downlevel: the WebGPU defaults (or the downlevel ones) and
+        // nothing more, whatever this machine could do - to find what a stricter driver refuses
+        match omsi_cfg::env::var("OMSI_GPU_LIMITS").as_deref() {
+            Ok("default") => limits = wgpu::Limits::default(),
+            Ok("downlevel") => limits = wgpu::Limits::downlevel_defaults(),
+            _ => {}
+        }
+        // the shadow atlas is two maps wide: no wider than the card draws
+        let shadow_size = shadow_size.min(limits.max_texture_dimension_2d / 2).max(256);
         let format = format
             .or_else(|| {
                 surface.map(|s| {
@@ -1439,8 +1454,11 @@ impl Renderer {
     ) -> Renderer {
         let (msaa, shadow_size) = (options.msaa, options.shadow_size);
         // A GPU error while multisampling is on is logged and switches multisampling off
-        // at the next frame (`render_inner`); without multisampling every error stays
-        // fatal as with wgpu's own handler, but it reaches the log first.
+        // at the next frame (`render_inner`). Otherwise it is logged and the game goes on:
+        // wgpu's own handler ends the process, and one call a driver refused (a limit of
+        // that card, a bigger map than the last) closed the game a few seconds into the
+        // drive - a wrong picture for a frame is better than no game. The first errors and
+        // then every thousandth reach the log.
         let gpu_error = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let device_lost: Arc<std::sync::Mutex<Option<String>>> = Default::default();
         {
@@ -1456,13 +1474,13 @@ impl Renderer {
         }
         {
             let flag = gpu_error.clone();
+            let count = Arc::new(std::sync::atomic::AtomicU64::new(0));
             device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
-                if msaa <= 1 {
-                    log::error!("wgpu error: {}", gpu_error_text(&e));
-                    panic!("wgpu error: {e}");
-                }
-                if !flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                    log::error!("GPU error with {msaa}x MSAA: {}", gpu_error_text(&e));
+                let n = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if msaa > 1 && !flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    log::error!("GPU error with {msaa}x MSAA (drawing without it from now on): {}", gpu_error_text(&e));
+                } else if n < 20 || n % 1000 == 0 {
+                    log::error!("GPU error #{} (the game goes on): {}", n + 1, gpu_error_text(&e));
                 }
             }));
         }
@@ -3727,6 +3745,9 @@ impl Renderer {
     }
 
     fn upload_texture_data(&self, data: &omsi_texture::TextureData) -> GpuTexture {
+        if let Some(small) = fit_texture(data, self.device.limits().max_texture_dimension_2d) {
+            return self.upload_texture_data(&small);
+        }
         if let Some(t) = prepare_texture(&self.device, &self.queue, data) {
             return t.0;
         }
@@ -8100,6 +8121,9 @@ pub fn prepare_texture(
     queue: &wgpu::Queue,
     data: &omsi_texture::TextureData,
 ) -> Option<PreparedTexture> {
+    if let Some(small) = fit_texture(data, device.limits().max_texture_dimension_2d) {
+        return prepare_texture(device, queue, &small);
+    }
     use omsi_texture::PixelFormat;
     let format = match data.format {
         PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -9535,5 +9559,63 @@ mod tests {
         assert_eq!(Renderer::clamp_slot_alpha(0.35, AlphaMode::Opaque), 1.0);
         assert_eq!(Renderer::clamp_slot_alpha(0.35, AlphaMode::Test), 0.35);
         assert_eq!(Renderer::clamp_slot_alpha(0.85, AlphaMode::Blend), 0.85);
+    }
+}
+
+/// A texture bigger than the graphics chip takes (`max` texels a side - 16384 on most, 2048
+/// or 4096 on older ones) made to fit: its smaller levels when it has them, else the picture
+/// halved until it fits. None when it fits as it is. A too big texture used to be a device
+/// error, and the material that used it one too.
+pub fn fit_texture(data: &omsi_texture::TextureData, max: u32) -> Option<omsi_texture::TextureData> {
+    use omsi_texture::PixelFormat;
+    let (w, h) = (data.width.max(1), data.height.max(1));
+    if w <= max && h <= max {
+        return None;
+    }
+    let mut k = 0u32;
+    while (w >> k).max(1) > max || (h >> k).max(1) > max {
+        k += 1;
+    }
+    if (k as usize) < data.levels.len() {
+        return Some(omsi_texture::TextureData { width: (w >> k).max(1), height: (h >> k).max(1), levels: data.levels[k as usize..].to_vec(), ..data.clone() });
+    }
+    // one level only: decode it and halve it
+    let mut rgba = match (data.format, data.levels.first()) {
+        (PixelFormat::Rgba8, Some(l)) => l.clone(),
+        (f, Some(l)) => omsi_texture::bc::decode(l, w, h, match f {
+            PixelFormat::Bc1 => omsi_texture::bc::Bc::Bc1 { punch: true },
+            PixelFormat::Bc2 => omsi_texture::bc::Bc::Bc2,
+            _ => omsi_texture::bc::Bc::Bc3,
+        }),
+        _ => return None,
+    };
+    let (mut cw, mut ch) = (w, h);
+    for _ in 0..k {
+        let (nw, nh) = ((cw / 2).max(1), (ch / 2).max(1));
+        let mut next = vec![0u8; (nw * nh * 4) as usize];
+        for y in 0..nh {
+            for x in 0..nw {
+                for c in 0..4 {
+                    let at = |xx: u32, yy: u32| rgba[((yy.min(ch - 1) * cw + xx.min(cw - 1)) * 4 + c) as usize] as u32;
+                    let v = at(2 * x, 2 * y) + at(2 * x + 1, 2 * y) + at(2 * x, 2 * y + 1) + at(2 * x + 1, 2 * y + 1);
+                    next[((y * nw + x) * 4 + c) as usize] = (v / 4) as u8;
+                }
+            }
+        }
+        rgba = next;
+        (cw, ch) = (nw, nh);
+    }
+    Some(omsi_texture::TextureData { width: cw, height: ch, format: PixelFormat::Rgba8, levels: vec![rgba], has_alpha: data.has_alpha, gpu_mips: true })
+}
+
+#[cfg(test)]
+mod fit_tests {
+    #[test]
+    fn a_big_picture_is_halved_until_it_fits() {
+        let data = omsi_texture::TextureData { width: 8, height: 4, format: omsi_texture::PixelFormat::Rgba8, levels: vec![vec![200; 8 * 4 * 4]], has_alpha: false, gpu_mips: true };
+        let small = super::fit_texture(&data, 2).unwrap();
+        assert_eq!((small.width, small.height), (2, 1));
+        assert_eq!(small.levels[0].len(), 2 * 4);
+        assert!(super::fit_texture(&data, 8).is_none());
     }
 }

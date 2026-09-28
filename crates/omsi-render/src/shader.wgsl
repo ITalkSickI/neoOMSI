@@ -246,7 +246,13 @@ fn light_map_at(p: vec3<f32>) -> vec3<f32> {
 fn light_map_mapped(m: vec4<f32>) -> bool {
     return m.y > 0.3 && m.y < 0.45;
 }
-@group(0) @binding(1) var<storage, read> models: array<mat4x4<f32>>;
+// (the model matrices as their columns, four vec4 each: some phone GPUs (Mali, Adreno) read an
+// array of matrices from a storage buffer wrongly, and every mesh came out flat and far away)
+@group(0) @binding(1) var<storage, read> models: array<vec4<f32>>;
+fn model_matrix(e: u32) -> mat4x4<f32> {
+    let k = e * 4u;
+    return mat4x4<f32>(models[k], models[k + 1u], models[k + 2u], models[k + 3u]);
+}
 // x: alpha multiplier, y: visible (0/1), zw: uv offset
 @group(0) @binding(2) var<storage, read> inst_params: array<vec4<f32>>;
 // the frame's draw list: the per-draw entry of each drawn instance. Draws of the same mesh
@@ -339,7 +345,7 @@ struct VsOut {
 @vertex
 fn vs_main(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     // Road surfaces (splines, crossings, markings, a vehicle's shadow blob) are pulled
@@ -378,7 +384,7 @@ fn vs_main(in: VsIn) -> VsOut {
 @vertex
 fn vs_shadow(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     out.clip = camera.light_view_proj * wp;
@@ -397,7 +403,7 @@ fn vs_shadow(in: VsIn) -> VsOut {
 @vertex
 fn vs_shadow_close(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     out.clip = camera.light_view_proj_close * wp;
@@ -416,7 +422,7 @@ fn vs_shadow_close(in: VsIn) -> VsOut {
 @vertex
 fn vs_shadow_far(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     out.clip = camera.light_view_proj_far * wp;

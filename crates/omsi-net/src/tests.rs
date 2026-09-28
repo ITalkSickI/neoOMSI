@@ -37,6 +37,33 @@ fn world(map: &str) -> WorldInfo {
 }
 
 #[test]
+fn an_info_with_everything_at_its_longest_fits_one_datagram() {
+    let mut p = pose(1.5);
+    p.id = 31;
+    p.name = "Ж".repeat(40);
+    p.bus = format!("Vehicles/{}/{}.bus", "Ü".repeat(60), "b".repeat(120));
+    p.paint = "Ö".repeat(70);
+    p.line = "Щ".repeat(20);
+    p.destination = "Weiden (Oberpfalz) Bahnhof/ZOB – über Stockerhut ".repeat(3);
+    p.tour = "ä".repeat(70);
+    p.figure = format!("Humans/{}/{}.hum", "é".repeat(60), "f".repeat(120));
+    p.texts = (0..MAX_TEXTS).map(|k| format!("{k}ß{}", "ñ".repeat(40))).collect();
+    let text = p.encode_info();
+    assert!(text.len() <= MAX_DATAGRAM, "{} bytes", text.len());
+    let parts: Vec<&str> = text.split('|').collect();
+    let q = Pose::decode_info(&parts).unwrap();
+    assert_eq!(q.bus, p.bus);
+    assert_eq!(q.figure, p.figure);
+    assert!(q.texts.len() < MAX_TEXTS);
+    // and an ordinary one keeps all its texts
+    let mut o = pose(1.5);
+    o.texts = (0..MAX_TEXTS).map(|k| format!("Text {k}")).collect();
+    let parts_o = o.encode_info();
+    let q = Pose::decode_info(&parts_o.split('|').collect::<Vec<_>>()).unwrap();
+    assert_eq!(q.texts, o.texts);
+}
+
+#[test]
 fn info_round_trip_and_cleaning() {
     let mut p = pose(1.5);
     p.id = 7;

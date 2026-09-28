@@ -48,6 +48,15 @@ pub struct KeyboardAxes {
     pub speed_kmh: f32,
     /// Rate of the steering wheel (fraction per second) while it swings back on its own.
     pub steer_vel: f32,
+    /// "Steering linearity": the keys turn the wheel as Omsi.exe does (0x7e64c6): the
+    /// curvature changes by 0.00005 per millisecond whatever the speed, so the wheel goes at
+    /// one steady pace; `lock_curvature` (`[inv_min_turnradius]`) turns that into a share
+    /// of the lock.
+    pub linear: bool,
+    /// "Old Steering": let go, the wheel stays where it is and is turned back by hand - OMSI
+    /// without `[autoCenter]`.
+    pub old_steering: bool,
+    pub lock_curvature: f32,
 }
 
 impl KeyboardAxes {
@@ -74,6 +83,9 @@ impl KeyboardAxes {
             clutch: self.clutch,
             steering: self.steering,
             speed_kmh: self.speed_kmh,
+            linear: self.linear,
+            old_steering: self.old_steering,
+            lock_curvature: self.lock_curvature,
             ..Default::default()
         };
     }
@@ -89,7 +101,14 @@ impl KeyboardAxes {
         let amp = if self.amplify_key { 3.0 } else { 1.0 };
         ramp(&mut self.throttle, self.throttle_key, 1.5 * amp, 3.0);
         ramp(&mut self.brake, self.brake_key, 1.5, 3.0);
-        ramp(&mut self.clutch, self.clutch_key, 3.0, 3.0);
+        // The clutch as Omsi.exe works it from a key (0x7e648f, 0x7d59c0): pressed, the
+        // pedal is down at once; let go, it comes up at 0.7 a second - a foot letting the
+        // clutch in, which is what makes a gear change on the keyboard smooth.
+        if self.clutch_key {
+            self.clutch = 1.0;
+        } else {
+            self.clutch = (self.clutch - 0.7 * dt).max(0.0);
+        }
         // Steering. A bus's wheel is about two and a half turns from lock to lock. It still
         // came back too slowly for how fast a key could turn it (1.25 s to full lock against
         // 15+ s to come back on its own), so every correction overshot and had to be walked
@@ -98,9 +117,17 @@ impl KeyboardAxes {
         // key turns the wheel at that same pace, only a tenth faster - never a swerve, because
         // a correction can only be as fast as the wheel would come back on its own anyway.
         let v = self.speed_kmh.abs();
-        let base = 0.8 / (1.0 + v / 45.0);
-        let back = base * (0.25 + 0.75 * (v / 25.0).min(1.0));
-        let rate = back * 1.1;
+        let (rate, back) = if self.linear {
+            // OMSI: 0.05 of curvature a second, from the middle to the lock in
+            // `[inv_min_turnradius]` / 0.05 seconds (2 s for a bus with a 10 m radius); it
+            // comes back (unless Old Steering) at the same pace, as `[autoCenter]` does
+            let r = (0.05 / self.lock_curvature.max(0.01)).clamp(0.05, 5.0);
+            (r, r)
+        } else {
+            let base = 0.8 / (1.0 + v / 45.0);
+            let back = base * (0.25 + 0.75 * (v / 25.0).min(1.0));
+            (back * 1.1, back)
+        };
         if self.neutral_key {
             self.steering = 0.0;
             self.steer_vel = 0.0;
@@ -109,6 +136,9 @@ impl KeyboardAxes {
             self.steer_vel = 0.0;
         } else if self.right_key {
             self.steering = (self.steering + rate * dt).min(1.0);
+            self.steer_vel = 0.0;
+        } else if self.old_steering {
+            // Old Steering: the wheel stays where the hands left it
             self.steer_vel = 0.0;
         } else {
             // Released: the wheel comes back at `back`, easing out over the last bit so that
@@ -128,6 +158,40 @@ impl KeyboardAxes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linear_and_old_steering_as_omsi() {
+        let mut a = KeyboardAxes { linear: true, old_steering: true, lock_curvature: 0.1, speed_kmh: 50.0, ..Default::default() };
+        a.right_key = true;
+        for _ in 0..100 {
+            a.update(0.01);
+        }
+        // 0.05 1/m a second against a lock of 0.1 1/m: half the lock in a second, at any speed
+        assert!((a.steering - 0.5).abs() < 1e-3, "{}", a.steering);
+        a.right_key = false;
+        for _ in 0..100 {
+            a.update(0.01);
+        }
+        assert!((a.steering - 0.5).abs() < 1e-3, "old steering: it stays");
+        a.old_steering = false;
+        for _ in 0..50 {
+            a.update(0.01);
+        }
+        assert!((a.steering - 0.25).abs() < 0.02, "it comes back at the same pace: {}", a.steering);
+    }
+
+    #[test]
+    fn the_clutch_goes_down_at_once_and_comes_up_slowly() {
+        let mut a = KeyboardAxes::default();
+        a.clutch_key = true;
+        a.update(0.01);
+        assert_eq!(a.clutch, 1.0);
+        a.clutch_key = false;
+        for _ in 0..100 {
+            a.update(0.01);
+        }
+        assert!((a.clutch - 0.3).abs() < 1e-3, "{}", a.clutch);
+    }
 
     /// A key turns the wheel at the pace it comes back to the middle with, only a tenth
     /// faster: a few seconds from the middle to full lock standing, quicker while rolling.

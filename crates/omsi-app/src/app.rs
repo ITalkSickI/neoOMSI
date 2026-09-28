@@ -101,6 +101,8 @@ pub(crate) struct App {
     pub(crate) mouse_steer: (f32, f32),
     /// The mouse's throttle and brake (eased in with the steering).
     pub(crate) mouse_pedals: (f32, f32),
+    /// The speed mouse steering divides by, smoothed.
+    pub(crate) mouse_kmh: f32,
     /// The tutorial being run (`--tutorial`), loaded on the first frame.
     pub(crate) tutorial: Option<crate::tutorial::Tutorial>,
     /// OMSI's pedestrian ("ego") view: the free camera walking at eye height on whatever
@@ -705,7 +707,8 @@ impl App {
             return;
         }
         if let Some(p) = self.player.as_mut() {
-            p.vehicle.collision = Some(w.collision.lock().clone());
+            // (OMSI's [no_collision]: no solid object stops the bus)
+            p.vehicle.collision = self.settings.collision_objects.then(|| w.collision.lock().clone());
         }
         match self.traffic.as_mut() {
             Some(t) => {

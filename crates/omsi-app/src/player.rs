@@ -752,6 +752,7 @@ impl Player {
         self.tick_startup(dt);
         self.tick_auto_drag(dt);
         self.axes.speed_kmh = self.vehicle.physics.velocity_kmh();
+        self.axes.lock_curvature = self.vehicle.ty.def.inv_min_turn_radius;
         self.axes.update(dt);
         let a = self.analog;
         self.vehicle.set_controls(omsi_sim::Controls {

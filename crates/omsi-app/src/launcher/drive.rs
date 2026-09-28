@@ -139,7 +139,27 @@ fn step_bus(l: &mut Launcher, r: Rect) {
             l.state.choice.paint = if sel == 0 { String::new() } else { v.paints[sel - 1].clone() };
             l.state.touched();
         }
-        // (the depot file is the map's, found by itself: see `State::default_hof`)
+        // the depot file (.hof): the map's for the date by default (see
+        // `State::default_hof`), or one of the bus's own chosen by hand - a bus often brings
+        // several for the same map
+        if v.hofs.len() > 1 || l.state.choice.hof_manual {
+            y += ROW + 8.0;
+            l.ui.label(Rect::new(r.x, y, 130.0, ROW), "Depot file");
+            let auto = l.state.default_hof();
+            let mut opts = vec![format!("Automatic ({auto})")];
+            opts.extend(v.hofs.iter().cloned());
+            let mut sel = if l.state.choice.hof_manual { v.hofs.iter().position(|h| h.eq_ignore_ascii_case(&l.state.choice.hof)).map(|i| i + 1).unwrap_or(0) } else { 0 };
+            if l.ui.select("hof", Rect::new(r.x + 130.0, y, r.w - 130.0, ROW), &mut sel, &opts) {
+                if sel == 0 {
+                    l.state.choice.hof_manual = false;
+                    l.state.choice.hof = auto;
+                } else {
+                    l.state.choice.hof_manual = true;
+                    l.state.choice.hof = v.hofs[sel - 1].clone();
+                }
+                l.state.touched();
+            }
+        }
         if !v.missing_packs.is_empty() {
             let text = format!(
                 "This bus takes its dashboard, steering wheel or ticket machine from {} - not installed. It will drive with those parts missing, as in OMSI 2; install {} (Mods page) to complete it.",

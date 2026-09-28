@@ -54,6 +54,8 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Navigator"), tr(on_off(app.navigator.as_ref().is_some_and(|n| n.enabled)))), "navigator".into()));
             out.push((format!("{}: {}", tr("Sun shadows"), tr(on_off(s.shadows))), "shadows".into()));
             out.push((format!("{}: {}", tr("Head movement"), tr(on_off(s.head_movement))), "head".into()));
+            out.push((format!("{}: {}", tr("Collisions with objects"), tr(on_off(s.collision_objects))), "coll_objects".into()));
+            out.push((format!("{}: {}", tr("Collisions with vehicles"), tr(on_off(s.collision_vehicles))), "coll_vehicles".into()));
             out.push((format!("{}: {}", tr("Steering with the mouse"), tr(on_off(app.mouse_drive))), "mouse".into()));
             out.push((format!("{}: {}", tr("Frame rate"), tr(on_off(s.show_fps))), "fps".into()));
         }
@@ -149,6 +151,20 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                 "head" => {
                     s.head_movement = !s.head_movement;
                     Some(("head_movement", (s.head_movement as u8).to_string()))
+                }
+                // (at once: stuck under a bridge a map made too low, the bus drives on)
+                "coll_objects" => {
+                    s.collision_objects = !s.collision_objects;
+                    let on = s.collision_objects;
+                    let cw = app.world.as_ref().map(|w| w.collision.lock().clone());
+                    if let Some(p) = app.player.as_mut() {
+                        p.vehicle.collision = cw.filter(|_| on);
+                    }
+                    Some(("collision_objects", (on as u8).to_string()))
+                }
+                "coll_vehicles" => {
+                    s.collision_vehicles = !s.collision_vehicles;
+                    Some(("collision_vehicles", (s.collision_vehicles as u8).to_string()))
                 }
                 "mouse" => {
                     app.mouse_drive = !app.mouse_drive;

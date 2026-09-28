@@ -1230,12 +1230,14 @@ fn seasonal_texture(name: &str, dirs: &[&Path]) -> bool {
 }
 
 pub fn texture_dirs(root: &Path, content_dir: &Path) -> Vec<PathBuf> {
-    let mut dirs = vec![content_dir.join("texture"), content_dir.to_path_buf()];
+    // (found whatever its case: `Texture` of a parked car's folder on Linux, whose file
+    // system tells `texture` from `Texture`, left the car white)
+    let mut dirs = vec![omsi_cfg::resolve_path(content_dir, "texture"), content_dir.to_path_buf()];
     // vehicle folders keep the model in `model\` and the textures in `texture\` next to it
     if let Some(parent) = content_dir.parent() {
-        dirs.push(parent.join("texture"));
+        dirs.push(omsi_cfg::resolve_path(parent, "texture"));
     }
-    dirs.push(root.join("Texture"));
+    dirs.push(omsi_cfg::resolve_path(root, "Texture"));
     dirs
 }
 
@@ -2039,7 +2041,7 @@ impl World {
             if !model.lods.is_empty() {
                 let start = model.lods[0].first_mesh;
                 for (i, md) in model.lod_meshes(0).iter().enumerate() {
-                    let mesh_path = omsi_cfg::resolve_path(&model_dir.join("model"), &md.file);
+                    let mesh_path = omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&model_dir, "model"), &md.file);
                     let mesh_path = if omsi_cfg::vfs::is_file(&mesh_path) {
                         mesh_path
                     } else {
@@ -2065,7 +2067,7 @@ impl World {
             for l in 1..model.lods.len() {
                 let mut list = Vec::new();
                 for md in model.lod_meshes(l) {
-                    let mesh_path = omsi_cfg::resolve_path(&model_dir.join("model"), &md.file);
+                    let mesh_path = omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&model_dir, "model"), &md.file);
                     let mesh_path = if omsi_cfg::vfs::is_file(&mesh_path) {
                         mesh_path
                     } else {
@@ -2129,7 +2131,7 @@ impl World {
                 .collect();
             let mesh_casts = mesh_def_index.iter().map(|d| model.meshes[*d].shadow).collect();
             let deform = sco.crossing_height_deformation.as_ref().and_then(|f| {
-                let mp = omsi_cfg::resolve_path(&model_dir.join("model"), f);
+                let mp = omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&model_dir, "model"), f);
                 let mp = if omsi_cfg::vfs::is_file(&mp) {
                     mp
                 } else {
@@ -2156,7 +2158,7 @@ impl World {
                     let mp = if omsi_cfg::vfs::is_file(&mp) {
                         mp
                     } else {
-                        omsi_cfg::resolve_path(&model_dir.join("model"), f)
+                        omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&model_dir, "model"), f)
                     };
                     match omsi_o3d::load_mesh(&mp) {
                         Ok(m) => Some(mesh_from_o3d(&m)),
@@ -2172,7 +2174,7 @@ impl World {
                 .as_ref()
                 .filter(|_| !sco.no_collision)
                 .and_then(|f| {
-                    let mp = omsi_cfg::resolve_path(&model_dir.join("model"), f);
+                    let mp = omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&model_dir, "model"), f);
                     let mp = if omsi_cfg::vfs::is_file(&mp) {
                         mp
                     } else {
@@ -3648,10 +3650,17 @@ impl World {
             // collision shape, and neither are the extents of a collision mesh: one box
             // around a housing estate's mesh or the Heerstraße bridge stood as an invisible
             // wall across the roads through and under it.
+            // Only a `[fixed]` object (or a `[crashmode_pole]`) is solid for the vehicles, as
+            // Omsi.exe sets it up (0x7af0a4: the shape is made for those only; any other is a
+            // loose body the bus is not stopped by). We made every object with a shape solid:
+            // the line plates and name signs hanging off bus stop poles, and any bridge or
+            // gantry of a mod map not marked `[fixed]` - an invisible wall under it.
+            // (a parked car is a vehicle: it is hit as the traffic is)
+            let solid = ot.sco.fixed || ot.sco.crash_mode_pole.is_some() || o.parked;
             let mesh_shape = ot
                 .collision
                 .as_ref()
-                .filter(|_| !ot.sco.no_collision && !is_surface && !ot.meshes.is_empty());
+                .filter(|_| solid && !ot.sco.no_collision && !is_surface && !ot.meshes.is_empty());
             if let Some(c) = mesh_shape {
                 let tris = |m: &dyn Fn(glam::Vec3) -> glam::DVec3| -> Vec<[glam::DVec3; 3]> {
                     c.indices
@@ -3688,7 +3697,7 @@ impl World {
                         .mesh_obstacles
                         .push(omsi_sim::collision::MeshObstacle::new(shape, pos, heading, o.key));
                 }
-            } else if !ot.sco.no_collision && !is_surface && !ot.meshes.is_empty() {
+            } else if solid && !ot.sco.no_collision && !is_surface && !ot.meshes.is_empty() {
                 if let Some(bb) = ot.sco.bounding_box {
                     // Ignore flat decals and oversized helpers - and anything whose top stays
                     // under a bus floor: a manhole cover's half-metre box centred on the road
@@ -4422,7 +4431,7 @@ impl World {
         // through) and its own sphere map in `texture/water_envmap.bmp`. A map or mod that
         // ships different ones gets its own water.
         let water_mat = {
-            let wdir = self.map_dir.join("texture");
+            let wdir = omsi_cfg::resolve_path(&self.map_dir, "texture");
             let dirs: Vec<&Path> = vec![wdir.as_path(), self.root.as_path()];
             let tex = match self.textures.get("water.tga", &dirs) {
                 Some(img) => renderer.add_texture(scene, &img, true),
@@ -4444,7 +4453,7 @@ impl World {
                         "envmap_unscharf.bmp",
                         &[
                             &self.root.join("Vehicles/MAN_SD202/Texture"),
-                            &self.root.join("Texture"),
+                            &omsi_cfg::resolve_path(&self.root, "Texture"),
                         ],
                     )
                 })
@@ -7817,7 +7826,7 @@ fn is_vehicle_body_material(
     let glass_or_overlay = [
         "window",
         "fenster",
-        "glass",
+        "glas",
         "scheibe",
         "windshield",
         "windscreen",
@@ -9315,7 +9324,10 @@ impl World {
                     // transmaps on the mask path; repair only the unambiguous body case.
                     let mesh_name = def.file.to_ascii_lowercase();
                     let transparent_layer_name = [
-                        "window", "fenster", "glass", "scheibe", "windshield", "windscreen",
+                        // ("glas" is also German glass: `Leuchtmelderglas.tga`, the warning
+                        // lamps' glass of the Thüringer Wald buses and the O 407, was a row of
+                        // white tiles)
+                        "window", "fenster", "glas", "scheibe", "windshield", "windscreen",
                         "regen", "dreck", "dirt", "folie",
                     ];
                     let material_name = format!("{} {}", mesh_name, m.texture).to_ascii_lowercase();

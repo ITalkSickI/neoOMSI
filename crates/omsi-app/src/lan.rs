@@ -35,6 +35,10 @@ use winit::keyboard::KeyCode;
 /// How long a joining player's game waits for the host's welcome (its world) before the
 /// map is loaded, and for the host's list of what stands at the spawn.
 pub const WELCOME_WAIT: Duration = Duration::from_secs(3);
+/// How long a joining game waits for the host's welcome before it loads a map: a host busy
+/// loading a heavy part of a big map answered after the 3 s it used to wait, and the player
+/// was left on the map chosen before joining, where nobody ever met them.
+pub const HOST_ANSWER_WAIT: Duration = Duration::from_secs(8);
 /// Room kept free between two buses placed one behind the other (m).
 const GAP_ALONG: f64 = 3.0;
 /// ... and side by side (m).
@@ -842,7 +846,7 @@ pub fn start(args: &Args) -> Option<LanSession> {
             ..Default::default()
         };
         let t0 = Instant::now();
-        while t0.elapsed() < WELCOME_WAIT && !session.connected && session.rejected.is_none() {
+        while t0.elapsed() < HOST_ANSWER_WAIT && !session.connected && session.rejected.is_none() {
             session.tick(0.02, &planned);
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -870,7 +874,7 @@ pub fn start(args: &Args) -> Option<LanSession> {
             (None, Some(why)) => log::warn!("LAN: turned away: {why}"),
             (None, None) => log::info!(
                 "LAN: no welcome within {:.0} s; the host's world is taken over when it comes",
-                WELCOME_WAIT.as_secs_f32()
+                HOST_ANSWER_WAIT.as_secs_f32()
             ),
         }
     }
@@ -967,6 +971,81 @@ pub fn share_mods(args: &mut Args, lan: &mut LanSession) {
                     log::warn!("LAN mods: {e}");
                     note(lan, format!("Host's mods could not be fetched: {e}"));
                 }
+            }
+        }
+    }
+}
+
+/// Do `work` (loading a world, which may take minutes on a big map) while the session is
+/// kept on another thread: a host answers the players who join meanwhile, a joining game
+/// tells its host that it is still there. A dedicated server loads the whole map before its
+/// first frame, and nobody could join it until it was done.
+pub fn answering_while<T>(lan: &mut Option<LanSession>, bus: Option<&str>, work: impl FnOnce() -> T) -> T {
+    let Some(session) = lan.take() else {
+        return work();
+    };
+    let planned = Pose {
+        bus: bus.unwrap_or_default().replace('\\', "/"),
+        ..Default::default()
+    };
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        let keeper = s.spawn(|| {
+            let mut session = session;
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                session.keepalive(0.05, &planned);
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            session
+        });
+        let out = work();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        match keeper.join() {
+            Ok(session) => *lan = Some(session),
+            Err(_) => log::warn!("LAN: the session stopped while the world loaded"),
+        }
+        out
+    })
+}
+
+/// A joining player plays on the host's map when it is installed here, whatever map was
+/// chosen before joining. The host's list of mods also brings it, but that list may not
+/// come in time: listing a big add-on map (thousands of objects to find and hash) took the
+/// host longer than the joining game waited, and the player was left on its own map, where
+/// nobody ever met them.
+pub fn take_host_map(args: &mut Args, lan: &mut LanSession) {
+    if lan.role != Role::Client {
+        return;
+    }
+    let Some(theirs) = lan.welcome.as_ref().map(|w| w.world.map.trim().replace('\\', "/")) else {
+        return;
+    };
+    let norm = |s: &str| s.trim().replace('\\', "/").to_ascii_lowercase();
+    if theirs.is_empty() || norm(&theirs) == norm(&args.map) {
+        return;
+    }
+    if crate::lan_mods::refuse_path(&theirs).is_some() || !norm(&theirs).starts_with("maps/") {
+        return;
+    }
+    match omsi_cfg::find_in_roots(&theirs) {
+        Some(_) => {
+            log::info!("LAN: the session is on the host's map {theirs} (not {})", args.map);
+            args.map = theirs;
+            // (the entry point, depot file and tour chosen were those of the other map)
+            args.entry = 0;
+            args.spawn = None;
+            args.hof = None;
+            args.line = None;
+            args.tour = None;
+            args.trip = None;
+            let mine = world_info(args);
+            lan.set_world(mine);
+        }
+        None => {
+            let line = format!("the host plays on {theirs}, which is not installed here - install that map to meet the others");
+            log::warn!("LAN: {line}");
+            if !lan.warnings.contains(&line) {
+                lan.warnings.push(line);
             }
         }
     }
