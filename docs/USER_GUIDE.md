@@ -335,7 +335,7 @@ and everybody sees the passengers in everybody's bus: the riders of a player's b
 with the world frames and sit in that bus in every other game (protocol 5). `crates/omsi-net` is the transport, the same on every
 platform.
 
-Windows and Linux: nothing in the code is macOS-specific (wgpu, winit, cpal, std UDP);
+Windows, macOS and Linux run the same code (wgpu, winit, cpal, std UDP);
 paths are resolved case-insensitively so Windows-style `\` references in mods work
 everywhere; settings live under `$HOME` / `%USERPROFILE%`. The same `cargo build --release`
 produces `openomsi.exe` / `openomsi`, and the scripts in `scripts/` build the launcher tools alongside it. Stopping a game from the launcher uses `WM_CLOSE` on Windows where it

@@ -308,7 +308,7 @@ fn tilt_thread() {
                     let angle = (ay * ax.signum()).atan2(ax.abs()).to_degrees();
                     let dead = 2.5;
                     let a = if angle.abs() < dead { 0.0 } else { angle - dead * angle.signum() };
-                    let turn = (a / 32.0).clamp(-1.0, 1.0);
+                    let turn = (a / 45.0).clamp(-1.0, 1.0);
                     smooth += (turn - smooth) * 0.35;
                     TILT.store(smooth.to_bits(), Ordering::Relaxed);
                     TILT_SEEN.store(true, Ordering::Relaxed);

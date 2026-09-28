@@ -423,9 +423,9 @@ impl App {
         let role = self.touch.fingers[k].role;
         match role {
             Role::Wheel(x0, s0) => {
-                // a finger's width of travel turns the wheel a good deal: the full lock is a
-                // drag of about the wheel's diameter
-                self.touch.steer = (s0 + (p.x - x0) / (self.touch.wheel_r * 1.6)).clamp(-1.0, 1.0);
+                // the full lock is a drag of about one and a half wheel diameters, and
+                // `steer_curve` keeps the middle fine: small moves make small corrections
+                self.touch.steer = (s0 + (p.x - x0) / (self.touch.wheel_r * 3.0)).clamp(-1.0, 1.0);
             }
             Role::Throttle | Role::Brake => self.touch_pedals(p),
             Role::Stick => {
@@ -730,7 +730,7 @@ impl App {
                 t.note = None;
             }
         }
-        let (steer, thr, brk, active) = (t.steer, t.throttle, t.brake, t.steering || t.tilt || t.steer != 0.0);
+        let (steer, thr, brk, active) = (steer_curve(t.steer), t.throttle, t.brake, t.steering || t.tilt || t.steer != 0.0);
         if let Some(p) = self.player.as_mut() {
             let a = &mut p.analog;
             if active {
@@ -762,19 +762,28 @@ impl App {
             if !t.tilt {
                 let c = t.wheel_c;
                 let r = t.wheel_r;
-                pt.circle(c, r, PANEL_BG);
-                pt.arc(c, r - 12.0 * u, r - 3.0 * u, 0.0, std::f32::consts::TAU, Color::rgba(230, 230, 230, if t.steering { 0.95 } else { 0.7 }));
-                // the spokes turn with the wheel (a full turn of the wheel shown as 120 deg)
+                // every part is drawn once, side by side, never one see-through shape over
+                // another (that showed as darker patches where they crossed)
+                use std::f32::consts::{FRAC_PI_2, PI, TAU};
+                let (rim_in, hub) = (r - 12.0 * u, 16.0 * u);
+                let part = Color::rgba(230, 230, 230, if t.steering { 0.95 } else { 0.8 });
+                pt.circle(c, rim_in, PANEL_BG);
+                // the spokes turn with the wheel (the full lock shown as 120 deg)
                 let a0 = t.steer * 2.1;
+                let half = 3.5 * u;
                 for k in 0..3 {
-                    let a = a0 + std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / 3.0 + std::f32::consts::PI;
+                    let a = a0 + FRAC_PI_2 + k as f32 * TAU / 3.0 + PI;
                     let d = Vec2::new(a.cos(), a.sin());
-                    pt.line(c + d * 14.0 * u, c + d * (r - 10.0 * u), 7.0 * u, Color::rgba(230, 230, 230, 0.7));
+                    let n = Vec2::new(-d.y, d.x) * half;
+                    // from the hub's edge to the rim's inner edge
+                    let (p0, p1) = (c + d * hub, c + d * (rim_in * rim_in - half * half).max(0.0).sqrt());
+                    pt.convex(&[p0 + n, p1 + n, p1 - n, p0 - n], part);
                 }
-                pt.circle(c, 16.0 * u, Color::rgba(230, 230, 230, 0.75));
-                // the top mark
-                let top = a0 - std::f32::consts::FRAC_PI_2;
-                pt.arc(c, r - 12.0 * u, r - 3.0 * u, top - 0.12, top + 0.12, PANEL_ON);
+                pt.circle(c, hub, part);
+                // the rim, with the top mark in its gap
+                let top = a0 - FRAC_PI_2;
+                pt.arc(c, rim_in, r, top + 0.12, top + TAU - 0.12, part);
+                pt.arc(c, rim_in, r, top - 0.12, top + 0.12, PANEL_ON);
             } else {
                 pt.text(atlas, fonts, "TILT", 14.0 * u, Weight::Bold, t.wheel_c, Align::Center, DIM);
             }
@@ -940,4 +949,10 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
             b[c] = (o[c] as f32 + b[c] as f32 * (1.0 - a)).round().min(255.0) as u8;
         }
     }
+}
+
+/// The wheel's turn as the bus gets it: gentle round the middle (a finger's small wobble is a
+/// small correction), the full lock still at the end of the travel.
+fn steer_curve(s: f32) -> f32 {
+    s.signum() * s.abs().powf(1.7)
 }
