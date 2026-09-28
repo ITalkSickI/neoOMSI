@@ -1371,6 +1371,8 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         let sel = self.game_menu.unwrap_or(0);
         self.menu_top = None;
         match code {
+            // P: the pause ends, as it began
+            KeyCode::KeyP if self.paused && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::AltLeft) => self.toggle_pause(),
             // (from the full list back to the short one first)
             KeyCode::Escape if self.menu_more => {
                 self.menu_more = false;
@@ -1803,7 +1805,18 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             self.service_msg = Some(("A LAN session cannot be paused".into(), 3.0));
             return;
         }
-        self.paused = !self.paused;
+        // the pause shows the pause menu (the everyday lines, "More..." for the rest); P
+        // or Resume go on
+        if self.game_menu.is_some() {
+            self.close_game_menu();
+            self.paused = false;
+        } else if self.paused {
+            self.paused = false;
+        } else {
+            self.open_game_menu();
+            self.menu_prev_pause = false;
+            self.paused = true;
+        }
     }
 
     /// Put the bus on the street nearest the world point `at` (the city map's Ctrl+click),

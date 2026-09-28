@@ -79,6 +79,7 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   it is held), or Esc → More → *Clock +10 minutes* / *-10 minutes*.
 
 ### Interface
+- P pauses into the pause menu (P or *Resume* go on); it was only a line of text before.
 - The pause menu shows the everyday lines first (*Resume, Options, Line and tour,
   Destination display, City map, Timetable, Save, ...*); the rest is under *More...*.
   The mouse wheel scrolls the menu instead of moving the highlight, and only the line under
