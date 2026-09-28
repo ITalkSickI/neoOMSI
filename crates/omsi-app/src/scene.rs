@@ -1625,6 +1625,9 @@ pub fn model_lights_owned(
 /// a `[collision_mesh]` it is a step the wheels climb (a traffic island).
 pub const LOW_OBJECT: f32 = 0.3;
 
+/// Faces this close over another road face are paint on it, not a step (m).
+const PAINT_LAYER: f32 = 0.045;
+
 /// What a wheel stands on at world (x, y): the faces of the roads, crossings and surface
 /// objects there, and the terrain wherever it is not cut away under them - the highest at
 /// or below `top`, and the lowest above it (a kerb the tyre is up against).
@@ -1662,6 +1665,18 @@ fn probe_tile(
     let mut probe = omsi_geometry::Probe::default();
     if let Some(s) = surface {
         probe = s.drive.probe(lx, ly, top as f32);
+        // a painted layer is no step: road markings made as `[surface]` objects or as
+        // splines with a height profile lie a centimetre or three over the asphalt, and the
+        // wheels climbed every line - the bus hopped at stops and over dotted lines (Horizon).
+        // Where another road face lies that little below, the wheel stands on that one.
+        // (only road faces: the terrain under a road is often that close too)
+        if let Some(z1) = probe.below {
+            if let Some(z2) = s.drive.probe(lx, ly, z1 - 0.004).below {
+                if z1 - z2 < PAINT_LAYER {
+                    probe.below = Some(z2);
+                }
+            }
+        }
     }
     if let Some(t) = terrain {
         // the ground counts where it is drawn; where it is cut away and nothing else is

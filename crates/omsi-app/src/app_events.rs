@@ -914,6 +914,47 @@ impl ApplicationHandler for App {
                     // looking around with the keyboard: Alt + I/J/K/L (the plain letters
                     // belong to the bus - L is the headlights in Inputs/keyboard.cfg)
                     let step = 60.0 * dt;
+                    // Ctrl+Alt+arrows in the cab: the mirror nearest to where the driver looks
+                    // turns (kept per bus in mirrors.cfg when the keys are let go)
+                    let ctrl_alt = (self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight)) && (self.keys.contains(&KeyCode::AltLeft) || self.keys.contains(&KeyCode::AltRight));
+                    let arrows = [KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::ArrowUp, KeyCode::ArrowDown].map(|k| self.keys.contains(&k));
+                    if let (true, Some(p), Some(cam)) = (ctrl_alt && self.view == "driver" && arrows.iter().any(|a| *a), self.player.as_mut(), self.camera.as_ref()) {
+                        let cams = &p.vehicle.ty.def.cameras_reflexion;
+                        let f = cam.forward();
+                        let best = (0..cams.len())
+                            .map(|i| (i, (p.vehicle.camera_world_full(&cams[i]).0 - cam.position).as_vec3().normalize_or_zero().dot(f)))
+                            .max_by(|a, b| a.1.total_cmp(&b.1))
+                            .map(|(i, _)| i);
+                        if let Some(i) = best {
+                            if p.mirror_offsets.len() <= i {
+                                p.mirror_offsets.resize(cams.len(), [0.0; 2]);
+                            }
+                            let o = &mut p.mirror_offsets[i];
+                            let rate = 12.0 * dt;
+                            o[0] = (o[0] + rate * (arrows[1] as i32 - arrows[0] as i32) as f32).clamp(-45.0, 45.0);
+                            o[1] = (o[1] + rate * (arrows[2] as i32 - arrows[3] as i32) as f32).clamp(-30.0, 30.0);
+                            p.mirrors_dirty = true;
+                            self.service_msg = Some((format!("Mirror {}: {:+.1}° across, {:+.1}° up (Ctrl+Alt+arrows)", i + 1, o[0], o[1]), 2.0));
+                        }
+                    } else if let Some(p) = self.player.as_mut().filter(|p| p.mirrors_dirty) {
+                        p.mirrors_dirty = false;
+                        crate::settings::save_mirror_offsets(&p.vehicle.ty.def.path, &p.mirror_offsets);
+                    }
+                    // with a wheel steering, the arrow keys look around as in OMSI
+                    if !ctrl_alt && self.controllers.as_ref().is_some_and(|c| c.wheel_steering()) && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::ControlRight) {
+                        if self.keys.contains(&KeyCode::ArrowLeft) {
+                            self.look.0 -= step * 1.5;
+                        }
+                        if self.keys.contains(&KeyCode::ArrowRight) {
+                            self.look.0 += step * 1.5;
+                        }
+                        if self.keys.contains(&KeyCode::ArrowUp) {
+                            self.look.1 = (self.look.1 + step * 0.7).min(85.0);
+                        }
+                        if self.keys.contains(&KeyCode::ArrowDown) {
+                            self.look.1 = (self.look.1 - step * 0.7).max(-85.0);
+                        }
+                    }
                     let alt = self.keys.contains(&KeyCode::AltLeft)
                         || self.keys.contains(&KeyCode::AltRight);
                     if alt && self.keys.contains(&KeyCode::KeyJ) {

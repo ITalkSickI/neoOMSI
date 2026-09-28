@@ -397,6 +397,11 @@ pub struct RigidBody {
     /// The parts coupled behind (see [`CoupledPart`]); `drive_torque` is shared by their
     /// driven wheels and the body's own.
     pub coupled: Vec<CoupledPart>,
+    /// Obstacles (by id) the body was put down inside: left alone until it is out of them
+    /// (a bus spawned in a shelter's or a depot hall's box was held there for good - every
+    /// move towards the nearest side pushed it back in). `None` until the first collision
+    /// check after `place`.
+    pub spawned_inside: Option<Vec<i64>>,
 }
 
 impl RigidBody {
@@ -442,7 +447,7 @@ impl RigidBody {
         let inv_min_turn_radius = if def.inv_min_turn_radius > 0.0 { def.inv_min_turn_radius } else { max_steer_deg.to_radians().tan() / s };
         let springs: f32 = def.axles.iter().map(|a| 2.0 * if a.spring > 0.0 { a.spring } else { 150.0 }).sum();
         let body_freq = (springs / (mass / 1000.0)).max(0.0).sqrt();
-        RigidBody { mass, inertia, cog, position: DVec3::ZERO, orientation: Quat::IDENTITY, velocity: Vec3::ZERO, omega: Vec3::ZERO, wheels, wheel_axle, steer_deg: 0.0, max_steer_deg, rot_pnt_long: def.rot_pnt_long, inv_min_turn_radius, body_freq, holding: true, rolling_resistance: if def.rolling_resistance > 0.0 { def.rolling_resistance } else { 0.008 * mass * 9.81 }, accel_body: Vec3::ZERO, friction: 0.85, wheel_impacts: Vec::new(), coupled: Vec::new() }
+        RigidBody { mass, inertia, cog, position: DVec3::ZERO, orientation: Quat::IDENTITY, velocity: Vec3::ZERO, omega: Vec3::ZERO, wheels, wheel_axle, steer_deg: 0.0, max_steer_deg, rot_pnt_long: def.rot_pnt_long, inv_min_turn_radius, body_freq, holding: true, rolling_resistance: if def.rolling_resistance > 0.0 { def.rolling_resistance } else { 0.008 * mass * 9.81 }, accel_body: Vec3::ZERO, friction: 0.85, wheel_impacts: Vec::new(), coupled: Vec::new(), spawned_inside: None }
     }
 
     /// Place the body at rest with its wheels on the ground plane at `origin.z`: heading
@@ -455,6 +460,7 @@ impl RigidBody {
         self.position = origin + self.orientation.mul_vec3(self.cog).as_dvec3();
         self.velocity = Vec3::ZERO;
         self.omega = Vec3::ZERO;
+        self.spawned_inside = None;
         for w in self.wheels.iter_mut() {
             w.compression = w.rest_compression().min(BUMP);
             w.compression_rate = 0.0;
@@ -1007,11 +1013,21 @@ impl RigidBody {
     pub fn collide(&mut self, bb: [f32; 6], obstacles: &[Obb], skip: &dyn Fn(usize) -> bool, dt: f32) -> Vec<Impact> {
         let mut impacts: Vec<Impact> = Vec::new();
         let mut answered: Vec<usize> = Vec::new();
+        {
+            let me = self.body_box(bb);
+            let touching: Vec<i64> = obstacles.iter().enumerate().filter(|(i, o)| o.id >= 0 && o.mass <= 0.0 && !skip(*i) && me.contact(o).is_some()).map(|(_, o)| o.id).collect();
+            match self.spawned_inside.as_mut() {
+                None => self.spawned_inside = Some(touching),
+                // (once out of one, it counts again)
+                Some(list) => list.retain(|id| touching.contains(id)),
+            }
+        }
+        let inside = self.spawned_inside.clone().unwrap_or_default();
         for _ in 0..4 {
             let me = self.body_box(bb);
             let mut deepest: Option<(usize, crate::collision::Contact)> = None;
             for (i, o) in obstacles.iter().enumerate() {
-                if skip(i) || answered.contains(&i) {
+                if skip(i) || answered.contains(&i) || (o.id >= 0 && inside.contains(&o.id)) {
                     continue;
                 }
                 let Some(c) = me.contact(o) else { continue };

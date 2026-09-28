@@ -200,6 +200,8 @@ impl App {
                         return;
                     }
                     // the interior cameras: Ctrl+Left/Right (the arrows drive)
+                    // (Ctrl+Alt+arrows turn the mirror looked at, see the frame)
+                    KeyCode::ArrowLeft | KeyCode::ArrowRight | KeyCode::ArrowUp | KeyCode::ArrowDown if ctrl && alt => return,
                     KeyCode::ArrowLeft if ctrl => {
                         self.game_action("view_interiorcam_minus");
                         return;
@@ -443,11 +445,23 @@ impl App {
             // the arrow keys drive when a bus is being driven (the free camera keeps them)
             // (a key the player bound to something else is theirs, not the preset's)
             let own = keys::dik_code(code).is_some_and(|s| self.own_keys.contains(&s));
-            let wasd = if own { "omsi" } else { self.args.drive_keys.as_str() };
+            let wheel = self.controllers.as_ref().is_some_and(|c| c.wheel_steering());
+            let wasd = if own {
+                "omsi"
+            } else if wheel {
+                // (with a wheel steering, the arrow keys are OMSI's: they look around)
+                match self.args.drive_keys.as_str() {
+                    "arrows" | "omsi" => "omsi",
+                    _ => "wasd",
+                }
+            } else {
+                self.args.drive_keys.as_str()
+            };
             let shift_held =
                 self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
             if let Some(p) = self.player.as_mut() {
-                if self.view != "free" && !repeat && !shift_held {
+                let ctrl_alt_held = (self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight)) && (self.keys.contains(&KeyCode::AltLeft) || self.keys.contains(&KeyCode::AltRight));
+                if self.view != "free" && !repeat && !shift_held && !(ctrl_alt_held && pressed) {
                     if let Some(a) = fallback_action(code, wasd) {
                         p.axes.set(a, pressed);
                     }

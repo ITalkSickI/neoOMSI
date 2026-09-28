@@ -436,3 +436,46 @@ impl Settings {
         [1.5e6, 0.01, 0.1, 1.0, 10.0][self.maintenance.min(4) as usize]
     }
 }
+
+/// The player's own turn of a bus's mirrors (degrees yaw, pitch per `[add_camera_reflexion]`),
+/// kept per `.bus` file in `~/.openomsi/mirrors.cfg` as `<bus file>|<mirror>=<yaw>,<pitch>`.
+pub fn mirror_offsets(bus: &std::path::Path) -> Vec<[f32; 2]> {
+    let key = bus.to_string_lossy().to_ascii_lowercase();
+    let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return Vec::new() };
+    let text = std::fs::read_to_string(p).unwrap_or_default();
+    let mut out: Vec<[f32; 2]> = Vec::new();
+    for line in text.lines() {
+        let Some((k, v)) = line.rsplit_once('=') else { continue };
+        let Some((file, i)) = k.rsplit_once('|') else { continue };
+        let (Ok(i), Some((y, p))) = (i.trim().parse::<usize>(), v.split_once(',')) else { continue };
+        if file.trim().to_ascii_lowercase() != key || i > 64 {
+            continue;
+        }
+        if out.len() <= i {
+            out.resize(i + 1, [0.0; 2]);
+        }
+        out[i] = [y.trim().parse().unwrap_or(0.0), p.trim().parse().unwrap_or(0.0)];
+    }
+    out
+}
+
+/// Keep a bus's mirror turns (see [`mirror_offsets`]).
+pub fn save_mirror_offsets(bus: &std::path::Path, offsets: &[[f32; 2]]) {
+    let key = bus.to_string_lossy().to_ascii_lowercase();
+    let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return };
+    let text = std::fs::read_to_string(&p).unwrap_or_default();
+    let mut lines: Vec<String> = text
+        .lines()
+        .filter(|l| l.rsplit_once('=').and_then(|(k, _)| k.rsplit_once('|')).is_none_or(|(f, _)| f.trim().to_ascii_lowercase() != key))
+        .map(str::to_string)
+        .collect();
+    for (i, o) in offsets.iter().enumerate() {
+        if o[0].abs() > 0.01 || o[1].abs() > 0.01 {
+            lines.push(format!("{}|{i}={:.1},{:.1}", bus.to_string_lossy(), o[0], o[1]));
+        }
+    }
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(&p, lines.join("\n") + "\n");
+}

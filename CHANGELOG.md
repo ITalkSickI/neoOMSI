@@ -55,6 +55,17 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   as in OMSI.
 - The field of view applies to the free camera and the view on foot too.
 
+### More from the players
+- A bus put down inside an obstacle (a shelter's or a depot's collision box - GPM) is no
+  longer held there: what it spawned in is left alone until it has driven out of it.
+- Road markings are paint, not steps: a road face within 4.5 cm over another one (markings
+  made as `[surface]` objects or as splines with a height profile - Horizon) no longer lifts
+  the wheels, so the bus stops hopping over lines at stops and roundabouts. Kerbs stay kerbs.
+- With a steering wheel the arrow keys look around again, as in OMSI (a G29's buttons set to
+  the arrow keys turned the view there; here they steered).
+- Mirrors can be turned: Ctrl+Alt+arrows in the cab turn the mirror you look at, kept per bus
+  in `~/.openomsi/mirrors.cfg`.
+
 ### Passengers
 - The aXYZ man in the grey jacket no longer looks as if his neck were broken: a head turns
   about a point under its middle, not about the `[links]` neck point at the back of the

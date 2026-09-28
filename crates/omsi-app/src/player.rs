@@ -55,6 +55,10 @@ pub(crate) struct Player {
     pub(crate) head: Vec3,
     /// The driver's seat moved (Settings → seat position; bus frame, m).
     pub(crate) seat: Vec3,
+    /// The player's turn of each mirror (yaw, pitch degrees; Ctrl+Alt+arrows in the cab).
+    pub(crate) mirror_offsets: Vec<[f32; 2]>,
+    /// A mirror was turned and is not saved yet.
+    pub(crate) mirrors_dirty: bool,
     pub(crate) take_change: bool,
     /// Keys whose `_toggle` this bus does as `_up`/`_down` (see `action`): turned up last.
     pub(crate) toggled_up: hashbrown::HashSet<String>,

@@ -366,6 +366,12 @@ impl Controllers {
         Controllers { devices, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
     }
 
+    /// A wheel or joystick steers the bus (then the arrow keys look around, as in OMSI:
+    /// a G29's buttons set to the arrow keys turned the view there).
+    pub fn wheel_steering(&self) -> bool {
+        self.enabled && self.steer.is_some()
+    }
+
     /// Read the devices: the analog controls, and the button actions into `actions`.
     pub fn poll(&mut self) -> Analog {
         let mut out = Analog::default();

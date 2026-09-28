@@ -337,6 +337,9 @@ pub(crate) fn render_mirrors(
             continue;
         };
         let (eye, yaw, pitch, roll) = p.vehicle.camera_world_full(c);
+        // (the player's own turn of the mirror, Ctrl+Alt+arrows)
+        let off = p.mirror_offsets.get(i).copied().unwrap_or([0.0; 2]);
+        let (yaw, pitch) = (yaw + off[0], (pitch + off[1]).clamp(-89.0, 89.0));
         if omsi_cfg::env::var_os("OMSI_DEBUG_MIRRORS").is_some() {
             log::info!("mirror {i}: eye {:.2},{:.2},{:.2} yaw {yaw:.1} pitch {pitch:.1} roll {roll:.2} fov {:.0} ({} of {} in view)", eye.x, eye.y, eye.z, c.fov, seen.len(), cams.len());
         }
