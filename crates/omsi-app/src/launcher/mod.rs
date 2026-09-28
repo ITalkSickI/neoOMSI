@@ -9,6 +9,7 @@
 //! functions `omsi-launcher --cli` offers a terminal.
 
 mod drive;
+pub mod mobile;
 mod multiplayer;
 mod pages;
 mod showroom;
@@ -59,6 +60,28 @@ const PAGES: [(Page, &str, &str); 10] = [
     (Page::Setup, "Setup", "folder_open"),
 ];
 
+#[cfg(not(target_os = "android"))]
+type Clipboard = arboard::Clipboard;
+
+/// A phone: text copied in the launcher can be pasted in it (the system's clipboard is
+/// Java's).
+#[cfg(target_os = "android")]
+struct Clipboard(String);
+
+#[cfg(target_os = "android")]
+impl Clipboard {
+    fn new() -> Result<Clipboard, ()> {
+        Ok(Clipboard(String::new()))
+    }
+    fn get_text(&mut self) -> Result<String, ()> {
+        Ok(self.0.clone())
+    }
+    fn set_text(&mut self, t: String) -> Result<(), ()> {
+        self.0 = t;
+        Ok(())
+    }
+}
+
 /// Width of the left rail (points).
 pub const RAIL_W: f32 = 236.0;
 
@@ -84,7 +107,7 @@ pub struct Launcher {
     modifiers: ModifiersState,
     /// Right or left drag over the showroom.
     dragging: Option<Vec2>,
-    clipboard: Option<arboard::Clipboard>,
+    clipboard: Option<Clipboard>,
     exit_after: Option<f32>,
     shot: Option<(f32, std::path::PathBuf)>,
     started: Instant,
@@ -104,12 +127,27 @@ pub struct Launcher {
     /// The last mouse or key event (an idle launcher draws less often: it kept the GPU busy
     /// at the screen's rate doing nothing).
     last_input: Instant,
+    /// A phone's fingers, its storage browser, how far the page is scrolled (and can be),
+    /// and whether the on-screen keyboard is up (see `mobile`).
+    fingers: mobile::Fingers,
+    pub browser: Option<mobile::Browser>,
+    page_scroll: f32,
+    page_max: f32,
+    ime: bool,
 }
 
 /// Run the launcher window until it is closed.
 pub fn run(instance: wgpu::Instance) -> anyhow::Result<()> {
-    core::cleanup();
     let event_loop = EventLoop::new()?;
+    let mut app = Launcher::new(instance);
+    event_loop.run_app(&mut app)?;
+    Ok(())
+}
+
+impl Launcher {
+    /// The launcher, not yet in a window (that comes with `resumed`).
+    pub fn new(instance: wgpu::Instance) -> Launcher {
+    core::cleanup();
     let mut app = Launcher {
         instance,
         window: None,
@@ -129,7 +167,7 @@ pub fn run(instance: wgpu::Instance) -> anyhow::Result<()> {
         last: Instant::now(),
         modifiers: ModifiersState::empty(),
         dragging: None,
-        clipboard: arboard::Clipboard::new().ok(),
+        clipboard: Clipboard::new().ok(),
         // OMSI_LAUNCHER_EXIT=secs, OMSI_LAUNCHER_SHOT=secs:file.png, OMSI_LAUNCHER_PAGE=mods:
         // looking at the window without a person at it
         exit_after: omsi_cfg::env::var("OMSI_LAUNCHER_EXIT").ok().and_then(|v| v.parse().ok()),
@@ -153,6 +191,11 @@ pub fn run(instance: wgpu::Instance) -> anyhow::Result<()> {
         focused: true,
         occluded: false,
         last_input: Instant::now(),
+        fingers: Default::default(),
+        browser: None,
+        page_scroll: 0.0,
+        page_max: 0.0,
+        ime: false,
     };
     // no original installation found anywhere: the launcher still opens, on Setup, and says
     // what it needs (only starting a session needs the game)
@@ -170,18 +213,72 @@ pub fn run(instance: wgpu::Instance) -> anyhow::Result<()> {
             app.pages.controls_tab = step;
         }
     }
-    event_loop.run_app(&mut app)?;
-    Ok(())
+    app
+    }
+
+    /// The window, its surface and the renderer, given up for the game (a phone plays in the
+    /// launcher's window).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn release_window(&mut self) -> Option<Arc<Window>> {
+        self.surface = None;
+        self.gpu = None;
+        self.preview_tex = None;
+        self.showroom = showroom::Showroom::new();
+        self.preview_gen = 0;
+        self.renderer = None;
+        self.ime = false;
+        self.window.take()
+    }
+
+    /// Back from a game: the window again (the launcher draws into it from the next resume).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn adopt_window(&mut self, window: Arc<Window>) {
+        self.window = Some(window);
+        self.surface = None;
+        self.renderer = None;
+        self.state.poll_now();
+        self.state.load_profile();
+    }
+
+    /// The surface for the window the launcher has (created again after the app was in the
+    /// background: a phone takes the window's surface away meanwhile).
+    fn make_surface(&mut self) {
+        let Some(window) = self.window.clone() else { return };
+        if self.renderer.is_none() {
+            let surface = self.instance.create_surface(window.clone()).expect("surface");
+            let settings = crate::settings::Settings::load();
+            let renderer = pollster::block_on(Renderer::new_with(&self.instance, Some(&surface), None, showroom_options(&settings))).expect("renderer");
+            drop(surface);
+            self.gpu = Some(omsi_ui::Gpu::new(&renderer.device, renderer.format(), 4, self.ui.atlas.size));
+            self.ui.atlas = omsi_ui::Atlas::new(self.ui.atlas.size);
+            self.renderer = Some(renderer);
+        }
+        let Some(renderer) = self.renderer.as_ref() else { return };
+        let size = window.inner_size();
+        self.surface = SurfaceState::new_with(&self.instance, window.clone(), renderer, size.width.max(1), size.height.max(1), true).ok();
+        self.last = Instant::now();
+    }
 }
 
 impl ApplicationHandler for Launcher {
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        // (a phone: the app went to the background and its window's surface goes with it)
+        self.surface = None;
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
+            if self.surface.is_none() {
+                self.make_surface();
+            }
             return;
         }
         // (`OMSI_LAUNCHER_SIZE=WxH`: another window size, for looking at the layout)
         let (iw, ih) = omsi_cfg::env::var("OMSI_LAUNCHER_SIZE").ok().and_then(|v| v.split_once('x').and_then(|(a, b)| Some((a.parse::<f64>().ok()?, b.parse::<f64>().ok()?)))).unwrap_or((1440.0, 880.0));
-        let mut attrs = Window::default_attributes().with_title("openOMSI").with_window_icon(crate::startup::window_icon()).with_inner_size(winit::dpi::LogicalSize::new(iw, ih)).with_min_inner_size(winit::dpi::LogicalSize::new(1080.0, 680.0));
+        let mut attrs = Window::default_attributes().with_title("openOMSI").with_window_icon(crate::startup::window_icon()).with_inner_size(winit::dpi::LogicalSize::new(iw, ih));
+        if !mobile::mobile() {
+            attrs = attrs.with_min_inner_size(winit::dpi::LogicalSize::new(1080.0, 680.0));
+        }
         if omsi_cfg::env::var_os("OMSI_BACKGROUND").is_some() {
             attrs = attrs.with_active(false);
         }
@@ -207,6 +304,7 @@ impl ApplicationHandler for Launcher {
         }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Touch(t) => self.touch(t, scale),
             WindowEvent::Focused(f) => self.focused = f,
             WindowEvent::Occluded(o) => self.occluded = o,
             WindowEvent::Resized(s) => {
@@ -271,6 +369,15 @@ impl ApplicationHandler for Launcher {
                     return;
                 }
                 let cmd = self.modifiers.control_key() || self.modifiers.super_key();
+                // a phone's back key: out of the storage browser, else like Escape
+                if event.physical_key == PhysicalKey::Code(KeyCode::BrowserBack) {
+                    if self.browser.is_some() {
+                        self.browser = None;
+                    } else {
+                        self.ui.input.keys.push(Key::Escape);
+                    }
+                    return;
+                }
                 if let PhysicalKey::Code(code) = event.physical_key {
                     self.ui.input.raw_key = Some(code);
                     let k = match code {
@@ -360,6 +467,11 @@ impl Launcher {
         let dpi = w.scale_factor() as f32;
         let s = w.inner_size();
         let (lw, lh) = (s.width as f32 / dpi, s.height as f32 / dpi);
+        if mobile::mobile() {
+            // a phone held across: the text at about its own size (the pages scroll where
+            // the screen is lower than they are), a tablet a little larger
+            return dpi * (lh / 440.0).clamp(0.75, 1.3);
+        }
         // (the height counts a little less: on a wide, low screen - 2560 x 1080 - the text
         // stayed the size of a 1440 x 880 window's, tiny across the width; the pages scroll or
         // keep their width, see `draw_ui`)
@@ -392,6 +504,18 @@ impl Launcher {
         self.preview_rect = None;
         self.ui.begin(size, scale, dt);
         self.draw_ui();
+        if mobile::mobile() {
+            // what no list took of a finger's drag scrolls the page
+            if !self.ui.wheel_taken() && self.browser.is_none() {
+                self.page_scroll = (self.page_scroll - self.ui.input.wheel.y * 42.0).clamp(0.0, self.page_max);
+            }
+            // the on-screen keyboard while a text field has the focus
+            let want = self.ui.focus.is_some();
+            if want != self.ime {
+                self.ime = want;
+                window.set_ime_allowed(want);
+            }
+        }
         window.set_cursor(if self.dragging.is_some() { winit::window::CursorIcon::Grabbing } else { self.ui.cursor });
         if let Some(t) = self.ui.clipboard_out.take() {
             if let Some(c) = self.clipboard.as_mut() {
@@ -399,6 +523,7 @@ impl Launcher {
             }
         }
         let (layers, verts, ranges) = self.ui.finish();
+        self.touch_frame();
 
         // --- to the GPU: the preview when it changed, then the interface onto the window
         let Some(renderer) = self.renderer.as_mut() else { return };
@@ -549,13 +674,31 @@ impl Launcher {
 
     fn draw_ui(&mut self) {
         let size = self.ui.size;
-        self.rail();
+        let mobile = mobile::mobile();
+        // the storage browser lies over the page: the page sees no finger meanwhile
+        let saved = self.browser.is_some().then(|| {
+            let i = self.ui.input.clone();
+            self.ui.input.mouse = Vec2::new(-1e4, -1e4);
+            self.ui.input.pressed = false;
+            self.ui.input.released = false;
+            self.ui.input.wheel = Vec2::ZERO;
+            self.ui.input.keys.clear();
+            self.ui.input.text.clear();
+            i
+        });
+        let rail_w = if mobile { mobile::RAIL_W_MOBILE } else { RAIL_W };
         self.page_anim = (self.page_anim + self.ui.dt / 0.15).min(1.0);
         // (no wider than a page reads well: on a wide screen the rest is margin, the page
         // in the middle - the panels stretched across 2000 px with their text at one end)
-        let avail = size.x - RAIL_W - 64.0;
+        let (margin, top) = if mobile { (36.0, 14.0) } else { (64.0, 28.0) };
+        let avail = size.x - rail_w - margin;
         let w = avail.min(1760.0);
-        let content = Rect::new(RAIL_W + 32.0 + (avail - w) * 0.5, 28.0, w, size.y - 28.0 - 40.0);
+        let seen = size.y - top - 40.0;
+        // (a phone: laid out for a taller screen, scrolled)
+        let h = if mobile { seen.max(mobile::PAGE_H) } else { seen };
+        self.page_max = (h - seen).max(0.0);
+        self.page_scroll = self.page_scroll.clamp(0.0, self.page_max);
+        let content = Rect::new(rail_w + margin * 0.5 + (avail - w) * 0.5, top - self.page_scroll, w, h);
         let e = 1.0 - (1.0 - self.page_anim).powi(3);
         let content = Rect::new(content.x + 8.0 * (1.0 - e), content.y, content.w, content.h);
         match self.page {
@@ -570,7 +713,17 @@ impl Launcher {
             Page::Timetable => timetable::draw(self, content),
             Page::Setup => pages::setup(self, content),
         }
+        // the rail over the page (a scrolled page passes under it)
+        if mobile {
+            self.rail_mobile();
+        } else {
+            self.rail();
+        }
         self.status_bar();
+        if let Some(i) = saved {
+            self.ui.input = i;
+            self.draw_browser();
+        }
     }
 
     /// The bus preview in `r`: the game's picture of it, or a word while it loads. The mouse
@@ -603,6 +756,7 @@ impl Launcher {
         if self.page != p {
             self.page = p;
             self.page_anim = 0.0;
+            self.page_scroll = 0.0;
             match p {
                 Page::Profile => self.state.load_profile(),
                 Page::Mods => self.state.load_mods(),
@@ -680,7 +834,12 @@ impl Launcher {
         }
         let size = self.ui.size;
         let first = text.lines().next().unwrap_or("").to_string();
-        let r = Rect::new(RAIL_W + 32.0, size.y - 34.0, size.x - RAIL_W - 64.0, 24.0);
+        let rail_w = if mobile::mobile() { mobile::RAIL_W_MOBILE } else { RAIL_W };
+        let r = Rect::new(rail_w + 20.0, size.y - 30.0, size.x - rail_w - 40.0, 24.0);
+        if mobile::mobile() {
+            // (readable over a page scrolled under it)
+            self.ui.p().rect(Rect::new(rail_w, size.y - 34.0, size.x - rail_w, 34.0), RAIL.alpha(0.92));
+        }
         let c = if err { DANGER } else { TEXT_DIM };
         self.ui.text_in(&first, r, 12.0, Weight::Regular, c.alpha(fade), Align::Left);
         self.ui.tooltip(r, &text);

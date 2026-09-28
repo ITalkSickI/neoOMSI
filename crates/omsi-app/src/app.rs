@@ -180,13 +180,29 @@ pub(crate) struct App {
     pub(crate) cpu_mark: Option<(f64, Instant, u32)>,
     /// The OMSI plugins (`plugins/*.opl`), loaded with the first frame.
     pub(crate) plugins: Option<omsi_plugin::Plugins>,
+    /// The on-screen controls of a phone (see `touch.rs`).
+    pub(crate) touch: crate::touch::Touch,
 }
 
 impl App {
     pub(crate) fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = self.window.clone() {
+            // back from the background (a phone): the window's surface is made again
+            if self.surface.is_none() {
+                if let Some(r) = self.renderer.as_ref() {
+                    let size = window.inner_size();
+                    self.surface = SurfaceState::new_with(&self.instance, window.clone(), r, size.width.max(1), size.height.max(1), self.settings.vsync).ok();
+                    self.last = Instant::now();
+                }
+            }
             return;
         }
+        self.create_window(event_loop, None);
+    }
+
+    /// The game's window (or the launcher's, handed over on a phone), its surface and the
+    /// renderer; then the menu or, when the session is given, the world.
+    pub(crate) fn create_window(&mut self, event_loop: &ActiveEventLoop, given: Option<Arc<Window>>) {
         // --size sets the window's size in points as well (1600x900 unless given)
         let (lw, lh) = self
             .args
@@ -211,7 +227,10 @@ impl App {
         if omsi_cfg::env::var_os("OMSI_BACKGROUND").is_some() {
             attrs = attrs.with_active(false);
         }
-        let window = Arc::new(event_loop.create_window(attrs).expect("window"));
+        let window = match given {
+            Some(w) => w,
+            None => Arc::new(event_loop.create_window(attrs).expect("window")),
+        };
         let surface = self
             .instance
             .create_surface(window.clone())
@@ -303,7 +322,7 @@ impl App {
                 }
                 Err(e) => {
                     log::error!("{e:#}");
-                    event_loop.exit();
+                    crate::platform::exit(event_loop);
                 }
             }
             self.renderer = Some(renderer);
@@ -315,7 +334,7 @@ impl App {
             Ok((w, cam)) => self.start_world(Arc::new(w), cam, &renderer, &mut scene),
             Err(e) => {
                 log::error!("{e:#}");
-                event_loop.exit();
+                crate::platform::exit(event_loop);
             }
         }
         self.renderer = Some(renderer);
@@ -620,7 +639,7 @@ impl App {
         if let Some(limit) = self.args.exit_after {
             if self.started.elapsed().as_secs_f32() > limit {
                 log::info!("exit after {limit} s while loading: {done} of {total} tiles");
-                event_loop.exit();
+                crate::platform::exit(event_loop);
             }
         }
         false

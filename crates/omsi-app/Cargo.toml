@@ -5,6 +5,13 @@ edition.workspace = true
 license.workspace = true
 description = "The openOMSI application: loads a map and renders it"
 
+# The game is a library with a small `main` around it: the Android build takes the same
+# library as a shared object (`cargo rustc --lib --crate-type cdylib`, see
+# scripts/build-android.sh), which the phone's NativeActivity loads.
+[lib]
+name = "openomsi_game"
+path = "src/lib.rs"
+
 [[bin]]
 name = "openomsi"
 path = "src/main.rs"
@@ -40,8 +47,6 @@ rayon.workspace = true
 omsi-net = { path = "../omsi-net" }
 omsi-ui = { path = "../omsi-ui" }
 omsi-launcher-core = { path = "../omsi-launcher-core" }
-arboard = { version = "3", default-features = false }
-rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 hashbrown.workspace = true
 parking_lot.workspace = true
@@ -54,6 +59,11 @@ ureq = { version = "2", default-features = false, features = ["tls"] }
 sha2 = "0.10"
 rust-i18n = "4"
 
+# the desktop's clipboard and file dialogs (a phone has neither in this form)
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = { version = "3", default-features = false }
+rfd = "0.15"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
@@ -61,3 +71,11 @@ libc = "0.2"
 # `trad` crate does it (Apple's Accelerate for the maths)
 [target.'cfg(target_os = "macos")'.dependencies]
 ct2rs = { version = "0.9.17", default-features = false, features = ["tokenizers", "accelerate", "ruy"] }
+
+# Android: winit's NativeActivity backend, the system log, and JNI for the few things only
+# Java offers (storage permission, the screen's cut-outs, vibration)
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { workspace = true, features = ["android-native-activity"] }
+android_logger = "0.14"
+jni = "0.21"
+ndk-context = "0.1"

@@ -29,7 +29,15 @@ pub(crate) fn physical_memory() -> Option<u64> {
         };
         (r == 0 && v > 0).then_some(v)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        // MemTotal in kB
+        let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let line = text.lines().find(|l| l.starts_with("MemTotal:"))?;
+        let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+        Some(kb * 1024)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
     {
         None
     }

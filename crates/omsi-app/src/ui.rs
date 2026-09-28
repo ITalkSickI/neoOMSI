@@ -333,7 +333,8 @@ impl Ui {
         {
             let px = (16.0 * s) as u32;
             let x0 = 16.0 * s;
-            let mut y = 14.0 * s;
+            // (below the on-screen buttons of a phone)
+            let mut y = if crate::platform::touch_controls() { 80.0 * s } else { 14.0 * s };
             for n in f.notes.iter().filter(|n| !n.trim().is_empty()).take(8) {
                 let text = clip_to(&self.text, n, px as f32, f.width * 0.6);
                 let l = self.text.label(r, scene, &text, px, [255, 255, 255, 235]);

@@ -59,3 +59,10 @@ lto = "thin"
 
 [profile.dev]
 opt-level = 1
+
+# the Android build (scripts/build-android.sh): the release profile without debug info (a
+# phone's app carries no 300 MB of symbols)
+[profile.android]
+inherits = "release"
+debug = 0
+strip = "debuginfo"

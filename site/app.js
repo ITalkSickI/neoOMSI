@@ -3,6 +3,8 @@
 const REPO = "turbo-devv/openOMSI";
 const DOCS = [
   { file: "USER_GUIDE", title: "User guide", icon: "sports_esports" },
+  { file: "ANDROID", title: "Android & mobile", icon: "smartphone" },
+  { file: "PBR", title: "PBR materials", icon: "texture" },
   { file: "BUILDING", title: "Building", icon: "build" },
   { file: "FORMATS", title: "Content formats", icon: "description" },
   { file: "ARCHITECTURE", title: "Architecture", icon: "account_tree" },
@@ -15,6 +17,7 @@ const PLATFORMS = [
   { key: "windows-x64", name: "Windows", icon: "desktop_windows", note: "64-bit, Windows 10 or newer" },
   { key: "macos-arm64", name: "macOS", icon: "laptop_mac", note: "Apple silicon, macOS 11 or newer" },
   { key: "linux-x64", name: "Linux", icon: "computer", note: "x86-64, Vulkan drivers" },
+  { key: "android-arm64", ext: "apk", name: "Android", icon: "smartphone", note: "arm64 phones and tablets, Android 8.0+, Vulkan" },
   { key: "server-linux-x64", name: "Dedicated server", icon: "dns", note: "Linux x86-64, no window" },
 ];
 
@@ -70,7 +73,7 @@ async function download() {
   const v = rel.tag_name.replace(/^v/, "");
   ver.innerHTML = `Latest version: <b>${v}</b> · ${new Date(rel.published_at).toLocaleDateString()}`;
   grid.innerHTML = PLATFORMS.map(p => {
-    const a = (rel.assets || []).find(a => a.name.endsWith(`-${p.key}.zip`));
+    const a = (rel.assets || []).find(a => a.name.endsWith(`-${p.key}.${p.ext || "zip"}`));
     const size = a ? ` · ${(a.size / 1048576).toFixed(0)} MB` : "";
     return `<div class="card elevation-1 dl-card"><span class="material-icons card-icon">${p.icon}</span>
       <h3>${p.name}</h3><p>${p.note}${size}</p>

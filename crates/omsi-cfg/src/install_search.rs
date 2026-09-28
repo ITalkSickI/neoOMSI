@@ -81,6 +81,17 @@ fn wine_drives() -> Vec<PathBuf> {
 pub fn candidates() -> Vec<PathBuf> {
     let mut tried: Vec<PathBuf> = Vec::new();
     let mut bases: Vec<PathBuf> = Vec::new();
+    // a phone: the shared storage, where a copy of the game is put by cable or file manager
+    // (openOMSI's own folder first, where the app asks for it)
+    if cfg!(target_os = "android") {
+        for s in ["/storage/emulated/0", "/sdcard"] {
+            let s = PathBuf::from(s);
+            bases.push(s.join("openOMSI"));
+            bases.push(s.join("Download"));
+            bases.push(s.join("Games"));
+            bases.push(s);
+        }
+    }
     if let Ok(exe) = std::env::current_exe() {
         bases.extend(exe.ancestors().skip(1).take(8).map(|p| p.to_path_buf()));
     }

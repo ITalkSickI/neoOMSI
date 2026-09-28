@@ -47,7 +47,7 @@ impl App {
         if let (Some(m), PhysicalKey::Code(code)) = (self.menu.as_mut(), event_key) {
             if pressed {
                 if code == KeyCode::Escape {
-                    event_loop.exit();
+                    crate::platform::exit(event_loop);
                 }
                 m.key(code);
                 if m.start {
@@ -809,6 +809,15 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                     self.on_cursor(x + dx * scale, y + dy * scale);
                 }
                 // `look yaw,pitch`: turn the head, as a right-drag does
+                // `touch down|move|up x,y[,id]`: a finger (logical pixels), as the phone's
+                // screen gives it to the on-screen controls (OMSI_TOUCH=1 shows them)
+                "touch" => {
+                    let rest = parts.next().unwrap_or("");
+                    let mut it = rest.split(',').filter_map(|v| v.trim().parse::<f32>().ok());
+                    let (x, y) = (it.next().unwrap_or(0.0), it.next().unwrap_or(0.0));
+                    let id = it.next().unwrap_or(0.0) as u64;
+                    self.script_touch(event_loop, arg, x * scale, y * scale, id);
+                }
                 "look" => self.look = xy(),
                 // `orbit <m>`: how far the outside camera stands off, as the mouse wheel sets it
                 "orbit" => self.orbit = xy().0.clamp(ORBIT_MIN, ORBIT_MAX),
@@ -1467,13 +1476,13 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 self.game_menu = None;
                 if self.load_quicksave() {
                     self.finish_session();
-                    event_loop.exit();
+                    crate::platform::exit(event_loop);
                 }
             }
             Some("quit") => {
                 self.game_menu = None;
                 self.finish_session();
-                event_loop.exit();
+                crate::platform::exit(event_loop);
             }
             _ => {}
         }

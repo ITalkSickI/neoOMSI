@@ -65,6 +65,9 @@ pub struct Input {
     /// A key as it was pressed (for binding keys): winit's code name.
     pub raw_key: Option<winit::keyboard::KeyCode>,
     pub double_click: bool,
+    /// The wheel is a finger dragged over the screen: it scrolls, it never turns a slider or
+    /// a time field under the finger.
+    pub touch: bool,
 }
 
 /// An open dropdown: its options are drawn last, over everything.
@@ -195,6 +198,11 @@ impl Ui {
             px_scale: 0.0,
         };
         self.layers.push((layer, Painter::with_scale(s), 0));
+    }
+
+    /// Whether a scroll area took this frame's wheel (what is left scrolls the page).
+    pub fn wheel_taken(&self) -> bool {
+        self.wheel_taken
     }
 
     /// The painter of the current layer.
@@ -466,7 +474,7 @@ impl Ui {
             }
             *value = v.clamp(min, max);
             self.cursor = winit::window::CursorIcon::Grabbing;
-        } else if h && self.input.wheel.y.abs() > 0.0 && !self.wheel_taken {
+        } else if h && self.input.wheel.y.abs() > 0.0 && !self.wheel_taken && !self.input.touch {
             let k = if step > 0.0 { step } else { (max - min) / 50.0 };
             *value = (*value + self.input.wheel.y.signum() * k).clamp(min, max);
             self.wheel_taken = true;
@@ -662,7 +670,7 @@ impl Ui {
             let cell = Rect::new(r.x + k as f32 * (half + 16.0), r.y, half, r.h);
             let id = id_of(&format!("{name}.{k}"));
             let (h, _, _) = self.interact(id, cell);
-            if h && self.input.wheel.y.abs() > 0.0 && !self.wheel_taken {
+            if h && self.input.wheel.y.abs() > 0.0 && !self.wheel_taken && !self.input.touch {
                 *minutes += self.input.wheel.y.signum() as i32 * if *unit == 60 { 60 } else { 5 };
                 self.wheel_taken = true;
             }

@@ -994,12 +994,16 @@ pub fn mods(l: &mut Launcher, area: Rect) {
     let mut y = inner.y;
     let half = (inner.w - GAP) * 0.5;
     if l.ui.button("mod-folder", Rect::new(inner.x, y, half, 40.0), "Choose a folder", Some("folder_open"), ButtonKind::Primary) {
-        if let Some(p) = core::pick_mod(false) {
+        if super::mobile::mobile() {
+            l.browse(super::mobile::Purpose::ModFolder, "");
+        } else if let Some(p) = core::pick_mod(false) {
             l.state.install(p.to_string_lossy().to_string());
         }
     }
     if l.ui.button("mod-zip", Rect::new(inner.x + half + GAP, y, half, 40.0), "Choose a .zip", Some("inventory_2"), ButtonKind::Normal) {
-        if let Some(p) = core::pick_mod(true) {
+        if super::mobile::mobile() {
+            l.browse(super::mobile::Purpose::ModZip, "");
+        } else if let Some(p) = core::pick_mod(true) {
             l.state.install(p.to_string_lossy().to_string());
         }
     }
@@ -1165,22 +1169,30 @@ pub fn setup(l: &mut Launcher, area: Rect) {
         l.pages.setup_root = Some(root.clone());
     }
     if l.ui.button("browse-root", Rect::new(inner.right() - 100.0, y, 100.0, ROW), "Browse", None, ButtonKind::Normal) {
-        if let Some(p) = core::pick_folder("The OMSI 2 folder (with maps and Vehicles in it)") {
+        if super::mobile::mobile() {
+            let start = root.clone();
+            l.browse(super::mobile::Purpose::Root, &start);
+        } else if let Some(p) = core::pick_folder("The OMSI 2 folder (with maps and Vehicles in it)") {
             l.pages.setup_root = Some(p.to_string_lossy().to_string());
         }
     }
     y += ROW + 10.0;
-    l.ui.label(Rect::new(inner.x, y, 150.0, ROW), "Game binary");
-    if l.ui.text_input("cfg-game", Rect::new(inner.x + 150.0, y, inner.w - 150.0 - 110.0, ROW), &mut game, "openomsi", Some("terminal")) {
-        l.pages.setup_game = Some(game.clone());
-    }
-    if l.ui.button("browse-game", Rect::new(inner.right() - 100.0, y, 100.0, ROW), "Browse", None, ButtonKind::Normal) {
-        if let Some(p) = rfd::FileDialog::new().set_title("The openomsi program").pick_file() {
-            l.pages.setup_game = Some(p.to_string_lossy().to_string());
+    if core::IN_PROCESS_GAMES {
+        // (a phone: the game is this app itself)
+        y += l.ui.paragraph("Copy the whole OMSI 2 folder (with maps and Vehicles in it) onto the phone - by cable, from a PC or a USB stick - for example as openOMSI/OMSI 2 in the internal storage, then choose it here with Browse. Mods go into openOMSI/Mods or are installed from the Mods page.", Vec2::new(inner.x, y), inner.w, 12.5, Weight::Regular, TEXT_DIM);
+    } else {
+        l.ui.label(Rect::new(inner.x, y, 150.0, ROW), "Game binary");
+        if l.ui.text_input("cfg-game", Rect::new(inner.x + 150.0, y, inner.w - 150.0 - 110.0, ROW), &mut game, "openomsi", Some("terminal")) {
+            l.pages.setup_game = Some(game.clone());
         }
+        if l.ui.button("browse-game", Rect::new(inner.right() - 100.0, y, 100.0, ROW), "Browse", None, ButtonKind::Normal) {
+            if let Some(p) = core::pick_file("The openomsi program") {
+                l.pages.setup_game = Some(p.to_string_lossy().to_string());
+            }
+        }
+        y += ROW + 16.0;
+        y += l.ui.paragraph("The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.", Vec2::new(inner.x, y), inner.w, 12.5, Weight::Regular, TEXT_DIM);
     }
-    y += ROW + 16.0;
-    y += l.ui.paragraph("The OMSI 2 folder is the one with maps and Vehicles in it (any complete installation). The game binary is the openomsi program; it is found by itself when it sits next to the launcher.", Vec2::new(inner.x, y), inner.w, 12.5, Weight::Regular, TEXT_DIM);
     y += 12.0;
     if l.ui.button("cfg-save", Rect::new(inner.x, y, 180.0, 42.0), "Save", Some("save"), ButtonKind::Primary) {
         l.state.config.root = root.trim().to_string();

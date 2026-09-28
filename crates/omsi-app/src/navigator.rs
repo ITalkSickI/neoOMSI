@@ -814,9 +814,12 @@ impl Navigator {
         let ph = (map_h + bars + sched).round();
         let (w, h) = (pw as u32, ph as u32);
         let margin = (sh * 0.018).max(10.0).round();
+        // (with the on-screen controls the corners are theirs: the top middle)
+        let touch = crate::platform::touch_controls();
         let right = self.corner.contains("right");
-        let top = self.corner.contains("top");
-        let x0 = if right { sw - margin - pw } else { margin };
+        let top = self.corner.contains("top") || touch;
+        // ("top-center": a phone's, between its on-screen buttons)
+        let x0 = if self.corner.contains("center") || touch { ((sw - pw) * 0.5).round() } else if right { sw - margin - pw } else { margin };
         let y0 = if top { margin } else { sh - margin - ph };
 
         if self.gpu.is_none() {

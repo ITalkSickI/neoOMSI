@@ -58,6 +58,11 @@ impl Atlas {
         self.generation += 1;
     }
 
+    /// Everything to be sent again (to another GPU pipeline, or one made anew).
+    pub fn mark_all_dirty(&mut self) {
+        self.dirty = Some([0, 0, self.size, self.size]);
+    }
+
     /// The region changed since the last call: x, y, w, h.
     pub fn take_dirty(&mut self) -> Option<[u32; 4]> {
         self.dirty.take()

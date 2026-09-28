@@ -904,3 +904,16 @@ peak 1.9 → 1.2 GB), faster trimming, presets keep the frame-rate governor on; 
 long names `_normal`, `_roughness`, `_metallic`, `_ao`), `_orm`/`_arm`/`_mra` beside a
 diffuse texture (single letters are OMSI's night maps; a normal map must also look like one), normal mapping by a derivative tangent frame in enhanced.wgsl. Not reproduced: stray
 light sources (Grundorf, Novi Sad at night), the EN92 Ctrl+Shift cab light.
+
+Round 25 (Sept 27 2026): **Android** - the game is now a library (`openomsi_game`, `lib.rs`;
+`main.rs` calls `run`), built for Android as `libopenomsi_game.so` for a NativeActivity
+(`scripts/build-android.sh`, docs/ANDROID.md). One process and one window there: `android.rs`
+runs the launcher and the game in turn (`omsi_launcher_lib::launch` keeps the command line
+instead of starting a process, `platform::exit` ends a session back to the launcher),
+surfaces are dropped on `suspended` and made again on `resumed`. The launcher lays itself out
+for fingers (`launcher/mobile.rs`: rail of icons, page scroll, storage browser, on-screen
+keyboard); the game has on-screen controls (`touch.rs`: wheel/tilt, pedals as analog axes,
+gearbox, doors, brakes, indicators, horn, cab panel, cameras, tap/drag on cockpit switches,
+pinch zoom, a stick on foot), drawn with omsi-ui. Phone defaults in `Settings::default`, the
+navigator's `top-center` corner, `/proc/meminfo` for the texture budget. `OMSI_TOUCH=1` and
+`OMSI_INPUT` `touch` commands check the controls on the computer, `OMSI_MOBILE=1` the launcher.

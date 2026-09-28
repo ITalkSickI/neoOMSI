@@ -12,11 +12,23 @@ impl ApplicationHandler for App {
         self.resumed_impl(event_loop);
     }
 
+    /// A phone put the app into the background: its window's surface goes (made again on
+    /// `resumed`), the fingers and the held keys are let go.
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        self.surface = None;
+        self.touch.drop_gpu();
+        self.keys.clear();
+        if let Some(p) = self.player.as_mut() {
+            p.axes.release_all();
+        }
+        self.save_last_situation();
+    }
+
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
                 self.finish_session();
-                event_loop.exit();
+                crate::platform::exit(event_loop);
             }
             WindowEvent::Resized(size) => {
                 if let (Some(s), Some(r)) = (self.surface.as_mut(), self.renderer.as_ref()) {
@@ -57,7 +69,12 @@ impl ApplicationHandler for App {
                 ) {
                     lan::chat_type(&mut self.remotes, text);
                 }
-                if let PhysicalKey::Code(code) = event.physical_key {
+                // a phone's back key is Escape (the game menu, out of the city map ...)
+                let physical = match event.physical_key {
+                    PhysicalKey::Code(KeyCode::BrowserBack) => PhysicalKey::Code(KeyCode::Escape),
+                    k => k,
+                };
+                if let PhysicalKey::Code(code) = physical {
                     self.on_key(
                         event_loop,
                         code,
@@ -81,65 +98,7 @@ impl ApplicationHandler for App {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                     winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                 };
-                // the object editor: the wheel turns (Shift: lifts) the object
-                if self.game_menu.is_none() && self.editor_wheel(amount) {
-                    return;
-                }
-                // placing a vehicle: the wheel turns it
-                if self.placing.is_some() && self.game_menu.is_none() {
-                    self.placing_wheel(amount);
-                    return;
-                }
-                // the game menu and its lists scroll with the wheel
-                if self.game_menu.is_some() {
-                    self.menu_wheel(amount);
-                    return;
-                }
-                // the city map takes the wheel while it is open
-                if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
-                    n.map_wheel(amount, self.cursor.0, self.cursor.1);
-                    return;
-                }
-                // the wheel over the chat (or while typing) scrolls its history
-                if let Some(ui) = self.ui.as_mut() {
-                    if self.lan.is_some() && (ui.chat.hovered || lan::chat_open(&self.remotes)) {
-                        ui.chat.wheel(self.remotes.chat.lines.len(), amount);
-                        return;
-                    }
-                }
-                // The wheel over a cockpit switch turns it: the same <event>_drag the
-                // original fires while the mouse is dragged, with the notch as the
-                // movement. Knobs, the sun blind and the ignition key are far easier to
-                // set that way than by holding the button down and moving the mouse.
-                if self.hover.is_some() && self.view != "free" {
-                    if let (Some(p), Some(cam), Some(s)) = (
-                        self.player.as_mut(),
-                        self.camera.as_ref(),
-                        self.surface.as_ref(),
-                    ) {
-                        let (o, d) = cursor_ray(
-                            cam,
-                            self.cursor.0,
-                            self.cursor.1,
-                            s.config.width as f32,
-                            s.config.height as f32,
-                        );
-                        let spread = pixel_angle(cam, s.config.height as f32) * 6.0;
-                        if p.pick(o, d, spread).is_some() {
-                            // a notch is worth a good push of the mouse: the scripts divide
-                            // the movement by 10 (the ignition key), 200 (the parking brake)
-                            // or 500 (the driver's window), so a few pixels would do nothing
-                            p.wheel(o, d, spread, -amount * 40.0);
-                            return;
-                        }
-                    }
-                }
-                if self.view == "outside" && self.player.is_some() {
-                    self.orbit = (self.orbit - amount * 1.5).clamp(ORBIT_MIN, ORBIT_MAX);
-                } else if let Some(cam) = self.camera.as_mut() {
-                    let f = cam.forward();
-                    cam.position += (f * amount * 4.0).as_dvec3();
-                }
+                self.wheel(amount);
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.on_cursor(position.x as f32, position.y as f32);
@@ -148,32 +107,9 @@ impl ApplicationHandler for App {
                 state,
                 button: winit::event::MouseButton::Left,
                 ..
-            } => {
-                // placing a vehicle: a click sets it down
-                if self.placing.is_some() && self.game_menu.is_none() {
-                    if state == ElementState::Pressed {
-                        self.placing_click();
-                    }
-                    return;
-                }
-                // the game menu takes the clicks while it is open
-                if self.game_menu.is_some() {
-                    if state == ElementState::Pressed {
-                        let hit = self.ui.as_ref().and_then(|u| {
-                            u.menu_rects.iter().position(|r| self.cursor.0 >= r[0] && self.cursor.0 <= r[2] && self.cursor.1 >= r[1] && self.cursor.1 <= r[3])
-                        });
-                        if let Some(k) = hit {
-                            let k = k + self.ui.as_ref().map(|u| u.menu_start).unwrap_or(0);
-                            if self.chooser.is_none() {
-                                self.game_menu = Some(k);
-                            }
-                            self.menu_choose(event_loop, k);
-                        }
-                    }
-                    return;
-                }
-                self.on_left(state == ElementState::Pressed)
-            }
+            } => self.left_button(event_loop, state == ElementState::Pressed),
+            // a finger (a phone; see touch.rs)
+            WindowEvent::Touch(t) => self.on_touch(event_loop, t),
             WindowEvent::RedrawRequested => {
                 // OMSI's autosave of the last situation: every five minutes of play
                 if !self.paused && self.player.is_some() && self.clock.run_time - self.autosave_t >= 300.0 {
@@ -190,7 +126,7 @@ impl ApplicationHandler for App {
                 // summary, the personnel file and the LAN goodbye are not lost
                 if let Some(why) = self.renderer.as_ref().and_then(|r| r.device_lost()) {
                     log::error!("ending the session: the graphics device was lost ({why})");
-                    event_loop.exit();
+                    crate::platform::exit(event_loop);
                     return;
                 }
                 // in the own bus's cab: at the wheel, a passenger's view, or sitting in a
@@ -285,7 +221,7 @@ impl ApplicationHandler for App {
                                 m.maps.len(),
                                 m.vehicles.len()
                             );
-                            event_loop.exit();
+                            crate::platform::exit(event_loop);
                         }
                     }
                     let lines = m.lines();
@@ -500,6 +436,8 @@ impl ApplicationHandler for App {
                         }
                     }
                 }
+                // the on-screen wheel and pedals (a phone)
+                self.touch_frame(dt);
                 if let (Some(p), Some(r), Some(scene)) = (
                     self.player.as_mut(),
                     self.renderer.as_ref(),
@@ -1325,6 +1263,10 @@ impl ApplicationHandler for App {
                 let mut finish = false;
                 let mut reconfigure = false;
                 let shot = self.shot.take();
+                if let Some(s) = self.surface.as_ref() {
+                    let (w, h) = (s.config.width, s.config.height);
+                    self.touch_prepare(w, h);
+                }
                 if let (Some(s), Some(r), Some(scene), Some(cam), Some(win)) = (
                     self.surface.as_ref(),
                     self.renderer.as_mut(),
@@ -1344,13 +1286,18 @@ impl ApplicationHandler for App {
                             cam,
                             &lighting,
                         ) {
-                            Ok(px) => match image::save_buffer(
+                            Ok(mut px) => match {
+                                // (with the on-screen controls, when there are)
+                                if let Some(over) = self.touch.picture(r, s.config.width, s.config.height) {
+                                    crate::touch::composite(&mut px, &over);
+                                }
+                                image::save_buffer(
                                 &path,
                                 &px,
                                 s.config.width,
                                 s.config.height,
                                 image::ColorType::Rgba8,
-                            ) {
+                            ) } {
                                 Ok(()) => log::info!(
                                     "input script: window picture written to {}",
                                     path.display()
@@ -1481,6 +1428,8 @@ impl ApplicationHandler for App {
                             cam,
                             &lighting,
                         );
+                        // the on-screen controls over the picture (a phone)
+                        self.touch.render(r, &view, s.config.width, s.config.height);
                         *self.profile.entry("render").or_default() += __t.elapsed().as_secs_f64();
                         if omsi_cfg::env::var_os("OMSI_PROFILE_GPU").is_some() {
                             // wait for the GPU here, so that its time shows as a stage of its own
@@ -1606,7 +1555,7 @@ impl ApplicationHandler for App {
                                 );
                             }
                             finish = true;
-                            event_loop.exit();
+                            crate::platform::exit(event_loop);
                         }
                     }
                     self.total_frames += 1;
@@ -1673,7 +1622,7 @@ impl ApplicationHandler for App {
         if let Some(sig) = quit::requested() {
             log::info!("{} received: ending the session", quit::signal_name(sig));
             self.finish_session();
-            event_loop.exit();
+            crate::platform::exit(event_loop);
         }
     }
 
@@ -1694,6 +1643,100 @@ impl ApplicationHandler for App {
         // and the launcher's LAN status file goes (Cmd+Q never returns to main's guard)
         drop(lan::StatusFileGuard);
         log::info!("game ends");
+    }
+}
+
+impl App {
+    /// The mouse wheel (or a pinch of two fingers): `amount` notches, up positive.
+    pub(crate) fn wheel(&mut self, amount: f32) {
+        // the object editor: the wheel turns (Shift: lifts) the object
+        if self.game_menu.is_none() && self.editor_wheel(amount) {
+            return;
+        }
+        // placing a vehicle: the wheel turns it
+        if self.placing.is_some() && self.game_menu.is_none() {
+            self.placing_wheel(amount);
+            return;
+        }
+        // the game menu and its lists scroll with the wheel
+        if self.game_menu.is_some() {
+            self.menu_wheel(amount);
+            return;
+        }
+        // the city map takes the wheel while it is open
+        if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
+            n.map_wheel(amount, self.cursor.0, self.cursor.1);
+            return;
+        }
+        // the wheel over the chat (or while typing) scrolls its history
+        if let Some(ui) = self.ui.as_mut() {
+            if self.lan.is_some() && (ui.chat.hovered || lan::chat_open(&self.remotes)) {
+                ui.chat.wheel(self.remotes.chat.lines.len(), amount);
+                return;
+            }
+        }
+        // The wheel over a cockpit switch turns it: the same <event>_drag the
+        // original fires while the mouse is dragged, with the notch as the
+        // movement. Knobs, the sun blind and the ignition key are far easier to
+        // set that way than by holding the button down and moving the mouse.
+        if self.hover.is_some() && self.view != "free" {
+            if let (Some(p), Some(cam), Some(s)) = (
+                self.player.as_mut(),
+                self.camera.as_ref(),
+                self.surface.as_ref(),
+            ) {
+                let (o, d) = cursor_ray(
+                    cam,
+                    self.cursor.0,
+                    self.cursor.1,
+                    s.config.width as f32,
+                    s.config.height as f32,
+                );
+                let spread = pixel_angle(cam, s.config.height as f32) * 6.0;
+                if p.pick(o, d, spread).is_some() {
+                    // a notch is worth a good push of the mouse: the scripts divide
+                    // the movement by 10 (the ignition key), 200 (the parking brake)
+                    // or 500 (the driver's window), so a few pixels would do nothing
+                    p.wheel(o, d, spread, -amount * 40.0);
+                    return;
+                }
+            }
+        }
+        if self.view == "outside" && self.player.is_some() {
+            self.orbit = (self.orbit - amount * 1.5).clamp(ORBIT_MIN, ORBIT_MAX);
+        } else if let Some(cam) = self.camera.as_mut() {
+            let f = cam.forward();
+            cam.position += (f * amount * 4.0).as_dvec3();
+        }
+    }
+
+    /// The left mouse button (or a finger's tap) where the cursor is.
+    pub(crate) fn left_button(&mut self, event_loop: &ActiveEventLoop, pressed: bool) {
+        let state = if pressed { ElementState::Pressed } else { ElementState::Released };
+        // placing a vehicle: a click sets it down
+        if self.placing.is_some() && self.game_menu.is_none() {
+            if state == ElementState::Pressed {
+                self.placing_click();
+            }
+            return;
+        }
+        // the game menu takes the clicks while it is open
+        if self.game_menu.is_some() {
+            if state == ElementState::Pressed {
+                let hit = self.ui.as_ref().and_then(|u| {
+                    u.menu_rects.iter().position(|r| self.cursor.0 >= r[0] && self.cursor.0 <= r[2] && self.cursor.1 >= r[1] && self.cursor.1 <= r[3])
+                });
+                if let Some(k) = hit {
+                    let k = k + self.ui.as_ref().map(|u| u.menu_start).unwrap_or(0);
+                    if self.chooser.is_none() {
+                        self.game_menu = Some(k);
+                    }
+                    self.menu_choose(event_loop, k);
+                }
+            }
+            return;
+        }
+        self.on_left(state == ElementState::Pressed)
     }
 }
 

@@ -34,7 +34,7 @@ pub fn lower_thread_priority() {
             SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
         }
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         extern "C" {
             fn setpriority(which: i32, who: u32, prio: i32) -> i32;

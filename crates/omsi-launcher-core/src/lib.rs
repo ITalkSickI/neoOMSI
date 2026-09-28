@@ -1910,6 +1910,13 @@ pub struct Launched {
 
 /// Start a game for the duty. Any number may run at once; each writes its own log.
 pub fn launch(d: &Duty) -> Result<Launched> {
+    if IN_PROCESS_GAMES {
+        let args = duty_args(d)?;
+        let command = args.join(" ");
+        log_to_file(&format!("game in this process: {command}"));
+        *IN_PROCESS.lock().unwrap_or_else(|e| e.into_inner()) = Some(args);
+        return Ok(Launched { pid: std::process::id(), log: data_dir().join("game.log").to_string_lossy().to_string(), command, others: 0 });
+    }
     let c = load_config();
     let game = find_game(&c.game).context("the game binary was not found (set it under Setup)")?;
     let args = duty_args(d)?;
@@ -1948,19 +1955,61 @@ pub fn cleanup() {
 }
 
 /// Native folder / file picker (Finder, Explorer, the GTK dialog) for a mod. Must run on
-/// the main thread.
+/// the main thread. (None on a phone: the launcher browses the storage itself there.)
 pub fn pick_mod(zip: bool) -> Option<PathBuf> {
-    if zip {
-        rfd::FileDialog::new().set_title("Choose a mod archive").add_filter("Mod archive", &["zip"]).pick_file()
-    } else {
-        rfd::FileDialog::new().set_title("Choose the mod folder").pick_folder()
+    #[cfg(not(target_os = "android"))]
+    {
+        if zip {
+            rfd::FileDialog::new().set_title("Choose a mod archive").add_filter("Mod archive", &["zip"]).pick_file()
+        } else {
+            rfd::FileDialog::new().set_title("Choose the mod folder").pick_folder()
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = zip;
+        None
     }
 }
 
 /// Folder picker (Setup: the OMSI 2 folder).
 pub fn pick_folder(title: &str) -> Option<PathBuf> {
-    rfd::FileDialog::new().set_title(title).pick_folder()
+    #[cfg(not(target_os = "android"))]
+    {
+        rfd::FileDialog::new().set_title(title).pick_folder()
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = title;
+        None
+    }
 }
+
+/// File picker (Setup: the game program).
+pub fn pick_file(title: &str) -> Option<PathBuf> {
+    #[cfg(not(target_os = "android"))]
+    {
+        rfd::FileDialog::new().set_title(title).pick_file()
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = title;
+        None
+    }
+}
+
+/// A phone runs one program: the launcher hands the game's command line over here and the
+/// same process plays it in the same window (see the app's `android.rs`) instead of starting
+/// another process.
+static IN_PROCESS: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+
+/// The command line of a game the launcher asked for (taken once).
+pub fn take_in_process_launch() -> Option<Vec<String>> {
+    IN_PROCESS.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
+/// Whether games run inside the launcher's own process (a phone).
+pub const IN_PROCESS_GAMES: bool = cfg!(target_os = "android");
 
 pub use instances::{list as list_instances, log_tail, stop as stop_instance, Instance};
 

@@ -36,6 +36,7 @@ Every commit to `main` is built by GitHub Actions and published on the
 | Windows x64 | `openOMSI-<version>-windows-x64.zip` - run `openomsi.exe` |
 | macOS (Apple silicon) | `openOMSI-<version>-macos-arm64.zip` - open `openOMSI.app` |
 | Linux x64 | `openOMSI-<version>-linux-x64.zip` - run `openomsi` |
+| Android (arm64, 8.0+) | `openOMSI-<version>-android-arm64.apk` - see [docs/ANDROID.md](docs/ANDROID.md) |
 | Dedicated server (Linux x64) | `openOMSI-<version>-server-linux-x64.zip` - see [docs/SERVER.md](docs/SERVER.md) |
 
 Start the game, point the launcher to your OMSI 2 folder once, pick a map, a bus and a duty,
@@ -60,6 +61,8 @@ pages live in [`docs/`](docs):
 | Document | What is in it |
 | --- | --- |
 | [User guide](docs/USER_GUIDE.md) | running, controls, launcher, settings, mods, LAN play, debug switches |
+| [Android](docs/ANDROID.md) | the mobile version: install, touch controls, building the APK |
+| [PBR materials](docs/PBR.md) | normal, roughness, metalness and occlusion maps for mods |
 | [Building](docs/BUILDING.md) | building from source on macOS, Windows and Linux |
 | [Content formats](docs/FORMATS.md) | every OMSI 2 file format |
 | [Architecture](docs/ARCHITECTURE.md) | crates, threading, renderer, roadmap |
@@ -75,6 +78,7 @@ git clone https://github.com/turbo-devv/openOMSI.git && cd openOMSI
 scripts/build-macos.sh        # macOS   → dist/macos/openOMSI.app
 scripts\build-windows.cmd     # Windows → dist\windows\openomsi.exe
 scripts/build-linux.sh        # Linux   → dist/linux/openomsi
+scripts/build-android.sh      # Android → dist/android/openOMSI-<version>.apk
 scripts/build-server.sh       # server  → dist/server
 ```
 

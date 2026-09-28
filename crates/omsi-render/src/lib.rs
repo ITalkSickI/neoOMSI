@@ -1230,7 +1230,19 @@ impl Renderer {
             limits.max_buffer_size = adapter.limits().max_buffer_size;
         }
         let format = format
-            .or_else(|| surface.map(|s| s.get_capabilities(&adapter).formats[0]))
+            .or_else(|| {
+                surface.map(|s| {
+                    let formats = s.get_capabilities(&adapter).formats;
+                    // (an Android driver lists the plain RGBA8 first: the picture, written in
+                    // linear light for an sRGB target, came out dark and flat)
+                    if cfg!(target_os = "android") {
+                        if let Some(f) = formats.iter().find(|f| f.is_srgb()) {
+                            return *f;
+                        }
+                    }
+                    formats[0]
+                })
+            })
             .unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
         // Every target the scene is drawn into with multisampling (the swap chain or mirror
         // format, the HDR target of the enhanced path, the depth buffer) must take the
