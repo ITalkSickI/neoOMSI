@@ -27,6 +27,10 @@ pub(crate) fn load() -> Plugins {
 /// The game's side of a plugin frame: the player's bus, when there is one.
 pub(crate) struct Io<'a> {
     pub vehicle: Option<&'a mut omsi_sim::VehicleInstance>,
+    /// Seconds since the last frame.
+    pub dt: f32,
+    /// A plugin's `omsi.message`, shown when the frame is done.
+    pub message: Option<(String, f32)>,
 }
 
 impl PluginIo for Io<'_> {
@@ -81,5 +85,21 @@ impl PluginIo for Io<'_> {
                 veh.trigger(&format!("{trigger}_off"));
             }
         }
+    }
+
+    fn dt(&self) -> f32 {
+        self.dt
+    }
+
+    fn vehicle_name(&self) -> Option<String> {
+        self.vehicle.as_ref().map(|v| format!("{} {}", v.ty.def.manufacturer, v.ty.def.type_name).trim().to_string())
+    }
+
+    fn position(&self) -> Option<[f64; 4]> {
+        self.vehicle.as_ref().map(|v| [v.position.x, v.position.y, v.position.z, v.heading])
+    }
+
+    fn message(&mut self, text: &str, seconds: f32) {
+        self.message = Some((text.to_string(), seconds));
     }
 }

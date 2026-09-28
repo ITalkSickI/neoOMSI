@@ -25,6 +25,8 @@
 //! answers over its standard input and output (started directly on Windows and through
 //! Wine elsewhere). The frame is one round trip.
 
+pub mod lua;
+
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -622,12 +624,28 @@ pub trait PluginIo {
     fn set_string(&mut self, name: &str, s: &str);
     /// A trigger's key went down (`true`) or came up.
     fn fire(&mut self, trigger: &str, down: bool);
+    /// Seconds of game time since the last frame (Lua plugins' timers).
+    fn dt(&self) -> f32 {
+        0.0
+    }
+    /// The player's vehicle's name (Lua plugins).
+    fn vehicle_name(&self) -> Option<String> {
+        None
+    }
+    /// The player's vehicle: x, y, z and heading in degrees (Lua plugins).
+    fn position(&self) -> Option<[f64; 4]> {
+        None
+    }
+    /// A line of text on the screen for `seconds` (Lua plugins).
+    fn message(&mut self, _text: &str, _seconds: f32) {}
 }
 
 /// Every plugin of the plugins folders.
 #[derive(Default)]
 pub struct Plugins {
     pub loaded: Vec<Plugin>,
+    /// The Lua plugins (`plugins/*.lua`, `plugins/<name>/main.lua`).
+    pub lua: Vec<lua::LuaPlugin>,
 }
 
 impl Plugins {
@@ -651,15 +669,35 @@ impl Plugins {
                 }
             }
         }
-        Plugins { loaded }
+        let mut lua = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for dir in dirs {
+            for path in lua::find_lua(dir) {
+                let key = path.strip_prefix(dir).unwrap_or(&path).to_string_lossy().to_ascii_lowercase();
+                if !seen.insert(key) {
+                    continue;
+                }
+                match lua::LuaPlugin::load(&path, &mut lua::NoVehicle) {
+                    Ok(p) => {
+                        log::info!("Lua plugin {} loaded ({})", p.name, path.display());
+                        lua.push(p);
+                    }
+                    Err(e) => log::warn!("Could not load Lua plugin {}: {e}", path.display()),
+                }
+            }
+        }
+        Plugins { loaded, lua }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.loaded.is_empty()
+        self.loaded.is_empty() && self.lua.is_empty()
     }
 
     pub fn frame(&mut self, io: &mut dyn PluginIo) {
         for p in &mut self.loaded {
+            p.frame(io);
+        }
+        for p in &mut self.lua {
             p.frame(io);
         }
     }
@@ -669,6 +707,10 @@ impl Plugins {
             p.finalize();
         }
         self.loaded.clear();
+        for p in &mut self.lua {
+            p.stop(&mut lua::NoVehicle);
+        }
+        self.lua.clear();
     }
 }
 

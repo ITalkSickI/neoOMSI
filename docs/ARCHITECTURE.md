@@ -254,7 +254,7 @@ budget.
 4. HOF/IBIS callbacks, text and script textures (matrix displays), coupled vehicles.
    **(done)** Humans/passengers, ticket selling, timetable following for the player.
 5. GUI (menus, dialogs): the start menu and the launcher. Situations and chrono events.
-   **(done)** Plugin API bridge.
+   **(done)** Plugin API bridge. **(done)** Lua plugins.
 
 ## The big round (Sept 2026): the report of about thirty problems
 
@@ -917,3 +917,13 @@ gearbox, doors, brakes, indicators, horn, cab panel, cameras, tap/drag on cockpi
 pinch zoom, a stick on foot), drawn with omsi-ui. Phone defaults in `Settings::default`, the
 navigator's `top-center` corner, `/proc/meminfo` for the texture budget. `OMSI_TOUCH=1` and
 `OMSI_INPUT` `touch` commands check the controls on the computer, `OMSI_MOBILE=1` the launcher.
+
+### 0.1.5 (Sept 27 2026): Lua plugins
+
+`crates/omsi-plugin/src/lua.rs` + `prelude.lua` (mlua, vendored Lua 5.4): `plugins/*.lua` and
+`plugins/<name>/main.lua`, one sandboxed state each (no io/os.execute/C modules, `require` in
+the plugin folder), the `omsi` table (bus variables/strings/triggers by name, system
+variables, position, on-screen messages, events, timers, watches, `omsi.data` saved to
+`*.save.lua`), hot reload on save, a 1 s budget per call and switch-off after 10 errors.
+Driven with the DLL plugins from `Plugins::frame`; the game's side (dt, vehicle name,
+position, message) is `PluginIo`'s new default methods. Tests: `crates/omsi-plugin/tests/lua.rs`.
