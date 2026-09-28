@@ -93,6 +93,9 @@ pub(crate) struct App {
     /// OMSI's mouse control (`toggel_mouse_ctrl`, O): the cursor's place steers (across) and
     /// works the pedals (up throttle, down brake).
     pub(crate) mouse_drive: bool,
+    /// Mouse steering: the steering it gives (fraction of the full lock) and how long (s)
+    /// it still eases in after being switched on (OMSI: a second, see app_events).
+    pub(crate) mouse_steer: (f32, f32),
     /// The tutorial being run (`--tutorial`), loaded on the first frame.
     pub(crate) tutorial: Option<crate::tutorial::Tutorial>,
     /// OMSI's pedestrian ("ego") view: the free camera walking at eye height on whatever
@@ -607,6 +610,7 @@ impl App {
                     position: DVec3::new(0.0, 0.0, -1.0e6),
                     yaw: 0.0,
                     pitch: -89.0,
+                    roll: 0.0,
                     fov_deg: 60.0,
                     near: 0.5,
                     far: 10.0,

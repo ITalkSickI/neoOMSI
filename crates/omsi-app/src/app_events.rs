@@ -242,6 +242,7 @@ impl ApplicationHandler for App {
                                 position: DVec3::ZERO,
                                 yaw: 0.0,
                                 pitch: 0.0,
+                                roll: 0.0,
                                 fov_deg: 60.0,
                                 near: 0.5,
                                 far: 100.0,
@@ -417,13 +418,34 @@ impl ApplicationHandler for App {
                 let driving = self.player.as_ref().filter(|_| self.view == "driver");
                 ctl.feedback(driving.and_then(|p| p.vehicle.var("FF_Vib_Amp")).unwrap_or(0.0), driving.and_then(|p| p.vehicle.var("FF_Vib_Period")).unwrap_or(0.0));
                 // OMSI's mouse control: the cursor's place across steers, above the middle
-                // of the window is the throttle, below it the brake
+                // of the window is the throttle, below it the brake.
+                // Steering as Omsi.exe has it (0x6f4284..0x6f447b): the whole width of the
+                // window is the full lock from left to right, divided by the speed in tens
+                // of km/h above 10 km/h - at 50 km/h the same hand movement turns the wheel a
+                // fifth as far, which is what makes the wheel feel heavier the faster the bus
+                // goes. For a second after mouse steering is switched on the wheel eases
+                // towards the cursor (a half-life of the time that is left), then follows it.
                 let mut analog = analog;
                 if let (true, Some(s)) = (self.mouse_drive && self.view == "driver" && !self.mouse_look && self.game_menu.is_none(), self.surface.as_ref()) {
                     let (w, h) = (s.config.width as f32, s.config.height as f32);
-                    let dx = (self.cursor.0 - w * 0.5) / (w * 0.4);
+                    let kmh = self.player.as_ref().map(|p| p.vehicle.physics.velocity_kmh()).unwrap_or(0.0);
+                    let target = crate::player::mouse_steering(self.cursor.0, w, kmh);
+                    let (steer, fade) = &mut self.mouse_steer;
+                    if *fade > 0.0 {
+                        let k = (-std::f32::consts::LN_2 / *fade * dt).exp();
+                        *steer = target + (*steer - target) * k;
+                        *fade = (*fade - dt).max(0.0);
+                    } else {
+                        *steer = target;
+                    }
                     let dy = (h * 0.5 - self.cursor.1) / (h * 0.4);
-                    analog.steering = Some(dx.clamp(-1.0, 1.0));
+                    analog.steering = Some(*steer);
+                    // the mouse owns the wheel (OMSI sets the curvature from it every frame):
+                    // a steering key's leftover turn must not take over whenever the cursor
+                    // passes the middle - the wheel jumped there
+                    if let Some(p) = self.player.as_mut() {
+                        p.axes.steering = 0.0;
+                    }
                     let dead = |v: f32| ((v.abs() - 0.05) / 0.95).clamp(0.0, 1.0);
                     analog.throttle = Some(if dy > 0.0 { dead(dy) } else { 0.0 });
                     analog.brake = Some(if dy < 0.0 { dead(dy) } else { 0.0 });
@@ -1419,6 +1441,7 @@ impl ApplicationHandler for App {
                                 p,
                                 &lighting,
                                 Some(self.mirror_turn),
+                                Some((*cam, s.config.width as f32 / s.config.height.max(1) as f32)),
                             );
                         }
                         *self.profile.entry("mirrors").or_default() += __t.elapsed().as_secs_f64();

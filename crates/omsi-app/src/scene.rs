@@ -3536,9 +3536,13 @@ impl World {
                 }
             }
             if let Some((tex, min_h, max_h, min_r, max_r)) = &ot.sco.tree {
-                // Trees are billboards: the map stores texture, height and height/width
-                // ratio chosen by the editor; a row of trees along a spline takes the
-                // middle of the type's ranges.
+                // Trees are billboards: the map stores texture, height and the ratio of the
+                // width to the height chosen by the editor; a row of trees along a spline
+                // takes the middle of the type's ranges. OMSI scales its tree by (height x
+                // ratio, height, height x ratio) (Omsi.exe 0x77e6b0 fills the record,
+                // 0x774444 builds the matrix): the ratio multiplies. Divided by it, as here
+                // before, a slim tree (0.4 on Spandau) came out six times too wide and its
+                // crown stood metres away from its trunk's place.
                 let texture = o
                     .extra
                     .first()
@@ -3559,7 +3563,7 @@ impl World {
                     .map(|s| omsi_cfg::parse_f64(s))
                     .filter(|r| *r > 0.0)
                     .unwrap_or(if mid_r > 0.0 { mid_r } else { 1.0 });
-                trees.push((ot.clone(), texture, pos, height, height / ratio, heading));
+                trees.push((ot.clone(), texture, pos, height, height * ratio, heading));
                 continue;
             }
             // crossings with a light program get a controller; their lanes refer to it
@@ -7736,6 +7740,7 @@ fn material_extra(
         night_switched: false,
         rain_film: false,
         display: false,
+        screen: false,
         no_map_lights: false,
         moisture: 0.0,
     }
@@ -9063,6 +9068,8 @@ impl World {
                     // elec_busbar_main), and without them it stayed dark at night.
                     let mut extra = d.extra;
                     extra.display = d.lightmap.is_some() || d.night.is_some() || d.alpha == AlphaMode::Blend;
+                    // (the bus's own screen: no glow halo, no FXAA over its letters)
+                    extra.screen = true;
                     let m = renderer.add_material_extra(
                         scene,
                         Some(*tex),
@@ -9096,6 +9103,9 @@ impl World {
                     (d.color, d.emissive)
                 };
                 renderer.clamp_next.set(d.clamp);
+                // a script's screen (matrix displays, the IBIS's picture, LCDs) likewise
+                let mut extra = d.extra;
+                extra.screen = d.script.is_some() || d.script_trans.is_some();
                 let m = renderer.add_material_extra(
                     scene,
                     tex,
@@ -9107,7 +9117,7 @@ impl World {
                     d.lightmap,
                     d.envmap,
                     emissive,
-                    d.extra,
+                    extra,
                 );
                 *x = gpu.material(renderer, scene, m);
                 own_materials.push(*x);

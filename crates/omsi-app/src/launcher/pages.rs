@@ -246,21 +246,32 @@ fn toggle_setting(ui: &mut Ui, s: &mut Value, dirty: &mut f32, r: Rect, label: &
 }
 
 /// The settings' columns are this tall at least (the page scrolls when the window is lower).
-const SETTINGS_H: f32 = 900.0;
+const SETTINGS_H: f32 = 1080.0;
+
+/// The settings page's "Updates" row: what the updater is doing, and whether "Check now"
+/// was pressed.
+struct UpdateRow {
+    status: crate::updater::Status,
+    check: bool,
+}
 
 pub fn settings(l: &mut Launcher, area: Rect) {
     let body = l.page_title(area, "Settings", "Every change is saved at once; the game reads them when it starts.");
     let s = &mut l.state.settings;
     let dirty = &mut l.state.settings_dirty;
+    let mut upd = UpdateRow { status: l.update.status(), check: false };
     // (a window lower than the columns scrolls them; they were cut off at the bottom)
     l.ui.scroll_area("settings-page", body, &mut |ui, v| {
         let h = SETTINGS_H.max(v.h);
-        settings_columns(ui, s, dirty, Rect::new(v.x, v.y, v.w - 8.0, h));
+        settings_columns(ui, s, dirty, Rect::new(v.x, v.y, v.w - 8.0, h), &mut upd);
         h
     });
+    if upd.check {
+        l.update.check();
+    }
 }
 
-fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect) {
+fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd: &mut UpdateRow) {
     let cols = 3;
     let cw = (body.w - GAP * 2.0 * (cols as f32 - 1.0)) / cols as f32;
     let colr = |k: usize| Rect::new(body.x + k as f32 * (cw + GAP * 2.0), body.y, cw, body.h);
@@ -404,6 +415,33 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect) {
     sel_setting(ui, s, dirty, "s-minobj", row(&mut y), "Small objects", "min_obj_size", &[("0.005", "All"), ("0.013", "Normal"), ("0.02", "Fewer (faster)"), ("0.03", "Few (fastest)")]);
     sel_setting(ui, s, dirty, "s-maxobj", row(&mut y), "Object distance", "max_obj_dist", &[("auto", "Automatic"), ("500", "500 m"), ("750", "750 m"), ("900", "900 m"), ("1500", "1500 m"), ("3000", "3000 m")]);
     sel_setting(ui, s, dirty, "s-mirror", row(&mut y), "Mirrors", "mirror_size", &[("128", "Low (128)"), ("256", "Normal (256)"), ("512", "High (512)"), ("1024", "Very high (1024)")]);
+    // updates from the GitHub releases (see `crate::updater`)
+    y += 6.0;
+    ui.heading(Rect::new(inner.x, y, inner.w, 28.0), "Updates", Some("system_update"));
+    y += 32.0;
+    toggle_setting(ui, s, dirty, row(&mut y), "Look for updates when the launcher starts", "update_check");
+    toggle_setting(ui, s, dirty, row(&mut y), "Install updates without asking", "update_auto");
+    {
+        use crate::updater::Status;
+        let r = row(&mut y);
+        let busy = matches!(upd.status, Status::Checking | Status::Downloading { .. } | Status::Installing(_) | Status::WaitingForInstaller(_) | Status::Restarting(_));
+        if ui.button("s-upd-check", Rect::new(r.x, r.y, 150.0, r.h), if busy { "Checking…" } else { "Check now" }, Some("refresh"), ButtonKind::Normal) && !busy {
+            upd.check = true;
+        }
+        let text = match &upd.status {
+            Status::UpToDate => format!("{} is the latest version", crate::updater::current_version()),
+            Status::Available(rel) => format!("{} is available", rel.version),
+            Status::Failed(_) => "The last check failed".to_string(),
+            _ => format!("This is openOMSI {}", crate::updater::current_version()),
+        };
+        ui.text_in(&text, Rect::new(r.x + 162.0, r.y, r.w - 162.0, r.h), 12.5, omsi_ui::Weight::Regular, TEXT_DIM, omsi_ui::paint::Align::Left);
+    }
+    {
+        let r = row(&mut y);
+        if ui.button("s-upd-github", Rect::new(r.x, r.y, r.w, r.h), "github.com/turbo-devv/openOMSI", Some("open_in_new"), ButtonKind::Ghost) {
+            crate::updater::open_url(crate::updater::REPO_URL);
+        }
+    }
     // passengers, controls, sound
     let c2 = colr(2);
     ui.panel(c2);

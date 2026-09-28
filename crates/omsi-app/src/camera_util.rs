@@ -18,6 +18,7 @@ pub(crate) fn default_camera(world: &World) -> Camera {
             position: DVec3::new(x, y, z),
             yaw,
             pitch,
+            roll: 0.0,
             fov_deg: 60.0,
             near: 0.5,
             far: 6000.0,
@@ -31,6 +32,7 @@ pub(crate) fn default_camera(world: &World) -> Camera {
             position: DVec3::new(150.0, 150.0, 60.0),
             yaw: 0.0,
             pitch: -20.0,
+            roll: 0.0,
             fov_deg: 60.0,
             near: 0.5,
             far: 6000.0,
@@ -215,6 +217,7 @@ pub(crate) fn follow_camera(traffic: Option<&traffic::Traffic>, id: u64) -> Opti
                 position,
                 yaw: f[3] as f32,
                 pitch: f[4] as f32,
+                roll: 0.0,
                 fov_deg: 60.0,
                 near: 0.2,
                 far: 6000.0,
@@ -226,6 +229,7 @@ pub(crate) fn follow_camera(traffic: Option<&traffic::Traffic>, id: u64) -> Opti
                 position: pos + right * f[0] - back * f[1] + DVec3::new(0.0, 0.0, f[2]),
                 yaw: heading as f32 + f[3] as f32,
                 pitch: f[4] as f32,
+                roll: 0.0,
                 fov_deg: 60.0,
                 near: 0.2,
                 far: 6000.0,
@@ -236,6 +240,7 @@ pub(crate) fn follow_camera(traffic: Option<&traffic::Traffic>, id: u64) -> Opti
         position: pos + back * 6.0 + DVec3::new(0.0, 0.0, 45.0),
         yaw: heading as f32,
         pitch: -80.0,
+        roll: 0.0,
         fov_deg: 60.0,
         near: 0.5,
         far: 6000.0,
@@ -248,8 +253,35 @@ pub(crate) fn follow_camera(traffic: Option<&traffic::Traffic>, id: u64) -> Opti
 /// as bright).
 const MIRROR_NIGHT_DIM: f32 = 0.8;
 
+/// The least radius a mirror's camera counts with in the visibility test (m). A mirror's
+/// camera sits in the middle of its glass; with the file's radius 0 (`[add_camera_reflexion]`)
+/// a mirror whose lower half shows at the edge of the picture - the SD200's right mirror
+/// from the driver's seat - was never redrawn and stood frozen.
+const MIRROR_MIN_RADIUS: f32 = 0.3;
+
+/// Whether a mirror is in the picture of `view` (camera and aspect): its camera's place as
+/// a sphere of the `[add_camera_reflexion_2]` radius (a point for `[add_camera_reflexion]`)
+/// against the view's frustum, as Omsi.exe tests it (0x6f611f, 0x7f41ac) before it redraws
+/// a mirror.
+fn mirror_in_view(eye: DVec3, radius: f32, view: &(Camera, f32)) -> bool {
+    let (cam, aspect) = view;
+    let d = (eye - cam.position).as_vec3();
+    let f = cam.forward();
+    let (r, u) = (cam.right(), cam.up());
+    let z = d.dot(f);
+    if z < -radius {
+        return false;
+    }
+    let tan_y = (cam.fov_deg.to_radians() * 0.5).tan();
+    let tan_x = tan_y * aspect;
+    let slack_x = radius * (1.0 + tan_x * tan_x).sqrt();
+    let slack_y = radius * (1.0 + tan_y * tan_y).sqrt();
+    d.dot(r).abs() <= z.max(0.0) * tan_x + slack_x && d.dot(u).abs() <= z.max(0.0) * tan_y + slack_y
+}
+
 /// Draw the views of the vehicle's `[add_camera_reflexion]` cameras into its mirror textures.
-/// `only`: render just mirror `i % n` (round robin, one mirror per frame in the window).
+/// `only`: render just one mirror, the `i % n`-th of those `view` sees (round robin, as
+/// OMSI takes its turns among the mirrors in the picture; with no view, of all of them).
 pub(crate) fn render_mirrors(
     renderer: &mut Renderer,
     scene: &mut Scene,
@@ -257,6 +289,7 @@ pub(crate) fn render_mirrors(
     p: &Player,
     lighting: &omsi_render::Lighting,
     only: Option<usize>,
+    view: Option<(Camera, f32)>,
 ) {
     let cams = p.vehicle.ty.def.cameras_reflexion.clone();
     if cams.is_empty() {
@@ -288,23 +321,30 @@ pub(crate) fn render_mirrors(
             *w *= k;
         }
     }
+    // the mirrors in the picture (all of them without a view); none in it, none redrawn
+    let seen: Vec<usize> = (0..cams.len())
+        .filter(|&i| view.as_ref().map(|v| mirror_in_view(p.vehicle.camera_world_full(&cams[i]).0, cams[i].extra.unwrap_or(0.0).max(MIRROR_MIN_RADIUS), v)).unwrap_or(true))
+        .collect();
+    if seen.is_empty() {
+        return;
+    }
+    let pick = only.map(|k| seen[k % seen.len()]);
     for (i, c) in cams.iter().enumerate() {
-        if let Some(k) = only {
-            if k % cams.len() != i {
-                continue;
-            }
+        if !seen.contains(&i) || pick.is_some_and(|k| k != i) {
+            continue;
         }
         let Some(Some(tex)) = textures.get(i) else {
             continue;
         };
-        let (eye, yaw, pitch) = p.vehicle.camera_world(c);
+        let (eye, yaw, pitch, roll) = p.vehicle.camera_world_full(c);
         if omsi_cfg::env::var_os("OMSI_DEBUG_MIRRORS").is_some() {
-            log::info!("mirror {i}: eye {:.2},{:.2},{:.2} yaw {yaw:.1} pitch {pitch:.1} fov {:.0}", eye.x, eye.y, eye.z, c.fov);
+            log::info!("mirror {i}: eye {:.2},{:.2},{:.2} yaw {yaw:.1} pitch {pitch:.1} roll {roll:.2} fov {:.0} ({} of {} in view)", eye.x, eye.y, eye.z, c.fov, seen.len(), cams.len());
         }
         let cam = Camera {
             position: eye,
             yaw,
             pitch,
+            roll,
             fov_deg: if c.fov > 1.0 { c.fov } else { 50.0 },
             near: 0.3,
             far: 450.0,

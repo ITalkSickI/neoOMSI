@@ -58,6 +58,8 @@ gilrs = "0.11"
 ureq = { version = "2", default-features = false, features = ["tls"] }
 sha2 = "0.10"
 rust-i18n = "4"
+# updates: the release archives from GitHub
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # the desktop's clipboard and file dialogs (a phone has neither in this form)
 [target.'cfg(not(target_os = "android"))'.dependencies]

@@ -16,7 +16,7 @@ maps, buses and mods. Only the way it is worked is new:
 
 | Where | What |
 |---|---|
-| bottom left | the steering wheel: drag across (it comes back when let go), or tilt the phone (panel → Tilt steering) |
+| bottom left | the steering wheel: take the rim and turn it round - it follows the finger, 120° of rim is the full lock (it comes back when let go) - or tilt the phone (panel → Tilt steering) |
 | bottom right | the brake and the accelerator: the higher up the pedal, the harder |
 | above the pedals | the gearbox (R N D of an automatic, − N + of a manual), a button for each door, front to back |
 | beside the pedals | the parking brake, the stop brake / door release |
@@ -91,3 +91,17 @@ Every push to main builds the APK in GitHub Actions (`android` job of
 `openOMSI-<version>-android-arm64.apk`. Set the repository secret `ANDROID_KEYSTORE_B64`
 (`base64 < android/debug.keystore`) so that every release is signed with the same key and
 installs over the previous one.
+
+## Updates
+
+The launcher looks for a newer GitHub release when it starts (Settings → Updates) and offers
+it; **Update now** downloads the APK and hands it to Android's package installer. The first
+time Android asks to allow openOMSI to install apps. Then Android asks "Do you want to update
+this app?": **Update** replaces openOMSI and starts it again, **Cancel** comes back to the
+launcher as "not updated". The APK must be signed with the same key as the installed app
+(release builds are).
+
+`openOMSI/env.txt` on the shared storage takes the `OMSI_*` switches a computer takes from its
+environment (one `NAME=value` a line), for example `OMSI_UPDATE_URL=file:///sdcard/…/release.json`
+to try an update from a local release description.
+

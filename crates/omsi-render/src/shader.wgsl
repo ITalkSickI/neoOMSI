@@ -283,6 +283,8 @@ struct MaterialParams {
     // the PBR set beside the diffuse texture: x normal map, y occlusion, z roughness,
     // w metalness (1 = the map has it; see t_pbr_normal / t_pbr_orm)
     pbr: vec4<f32>,
+    // x: one of the bus's own screens (the enhanced glow and FXAA leave it alone)
+    flags: vec4<f32>,
 };
 @group(1) @binding(2) var<uniform> material: MaterialParams;
 @group(1) @binding(3) var t_trans: texture_2d<f32>;

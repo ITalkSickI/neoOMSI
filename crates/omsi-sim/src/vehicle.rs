@@ -1544,14 +1544,9 @@ impl VehicleInstance {
                 if let Some(rw) = rb.wheels.get(ai * 2 + si) {
                     self.put(w[0], rw.rotation_deg.to_radians());
                     self.put(w[1], rw.rpm);
-                    self.put(
-                        w[2],
-                        if rw.steered {
-                            rb.steer_deg.to_radians()
-                        } else {
-                            0.0
-                        },
-                    );
+                    // (each axle's own angle: OMSI turns every axle towards the centre of
+                    // the bend on the `[rot_pnt_long]` line)
+                    self.put(w[2], rw.steer);
                     // `Axle_Suspension_*` is the wheel's travel *relative to the body*, and
                     // the stock model.cfg moves the wheel down for a positive value
                     // (`origin_rot_y -90` + `anim_trans`, checked with OMSI_DEBUG_ANIM on
@@ -3262,6 +3257,29 @@ impl VehicleInstance {
         let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
         let eye = self.position + self.body_rotation().transform_point3(local).as_dvec3();
         (eye, self.heading as f32 + cam.yaw, cam.pitch)
+    }
+
+    /// A camera fixed to the body as OMSI keeps one (`[add_camera_reflexion]`: Omsi.exe
+    /// 0x7edfd0 puts it in the vehicle's own matrix): its eye, and yaw, pitch and roll (deg)
+    /// of its view with the body's pitch and bank in them - a mirror leans with the bus. A
+    /// `dist` above zero puts the eye that far behind the point along the view.
+    pub fn camera_world_full(&self, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32, f32) {
+        let rot = self.body_rotation();
+        let (sy, cy) = cam.yaw.to_radians().sin_cos();
+        let (sp, cp) = cam.pitch.to_radians().sin_cos();
+        let f_local = Vec3::new(sy * cp, cy * cp, sp);
+        let r_local = Vec3::new(cy, -sy, 0.0);
+        let f = rot.transform_vector3(f_local).normalize_or(Vec3::Y);
+        let up = rot.transform_vector3(r_local.cross(f_local)).normalize_or(Vec3::Z);
+        let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
+        let eye = self.position + rot.transform_point3(local).as_dvec3() - (f * cam.dist.max(0.0)).as_dvec3();
+        let yaw = f.x.atan2(f.y).to_degrees();
+        let pitch = f.z.clamp(-1.0, 1.0).asin().to_degrees();
+        // (the roll the renderer's `Camera::up` turns back into this up)
+        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or(Vec3::X);
+        let u0 = r0.cross(f);
+        let roll = up.dot(r0).atan2(up.dot(u0)).to_degrees();
+        (eye, yaw, pitch, roll)
     }
 }
 

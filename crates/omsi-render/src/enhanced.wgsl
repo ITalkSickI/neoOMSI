@@ -252,8 +252,24 @@ fn perturb_normal(n: vec3<f32>, p: vec3<f32>, uv: vec2<f32>, tn: vec3<f32>) -> v
     return safe_normal(t * k * tn.x + b * k * tn.y + n * max(tn.z, 0.05));
 }
 
+// The enhanced pass's two targets: the picture, and the screen mask (1 on the bus's own
+// screens, carried by the coverage of what is drawn over them; see MASK_FORMAT).
+struct EnhancedOut {
+    @location(0) color: vec4<f32>,
+    @location(1) mask: vec4<f32>,
+};
+
 @fragment
-fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_enhanced(in: VsOut) -> EnhancedOut {
+    let c = shade_enhanced(in);
+    let screen = material.flags.x > 0.5;
+    var out: EnhancedOut;
+    out.color = c;
+    out.mask = vec4<f32>(select(0.0, 1.0, screen), 0.0, 0.0, select(c.a, 1.0, screen));
+    return out;
+}
+
+fn shade_enhanced(in: VsOut) -> vec4<f32> {
     if (material.emissive.w > 1.5) {
         // a pane's film of water: drops, not the sliding texture (see `rain_drops`), lit by
         // the sky they mirror

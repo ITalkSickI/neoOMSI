@@ -63,6 +63,25 @@ second (starter), **Shift+D** (drive), **.** (parking brake off), then throttle.
 whole start-up by itself (main switch, ignition, starter, gearbox to neutral); `--autostart`
 is the same thing for an offscreen run.
 
+**Updates.** When the launcher starts it asks
+[github.com/turbo-devv/openOMSI](https://github.com/turbo-devv/openOMSI) for the latest release
+and, when there is a newer one, offers it: **Update now** downloads it (checked against the
+SHA-256 GitHub lists), puts the new program in place of the old one and starts the launcher
+again - on Windows `openomsi.exe` and `openomsi-launcher.exe`, on macOS the `openOMSI.app`
+you started, on Linux the program files; mods, content and settings stay. On Android the
+system's installer asks "Do you want to update this app?"; Update replaces openOMSI and starts
+it again, Cancel leaves it as it was. Settings → Updates: look for updates at the start (on
+by default), install without asking (off by default), Check now. A folder openOMSI cannot
+write to (Program Files, an app opened straight from Downloads on macOS) is reported with
+what to do. `OMSI_NO_UPDATE=1` switches the check off; `OMSI_UPDATE_URL` points it at another
+release description (GitHub's format; `file://` works, for testing).
+
+**O** switches mouse steering on and off, as in OMSI: the cursor's place across the whole
+window is the steering from full left to full right lock, above the middle is the throttle and
+below it the brake. Above 10 km/h the same hand movement turns the wheels less and less (at
+50 km/h a fifth as far), so the wheel feels heavier the faster the bus goes; for the first
+second after switching it on the wheel eases towards the cursor.
+
 Left-click a cockpit switch to operate it, hold the button and move the mouse to turn a knob,
 or roll the mouse wheel over it (that is the `<event>_drag` OMSI fires); the name of the switch
 under the cursor is shown in the HUD.

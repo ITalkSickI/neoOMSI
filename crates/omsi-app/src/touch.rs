@@ -77,7 +77,8 @@ struct Button {
 enum Role {
     /// A button: where it was in the list when the finger came down, and which.
     Button(usize, Btn),
-    /// The wheel: where the finger took it, and the wheel's turn then.
+    /// The wheel: the finger's angle round the wheel's centre when it last moved (rad,
+    /// screen y down: clockwise positive), and its distance from the centre then.
     Wheel(f32, f32),
     Throttle,
     Brake,
@@ -376,7 +377,10 @@ impl App {
         } else if self.player.is_some() && t.stick_r == 0.0 && !t.hidden && t.brake_r.pad(6.0 * t.u, 6.0 * t.u).contains(p) {
             Role::Brake
         } else if self.player.is_some() && t.stick_r == 0.0 && !t.hidden && !t.tilt && p.distance(t.wheel_c) <= t.wheel_r * 1.15 {
-            Role::Wheel(p.x, t.steer)
+            {
+                let d = p - t.wheel_c;
+                Role::Wheel(d.y.atan2(d.x), d.length())
+            }
         } else {
             // the cockpit's switch under the finger, else the camera's
             self.on_cursor(p.x, p.y);
@@ -422,10 +426,26 @@ impl App {
         }
         let role = self.touch.fingers[k].role;
         match role {
-            Role::Wheel(x0, s0) => {
-                // the full lock is a drag of about one and a half wheel diameters, and
-                // `steer_curve` keeps the middle fine: small moves make small corrections
-                self.touch.steer = (s0 + (p.x - x0) / (self.touch.wheel_r * 3.0)).clamp(-1.0, 1.0);
+            Role::Wheel(a0, _) => {
+                // The wheel turns as far round as the finger goes round its centre - the
+                // drawn rim stays under the finger, and the full lock is 120 degrees of it
+                // (`touch_paint`). It used to follow the finger's way across instead, a drag
+                // of one and a half diameters for the full lock: from its place in the corner
+                // the finger ran off the screen at about half a lock to the left, the system
+                // took the touch away and the wheel sprang back to the middle.
+                // (close to the centre the angle means nothing: only followed)
+                let d = p - self.touch.wheel_c;
+                let a = d.y.atan2(d.x);
+                if d.length() > self.touch.wheel_r * 0.2 {
+                    let mut da = a - a0;
+                    if da > std::f32::consts::PI {
+                        da -= std::f32::consts::TAU;
+                    } else if da < -std::f32::consts::PI {
+                        da += std::f32::consts::TAU;
+                    }
+                    self.touch.steer = (self.touch.steer + da / WHEEL_LOCK_ANGLE).clamp(-1.0, 1.0);
+                }
+                self.touch.fingers[k].role = Role::Wheel(a, d.length());
             }
             Role::Throttle | Role::Brake => self.touch_pedals(p),
             Role::Stick => {
@@ -769,7 +789,7 @@ impl App {
                 let part = Color::rgba(230, 230, 230, if t.steering { 0.95 } else { 0.8 });
                 pt.circle(c, rim_in, PANEL_BG);
                 // the spokes turn with the wheel (the full lock shown as 120 deg)
-                let a0 = t.steer * 2.1;
+                let a0 = t.steer * WHEEL_LOCK_ANGLE;
                 let half = 3.5 * u;
                 for k in 0..3 {
                     let a = a0 + FRAC_PI_2 + k as f32 * TAU / 3.0 + PI;
@@ -950,6 +970,9 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
         }
     }
 }
+
+/// How far the drawn wheel turns at the full lock (rad): 120 degrees.
+const WHEEL_LOCK_ANGLE: f32 = 2.1;
 
 /// The wheel's turn as the bus gets it: gentle round the middle (a finger's small wobble is a
 /// small correction), the full lock still at the end of the travel.

@@ -1717,6 +1717,8 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             }
             "toggel_mouse_ctrl" => {
                 self.mouse_drive = !self.mouse_drive;
+                // (the wheel eases from where it is to the cursor for the first second)
+                self.mouse_steer = (self.player.as_ref().map(|p| p.vehicle.physics.controls.steering).unwrap_or(0.0), 1.0);
                 let msg = if self.mouse_drive { "Mouse steering on: across steers, up is the throttle, down the brake (O turns it off)" } else { "Mouse steering off" };
                 self.service_msg = Some((msg.into(), 4.0));
             }

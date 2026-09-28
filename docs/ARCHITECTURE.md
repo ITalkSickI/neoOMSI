@@ -927,3 +927,56 @@ variables, position, on-screen messages, events, timers, watches, `omsi.data` sa
 `*.save.lua`), hot reload on save, a 1 s budget per call and switch-off after 10 errors.
 Driven with the DLL plugins from `Plugins::frame`; the game's side (dt, vehicle name,
 position, message) is `PluginIo`'s new default methods. Tests: `crates/omsi-plugin/tests/lua.rs`.
+
+### 0.1.7 (Sept 28 2026): the bus as its `.bus` file makes it, sharp screens, trees, steering, updates
+
+Reverse engineered from Omsi.exe and put in place of our own guesses:
+
+* **Driving physics** (`omsi-sim::rigid`, OMSI's integrator is sub_7e2574; ODE there only
+  knocks over crash objects). Across the tyres OMSI has no slip angle: in its holding state
+  (`+0x1d8`) the bus follows its steering geometry outright, and only when the bend asks more
+  than mu x the load on all tyres, or a wheel spins or locks, does each axle slide with at
+  most mu x its load, until the side speed at every tyre is under 0.1 m/s again. Ours had a
+  tyre of 12 x load per radian: every bus turned at 70 % of what its steering asked, 0.8 s
+  late, drifting 2-3° - the same for every file. Now a constraint per tyre with those limits.
+  Every axle steers at atan((long - `[rot_pnt_long]`) x curvature), curvature = steering x
+  `[inv_min_turnradius]` (0x7e3060; a tag axle behind the line steers the other way), with no
+  rate limit of the physics' own (the inputs have theirs). Springs: travel measured at
+  (maxwidth + minwidth) / 4, force and damper speed at maxwidth / 2 (0x7e47b3..0x7e4c8d),
+  spring + damper capped at `achse_maxforce`, the tyre at least 15x the spring (94 % of the
+  file's rate reaches the body; the fixed 900 kN/m tyre left 79 %). Pitch and roll damped by
+  sin(x)/x a step, x = 1.5 sqrt(sum springs / mass) dt (0x7e4f55); no yaw damping.
+  `cargo run --release -p omsi-sim --example handling -- <file.bus>...` prints yaw response,
+  side slip, roll, roll frequency and settling per file.
+* **Mouse steering** (0x6f4284): the window's full width is the full lock, divided by
+  max(1, km/h / 10); a one-second ease-in after switching on; the mouse owns the wheel (a
+  steering key's leftover no longer takes over when the cursor passes the middle).
+* **Mirrors**: `[add_camera_reflexion]` cameras sit in the body's own matrix (pitch and roll
+  included, `Camera::roll`); `dist` puts the eye behind the point; the 8th value of
+  `[add_camera_reflexion_2]` is the radius of the sphere OMSI tests against the view frustum
+  before it redraws a mirror (0x6f611f, 0x7f41ac) - mirrors out of view are not redrawn, the
+  visible ones take turns (with at least 0.3 m, or a mirror half in view stood frozen).
+* **Screens**: text and script texture slots are `MaterialExtra::screen`; the enhanced pass
+  writes a screen mask (`MASK_FORMAT`, second colour target) that the glow's first level
+  and FXAA read - FXAA had halved the contrast of the IBIS's letters.
+* **Trees** (`[tree]` objects, OMSI's RefreshTrees 0x77e6b0 / 0x774444): the map's strings
+  are texture, height and the width/height ratio; the billboard is height x ratio wide. We
+  divided by the ratio: a slim fir (0.4) was six times too wide.
+* **Tiles**: objects and spline attachments have pitch, bank (and a tilt flag) only from
+  tile version 12, strings from version 4 (0x792ee7, 0x794892).
+* **Touch wheel**: turns with the finger round its centre (120° of rim = full lock); the old
+  drag across ran off the screen at about 0.4 of the lock to the left.
+* **Updates** (`updater.rs`, `launcher/update.rs`): the GitHub API's latest release, the
+  platform's asset by `release.yml`'s names, SHA-256 from the asset's `digest`. A computer
+  unpacks into `.openomsi-update` beside the program and swaps each top-level item (old one
+  renamed `*.old-update`, all undone on a failure; `.openomsi-files` lists what an update
+  installed, so files a release drops go too; nothing else in the folder is touched), then
+  starts the program file again and ends; the next start deletes `*.old-update`. Android: a
+  PackageInstaller session (`OmsiActivity.installApk`), the status PendingIntent comes back
+  to the activity (cancel → error in the launcher, success → the system starts the new app);
+  "Install unknown apps" is asked for first. `openOMSI/env.txt` gives a phone `OMSI_*`
+  switches. The JNI calls now go to the real NativeActivity (`AndroidApp::activity_as_ptr`):
+  ndk_context's context is the Application - the buttons' vibration never reached Java.
+  Checked: desktop end to end on macOS (update, not now, auto, damaged file, read-only
+  folder), Android end to end on the emulator (permission, cancel, update and restart),
+  Windows `cargo check`.

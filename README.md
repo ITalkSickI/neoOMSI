@@ -43,6 +43,11 @@ Start the game, point the launcher to your OMSI 2 folder once, pick a map, a bus
 and drive. Mods go into the folder next to the game (or through the launcher's **Mods**
 page); the original installation is never written to.
 
+From 0.1.7 on the launcher updates itself: when a newer release is out it asks at the start
+and, with your yes, downloads it, replaces the program and starts again (on Android through
+the system's installer). Settings → Updates switches the check off or installs without
+asking.
+
 ## Goals
 
 1. **1:1 behaviour.** Every content format of the original - maps, splines, scenery objects,

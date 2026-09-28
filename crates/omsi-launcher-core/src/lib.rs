@@ -1464,6 +1464,11 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
     for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all"))] {
         v[k] = d;
     }
+    // updates from the GitHub releases: looked for when the launcher starts, installed
+    // after asking (or at once)
+    for (k, d) in [("update_check", json!(true)), ("update_auto", json!(false))] {
+        v[k] = d;
+    }
     let Some(t) = text else { return v };
     let mut version = 0;
     let mut graphics: Option<&str> = None;
@@ -1487,7 +1492,7 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
             "drive_keys" | "navigator_corner" | "boarding" | "render_scale" | "pax_voices" => v[&k] = json!(val),
             "shadow_casters" => v[&k] = json!(if val.eq_ignore_ascii_case("omsi") { "omsi" } else { "all" }),
             "ctrl_deadzone" => v[&k] = json!(val.parse::<f64>().unwrap_or(0.0).clamp(0.0, 0.3)),
-            "nav_arrows" | "get_up" | "machine_translation" => v[&k] = json!(b(val)),
+            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" => v[&k] = json!(b(val)),
             "time_speed" => v[&k] = json!(val.trim_start_matches(['x', 'X']).parse::<f64>().map(|x| x.clamp(1.0, 30.0)).map(|x| if x.fract() == 0.0 { format!("{}", x as i64) } else { x.to_string() }).unwrap_or_else(|_| "1".into())),
             "language" => v[&k] = json!(language_code(val)),
             "graphics" | "renderer" => graphics = Some(graphics_mode(val)),
@@ -1679,7 +1684,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("head_movement", true),
     );
     let text = format!(
-        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\n",
+        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\n",
         match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
             "tickets" => "tickets",
             "off" => "off",
@@ -1695,6 +1700,8 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("machine_translation", false),
         if v.get("shadow_casters").and_then(|x| x.as_str()) == Some("omsi") { "omsi" } else { "all" },
         f("ctrl_deadzone", 0.0).clamp(0.0, 0.3),
+        b("update_check", true),
+        b("update_auto", false),
     );
     // what the page does not manage (keys of newer games, hand-written ones) stays as it
     // was in the file; other spellings of the keys just written go
@@ -2114,6 +2121,17 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn update_settings_round_trip() {
+        // no file: look for updates, ask before installing
+        let d = settings_from_text(None);
+        assert_eq!((d["update_check"].clone(), d["update_auto"].clone()), (json!(true), json!(false)));
+        let v = settings_from_text(Some("update_check=0\nupdate_auto=1\n"));
+        assert_eq!((v["update_check"].clone(), v["update_auto"].clone()), (json!(false), json!(true)));
+        let text = settings_to_text(&v, None);
+        assert!(text.lines().any(|l| l == "update_check=0") && text.lines().any(|l| l == "update_auto=1"), "{text}");
+    }
 
     #[test]
     fn settings_keep_what_the_page_does_not_manage() {

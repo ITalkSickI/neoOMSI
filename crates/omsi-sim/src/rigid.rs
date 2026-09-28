@@ -1,8 +1,14 @@
-//! Rigid-body vehicle dynamics (the original used ODE): a six-degree-of-freedom body with
-//! mass, `[momentofintertia]` and `[schwerpunkt]`, wheels on spring/damper suspensions
-//! (`achse_feder`, `achse_daempfer`, `achse_maxforce`), tyre forces with a friction circle,
-//! drive torque and brake forces from the scripts, gravity, ground contact per wheel and
-//! impulse responses against obstacles.
+//! Rigid-body vehicle dynamics after Omsi.exe's own (0x7e2574; OMSI uses ODE only for the
+//! objects a crash knocks over): a six-degree-of-freedom body with mass,
+//! `[momentofintertia]` and `[schwerpunkt]`, wheels on spring/damper suspensions
+//! (`achse_feder`, `achse_daempfer`, `achse_maxforce`, measured where the tyres stand
+//! between `achse_minwidth` and `achse_maxwidth`, pushing from `achse_maxwidth`), every axle
+//! steered towards the turning centre on `[rot_pnt_long]` with `[inv_min_turnradius]` as the
+//! full lock, OMSI's grip across the tyres (the bus follows its wheels until the bend asks
+//! more than the road's grip, then slides at mu x load), drive torque and brake forces from
+//! the scripts, pitch and roll damped as OMSI damps them, gravity, ground contact per wheel
+//! and impulse responses against obstacles. `examples/handling.rs` measures what a `.bus`
+//! file makes of a bus.
 //!
 //! Ride height. A `.bus` file has no height for its axles: OMSI hangs each wheel so that
 //! its spring is *unloaded* when the tyre stands on the model's ground plane (z = 0), and
@@ -31,6 +37,12 @@ pub const BUMP: f32 = 0.24;
 const UNSPRUNG: f32 = 0.12;
 const TYRE_K: f32 = 900_000.0;
 const TYRE_C: f32 = 3_000.0;
+/// OMSI has no tyre between the road and the spring: `achse_feder` alone carries the body
+/// (Omsi.exe 0x7e4960..0x7e4c40, force = feder x penetration - daempfer x speed). The
+/// tyre here is at least this many times as stiff as the spring, so that the two in series
+/// give the body 94 % of the file's spring rate instead of the 79 % a fixed 900 kN/m tyre
+/// left a bus with 240 kN/m springs - that softness was a good part of its sway.
+const TYRE_OVER_SPRING: f32 = 15.0;
 /// Tyre samples along the envelope's length (see [`tyre_line`]).
 const TYRE_SAMPLES: usize = 13;
 /// Samples taken: the lattice they stand on covers the envelope with one more to spare, and
@@ -135,9 +147,21 @@ pub struct RigidWheel {
     /// Hub in the body frame (x right, y forward, z up, relative to the model origin) with
     /// the spring unloaded: the model's wheel centre when `Axle_Suspension` reads zero.
     pub attach: Vec3,
+    /// How much farther out than the hub the strut's force acts (m, signed like `attach.x`).
+    /// OMSI measures the spring's travel where the tyres stand - halfway between
+    /// `achse_minwidth` and `achse_maxwidth`, (max + min) / 4 from the middle - but turns the
+    /// body with the force at `achse_maxwidth` / 2 (Omsi.exe 0x7e47b3 and 0x7e4bad).
+    pub lever: f32,
     pub radius: f32,
     pub driven: bool,
     pub steered: bool,
+    /// The wheel's steering angle this step (rad, positive to the right): every axle points
+    /// at the turning centre on the `[rot_pnt_long]` line, atan((long - rot_pnt_long) x
+    /// curvature) (Omsi.exe 0x7e3060), so an axle behind that line steers the other way.
+    pub steer: f32,
+    /// The tyre's vertical stiffness and damping (N/m, N s/m).
+    pub tyre_k: f32,
+    pub tyre_c: f32,
     /// Spring rate (N/m), damper rate (N s/m) and the load the strut is built for (N).
     pub spring: f32,
     pub damper: f32,
@@ -276,7 +300,6 @@ struct Contact {
     brake: f32,
     grip: f32,
     v_long: f32,
-    v_lat: f32,
     /// Takes side forces (a coupled part's joint does not).
     lateral: bool,
     /// The wheel it is (None: a coupled part's joint).
@@ -353,6 +376,18 @@ pub struct RigidBody {
     pub wheel_axle: Vec<usize>,
     pub steer_deg: f32,
     pub max_steer_deg: f32,
+    /// `[rot_pnt_long]` and `[inv_min_turnradius]`: the line the bus turns about and the
+    /// curvature of the full lock.
+    pub rot_pnt_long: f32,
+    pub inv_min_turn_radius: f32,
+    /// sqrt(sum of the springs / mass) (1/s): OMSI damps the body's pitch and roll by
+    /// sin(x)/x a frame with x = 1.5 of it times the frame (Omsi.exe 0x7e4f55).
+    pub body_freq: f32,
+    /// OMSI's two states of the tyres across (Omsi.exe `+0x1d8`): holding - the bus follows
+    /// its wheels however quickly they are turned, as long as the bend asks no more than
+    /// the grip of all its tyres and no wheel spins or locks - or sliding, each tyre giving
+    /// at most its own grip until the sideways speed at every tyre is under 0.1 m/s again.
+    pub holding: bool,
     pub rolling_resistance: f32,
     /// Body-frame acceleration of the last step (m/s²), for `A_Trans_*`.
     pub accel_body: Vec3,
@@ -384,9 +419,15 @@ impl RigidBody {
             let k = if a.spring > 0.0 { a.spring * 1000.0 } else { 150_000.0 };
             let c = if a.damper > 0.0 { a.damper * 1000.0 } else { 12_000.0 };
             let max_force = if a.max_force > 0.0 { a.max_force * 1000.0 } else { 200_000.0 };
+            // where the tyres stand across (the middle of the band between the two widths)
+            // and where the strut pushes the body (the outer width)
+            let outer = (a.max_width / 2.0).max(0.3);
+            let inner = if a.min_width > 0.0 && a.min_width < a.max_width { (a.max_width + a.min_width) / 4.0 } else { outer * 0.85 };
+            let tyre_k = TYRE_K.max(k * TYRE_OVER_SPRING);
+            let tyre_c = TYRE_C * (tyre_k / TYRE_K).sqrt();
             for side in [-1.0f32, 1.0] {
                 let inertia_inv = if a.inertia_inv > 0.0 { a.inertia_inv } else { DEFAULT_INERTIA_INV };
-                wheels.push(RigidWheel { spin: 0.0, slipping: false, locked: false, inertia_inv, attach: Vec3::new(side * a.max_width / 2.0 * 0.85, a.long, z), radius: r, driven: a.driven, steered: (a.long - front_long).abs() < 0.01, spring: k, damper: c, max_force, spring_factor: 1.0, rest_load: 0.0, compression: 0.0, compression_rate: 0.0, touch: None, on_ground: true, rotation_deg: 0.0, rpm: 0.0, load: 0.0, ground_z: 0.0, ground_seen: false, walls: Vec::new(), step_force: 0.0 });
+                wheels.push(RigidWheel { spin: 0.0, slipping: false, locked: false, inertia_inv, attach: Vec3::new(side * inner, a.long, z), lever: side * (outer - inner), radius: r, driven: a.driven, steered: (a.long - front_long).abs() < 0.01, steer: 0.0, tyre_k, tyre_c, spring: k, damper: c, max_force, spring_factor: 1.0, rest_load: 0.0, compression: 0.0, compression_rate: 0.0, touch: None, on_ground: true, rotation_deg: 0.0, rpm: 0.0, load: 0.0, ground_z: 0.0, ground_seen: false, walls: Vec::new(), step_force: 0.0 });
                 wheel_axle.push(ai);
             }
         }
@@ -396,7 +437,12 @@ impl RigidBody {
         }
         let s = (front_long - def.rot_pnt_long).abs().max(1.0);
         let max_steer_deg = (def.inv_min_turn_radius * s).atan().to_degrees().clamp(10.0, 60.0);
-        RigidBody { mass, inertia, cog, position: DVec3::ZERO, orientation: Quat::IDENTITY, velocity: Vec3::ZERO, omega: Vec3::ZERO, wheels, wheel_axle, steer_deg: 0.0, max_steer_deg, rolling_resistance: if def.rolling_resistance > 0.0 { def.rolling_resistance } else { 0.008 * mass * 9.81 }, accel_body: Vec3::ZERO, friction: 0.85, wheel_impacts: Vec::new(), coupled: Vec::new() }
+        // a file without a usable `[inv_min_turnradius]` still steers its front axle as far
+        // as the old default lock
+        let inv_min_turn_radius = if def.inv_min_turn_radius > 0.0 { def.inv_min_turn_radius } else { max_steer_deg.to_radians().tan() / s };
+        let springs: f32 = def.axles.iter().map(|a| 2.0 * if a.spring > 0.0 { a.spring } else { 150.0 }).sum();
+        let body_freq = (springs / (mass / 1000.0)).max(0.0).sqrt();
+        RigidBody { mass, inertia, cog, position: DVec3::ZERO, orientation: Quat::IDENTITY, velocity: Vec3::ZERO, omega: Vec3::ZERO, wheels, wheel_axle, steer_deg: 0.0, max_steer_deg, rot_pnt_long: def.rot_pnt_long, inv_min_turn_radius, body_freq, holding: true, rolling_resistance: if def.rolling_resistance > 0.0 { def.rolling_resistance } else { 0.008 * mass * 9.81 }, accel_body: Vec3::ZERO, friction: 0.85, wheel_impacts: Vec::new(), coupled: Vec::new() }
     }
 
     /// Place the body at rest with its wheels on the ground plane at `origin.z`: heading
@@ -507,6 +553,14 @@ impl RigidBody {
         let mut impacts = Vec::new();
         for _ in 0..slices {
             self.step_slice(dt / slices as f32, drive_torque, brake, steer, probe);
+            // OMSI damps the body's pitch and roll - never its yaw - by sin(x)/x each frame,
+            // x = 1.5 x sqrt(springs / mass) x frame (Omsi.exe 0x7e4f55..0x7e50b0)
+            let x = 1.5 * self.body_freq * dt / slices as f32;
+            if x > 1e-6 {
+                let k = (x.sin() / x).clamp(0.1, 1.0);
+                self.omega.x *= k;
+                self.omega.y *= k;
+            }
             // (one impact per obstacle a frame, as a single slice gives)
             for m in self.wheel_impacts.drain(..) {
                 match impacts.iter_mut().find(|x: &&mut Impact| x.obstacle == m.obstacle) {
@@ -520,9 +574,18 @@ impl RigidBody {
     }
 
     fn step_slice(&mut self, dt: f32, drive_torque: f32, brake: &[f32], steer: f32, probe: &dyn Fn(f64, f64, f64) -> GroundProbe) {
-        let target = steer.clamp(-1.0, 1.0) * self.max_steer_deg;
-        let rate = self.max_steer_deg * 2.5 * dt;
-        self.steer_deg += (target - self.steer_deg).clamp(-rate, rate);
+        // The steering sets the curvature the bus turns on (`steer` 1 = the full lock of
+        // `[inv_min_turnradius]`) and every axle points at the centre of that turn on the
+        // `[rot_pnt_long]` line, as OMSI does it. How fast the curvature may change is the
+        // input's business (keys, mouse, wheel), not the axle's: the old fixed rate here
+        // lagged every mouse and controller movement by up to 0.4 s.
+        let kappa = steer.clamp(-1.0, 1.0) * self.inv_min_turn_radius;
+        let front = self.wheels.iter().map(|w| w.attach.y).fold(f32::MIN, f32::max);
+        for w in self.wheels.iter_mut() {
+            w.steer = ((w.attach.y - self.rot_pnt_long) * kappa).atan().clamp(-1.05, 1.05);
+            w.steered = w.steer != 0.0;
+        }
+        self.steer_deg = ((front - self.rot_pnt_long) * kappa).atan().clamp(-1.05, 1.05).to_degrees();
         // (substeps of at most ~4 ms whatever the frame: a frame held up by loading - 50 ms -
         // made 12 ms substeps, too long for the stiff tyres, and the body hopped on its
         // springs for no reason the driver could see)
@@ -551,12 +614,11 @@ impl RigidBody {
             let body_fwd = rot.mul_vec3(Vec3::Y);
             let towed: f32 = self.coupled.iter().map(|d| d.mass).sum();
             let n_wheels = self.wheels.len().max(1) as f32;
-            let steer_rad = self.steer_deg.to_radians();
-            // tyre plane (forward turned by the steer angle for steered wheels), the hub with
-            // the spring unloaded and where it is now
+            // tyre plane (forward turned by the wheel's steering angle), the hub with the
+            // spring unloaded and where it is now
             let (position, cog) = (self.position, self.cog);
             let tyre = move |w: &RigidWheel| {
-                let ang = if w.steered { steer_rad } else { 0.0 };
+                let ang = w.steer;
                 let fwd = rot.mul_vec3(Vec3::new(ang.sin(), ang.cos(), 0.0));
                 let right = rot.mul_vec3(Vec3::new(ang.cos(), -ang.sin(), 0.0));
                 let hub0 = position + rot.mul_vec3(w.attach - cog).as_dvec3();
@@ -671,9 +733,9 @@ impl RigidBody {
                     Some(t) if t >= -DROOP - 0.05 => {
                         let pen = t - w.compression;
                         let closing = w.touch.map(|p| ((t - p) / h).clamp(-3.0, 3.0)).unwrap_or(0.0) - w.compression_rate;
-                        let s = TYRE_K * pen + w.rest_load;
+                        let s = w.tyre_k * pen + w.rest_load;
                         if s > 0.0 {
-                            ((s + TYRE_C * closing).clamp(0.0, w.max_force * 3.0), s)
+                            ((s + w.tyre_c * closing).clamp(0.0, w.max_force * 3.0), s)
                         } else {
                             (0.0, 0.0)
                         }
@@ -686,11 +748,12 @@ impl RigidBody {
                 // takes no more than three times the load it is built for (`achse_maxforce`)
                 // (the spring only pushes: below its unloaded length the wheel hangs on the
                 // damper, which also works on the rebound)
+                // (OMSI: spring and damper together never pass more than `achse_maxforce`;
+                // beyond it the bump stop, a rubber block of its own, takes over)
                 let c = w.compression;
                 let rate_c = w.compression_rate.clamp(-1.5, 1.5);
-                let bump = if c > BUMP { w.spring * 10.0 * (c - BUMP) } else { 0.0 };
-                let cap = if c > BUMP { w.max_force * 3.0 } else { w.max_force * 2.0 };
-                let n = (k * c.max(0.0) + w.damper * rate_c + bump).clamp(-w.max_force * 0.5, cap);
+                let bump = if c > BUMP { (w.spring * 10.0 * (c - BUMP)).min(w.max_force * 2.0) } else { 0.0 };
+                let n = (k * c.max(0.0) + w.damper * rate_c).clamp(-w.max_force * 0.5, w.max_force) + bump;
                 // the wheel moves against the body, which is itself accelerated by what holds
                 // it up (`accel_body.z`, 9.81 m/s² standing, 0 in the air: a wheel off a kerb
                 // drops, a wheel of a body in the air does not) - semi-implicit Euler, stable
@@ -706,6 +769,14 @@ impl RigidBody {
                 }
                 w.on_ground = tyre_f > 0.0;
                 w.load = tyre_f;
+                // the strut's force turns the body about its length from the outer width, not
+                // from where the tyre stands (see `RigidWheel::lever`): body x cross body z
+                torque += Vec3::new(0.0, -w.lever * n, 0.0);
+                // and OMSI's damper reads the body's speed out there too (0x7e4899: roll rate
+                // x maxwidth / 2): the part of it the hub does not see, while the tyre carries
+                if tyre_f > 0.0 {
+                    torque.y -= (w.attach.x + w.lever) * w.damper * self.omega.y * w.lever;
+                }
                 let Some((_, slope, contact_dx)) = found[i].filter(|_| tyre_f > 0.0) else {
                     // off the ground the wheel keeps its turning (a brake stops it)
                     let (drive_w, brake_w) = (if w.driven { drive_torque / r / driven } else { 0.0 }, brake.get(i).copied().unwrap_or(0.0).max(0.0));
@@ -739,7 +810,6 @@ impl RigidBody {
                 let r_world = (contact - self.position).as_vec3();
                 let v_point = self.velocity + omega_world.cross(r_world);
                 let v_long = v_point.dot(fwd);
-                let v_lat = v_point.dot(right);
                 // the tyre works with at most its rated load: the spike of a wheel landing on
                 // its bump stop is not grip, and fed into the side force it spun a bus round
                 // on a verge
@@ -753,7 +823,6 @@ impl RigidBody {
                     brake: brake.get(i).copied().unwrap_or(0.0).max(0.0) + self.rolling_resistance / n_wheels,
                     grip,
                     v_long,
-                    v_lat,
                     lateral: true,
                     wheel: Some(i),
                 });
@@ -775,21 +844,19 @@ impl RigidBody {
                     brake: d.brake.max(0.0) * share,
                     grip: d.load,
                     v_long: (self.velocity + omega_world.cross(r_world)).dot(body_fwd),
-                    v_lat: 0.0,
                     lateral: false,
                     wheel: None,
                 });
             }
-            // Tyre forces. A rolling tyre slips: the brake opposes its motion and the side
-            // force follows the slip angle. Tyres that stand hold like static friction - but
+            // Tyre forces as OMSI has them (Omsi.exe 0x7e2dc1..0x7e44ee).
+            // Along the tyre: a rolling one passes on the drive and the brake, a slipping one
+            // the sliding friction. Tyres that stand hold like static friction - but
             // together: they take up everything else that pushes the body (gravity on a
             // slope, the drive, the rolling ones) and what is left of its speed, shared by
             // what each brake can bear. One wheel at a time, each cancelling only its quarter
             // of the bus, a parked bus crept down an 8 % slope at 2 mm/s.
-            let body_right = rot.mul_vec3(Vec3::X);
             let mut outer = force + contacts.iter().map(|c| c.base).sum::<Vec3>();
             let mut rolling_long = vec![0.0f32; contacts.len()];
-            let mut rolling_lat = vec![0.0f32; contacts.len()];
             for (k, c) in contacts.iter().enumerate() {
                 // a slipping wheel passes on the sliding friction, whichever way the tyre
                 // slides over the road (the wheel's own speed against the ground's)
@@ -797,16 +864,12 @@ impl RigidBody {
                     let mu_n = self.friction * c.grip;
                     let slide = w.spin * w.radius - c.v_long;
                     rolling_long[k] = mu_n * sign(slide);
-                    let slip = if c.v_long.abs() > 0.5 { (c.v_lat / c.v_long.abs()).atan() } else { c.v_lat.clamp(-1.0, 1.0) * 1.2 };
-                    rolling_lat[k] = -12.0 * c.grip * slip;
-                    outer += c.fwd * rolling_long[k] + c.right * rolling_lat[k];
+                    outer += c.fwd * rolling_long[k];
                     continue;
                 }
                 if c.v_long.abs() > STANDING {
                     rolling_long[k] = c.drive - c.brake * c.v_long.signum();
-                    let slip = if c.v_long.abs() > 0.5 { (c.v_lat / c.v_long.abs()).atan() } else { c.v_lat.clamp(-1.0, 1.0) * 1.2 };
-                    rolling_lat[k] = -12.0 * c.grip * slip;
-                    outer += c.fwd * rolling_long[k] + c.right * rolling_lat[k];
+                    outer += c.fwd * rolling_long[k];
                 } else {
                     outer += c.fwd * c.drive;
                 }
@@ -818,26 +881,76 @@ impl RigidBody {
                 standing.iter().map(|&k| if total > 1e-3 { (need * cap(&contacts[k]) / total).clamp(-cap(&contacts[k]), cap(&contacts[k])) } else { 0.0 }).collect()
             };
             let hold_long = hold(body_fwd, self.mass + towed, &|c| c.brake);
-            let hold_lat = hold(body_right, self.mass, &|c| if c.lateral { self.friction * c.grip } else { 0.0 });
             for (k, c) in contacts.iter().enumerate() {
-                let (mut f_long, mut f_lat) = match standing.iter().position(|&j| j == k) {
-                    Some(si) => (c.drive + hold_long[si], hold_lat[si]),
-                    None => (rolling_long[k], rolling_lat[k]),
+                let mut f_long = match standing.iter().position(|&j| j == k) {
+                    Some(si) => c.drive + hold_long[si],
+                    None => rolling_long[k],
                 };
-                // friction circle
                 let max_f = self.friction * c.grip;
-                let total = (f_long * f_long + f_lat * f_lat).sqrt();
-                if total > max_f && total > 1e-6 {
-                    let s = max_f / total;
-                    f_long *= s;
-                    f_lat *= s;
-                }
-                let f_world = c.base + c.fwd * f_long + c.right * f_lat;
+                f_long = f_long.clamp(-max_f, max_f);
+                let f_world = c.base + c.fwd * f_long;
                 if let Some(i) = c.wheel {
                     self.wheels[i].advance_spin(c, f_long, self.friction, h);
                 }
                 force += f_world;
                 torque += rot.inverse().mul_vec3(c.r).cross(rot.inverse().mul_vec3(f_world));
+            }
+            // Across the tyre: OMSI has no slip angle. Each axle takes away the sideways
+            // speed it has - the bus follows its wheels exactly - with no more force than
+            // the road's grip times the load on it; only beyond that does it slide
+            // (0x7e4012: -0.5 x mass x side speed / frame per axle, capped at mu x load).
+            // Here the same as a constraint on every tyre, solved over this substep with
+            // everything else that pushes the body. The old tyre instead gave 12 x load per
+            // radian of slip: every bus turned at 70 % of what its steering asked, 0.8 s
+            // late, drifting 2-3 degrees and swaying - the same for every `.bus`.
+            {
+                let (m, mt) = (self.mass, self.mass + towed);
+                let lin = |p: Vec3| (p - body_fwd * p.dot(body_fwd)) / m + body_fwd * (p.dot(body_fwd) / mt);
+                let along = force.dot(body_fwd);
+                let mut v = self.velocity + ((force - body_fwd * along) / m + body_fwd * (along / mt)) * h;
+                let mut w = self.omega + (torque - self.omega.cross(self.inertia * self.omega)) / self.inertia * h;
+                let lat: Vec<usize> = (0..contacts.len()).filter(|&k| contacts[k].lateral && contacts[k].grip > 0.0).collect();
+                let arms: Vec<(Vec3, f32)> = lat
+                    .iter()
+                    .map(|&k| {
+                        let c = &contacts[k];
+                        let rn = rot.inverse().mul_vec3(c.r).cross(rot.inverse().mul_vec3(c.right));
+                        let inv = c.right.dot(lin(c.right)) + (rn / self.inertia).dot(rn);
+                        (rn, inv.max(1e-9))
+                    })
+                    .collect();
+                // holding: the bend's pull against the grip of all tyres (0x7e4dee), and
+                // no wheel spinning or locked (0x7e3c3b)
+                let grip_all: f32 = lat.iter().map(|&k| self.friction * contacts[k].grip).sum();
+                let v_fwd = self.velocity.dot(body_fwd);
+                let kappa = (self.steer_deg.to_radians().tan() / (self.wheels.iter().map(|w| w.attach.y).fold(f32::MIN, f32::max) - self.rot_pnt_long).abs().max(0.5)).abs();
+                let slipping = self.wheels.iter().any(|w| w.slipping && w.on_ground);
+                if self.holding && (m * v_fwd * v_fwd * kappa > grip_all || slipping) {
+                    self.holding = false;
+                }
+                // (holding, a tyre may pass several times its grip for the moment it takes
+                // the body to follow a quick turn of the wheel: OMSI sets the yaw rate outright)
+                let reach = if self.holding { 8.0 } else { 1.0 };
+                let mut j = vec![0.0f32; lat.len()];
+                for _ in 0..8 {
+                    for (q, &k) in lat.iter().enumerate() {
+                        let c = &contacts[k];
+                        let v_lat = (v + rot.mul_vec3(w).cross(c.r)).dot(c.right);
+                        let cap = self.friction * c.grip * h * reach;
+                        let before = j[q];
+                        j[q] = (before - v_lat / arms[q].1).clamp(-cap, cap);
+                        let dj = j[q] - before;
+                        v += lin(c.right) * dj;
+                        w += arms[q].0 / self.inertia * dj;
+                    }
+                }
+                for (q, &k) in lat.iter().enumerate() {
+                    force += contacts[k].right * (j[q] / h);
+                    torque += arms[q].0 * (j[q] / h);
+                }
+                if !self.holding && !slipping && lat.iter().all(|&k| (v + rot.mul_vec3(w).cross(contacts[k].r)).dot(contacts[k].right).abs() < 0.1) {
+                    self.holding = true;
+                }
             }
             // integrate
             let along = force.dot(body_fwd);
@@ -848,8 +961,6 @@ impl RigidBody {
             let iw = self.inertia * self.omega;
             let omega_dot = (torque - self.omega.cross(iw)) / self.inertia;
             self.omega += omega_dot * h;
-            // angular damping (aerodynamics / suspension friction)
-            self.omega *= 1.0 - 0.6 * h;
             let dq = Quat::from_scaled_axis(rot.mul_vec3(self.omega) * h);
             self.orientation = (dq * rot).normalize();
         }
@@ -971,6 +1082,10 @@ impl RigidBody {
             // (the bus alone may even gain energy when the other one does the hitting)
             let energy = (before - self.kinetic_energy()).max(0.5 * vn_full * vn_full * (1.0 - e * e) / k_n);
             impacts.push(Impact { point, speed: -vn_full, energy, obstacle: i, broke: false, push: -n });
+        }
+        // a blow the tyres have to catch: they slide until the body is back on its wheels
+        if impacts.iter().any(|m| m.speed >= CRASH_SPEED) {
+            self.holding = false;
         }
         impacts
     }

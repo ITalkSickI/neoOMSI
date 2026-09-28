@@ -343,6 +343,7 @@ pub(crate) fn run_offscreen(
                         position: camera.position,
                         yaw: camera.yaw,
                         pitch: camera.pitch,
+                        roll: camera.roll,
                         fov_deg: camera.fov_deg,
                         near: camera.near,
                         far: camera.far,
@@ -646,6 +647,7 @@ pub(crate) fn run_offscreen(
                     position: camera.position,
                     yaw: camera.yaw,
                     pitch: camera.pitch,
+                    roll: camera.roll,
                     fov_deg: camera.fov_deg,
                     near: camera.near,
                     far: camera.far,
@@ -801,6 +803,7 @@ pub(crate) fn run_offscreen(
                     position: camera.position,
                     yaw: camera.yaw,
                     pitch: camera.pitch,
+                    roll: camera.roll,
                     fov_deg: camera.fov_deg,
                     near: camera.near,
                     far: camera.far,
@@ -2248,6 +2251,7 @@ pub(crate) fn run_offscreen(
                             position: eye,
                             yaw: *h as f32,
                             pitch: -(2.6f64 / back).atan().to_degrees() as f32,
+                            roll: 0.0,
                             fov_deg: 20.0,
                             near: 0.3,
                             far: 400.0,
@@ -2259,6 +2263,7 @@ pub(crate) fn run_offscreen(
                         position: DVec3::new(p.x, p.y, p.z + 40.0),
                         yaw: 0.0,
                         pitch: -90.0,
+                        roll: 0.0,
                         fov_deg: 40.0,
                         near: 39.5,
                         far: 41.5,
@@ -2322,7 +2327,7 @@ pub(crate) fn run_offscreen(
         for k in 0..n {
             let t = Instant::now();
             if let Some(p) = player_ref.as_ref() {
-                render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, Some(k));
+                render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, Some(k), None);
             }
             renderer.render(&mut scene, &view, w, h, &camera, &lighting);
             let drawn = t.elapsed().as_secs_f64();
@@ -2387,7 +2392,7 @@ pub(crate) fn run_offscreen(
     world.finish_texture_upgrades(&renderer, &mut scene);
     let t0 = Instant::now();
     if let Some(p) = player_ref.as_ref() {
-        render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, None);
+        render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, None, None);
     }
     let pixels = renderer.render_to_image(&mut scene, w, h, &camera, &lighting)?;
     log::info!(

@@ -152,6 +152,7 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                 }
                 "mouse" => {
                     app.mouse_drive = !app.mouse_drive;
+                    app.mouse_steer = (app.player.as_ref().map(|p| p.vehicle.physics.controls.steering).unwrap_or(0.0), 1.0);
                     None
                 }
                 "fps" => {

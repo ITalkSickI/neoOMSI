@@ -57,6 +57,14 @@ fn src(uv: vec2<f32>, texel: vec2<f32>, x: f32, y: f32) -> vec3<f32> {
     return clean(textureSampleLevel(t_src, s_lin, uv + vec2<f32>(x, y) * texel, 0.0).rgb);
 }
 
+// The picture without the bus's own screens (the screen mask is the first glow level's
+// t_base): a lit display glows no halo over its own letters.
+fn src_unmasked(uv: vec2<f32>, texel: vec2<f32>, x: f32, y: f32) -> vec3<f32> {
+    let at = uv + vec2<f32>(x, y) * texel;
+    let screen = textureSampleLevel(t_base, s_lin, at, 0.0).r;
+    return clean(textureSampleLevel(t_src, s_lin, at, 0.0).rgb) * (1.0 - step(0.5, screen));
+}
+
 // --- the glow: 13-tap downsampling (the first level with Karis' average, so that a single
 // bright pixel does not flicker), tent upsampling
 
@@ -64,19 +72,19 @@ fn src(uv: vec2<f32>, texel: vec2<f32>, x: f32, y: f32) -> vec3<f32> {
 fn fs_down_first(in: VsOut) -> @location(0) vec4<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(t_src));
     let uv = in.uv;
-    let a = src(uv, texel, -2.0, -2.0);
-    let b = src(uv, texel, 0.0, -2.0);
-    let c = src(uv, texel, 2.0, -2.0);
-    let d = src(uv, texel, -2.0, 0.0);
-    let e = src(uv, texel, 0.0, 0.0);
-    let f = src(uv, texel, 2.0, 0.0);
-    let g = src(uv, texel, -2.0, 2.0);
-    let h = src(uv, texel, 0.0, 2.0);
-    let i = src(uv, texel, 2.0, 2.0);
-    let j = src(uv, texel, -1.0, -1.0);
-    let k = src(uv, texel, 1.0, -1.0);
-    let l = src(uv, texel, -1.0, 1.0);
-    let m = src(uv, texel, 1.0, 1.0);
+    let a = src_unmasked(uv, texel, -2.0, -2.0);
+    let b = src_unmasked(uv, texel, 0.0, -2.0);
+    let c = src_unmasked(uv, texel, 2.0, -2.0);
+    let d = src_unmasked(uv, texel, -2.0, 0.0);
+    let e = src_unmasked(uv, texel, 0.0, 0.0);
+    let f = src_unmasked(uv, texel, 2.0, 0.0);
+    let g = src_unmasked(uv, texel, -2.0, 2.0);
+    let h = src_unmasked(uv, texel, 0.0, 2.0);
+    let i = src_unmasked(uv, texel, 2.0, 2.0);
+    let j = src_unmasked(uv, texel, -1.0, -1.0);
+    let k = src_unmasked(uv, texel, 1.0, -1.0);
+    let l = src_unmasked(uv, texel, -1.0, 1.0);
+    let m = src_unmasked(uv, texel, 1.0, 1.0);
     let g0 = (j + k + l + m) * 0.25;
     let g1 = (a + b + d + e) * 0.25;
     let g2 = (b + c + e + f) * 0.25;
@@ -244,6 +252,11 @@ fn fs_fxaa(in: VsOut) -> @location(0) vec4<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(t_src));
     let uv = in.uv;
     let rgbm = textureSampleLevel(t_src, s_lin, uv, 0.0);
+    // the bus's own screens as they are: FXAA took half the contrast out of their
+    // letters (the screen mask is this pass's t_base)
+    if (textureSampleLevel(t_base, s_lin, uv, 0.0).r > 0.5) {
+        return vec4<f32>(from_srgb(rgbm.rgb), 1.0);
+    }
     let m = rgbm.a;
     let n = lum_at(uv + vec2<f32>(0.0, -1.0) * texel);
     let s = lum_at(uv + vec2<f32>(0.0, 1.0) * texel);

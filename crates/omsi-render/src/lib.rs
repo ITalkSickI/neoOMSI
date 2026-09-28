@@ -94,6 +94,9 @@ struct EnhancedUniform {
 struct HdrTargets {
     msaa_view: Option<wgpu::TextureView>,
     view: wgpu::TextureView,
+    /// The screen mask (`MASK_FORMAT`), multisampled and resolved like the picture.
+    mask_msaa: Option<wgpu::TextureView>,
+    mask: wgpu::TextureView,
     /// Glow levels at 1/2, 1/4, ... of the size, and the upsampled sums per level.
     down: Vec<wgpu::TextureView>,
     up: Vec<wgpu::TextureView>,
@@ -363,6 +366,8 @@ struct MaterialUniform {
     /// The PBR maps beside the diffuse texture (`Scene::pbr_maps`): x has a normal map,
     /// y an occlusion, z a roughness, w a metalness channel.
     pbr: [f32; 4],
+    /// x: a screen (`MaterialExtra::screen`); y, z, w unused.
+    flags: [f32; 4],
 }
 
 /// The maps of a PBR set found beside a diffuse texture (`foo_n.png` and the rest, see
@@ -383,6 +388,7 @@ pub enum AlphaMode {
     Blend,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Camera {
     /// World position (f64: maps span millions of metres).
     pub position: DVec3,
@@ -390,6 +396,9 @@ pub struct Camera {
     pub yaw: f32,
     /// Degrees, positive = looking up.
     pub pitch: f32,
+    /// Degrees about the view direction (0 = the horizon level; see [`Camera::up`]). A
+    /// camera fixed to a vehicle - a mirror's - leans with its body.
+    pub roll: f32,
     pub fov_deg: f32,
     pub near: f32,
     pub far: f32,
@@ -403,12 +412,28 @@ impl Camera {
     }
     pub fn right(&self) -> Vec3 {
         let f = self.forward();
-        Vec3::new(f.y, -f.x, 0.0).normalize_or_zero()
+        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or_zero();
+        if self.roll == 0.0 {
+            return r0;
+        }
+        f.cross(self.up()).normalize_or(r0)
+    }
+    /// The picture's up: world up for a level camera, turned about the view direction by
+    /// `roll` (positive: the top leans to the right).
+    pub fn up(&self) -> Vec3 {
+        let f = self.forward();
+        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or_zero();
+        if self.roll == 0.0 || r0 == Vec3::ZERO {
+            return Vec3::Z;
+        }
+        let u0 = r0.cross(f);
+        let (s, c) = self.roll.to_radians().sin_cos();
+        (u0 * c + r0 * s).normalize_or(Vec3::Z)
     }
     /// View-projection relative to a render origin (the camera itself when `origin` is its
     /// position), so that GPU maths stays in small numbers.
     pub fn view_proj(&self, aspect: f32, origin: DVec3) -> Mat4 {
-        let view = Mat4::look_to_rh((self.position - origin).as_vec3(), self.forward(), Vec3::Z);
+        let view = Mat4::look_to_rh((self.position - origin).as_vec3(), self.forward(), self.up());
         // Reversed Z (near and far swapped): the depth buffer then spends its float
         // precision where the scene is far away instead of where it is close, which is what
         // stops distant roads, kerbs and painted ground from flickering against each other
@@ -586,7 +611,7 @@ impl GpuTexture {
 struct BindKey {
     textures: [(usize, u64); 7],
     clamp: bool,
-    uniform: [u32; 32],
+    uniform: [u32; 36],
 }
 
 /// Bytes of a texture of `format` with `levels` mip levels.
@@ -670,6 +695,11 @@ pub struct MaterialExtra {
     /// by itself, as a lit matrix does, instead of taking only the light that reaches it
     /// under the bus's front overhang, where it was hardly readable by day.
     pub display: bool,
+    /// A screen the bus draws itself - a `[useTextTexture]` or `[useScriptTexture]` slot:
+    /// the IBIS, the matrix displays, the dashboard's LCDs. The enhanced picture's glow
+    /// and FXAA leave it alone (see `MASK_FORMAT`): FXAA took half the contrast out of
+    /// their letters and they read as blurred.
+    pub screen: bool,
     /// The film of water on a window (`[alphascale] Rain_Window_…`): drawn as drops that sit,
     /// gather and run down the glass instead of the texture sliding down as a whole.
     pub rain_film: bool,
@@ -1141,6 +1171,29 @@ impl Default for RenderOptions {
 /// four times the pixels of its size in points - gets a 3D picture of about this many
 /// pixels, scaled up. The HUD is always drawn at full size.
 pub const AUTO_SCALE_PIXELS: f32 = 2_800_000.0;
+
+/// The enhanced pass's second target: 1 where the bus's own screens are (`MaterialExtra::
+/// screen`), 0 elsewhere. The glow takes no light from it and FXAA passes it through.
+const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
+const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// The colour targets of a pipeline drawing into `format`: in the enhanced pass (the only
+/// one drawing into `HDR_FORMAT` with these pipelines) with the screen mask beside it,
+/// written by the scene's own shader only (`mask`), coverage-blended where the colour is.
+fn color_targets(format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>, write: wgpu::ColorWrites, mask: bool) -> Vec<Option<wgpu::ColorTargetState>> {
+    let mut v = vec![Some(wgpu::ColorTargetState { format, blend, write_mask: write })];
+    if format == HDR_FORMAT {
+        v.push(Some(wgpu::ColorTargetState {
+            format: MASK_FORMAT,
+            blend: blend.map(|_| wgpu::BlendState {
+                color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::SrcAlpha, dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha, operation: wgpu::BlendOperation::Add },
+                alpha: wgpu::BlendComponent::REPLACE,
+            }),
+            write_mask: if mask { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() },
+        }));
+    }
+    v
+}
 /// Half size of the area around the camera covered by the near shadow cascade (m).
 pub const SHADOW_RANGE: f32 = 140.0;
 /// Half size of the far cascade (m): coarser, but reaches the whole visible street.
@@ -1855,11 +1908,7 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some(fs),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
+                    targets: &color_targets(format, blend, wgpu::ColorWrites::ALL, true),
                     // only the alpha-tested pipelines keep their `discard` (see ALPHA_TEST
                     // in shader.wgsl): early depth testing for everything else
                     compilation_options: wgpu::PipelineCompilationOptions {
@@ -2193,11 +2242,7 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &corona_shader,
                     entry_point: Some(fs),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: f,
-                        blend: Some(blend),
-                        write_mask: wgpu::ColorWrites::COLOR,
-                    })],
+                    targets: &color_targets(f, Some(blend), wgpu::ColorWrites::COLOR, false),
                     compilation_options: Default::default(),
                 }),
                 multiview_mask: None,
@@ -2335,11 +2380,7 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &sky_shader,
                     entry_point: Some(fs),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: f,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::COLOR,
-                    })],
+                    targets: &color_targets(f, None, wgpu::ColorWrites::COLOR, false),
                     compilation_options: Default::default(),
                 }),
                 multiview_mask: None,
@@ -4281,6 +4322,7 @@ impl Renderer {
                 if extra.no_z_check { 1.0 } else { 0.0 },
             ],
             pbr: texture.and_then(|t| scene.pbr_maps.get(&t)).map(|m| m.flags).unwrap_or([0.0; 4]),
+            flags: [if extra.screen { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0],
         };
         let slot = |t: Option<TextureId>| {
             t.and_then(|t| scene.textures.get(t).map(|g| (t, g.gen)))
@@ -5140,6 +5182,8 @@ impl Renderer {
         let msaa_view =
             (self.options.msaa > 1).then(|| target("hdr msaa", w, h, fmt, self.options.msaa));
         let view = target("hdr", w, h, fmt, 1);
+        let mask_msaa = (self.options.msaa > 1).then(|| target("screen mask msaa", w, h, MASK_FORMAT, self.options.msaa));
+        let mask = target("screen mask", w, h, MASK_FORMAT, 1);
         // the glow: halving until the smallest level is a few dozen pixels across
         let levels = GLOW_LEVELS
             .min((w.min(h).max(16) as f32).log2() as usize - 3)
@@ -5180,8 +5224,10 @@ impl Renderer {
             })
         };
         let none = &self.white_texture.view;
+        // (the first level of the glow reads the screen mask as its `t_base`: no light from
+        // the screens)
         let down_bg: Vec<wgpu::BindGroup> = (0..levels)
-            .map(|i| bg(if i == 0 { &view } else { &down[i - 1] }, none, none))
+            .map(|i| bg(if i == 0 { &view } else { &down[i - 1] }, if i == 0 { &mask } else { none }, none))
             .collect();
         let up_bg: Vec<wgpu::BindGroup> = (0..levels)
             .map(|i| {
@@ -5201,12 +5247,15 @@ impl Renderer {
             bg(&view, &up[0], &self.adapt_views[0]),
             bg(&view, &up[0], &self.adapt_views[1]),
         ];
-        let fxaa_bg = bg(&ldr, none, none);
+        // (FXAA reads the screen mask as its `t_base` and leaves the screens as they are)
+        let fxaa_bg = bg(&ldr, &mask, none);
         self.hdr_targets.insert(
             (w, h),
             HdrTargets {
                 msaa_view,
                 view,
+                mask_msaa,
+                mask,
                 down,
                 up,
                 ldr,
@@ -6743,7 +6792,7 @@ impl Renderer {
         }
         stage(self, "shadow items", "mirror.shadow items");
         // frustum culling by bounding sphere in view space
-        let view = Mat4::look_to_rh(cam_rel, camera.forward(), Vec3::Z);
+        let view = Mat4::look_to_rh(cam_rel, camera.forward(), camera.up());
         let tan_y = (camera.fov_deg.to_radians() * 0.5).tan();
         let tan_x = tan_y * aspect;
         let cos_y = 1.0 / (1.0 + tan_y * tan_y).sqrt();
@@ -7561,11 +7610,17 @@ impl Renderer {
                     }
                 };
             let pp = if enhanced { &self.hdr_pass } else { &self.pass };
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("main"),
-                // drawn with MSAA samples and resolved into the real target at the end
-                // (without multisampling straight into the target)
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            // the enhanced pass's screen mask beside the picture (see `MASK_FORMAT`)
+            let mask_attachment = hdr.map(|h| wgpu::RenderPassColorAttachment {
+                view: h.mask_msaa.as_ref().unwrap_or(&h.mask),
+                depth_slice: None,
+                resolve_target: h.mask_msaa.as_ref().map(|_| &h.mask),
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: if h.mask_msaa.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
+                },
+            });
+            let main_attachment = Some(wgpu::RenderPassColorAttachment {
                     view: draw_view,
                     depth_slice: None,
                     resolve_target: resolve_view,
@@ -7582,7 +7637,14 @@ impl Renderer {
                             wgpu::StoreOp::Discard
                         },
                     },
-                })],
+                });
+            let colors = [main_attachment, mask_attachment];
+            let colors = if colors[1].is_some() { &colors[..] } else { &colors[..1] };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("main"),
+                // drawn with MSAA samples and resolved into the real target at the end
+                // (without multisampling straight into the target)
+                color_attachments: colors,
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {
@@ -8801,11 +8863,12 @@ fn record_bundles(
     format: wgpu::TextureFormat,
     samples: u32,
 ) -> Vec<wgpu::RenderBundle> {
+    let color_formats = [Some(format), Some(MASK_FORMAT)];
     let record = |chunk: &[Batch]| -> wgpu::RenderBundle {
         let mut bundle =
             device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
                 label: Some("main pass part"),
-                color_formats: &[Some(format)],
+                color_formats: &color_formats[..if format == HDR_FORMAT { 2 } else { 1 }],
                 depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                     format: DEPTH_FORMAT,
                     depth_read_only: false,

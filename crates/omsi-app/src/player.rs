@@ -1203,6 +1203,7 @@ impl Player {
                     position: eye,
                     yaw: yaw + look.0,
                     pitch: (pitch + look.1).clamp(-89.0, 89.0),
+                    roll: 0.0,
                     fov_deg: c.fov,
                     near: 0.25,
                     far: 6000.0,
@@ -1221,6 +1222,7 @@ impl Player {
                     position: center,
                     yaw: self.vehicle.heading as f32 - 35.0 + look.0,
                     pitch: (-15.0 + look.1).clamp(-85.0, 85.0),
+                    roll: 0.0,
                     fov_deg: fallback.fov_deg,
                     near: 0.3,
                     far: 6000.0,
@@ -1408,3 +1410,38 @@ pub(crate) fn pick_trailer_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3
     None
 }
 
+/// OMSI's mouse steering (Omsi.exe 0x6f4284..0x6f447b): the cursor's place across the whole
+/// window is the steering from full left to full right lock, divided by the speed in tens of
+/// km/h once the bus is faster than 10 km/h (going backwards counts as standing). At 50 km/h
+/// the same movement of the hand turns the wheels a fifth as far: the wheel "gets heavier".
+pub(crate) fn mouse_steering(cursor_x: f32, width: f32, kmh: f32) -> f32 {
+    let x = (2.0 * cursor_x / width.max(1.0) - 1.0).clamp(-1.0, 1.0);
+    x / (kmh / 10.0).max(1.0)
+}
+
+#[cfg(test)]
+mod mouse_tests {
+    use super::mouse_steering;
+
+    #[test]
+    fn the_mouse_steers_less_the_faster_the_bus() {
+        let w = 1600.0;
+        // standing and slow: the whole width is the whole lock
+        assert_eq!(mouse_steering(0.0, w, 0.0), -1.0);
+        assert_eq!(mouse_steering(1600.0, w, 5.0), 1.0);
+        assert_eq!(mouse_steering(800.0, w, 0.0), 0.0);
+        assert!((mouse_steering(1200.0, w, 10.0) - 0.5).abs() < 1e-6);
+        // faster: divided by the speed in tens of km/h
+        assert!((mouse_steering(1200.0, w, 50.0) - 0.1).abs() < 1e-6);
+        assert!((mouse_steering(1600.0, w, 100.0) - 0.1).abs() < 1e-6);
+        // backwards like standing
+        assert!((mouse_steering(1200.0, w, -20.0) - 0.5).abs() < 1e-6);
+        // it moves smoothly: no step anywhere across the window
+        let mut last = mouse_steering(0.0, w, 30.0);
+        for px in 1..=1600 {
+            let s = mouse_steering(px as f32, w, 30.0);
+            assert!((s - last).abs() < 0.001, "step at {px}");
+            last = s;
+        }
+    }
+}

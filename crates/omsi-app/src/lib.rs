@@ -16,6 +16,7 @@ mod platform;
 mod touch;
 mod placing;
 mod mt;
+mod updater;
 mod ambience;
 mod camera_arm;
 mod career;
@@ -434,6 +435,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         game_menu: None,
         controllers: None,
         mouse_drive: false,
+        mouse_steer: (0.0, 0.0),
         tutorial: None,
         ego: false,
         on_foot: None,
@@ -498,6 +500,7 @@ mod tests {
             position: DVec3::new(5000.0, 6000.0, 50.0),
             yaw: 0.0,
             pitch: 0.0,
+            roll: 0.0,
             fov_deg: 60.0,
             near: 0.5,
             far: 100.0,

@@ -17,6 +17,7 @@ mod state;
 mod theme;
 mod timetable;
 mod ui;
+mod update;
 
 use glam::Vec2;
 use omsi_launcher_lib as core;
@@ -134,6 +135,8 @@ pub struct Launcher {
     page_scroll: f32,
     page_max: f32,
     ime: bool,
+    /// Updates from the GitHub releases (see `crate::updater`, `update.rs`).
+    pub update: crate::updater::Updater,
 }
 
 /// Run the launcher window until it is closed.
@@ -196,7 +199,15 @@ impl Launcher {
         page_scroll: 0.0,
         page_max: 0.0,
         ime: false,
+        update: Default::default(),
     };
+    // after an update: the files it set aside go, and the launcher says what happened
+    #[cfg(not(target_os = "android"))]
+    crate::updater::cleanup_after_update();
+    if let Some(v) = crate::updater::just_updated() {
+        log::info!("update: this start follows the update to {v}");
+        app.update.updated = Some((v, Instant::now()));
+    }
     // no original installation found anywhere: the launcher still opens, on Setup, and says
     // what it needs (only starting a session needs the game)
     if omsi_cfg::missing_original_essentials(std::path::Path::new(&app.state.config.root)).len() > 0 {
@@ -451,6 +462,7 @@ impl ApplicationHandler for Launcher {
             self.last = Instant::now();
             self.run_script();
             self.state.update(dt);
+            self.update_tick(event_loop);
             self.check_exit(event_loop);
         } else if let Some(w) = self.window.as_ref() {
             w.request_redraw();
@@ -490,6 +502,7 @@ impl Launcher {
 
         self.run_script();
         self.state.update(dt);
+        self.update_tick(event_loop);
         // the preview shows the chosen bus in the chosen light
         let c = &self.state.choice;
         let look = showroom::Look { root: std::path::PathBuf::from(&self.state.config.root), map: c.map.clone(), bus: c.bus.clone(), paint: c.paint.clone(), weather: c.weather.clone(), time: c.time, date: c.date.clone() };
@@ -675,8 +688,10 @@ impl Launcher {
     fn draw_ui(&mut self) {
         let size = self.ui.size;
         let mobile = mobile::mobile();
-        // the storage browser lies over the page: the page sees no finger meanwhile
-        let saved = self.browser.is_some().then(|| {
+        // the storage browser (or the update dialog) lies over the page: the page sees no
+        // finger meanwhile
+        let dialog = self.update_dialog_open();
+        let saved = (self.browser.is_some() || dialog).then(|| {
             let i = self.ui.input.clone();
             self.ui.input.mouse = Vec2::new(-1e4, -1e4);
             self.ui.input.pressed = false;
@@ -720,9 +735,14 @@ impl Launcher {
             self.rail();
         }
         self.status_bar();
+        self.draw_updated_notice();
         if let Some(i) = saved {
             self.ui.input = i;
-            self.draw_browser();
+            if dialog {
+                self.draw_update_dialog();
+            } else {
+                self.draw_browser();
+            }
         }
     }
 
