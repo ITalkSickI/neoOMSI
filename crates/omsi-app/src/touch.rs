@@ -764,7 +764,7 @@ impl App {
                 t.steer = s;
             }
         } else if !t.steering {
-            let back = 2.2 * dt;
+            let back = (1.2 + 1.5 * t.steer.abs()) * dt;
             t.steer = if t.steer.abs() <= back { 0.0 } else { t.steer - back * t.steer.signum() };
         }
         if let Some((_, left)) = t.note.as_mut() {
@@ -811,7 +811,7 @@ impl App {
                 let (rim_in, hub) = (r - 12.0 * u, 16.0 * u);
                 let part = Color::rgba(230, 230, 230, if t.steering { 0.95 } else { 0.8 });
                 pt.circle(c, rim_in, PANEL_BG);
-                // the spokes turn with the wheel (the full lock shown as 120 deg)
+                // the spokes turn with the wheel (one and a half turns to the lock)
                 let a0 = t.steer * WHEEL_LOCK_ANGLE;
                 let half = 3.5 * u;
                 for k in 0..3 {
@@ -994,8 +994,10 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
     }
 }
 
-/// How far the drawn wheel turns at the full lock (rad): 120 degrees.
-const WHEEL_LOCK_ANGLE: f32 = 2.1;
+/// How far the wheel turns at the full lock (rad): one and a half turns, as a bus's wheel
+/// and the phone bus games have it - the finger goes round and round to the lock, and the
+/// wheel comes back by itself when let go. (120 degrees was a lock in a flick.)
+const WHEEL_LOCK_ANGLE: f32 = 3.0 * std::f32::consts::PI;
 
 /// The wheel's turn as the bus gets it: gentle round the middle (a finger's small wobble is a
 /// small correction), the full lock still at the end of the travel.

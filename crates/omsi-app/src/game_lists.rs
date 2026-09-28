@@ -17,6 +17,36 @@ pub(crate) enum ListKind {
     Numbers,
     /// The termini of the bus's depot file, for its destination display.
     Destinations,
+    /// The depot files (.hof) of the bus driven.
+    Hofs,
+    /// Placing a vehicle: its livery, then its depot file (bus file; bus file and livery).
+    PlaceLivery(String),
+    PlaceHof(String, String),
+}
+
+/// A vehicle file of the menu's list (`Vehicles/...`) as its definition.
+fn bus_def(app: &App, bus: &str) -> Option<omsi_vehicle::Vehicle> {
+    let path = crate::spawn::player_bus_path(&app.args.root, bus).ok()?;
+    omsi_vehicle::Vehicle::load(&path).ok()
+}
+
+/// The paint schemes of a vehicle file, by name (without loading its meshes).
+fn liveries(def: &omsi_vehicle::Vehicle) -> Vec<String> {
+    let Some(m) = def.model.as_ref() else { return Vec::new() };
+    let mp = omsi_cfg::resolve_path(def.dir(), m);
+    let Ok(model) = omsi_model::Model::load(&mp) else { return Vec::new() };
+    let mut names: Vec<String> = model.ctc.iter().flat_map(|c| omsi_sim::vehicle::load_paint_schemes(&omsi_cfg::resolve_path(def.dir(), &c.path))).map(|s| s.name).collect();
+    names.dedup();
+    names
+}
+
+/// A depot file's name for the lists: its `[name]`, and the file.
+fn hof_label(p: &std::path::Path) -> String {
+    let file = p.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    match omsi_vehicle::Hof::load(p).ok().map(|h| h.name).filter(|n| !n.trim().is_empty()) {
+        Some(n) if !file.to_ascii_lowercase().starts_with(&n.trim().to_ascii_lowercase()) => format!("{}  ({file})", n.trim()),
+        _ => file,
+    }
 }
 
 /// The time speeds, traffic amounts and passenger shares the options step through.
@@ -113,6 +143,33 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             }
             if out.is_empty() {
                 out.push((tr("This bus has no depot file (.hof) with destinations"), "back".into()));
+            }
+        }
+        ListKind::Hofs => {
+            if let Some(p) = app.player.as_ref() {
+                let now = p.vehicle.host.hof.as_ref().map(|h| h.path.clone());
+                for f in omsi_vehicle::hof::depot_files(p.vehicle.ty.def.dir()) {
+                    let mark = if now.as_ref() == Some(&f) { format!("  {}", tr("(now)")) } else { String::new() };
+                    out.push((format!("{}{mark}", hof_label(&f)), format!("hof {}", f.to_string_lossy())));
+                }
+            }
+            if out.is_empty() {
+                out.push((tr("This bus has no depot files (.hof)"), "back".into()));
+            }
+        }
+        ListKind::PlaceLivery(bus) => {
+            out.push((tr("Random livery"), "livery ".into()));
+            for n in bus_def(app, bus).map(|d| liveries(&d)).unwrap_or_default() {
+                out.push((n.clone(), format!("livery {n}")));
+            }
+        }
+        ListKind::PlaceHof(bus, _) => {
+            out.push((tr("The map's depot file"), "placehof ".into()));
+            if let Some(d) = bus_def(app, bus) {
+                for f in omsi_vehicle::hof::depot_files(d.dir()) {
+                    let name = f.file_name().map(|x| x.to_string_lossy().into_owned()).unwrap_or_default();
+                    out.push((hof_label(&f), format!("placehof {name}")));
+                }
             }
         }
         ListKind::Numbers => {
@@ -259,6 +316,26 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
         ListKind::Drivers => {
             switch_driver(app, arg);
             Some(ListKind::Drivers)
+        }
+        ListKind::Hofs => {
+            if let Some(p) = app.player.as_mut() {
+                match omsi_vehicle::Hof::load(std::path::Path::new(arg)) {
+                    Ok(h) => {
+                        let name = h.name.clone();
+                        p.vehicle.host.hof = Some(std::sync::Arc::new(h));
+                        app.service_msg = Some((format!("Depot file: {}", name.trim()), 3.0));
+                    }
+                    Err(e) => app.service_msg = Some((format!("Depot file: {e}"), 4.0)),
+                }
+            }
+            None
+        }
+        ListKind::PlaceLivery(bus) => Some(ListKind::PlaceHof(bus.clone(), arg.to_string())),
+        ListKind::PlaceHof(bus, paint) => {
+            let (bus, paint, hof) = (bus.clone(), paint.clone(), arg.trim().to_string());
+            app.close_game_menu();
+            app.place_vehicle(&bus, Some(paint).filter(|p| !p.is_empty()), Some(hof).filter(|h| !h.is_empty()));
+            None
         }
         ListKind::Destinations => {
             if let Some(p) = app.player.as_mut() {

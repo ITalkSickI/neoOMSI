@@ -399,6 +399,9 @@ pub struct StagedTile {
     drive: Vec<(MeshData, [f64; 4])>,
     /// Lanes, taken when the tile is loaded for the first time.
     lanes: Mutex<Vec<Lane>>,
+    /// The street lanes' points of the tile's splines, kept for good (what an object's box
+    /// is checked against: a road through it makes it no wall).
+    street_points: Vec<DVec3>,
     objects: Vec<StagedObject>,
     /// The spline attachment rows `[attachObj]` records can hang on: (row id, where its first
     /// object stands, the row's own type - a car park row's, not its car's).
@@ -2108,6 +2111,11 @@ impl World {
             if let Some(ps) = scheme.and_then(|i| paint_schemes.get(i)) {
                 let mut map: HashMap<String, String> = HashMap::new();
                 for (ctc_name, file) in &ps.textures {
+                    // (the scheme's picture lies in the scheme's folder, as for the buses;
+                    // taken as a bare name it was looked for among the model's textures, not
+                    // found, and the parked car stood there white)
+                    let in_scheme = omsi_cfg::resolve_path(&ps.dir, file);
+                    let file = if omsi_cfg::vfs::is_file(&in_scheme) { in_scheme.to_string_lossy().into_owned() } else { file.clone() };
                     for (name, default) in &model.ctc_textures {
                         if name.eq_ignore_ascii_case(ctc_name) {
                             map.insert(default.to_ascii_lowercase(), file.clone());
@@ -2767,6 +2775,7 @@ impl World {
             meshes: Mutex::new(Some(Vec::new())),
             drive: Vec::new(),
             lanes: Mutex::new(Vec::new()),
+            street_points: Vec::new(),
             objects: Vec::new(),
             anchors: Vec::new(),
             counts: LoadStats::default(),
@@ -2847,6 +2856,15 @@ impl World {
                 meshes.push(Arc::new(mesh));
             }
         }
+        // (every 2 m along the streets)
+        out.street_points = lanes
+            .iter()
+            .filter(|l| l.kind == LaneKind::Street)
+            .flat_map(|l| {
+                let n = (l.length() / 2.0).ceil().max(1.0) as usize;
+                (0..=n).map(move |k| l.at(l.length() * k as f32 / n as f32).0)
+            })
+            .collect();
         *out.lanes.lock() = lanes;
         *out.meshes.lock() = Some(meshes);
         let only_object = omsi_cfg::env::var("OMSI_ONLY_OBJECT")
@@ -3109,10 +3127,26 @@ impl World {
             .objects
             .iter()
             .map(|o| match &o.place {
-                Placement::Ground { x, y, z, rot } => Some(Pose {
-                    pos: DVec3::new(*x, *y, z + ground_at(*x, *y)),
-                    rot: object_rotation(*rot),
-                }),
+                Placement::Ground { x, y, z, rot } => {
+                    // a parked car stands on its wheels: on a slope it leans with the ground
+                    // under it (the map gives it no pitch or bank of its own), as OMSI puts it
+                    // down - it stood level on every inclined street
+                    let mut rot = *rot;
+                    if o.parked && rot[1] == 0.0 && rot[2] == 0.0 {
+                        let h = rot[0].to_radians();
+                        let (f, r) = (DVec2::new(h.sin(), h.cos()), DVec2::new(h.cos(), -h.sin()));
+                        let at = |d: DVec2| ground_at(x + d.x, y + d.y);
+                        let (l, w) = (2.0, 0.8);
+                        let pitch = ((at(f * l) - at(-f * l)) / (2.0 * l)).atan().to_degrees();
+                        let bank = ((at(-r * w) - at(r * w)) / (2.0 * w)).atan().to_degrees();
+                        rot[1] = pitch.clamp(-15.0, 15.0);
+                        rot[2] = bank.clamp(-15.0, 15.0);
+                    }
+                    Some(Pose {
+                        pos: DVec3::new(*x, *y, z + ground_at(*x, *y)),
+                        rot: object_rotation(rot),
+                    })
+                }
                 Placement::Pose(p) => Some(*p),
                 Placement::Attached { .. } => None,
             })
@@ -3719,12 +3753,30 @@ impl World {
                     // (ViewApp's Kanaldeckel) stands 25 cm proud of the asphalt, and a
                     // pitching bus ran into it as into a wall.
                     let top = bb[5] + bb[2] * 0.5;
+                    // a road that runs through the box (under a bridge, a gantry, an arch,
+                    // a station hall) says it is no wall there: a mod map's big objects give
+                    // their whole extent as the `[boundingbox]`, and the bus met an invisible
+                    // wall across the street (Grand Paris Moulon, Saint Servant)
+                    let probe = omsi_sim::collision::Obb::from_box(bb, pos, heading);
+                    let road_through = !o.parked && (bb[0] > 3.0 || bb[1] > 3.0) && {
+                        let [r, f] = probe.axes();
+                        // a street lane through its footprint, at a height a vehicle on it
+                        // would be inside the box (not a road on its roof or far below)
+                        st.street_points.iter().any(|w| {
+                            let d = w.truncate() - probe.center;
+                            d.dot(r).abs() <= probe.half.x && d.dot(f).abs() <= probe.half.y && w.z >= probe.z0 - 1.0 && w.z <= probe.z1 - 0.5
+                        })
+                    };
+                    if road_through && omsi_cfg::env::var_os("OMSI_DEBUG_COLLISION").is_some() {
+                        log::info!("no wall: {} key {} - a road runs through its [boundingbox]", ot.sco.path.display(), o.key);
+                    }
                     if bb[2] > 0.4
                         && top > LOW_OBJECT
                         && bb[0] < 400.0
                         && bb[1] < 400.0
                         && bb[0] > 0.05
                         && bb[1] > 0.05
+                        && !road_through
                     {
                         let mut obb = omsi_sim::collision::Obb::from_box(bb, pos, heading);
                         obb.pole = ot.sco.crash_mode_pole;

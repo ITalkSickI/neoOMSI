@@ -8890,9 +8890,27 @@ fn record_bundles(
             label: Some("main pass part"),
         })
     };
+    // a bundle wgpu refuses (a buffer it names could not be made: the card ran out of
+    // memory) panics in `finish`: that part of the picture is left out for the frame and
+    // the game goes on - it ended the game on Windows right after an "Out of memory"
+    let record = |chunk: &[Batch]| -> Option<wgpu::RenderBundle> {
+        CATCHING.with(|c| c.set(true));
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| record(chunk)));
+        CATCHING.with(|c| c.set(false));
+        match r {
+            Ok(b) => Some(b),
+            Err(_) => {
+                static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    log::error!("a part of the picture could not be recorded (the graphics card is out of memory?); left out");
+                }
+                None
+            }
+        }
+    };
     let parts = (batches.len() / 250).clamp(1, 4);
     if parts == 1 {
-        return vec![record(batches)];
+        return record(batches).into_iter().collect();
     }
     let chunks: Vec<&[Batch]> = batches.chunks(batches.len().div_ceil(parts)).collect();
     let record = &record;
@@ -8901,12 +8919,8 @@ fn record_bundles(
             .iter()
             .map(|c| scope.spawn(move || record(c)))
             .collect();
-        let mut bundles = vec![record(chunks[0])];
-        bundles.extend(
-            helpers
-                .into_iter()
-                .map(|h| h.join().expect("bundle thread")),
-        );
+        let mut bundles: Vec<wgpu::RenderBundle> = record(chunks[0]).into_iter().collect();
+        bundles.extend(helpers.into_iter().filter_map(|h| h.join().ok().flatten()));
         bundles
     })
 }
@@ -9595,4 +9609,15 @@ mod fit_tests {
         assert_eq!(small.levels[0].len(), 2 * 4);
         assert!(super::fit_texture(&data, 8).is_none());
     }
+}
+
+thread_local! {
+    /// A panic on this thread now is caught and handled (see [`catching`]).
+    static CATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether a panic on this thread is being caught by the renderer (the game's panic hook
+/// does not report it as the end of the game).
+pub fn catching() -> bool {
+    CATCHING.with(|c| c.get())
 }

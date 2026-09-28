@@ -186,7 +186,10 @@ impl Devices {
     /// `hwnd`: the window (Windows: the devices belong to it); `ff`: take them for force
     /// feedback (the game, not the launcher).
     pub fn new(hwnd: Option<isize>, ff: bool) -> Devices {
-        let gilrs = Gilrs::new().map_err(|e| log::info!("game controllers: {e}")).ok();
+        // without gilrs's default filters: its dead zone took 10 % of every axis - on a
+        // wheel of 1800 degrees, 90 degrees either side of the middle did nothing - and its
+        // jitter filter held back small movements; the settings' dead zone is the only one
+        let gilrs = gilrs::GilrsBuilder::new().with_default_filters(false).build().map_err(|e| log::info!("game controllers: {e}")).ok();
         #[cfg(windows)]
         let di = hwnd.and_then(|h| crate::dinput::DirectInput::new(h, ff));
         #[cfg(not(windows))]
@@ -200,6 +203,13 @@ impl Devices {
             #[cfg(target_os = "macos")]
             hid_axes: Vec::new(),
         }
+    }
+
+    /// macOS: the HID device of this name has the axes of a wheel or pedals (a slider, a
+    /// dial, or the simulation page's steering, accelerator, brake, clutch).
+    #[cfg(target_os = "macos")]
+    pub(crate) fn hid_wheel(&self, name: &str) -> bool {
+        self.hid_axes.iter().any(|(n, axes)| names_match(n, name) && axes.iter().any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2))
     }
 
     fn direct_input(&self) -> bool {
@@ -258,7 +268,15 @@ impl Devices {
         let _ = xinput_pads;
         if let Some(g) = self.gilrs.as_ref() {
             for (_, pad) in g.gamepads() {
-                let gamepad = pad.mapping_source() != gilrs::MappingSource::None;
+                #[allow(unused_mut)]
+                let mut gamepad = pad.mapping_source() != gilrs::MappingSource::None;
+                // (macOS: a device with sliders or the simulation page's axes is a wheel or
+                // pedals, whatever SDL's list calls it - the HORI Truck Control System was
+                // taken as a gamepad: its left stick steered, with a gamepad's dead zone)
+                #[cfg(target_os = "macos")]
+                if self.hid_wheel(pad.name()) {
+                    gamepad = false;
+                }
                 if self.direct_input() && pad.mapping_source() != gilrs::MappingSource::Driver {
                     continue;
                 }
@@ -451,6 +469,10 @@ impl Controllers {
         if let Some(g) = self.devices.gilrs.as_ref() {
             for (_, pad) in g.gamepads() {
                 if pad.mapping_source() == gilrs::MappingSource::None || self.cfg.iter().any(|d| names_match(&d.name, pad.name())) {
+                    continue;
+                }
+                #[cfg(target_os = "macos")]
+                if self.devices.hid_wheel(pad.name()) {
                     continue;
                 }
                 if (di && pad.mapping_source() != gilrs::MappingSource::Driver) || off.iter().any(|d| names_match(d, pad.name())) {

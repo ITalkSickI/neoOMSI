@@ -933,6 +933,12 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let funcs: Vec<String> = Func::LABELS.iter().map(|s| s.to_string()).collect();
     let mut actions: Vec<String> = vec!["<none>".into()];
     actions.extend(l.state.keybindings.get("vehicles").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|b| b.get("action").and_then(|x| x.as_str()).map(String::from)).collect::<Vec<_>>()).unwrap_or_default());
+    // the game's own view actions (looking around while held, the cameras, the views)
+    for a in ["view_look_left", "view_look_right", "view_look_up", "view_look_down", "view_reset_direction", "view_interiorcam_plus", "view_interiorcam_minus", "view_toggle_viewpoint", "view_set_driver", "view_set_passenger", "view_set_outside"] {
+        if !actions.iter().any(|x| x == a) {
+            actions.insert(1, a.to_string());
+        }
+    }
     actions.dedup();
     let mut dirty = false;
     // (the axes, then every button of the device: the list scrolls - it stopped at the ten

@@ -641,18 +641,36 @@ impl App {
     }
 
     /// The cursor moved to (x, y) in physical pixels - from the window or an `OMSI_INPUT` script.
+    /// The cursor moved, and the switch under it is named at once (touch input and
+    /// `OMSI_INPUT` scripts read `hover` right after).
     pub(crate) fn on_cursor(&mut self, x: f32, y: f32) {
+        if self.move_cursor(x, y) {
+            self.update_hover();
+        }
+    }
+
+    /// The window's `CursorMoved`: only the cursor is taken; the switch under it is named
+    /// once a frame (`RedrawRequested`). A gaming mouse sends 500-8000 moves a second, and a
+    /// ray through every cockpit mesh for each of them kept the event queue from ever
+    /// draining - no frame was drawn while the mouse moved.
+    pub(crate) fn on_mouse_moved(&mut self, x: f32, y: f32) {
+        self.move_cursor(x, y);
+    }
+
+    /// Take the cursor's new place; false when the move was someone else's (the object
+    /// editor's drag, the city map) and no switch is to be named.
+    fn move_cursor(&mut self, x: f32, y: f32) -> bool {
         let last = self.cursor;
         self.cursor = (x, y);
         // an object dragged in the object editor follows
         if self.editor_drag {
             self.editor_drag_frame();
-            return;
+            return false;
         }
         // while the city map is open the mouse is the map's
         if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
             n.map_move(x, y);
-            return;
+            return false;
         }
         // Dragging a switch reads the movement in screen pixels - take it from the
         // cursor itself rather than from the raw device delta, which is not in the
@@ -669,8 +687,7 @@ impl App {
             self.drag_delta.0 += (self.cursor.0 - last.0) / scale;
             self.drag_delta.1 += (self.cursor.1 - last.1) / scale;
         }
-        // name the switch under the cursor so it can be found at all
-        self.update_hover();
+        true
     }
 
     pub(crate) fn on_left(&mut self, pressed: bool) {
@@ -974,6 +991,10 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                         if self.game_menu.is_none() {
                             self.open_game_menu();
                         }
+                        // (a line under "More..." is found there)
+                        if !self.game_menu_items().iter().any(|m| m.0 == arg) {
+                            self.menu_more = !self.menu_more;
+                        }
                         match self.game_menu_items().iter().position(|m| m.0 == arg) {
                             Some(k) => self.menu_choose(event_loop, k),
                             None => log::warn!("input script: no menu line {arg}"),
@@ -1060,13 +1081,21 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                         self.chooser = Some(k.min(self.admin_list.as_ref().map(|l| l.len().saturating_sub(1)).unwrap_or(0)));
                     }
                 }
-                None if action != "back" && matches!(kind, crate::game_lists::ListKind::Tours(_) | crate::game_lists::ListKind::Numbers | crate::game_lists::ListKind::Destinations) => self.close_game_menu(),
+                None if action != "back" && matches!(kind, crate::game_lists::ListKind::Tours(_) | crate::game_lists::ListKind::Numbers | crate::game_lists::ListKind::Destinations | crate::game_lists::ListKind::Hofs) => self.close_game_menu(),
                 None => {}
             }
             return;
         }
-        self.close_game_menu();
-        let Some((name, bus)) = self.vehicle_list.get(k).cloned() else { return };
+        // a vehicle of the list: its livery and depot file are asked for first
+        let Some((_, bus)) = self.vehicle_list.get(k).cloned() else { return };
+        self.open_list(crate::game_lists::ListKind::PlaceLivery(bus));
+    }
+
+    /// Put the vehicle file `bus` down beside the camera or the bus driven, in `paint` (a
+    /// scheme's name; None: at random) with the depot file `hof` (None: the map's).
+    pub(crate) fn place_vehicle(&mut self, bus: &str, paint: Option<String>, hof: Option<String>) {
+        let name = self.vehicle_list.iter().find(|v| v.1 == bus).map(|v| v.0.clone()).unwrap_or_else(|| bus.to_string());
+        let bus = bus.to_string();
         let (Some(w), Some(r), Some(scene), Some(cam)) = (self.world.clone(), self.renderer.as_ref(), self.scene.as_mut(), self.camera.as_ref()) else { return };
         let (x, y, heading) = match (self.view.as_str(), self.player.as_ref()) {
             ("free", _) | (_, None) => {
@@ -1092,7 +1121,8 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             tour: None,
             trip: None,
             autostart: false,
-            paint: None,
+            paint,
+            hof: hof.or(self.args.hof.clone()),
             ..self.args.clone()
         };
         match spawn_player(&one, &w, r, scene) {
@@ -1372,7 +1402,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         self.menu_top = None;
         match code {
             // P: the pause ends, as it began
-            KeyCode::KeyP if self.paused && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::AltLeft) => self.toggle_pause(),
+            KeyCode::KeyP if (self.paused || self.lan.is_some()) && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::AltLeft) => self.toggle_pause(),
             // (from the full list back to the short one first)
             KeyCode::Escape if self.menu_more => {
                 self.menu_more = false;
@@ -1480,6 +1510,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             Some("driver") => self.open_list(crate::game_lists::ListKind::Drivers),
             Some("number") => self.open_list(crate::game_lists::ListKind::Numbers),
             Some("dest") => self.open_list(crate::game_lists::ListKind::Destinations),
+            Some("hof") => self.open_list(crate::game_lists::ListKind::Hofs),
             Some("uncouple") => {
                 self.close_game_menu();
                 self.uncouple();
@@ -1802,7 +1833,13 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
     /// OMSI's `sim_pause`: the simulation stands still, the camera and the picture go on.
     pub(crate) fn toggle_pause(&mut self) {
         if self.lan.is_some() {
-            self.service_msg = Some(("A LAN session cannot be paused".into(), 3.0));
+            // (a LAN session goes on for the others: the menu, without the pause)
+            if self.game_menu.is_some() {
+                self.close_game_menu();
+            } else {
+                self.open_game_menu();
+                self.service_msg = Some(("A LAN session goes on while the menu is open".into(), 3.0));
+            }
             return;
         }
         // the pause shows the pause menu (the everyday lines, "More..." for the rest); P
@@ -1960,14 +1997,21 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             }
         }
         // the cursor itself says when it is over something that can be operated
-        let pointer = self.hover.is_some();
-        if pointer != self.cursor_pointer {
-            self.cursor_pointer = pointer;
+        // (steering with the mouse: a cross, as OMSI shows it)
+        let kind: u8 = if self.mouse_drive && matches!(self.view.as_str(), "driver" | "outside" | "pax") && self.game_menu.is_none() {
+            2
+        } else if self.hover.is_some() {
+            1
+        } else {
+            0
+        };
+        if kind != self.cursor_kind {
+            self.cursor_kind = kind;
             if let Some(w) = self.window.as_ref() {
-                w.set_cursor(if pointer {
-                    winit::window::CursorIcon::Pointer
-                } else {
-                    winit::window::CursorIcon::Default
+                w.set_cursor(match kind {
+                    2 => winit::window::CursorIcon::Crosshair,
+                    1 => winit::window::CursorIcon::Pointer,
+                    _ => winit::window::CursorIcon::Default,
                 });
             }
         }
@@ -2027,10 +2071,11 @@ pub(crate) fn parse_input_script() -> Vec<(f32, String)> {
 
 /// The game menu on a server (`--lan-join https://…`): the world's clock and weather are the
 /// server's, and the way out leaves the server.
-pub(crate) const SERVER_GAME_MENU: [(&str, &str); 20] = [
+pub(crate) const SERVER_GAME_MENU: [(&str, &str); 21] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("dest", "Destination display..."),
+    ("hof", "Depot file (HOF)..."),
     ("switch", "Drive the next vehicle"),
     ("place", "Place a vehicle..."),
     ("couple", "Couple"),
@@ -2071,7 +2116,7 @@ impl crate::App {
         }
         // without a bus of one's own: nothing of a bus's to offer
         if self.player.is_none() {
-            v.retain(|x| !matches!(x.0, "remove" | "couple" | "uncouple" | "refuel" | "wash" | "repair" | "duty" | "number" | "dest" | "getout" | "reset"));
+            v.retain(|x| !matches!(x.0, "remove" | "couple" | "uncouple" | "refuel" | "wash" | "repair" | "duty" | "number" | "dest" | "hof" | "getout" | "reset"));
             if self.placed.is_empty() {
                 v.retain(|x| x.0 != "switch");
             }
@@ -2111,13 +2156,14 @@ impl crate::App {
 const MENU_BASIC: [&str; 12] = ["resume", "tobus", "options", "duty", "dest", "map", "timetable", "getout", "reset", "save", "admin", "quit"];
 
 /// The lines of the game menu: (what, label).
-pub(crate) const GAME_MENU: [(&str, &str); 30] = [
+pub(crate) const GAME_MENU: [(&str, &str); 31] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("duty", "Line and tour..."),
     ("driver", "Driver..."),
     ("number", "Fleet number..."),
     ("dest", "Destination display..."),
+    ("hof", "Depot file (HOF)..."),
     ("switch", "Drive the next vehicle"),
     ("place", "Place a vehicle..."),
     ("couple", "Couple"),

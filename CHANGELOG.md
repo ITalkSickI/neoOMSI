@@ -4,6 +4,48 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.14 - 2026-09-28
+
+### Controllers
+- No hidden dead zone on wheels any more: gilrs's default filters took 10 % of every axis (90
+  degrees either side on a wheel of 1800) and held back small movements; Windows: the
+  driver's own DirectInput dead zone and saturation are cleared, as OMSI does (PXN V99).
+- macOS: a device with sliders or the simulation page's axes is read as a wheel from its HID
+  elements even when SDL's list calls it a gamepad (HORI Truck Control System: accelerator
+  and brake stayed merged and the steering had a gamepad's dead zone).
+- The Controllers page offers the view actions for buttons: *view_look_left/right/up/down*
+  (look round while held), the interior cameras, the views. OMSI's view actions on buttons
+  work in the game.
+- Force feedback in every view of the bus, not only the driver's.
+- The mouse no longer freezes the picture: a gaming mouse's thousands of moves a second each
+  looked for the switch under the cursor, and no frame was drawn while the mouse moved.
+- Mouse steering shows a cross as the cursor, as in OMSI.
+- Phones: the on-screen wheel turns one and a half turns to the lock, as a bus's does, and
+  comes back by itself when let go.
+
+### Game
+- P pauses into the pause menu in a LAN session too (the session goes on for the others).
+- The launcher starts the game that came with it, not a path remembered from an older
+  installation (on macOS it kept starting a build of the days before the rename).
+- Esc → More → *Depot file (HOF)...*: choose the bus's depot file by hand. Placing a vehicle
+  asks for its livery and depot file.
+- A bus that could not be loaded is tried once more, and the reason is shown on the screen
+  (it started on foot without a word).
+
+### World
+- Parked cars have their paint (the paint scheme's pictures were looked for in the wrong
+  folder and the cars stood white) and lean with an inclined street.
+- A street running through an object's `[boundingbox]` (a bridge, a gantry, a hall) makes
+  that box no wall: mod maps' invisible walls across the road.
+- The automatic rear door closes: the passengers' request button was never let go, so the
+  stop request stayed on. A passenger who cannot get in stops asking after a while.
+- Passengers turn their heads about the middle of the neck (aXYZ man02's neck point lies at
+  the back of his neck: the head swung off the collar).
+
+### Crashes
+- "RenderBundleEncoder::finish: Validation Error" after the card ran out of memory no longer
+  ends the game: the part of the picture is left out.
+
 ## 0.1.10 - 2026-09-28
 
 ### Performance and crashes

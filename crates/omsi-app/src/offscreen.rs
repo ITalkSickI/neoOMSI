@@ -722,11 +722,13 @@ pub(crate) fn run_offscreen(
             if std::mem::take(&mut h.stop_request) {
                 if let Some(p) = player.as_mut() {
                     p.vehicle.trigger("door_haltewunsch");
+                    p.vehicle.trigger("door_haltewunsch_off");
                 }
             }
             if std::mem::take(&mut h.door_request) {
                 if let Some(p) = player.as_mut() {
                     let ok = p.vehicle.trigger("door_aussenoeffner");
+                    p.vehicle.trigger("door_aussenoeffner_off");
                     if omsi_cfg::env::var_os("OMSI_DEBUG_HUMANS").is_some() {
                         log::info!("outside door opener at t={t_s:.1}: script has the trigger: {ok}, door_freigabe {:?}", p.vehicle.var("door_freigabe"));
                     }

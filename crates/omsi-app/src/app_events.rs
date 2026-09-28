@@ -107,7 +107,7 @@ impl ApplicationHandler for App {
                 self.wheel(amount);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.on_cursor(position.x as f32, position.y as f32);
+                self.on_mouse_moved(position.x as f32, position.y as f32);
             }
             WindowEvent::MouseInput {
                 state,
@@ -444,7 +444,9 @@ impl ApplicationHandler for App {
                     self.service_msg = Some((n, 8.0));
                 }
                 // the bus's force feedback (OMSI's FF_Vib_Amp, and on a wheel its forces)
-                let driving = self.player.as_ref().filter(|_| self.view == "driver" && !self.paused);
+                // (in every view of the bus - the wheel went slack outside and in the
+                // passenger view)
+                let driving = self.player.as_ref().filter(|_| matches!(self.view.as_str(), "driver" | "outside" | "pax") && !self.paused);
                 ctl.feedback(crate::controllers::FfInput {
                     on: driving.is_some(),
                     kmh: driving.map(|p| p.vehicle.physics.velocity_kmh() as f32).unwrap_or(0.0),
@@ -512,6 +514,29 @@ impl ApplicationHandler for App {
                     }
                     analog.throttle = Some(self.mouse_pedals.0);
                     analog.brake = Some(self.mouse_pedals.1);
+                }
+                // the controller's view buttons are the game's, not the bus's: looking around
+                // while held (`view_look_*`), and OMSI's view actions (other cameras, views)
+                let mut actions = actions;
+                if self.game_menu.is_none() {
+                    let mut game: Vec<String> = Vec::new();
+                    actions.retain(|(name, down)| {
+                        let n = name.to_ascii_lowercase();
+                        if let Some(k) = ["view_look_left", "view_look_right", "view_look_up", "view_look_down"].iter().position(|x| *x == n) {
+                            self.pad_look[k] = *down;
+                            return false;
+                        }
+                        if n.starts_with("view_") {
+                            if *down {
+                                game.push(n);
+                            }
+                            return false;
+                        }
+                        true
+                    });
+                    for n in game {
+                        self.game_action(&n);
+                    }
                 }
                 if let Some(p) = self.player.as_mut() {
                     p.axes.linear = self.settings.steering_linear;
@@ -787,9 +812,14 @@ impl ApplicationHandler for App {
                         }
                         if std::mem::take(&mut h.stop_request) {
                             p.vehicle.trigger("door_haltewunsch");
+                            // (a press is let go again: the script keeps its button pressed
+                            // until `_off`, and the stop request never ended - the automatic
+                            // rear door opened again whenever it was shut)
+                            p.vehicle.trigger("door_haltewunsch_off");
                         }
                         if std::mem::take(&mut h.door_request) {
                             p.vehicle.trigger("door_aussenoeffner");
+                            p.vehicle.trigger("door_aussenoeffner_off");
                         }
                         h.write_pax_vars(&mut p.vehicle);
                         p.vehicle.host.humans_on_path_link = h.path_link_counts();
@@ -940,6 +970,9 @@ impl ApplicationHandler for App {
                         p.mirrors_dirty = false;
                         crate::settings::save_mirror_offsets(&p.vehicle.ty.def.path, &p.mirror_offsets);
                     }
+                    // a controller's look buttons (Settings → Controllers: view_look_*)
+                    self.look.0 += step * 1.5 * (self.pad_look[1] as i32 - self.pad_look[0] as i32) as f32;
+                    self.look.1 = (self.look.1 + step * 0.7 * (self.pad_look[2] as i32 - self.pad_look[3] as i32) as f32).clamp(-85.0, 85.0);
                     // with a wheel steering, the arrow keys look around as in OMSI
                     if !ctrl_alt && self.controllers.as_ref().is_some_and(|c| c.wheel_steering()) && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::ControlRight) {
                         if self.keys.contains(&KeyCode::ArrowLeft) {

@@ -4666,6 +4666,10 @@ impl Humans {
                 .filter(|p| match p.state {
                     State::AtExit { .. } | State::Aboard { goal: Goal::ExitWait(_), .. } => p.leaving_here,
                     State::Aboard { goal: Goal::Exit(_), .. } => true,
+                    // (and at the door from outside: one who cannot get in - the bus full,
+                    // the way blocked - pressed the request button for ever, and the door
+                    // the driver shut opened again)
+                    State::Queue { bus: BusId::Player, .. } => true,
                     _ => false,
                 })
                 .map(|p| p.id)
@@ -4685,7 +4689,7 @@ impl Humans {
                     bus: BusId::Player,
                     entry,
                     ..
-                } => {
+                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                     if let Some(r) = self.entry_req.get_mut(entry) {
                         *r = true;
                     }

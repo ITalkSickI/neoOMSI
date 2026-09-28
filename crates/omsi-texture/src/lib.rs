@@ -242,6 +242,11 @@ pub fn find_texture(name: &str, dirs: &[&Path]) -> Option<PathBuf> {
 }
 
 fn find_texture_uncached(name: &str, dirs: &[&Path]) -> Option<PathBuf> {
+    // a file named in full (a paint scheme's picture, resolved in its scheme's folder)
+    let full = Path::new(name.trim());
+    if full.is_absolute() && omsi_cfg::vfs::is_file(full) {
+        return Some(full.to_path_buf());
+    }
     let name = name.trim().replace('\\', "/");
     if name.is_empty() {
         return None;

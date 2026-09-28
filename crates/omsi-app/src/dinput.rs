@@ -168,6 +168,14 @@ impl DirectInput {
             // every axis from -RANGE to RANGE
             let mut range = DIPROPRANGE { diph: DIPROPHEADER { dwSize: std::mem::size_of::<DIPROPRANGE>() as u32, dwHeaderSize: std::mem::size_of::<DIPROPHEADER>() as u32, dwObj: 0, dwHow: DIPH_DEVICE }, lMin: -RANGE, lMax: RANGE };
             let _ = dev.SetProperty(prop(4), &mut range.diph);
+            // no dead zone and no saturation of the driver's own (DIPROP_DEADZONE 5,
+            // DIPROP_SATURATION 6): some wheels' drivers set one - a PXN V99 lost 30 % of
+            // its turn round the middle - and OMSI clears them as well; the settings'
+            // dead zone is the only one
+            for (p_id, v) in [(5usize, 0u32), (6, 10_000)] {
+                let mut d = DIPROPDWORD { diph: DIPROPHEADER { dwSize: std::mem::size_of::<DIPROPDWORD>() as u32, dwHeaderSize: std::mem::size_of::<DIPROPHEADER>() as u32, dwObj: 0, dwHow: DIPH_DEVICE }, dwData: v };
+                let _ = dev.SetProperty(prop(p_id), &mut d.diph);
+            }
             // which slots the device has (the data of an absent one reads as the middle)
             let mut has_axis = [false; 8];
             for (k, h) in has_axis.iter_mut().enumerate() {

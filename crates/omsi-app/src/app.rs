@@ -97,6 +97,8 @@ pub(crate) struct App {
     pub(crate) plugin_keys: Vec<(String, bool)>,
     /// Seconds Ctrl+Shift+Page Up/Down has been held (the clock runs faster the longer).
     pub(crate) clock_hold: f32,
+    /// A controller button held for looking left, right, up, down (`view_look_*`).
+    pub(crate) pad_look: [bool; 4],
     /// Head tracking (Settings → head tracking), started with the first frame that wants it.
     pub(crate) headtrack: Option<crate::headtrack::HeadTracker>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).
@@ -189,7 +191,7 @@ pub(crate) struct App {
     /// How wet the roads are (0..1), built up by rain and dried by the sun.
     pub(crate) wetness: f32,
     /// The mouse cursor currently shows the hand (it is over a switch).
-    pub(crate) cursor_pointer: bool,
+    pub(crate) cursor_kind: u8,
     pub(crate) settings: settings::Settings,
     /// LAN session, and the other players' buses (drawn and heard like AI vehicles) with the
     /// chat line.
@@ -383,7 +385,21 @@ impl App {
     ) {
         {
             {
-                match spawn_player(&self.args, &w, &renderer, &mut scene) {
+                // (once more when it fails: a file read while the start was still reading
+                // others; a failure is said on the screen - the game went on without a bus
+                // and the player found himself on foot, with no word why)
+                let first = spawn_player(&self.args, &w, &renderer, &mut scene);
+                let spawned = match first {
+                    Err(e) if self.args.bus.is_some() => {
+                        log::warn!("the bus could not be put down ({e:#}); trying again");
+                        spawn_player(&self.args, &w, &renderer, &mut scene).map_err(|e2| {
+                            self.service_msg = Some((format!("The bus could not be loaded: {}", format!("{e2:#}").lines().next().unwrap_or_default()), 15.0));
+                            e2
+                        })
+                    }
+                    other => other,
+                };
+                match spawned {
                     Ok(mut p) => {
                         let audio = omsi_audio::AudioEngine::new();
                         if let Some(p) = p.as_mut() {

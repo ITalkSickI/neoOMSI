@@ -53,8 +53,21 @@ fn is_omsi_root(p: &Path) -> bool {
 /// development build in the source tree.
 fn find_game(configured: &str) -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
+    // the game that came with this launcher first: a path remembered from an older
+    // installation (`target/release/omsi` of the days before the rename) kept starting an
+    // old build after every update - the new pause menu "was not there" on macOS
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            cands.push(dir.join(if cfg!(windows) { "openomsi.exe" } else { "openomsi" }));
+        }
+    }
     if !configured.trim().is_empty() {
-        cands.push(PathBuf::from(configured.trim()));
+        let c = PathBuf::from(configured.trim());
+        // (only a game of today's name: the old `omsi` binary is not taken any more)
+        let stem = c.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if stem == "openomsi" {
+            cands.push(c);
+        }
     }
     if let Some(p) = std::env::var_os("OPENOMSI_BIN") {
         cands.push(PathBuf::from(p));

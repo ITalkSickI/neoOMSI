@@ -281,11 +281,21 @@ impl Rig {
             waist: j.waist,
             neck: j.neck,
             head_pivot: if head_n > 20 {
+                // the middle of the neck itself at the linked height: the vertices of the
+                // mesh there (the neck's cross-section, under the head, not the collar)
                 let c = head_sum / head_n as f32;
-                // (a little behind the middle, where the spine meets the skull; never
-                // further than 12 cm from the linked point)
-                let y = j.neck.y + (c.y - j.neck.y).clamp(-0.12, 0.12) * 0.75;
-                Vec3::new(j.neck.x, y, j.neck.z)
+                let (mut sum, mut n) = (Vec3::ZERO, 0u32);
+                for m in meshes {
+                    for p in &m.data.positions {
+                        if (p.z - j.neck.z).abs() < 0.03 && Vec2::new(p.x - c.x, p.y - c.y).length() < 0.09 {
+                            sum += *p;
+                            n += 1;
+                        }
+                    }
+                }
+                let at = if n >= 8 { sum / n as f32 } else { Vec3::new(c.x, j.neck.y + (c.y - j.neck.y) * 0.75, j.neck.z) };
+                // (never further than 12 cm from the linked point)
+                Vec3::new(j.neck.x, j.neck.y + (at.y - j.neck.y).clamp(-0.12, 0.12), j.neck.z)
             } else {
                 j.neck
             },

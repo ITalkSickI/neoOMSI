@@ -139,6 +139,10 @@ pub fn run() -> Result<()> {
     // happened and a backtrace, not only to a terminal that may not be there
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        if omsi_render::catching() {
+            log::warn!("caught by the renderer: {info}");
+            return;
+        }
         log::error!(
             "the game stopped on an error (build {BUILD}): {info}\n{}",
             std::backtrace::Backtrace::force_capture()
@@ -443,6 +447,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         menu_more: false,
         plugin_keys: Vec::new(),
         clock_hold: 0.0,
+        pad_look: [false; 4],
         headtrack: None,
         controllers: None,
         mouse_drive: false,
@@ -487,7 +492,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         plugins: None,
         career: Default::default(),
         wetness: 0.0,
-        cursor_pointer: false,
+        cursor_kind: 0,
         settings,
         lan: None,
         remotes: Default::default(),
