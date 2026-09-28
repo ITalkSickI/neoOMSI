@@ -396,7 +396,10 @@ impl ApplicationHandler for App {
                             .map(|w| street_condition(w, self.wetness))
                             .unwrap_or(0.0);
                         let muffled = self.in_cab;
-                        t.update_audio(a, center, street, muffled);
+                        // heard round the camera (the ear), not round the player's bus: a
+                        // free camera following an AI bus lost its sound 250 m from the bus
+                        let ear = self.camera.as_ref().map(|c| c.position).unwrap_or(center);
+                        t.update_audio(a, ear, street, muffled);
                     }
                     *self.profile.entry("traffic.audio").or_default() +=
                         __t3.elapsed().as_secs_f64();

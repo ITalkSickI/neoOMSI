@@ -231,6 +231,41 @@ struct Choice {
     train: Option<Vec<(Arc<VehicleType>, bool)>>,
 }
 
+/// The paint scheme fleet number `number` wears, from the bus's `[number]` lists: a `.org`
+/// file, or a folder of them, each naming a repaint on its first line (as the `[CTC]`
+/// names it) and the numbers painted so below; a list without a repaint's name is the main
+/// list, for every other number. The AI buses of a depot were painted at random, so a
+/// number the depot list gives one repaint came out in another.
+pub(crate) fn scheme_of_number(ty: &VehicleType, number: &str) -> Option<usize> {
+    let rel = ty.def.number_file.as_ref()?;
+    let number = number.trim();
+    if number.is_empty() || ty.paint_schemes.is_empty() {
+        return None;
+    }
+    let path = omsi_cfg::resolve_path(ty.def.dir(), rel);
+    let files: Vec<std::path::PathBuf> = if omsi_cfg::vfs::is_file(&path) {
+        vec![path]
+    } else {
+        omsi_cfg::vfs::list_dir(&path)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(n, d)| !d && n.to_string_lossy().to_ascii_lowercase().ends_with(".org"))
+            .map(|(n, _)| path.join(n))
+            .collect()
+    };
+    for f in files {
+        let Ok(list) = omsi_vehicle::vehicle::NumberList::load(&f) else { continue };
+        let name = list.paint_scheme.trim();
+        if name.is_empty() || !list.numbers.iter().any(|n| n.trim() == number) {
+            continue;
+        }
+        if let Some(i) = ty.paint_schemes.iter().position(|s| s.name.trim().eq_ignore_ascii_case(name)) {
+            return Some(i);
+        }
+    }
+    None
+}
+
 /// The bus stands next to the kerb: the pole's offset less half a bus width and a gap; only
 /// where the pole is clearly off the lane (a bay).
 ///
@@ -1216,8 +1251,13 @@ impl Schedule {
             }
         };
         let number = numbers.first().cloned();
+        // the repaint of that fleet number, as the bus's `[number]` lists give it; any
+        // other number a repaint drawn for the tour
+        let own = number.as_ref().and_then(|n| scheme_of_number(&ty, &n.0));
         let scheme = if ty.paint_schemes.is_empty() {
             None
+        } else if own.is_some() {
+            own
         } else {
             Some(
                 ((h >> 42) % ty.paint_schemes.len().min(crate::traffic::AI_SCHEMES) as u64)

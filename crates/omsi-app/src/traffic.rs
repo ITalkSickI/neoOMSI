@@ -1015,6 +1015,22 @@ impl Traffic {
             .filter(|l| (l.priority - omsi_sim::traffic::DEFAULT_PRIORITY).abs() > 0.5)
             .count();
         log::info!("traffic: {} lanes ({turning} turning, {with_side} with a neighbour, {turn_lanes} where a turn lane applies, {closed} closed to cars of which {closed_junctions} are junctions, {quiet} with less traffic by [rule], {prio} with a [rule] priority), {} AI vehicle types in {} groups, {} light programs, {} lamps", net.lanes.len(), types.len(), groups.len(), lights.len(), world.light_objects.lock().len());
+        // lights on paths a car reaches from a lit path of the same crossing (they hold
+        // only a car that comes into the crossing there, see `light_at_entry`)
+        let inner_lights = (0..net.lanes.len())
+            .filter(|&l| {
+                let lane = &net.lanes[l];
+                lane.traffic_light.is_some()
+                    && lane.source == 2
+                    && net.prev.get(l).is_some_and(|ps| {
+                        ps.iter().any(|&p| {
+                            let q = &net.lanes[p];
+                            q.source == 2 && q.traffic_light.is_some() && q.key.map(|k| (k.tile, k.id)) == lane.key.map(|k| (k.tile, k.id))
+                        })
+                    })
+            })
+            .count();
+        log::info!("traffic: {inner_lights} lit paths inside crossings (a car already in the crossing is not held there again)");
         let light_log = omsi_cfg::env::var("OMSI_DEBUG_LIGHTS").ok();
         let light_prev = lights.iter().map(|c| vec![-100; c.lights.len()]).collect();
         let lanes = 0..net.lanes.len();
@@ -3209,11 +3225,12 @@ impl Traffic {
     /// Seconds until the red light car `j` waits for may let it go (0 if none holds it).
     fn light_wait(&self, j: usize) -> f32 {
         let st = &self.cars[j].state;
-        for (l, d) in self.way_lanes(st, 150.0).into_iter().skip(1) {
+        let way = self.way_lanes(st, 150.0);
+        for (k, &(_, d)) in way.iter().enumerate().skip(1) {
             if d > 150.0 {
                 break;
             }
-            let Some((c, li)) = self.net.lanes[l].traffic_light else {
+            let Some((c, li)) = self.light_at_entry(&way, k) else {
                 continue;
             };
             let Some(ctl) = self.lights.get(c) else {
@@ -3471,6 +3488,30 @@ impl Traffic {
         None
     }
 
+    /// The light that holds a car at the start of `way[k]`: that lane's light, unless the
+    /// car has already gone through a light of the same crossing object on the way there
+    /// (the lanes before it, back to where it came into that object). A car turning right
+    /// went on green and then stopped as it came round the corner, at the light of the
+    /// cross traffic on the path its turn joins - a stop line in mid-junction nobody sees.
+    fn light_at_entry(&self, way: &[(usize, f32)], k: usize) -> Option<(usize, usize)> {
+        let l = way[k].0;
+        let light = self.net.lanes[l].traffic_light?;
+        let object = |x: usize| {
+            let lane = &self.net.lanes[x];
+            lane.key.filter(|_| lane.source == 2).map(|key| (key.tile, key.id))
+        };
+        let here = object(l)?;
+        for &(p, _) in way[..k].iter().rev() {
+            if object(p) != Some(here) {
+                break;
+            }
+            if self.net.lanes[p].traffic_light.is_some() {
+                return None;
+            }
+        }
+        Some(light)
+    }
+
     fn way_lanes(&self, st: &AiState, within: f32) -> Vec<(usize, f32)> {
         let mut out = vec![(st.lane, -st.s)];
         let mut d = self.net.lanes[st.lane].length() - st.s;
@@ -3549,11 +3590,11 @@ impl Traffic {
         let v = st.speed;
         let mut stop = None;
         let mut amber = car.amber;
-        for &(l, d) in way.iter().skip(1) {
+        for (k, &(_, d)) in way.iter().enumerate().skip(1) {
             if d > 150.0 {
                 break;
             }
-            let Some((c, li)) = self.net.lanes[l].traffic_light else {
+            let Some((c, li)) = self.light_at_entry(way, k) else {
                 continue;
             };
             let Some(ctl) = self.lights.get(c) else {

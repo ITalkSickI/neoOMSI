@@ -4,6 +4,16 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.10 - 2026-09-28
+
+### AI traffic
+- A car already in a crossing on its green no longer stops again at a light of a path it
+  joins inside that crossing (the cross traffic's red, an invisible stop line mid-turn).
+- Depot buses wear the repaint of their fleet number when the bus's `[number]` lists name
+  one (a `.org` file per repaint); they were painted at random.
+- The AI vehicles are heard round the camera: a free camera following an AI bus lost its
+  sound 250 m from the player's bus.
+
 ## 0.1.9 - 2026-09-28
 
 ### Graphics cards and crashes
