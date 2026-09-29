@@ -1902,6 +1902,18 @@ impl World {
         }
     }
 
+    /// The floor under somebody at height `near` at (x, y): the highest face no more than a
+    /// step (1 m) over them - a station's floor under its roof, a car park's level under the
+    /// deck above - else [`World::walk_height`]'s highest one. (Asked for the highest, the
+    /// people of an indoor station stood on its roof.)
+    pub fn walk_height_near(&self, x: f64, y: f64, near: f64) -> Option<f64> {
+        let probe = drive_probe(&self.terrains, &self.surfaces, x, y, near + 1.0);
+        match probe.below {
+            Some(b) if near - b < 3.0 => Some(b),
+            _ => self.walk_height(x, y),
+        }
+    }
+
     /// The clock a scenery script starts on: the simulation's, else the run's start.
     pub fn script_clock(&self) -> omsi_sim::SimClock {
         self.timetable_boards.lock().clock.clone().unwrap_or_else(|| self.start_clock.lock().clone())

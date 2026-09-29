@@ -148,6 +148,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   through the world: every tile is read again with the winter textures, and while the one
   under the bus is away the bus is held where it stands (it fell, was put back in the sky
   and fell again).
+- Passengers in an indoor station stand on its floor, not on its roof: walking, they took
+  any surface over them for a kerb to step up on. They now keep to the floor within a step
+  of where they are (a station's floor under its roof, a car park's level under the deck).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

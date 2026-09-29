@@ -2682,7 +2682,7 @@ impl Humans {
         // on the surface they will walk on, not on the bare terrain under a pavement
         // (they stood in the asphalt and climbed out of it when they started walking)
         let mut position = position;
-        if let Some(z) = world.walk_height(position.x, position.y) {
+        if let Some(z) = world.walk_height_near(position.x, position.y, position.z) {
             if (z - position.z).abs() < 3.0 {
                 position.z = z;
             }
@@ -2991,7 +2991,7 @@ impl Humans {
         if spots.len() < 6 && omsi_cfg::env::var_os("OMSI_PAX_INVENT").is_some() {
             let h = heading.to_radians();
             let (fwd, right) = (DVec2::new(h.sin(), h.cos()), DVec2::new(h.cos(), -h.sin()));
-            let base_z = world.walk_height(pos.x, pos.y).unwrap_or(pos.z);
+            let base_z = world.walk_height_near(pos.x, pos.y, pos.z).unwrap_or(pos.z);
             // the carriageway near the stop, once: (segment start, end, half width)
             let mut road: Vec<(DVec2, DVec2, f64)> = Vec::new();
             if let Some(net) = net {
@@ -3032,7 +3032,7 @@ impl Humans {
                     }
                     let along = -1.2 + k as f64 * 0.8 + (row - 1.1) * 0.25;
                     let xy = pos.truncate() + right * row + fwd * along;
-                    let Some(z) = world.walk_height(xy.x, xy.y) else {
+                    let Some(z) = world.walk_height_near(xy.x, xy.y, base_z) else {
                         continue;
                     };
                     if (z - base_z).abs() > 0.45 {
@@ -3100,7 +3100,7 @@ impl Humans {
         // after them), or anyone standing still off it: onto it
         for p in self.people.iter_mut() {
             if matches!(p.place, Place::Ground) {
-                if let Some(z) = world.walk_height(p.position.x, p.position.y) {
+                if let Some(z) = world.walk_height_near(p.position.x, p.position.y, p.position.z) {
                     let d = z - p.position.z;
                     let still = p.vel.length() < 0.05;
                     if d.abs() < 3.0 && (d > 0.02 || (still && d.abs() > 0.02)) {
@@ -7044,7 +7044,7 @@ impl Humans {
             Place::Ground => {
                 p.position.x = w.pos.x;
                 p.position.y = w.pos.y;
-                if let Some(z) = world.walk_height(p.position.x, p.position.y) {
+                if let Some(z) = world.walk_height_near(p.position.x, p.position.y, p.position.z) {
                     // up a kerb quickly, down it smoothly (the feet find the kerb themselves);
                     // more than a kerb below the surface is no step but a wrong height (the
                     // pavement's tile came after them): straight onto it
