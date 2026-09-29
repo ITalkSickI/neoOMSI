@@ -1676,11 +1676,15 @@ fn probe_tile(
         // wheels climbed every line - the bus hopped at stops and over dotted lines (Horizon).
         // Where another road face lies that little below, the wheel stands on that one.
         // (only road faces: the terrain under a road is often that close too)
-        if let Some(z1) = probe.below {
-            if let Some(z2) = s.drive.probe(lx, ly, z1 - 0.004).below {
-                if z1 - z2 < PAINT_LAYER {
-                    probe.below = Some(z2);
-                }
+        // (layer under layer: a marking over a marking over the asphalt, as the map editor
+        // stacks them where lines cross or a box junction lies over a lane's arrows, was
+        // still a step when only the first was looked through)
+        let mut layers = 0;
+        while let Some(z1) = probe.below.filter(|_| layers < 4) {
+            layers += 1;
+            match s.drive.probe(lx, ly, z1 - 0.004).below {
+                Some(z2) if z1 - z2 < PAINT_LAYER => probe.below = Some(z2),
+                _ => break,
             }
         }
     }

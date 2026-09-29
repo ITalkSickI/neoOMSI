@@ -177,6 +177,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - An entry point is found on its own tile: a map joined from two (two towns you cannot drive
   between) repeats object ids, and choosing a stop in one town put the bus on the grass of
   the other, where the other object of that id stands.
+- Road markings laid over road markings (where lines cross, a box junction over a lane's
+  arrows) are no step for the wheels: every layer of paint is looked through, not only the
+  first.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
