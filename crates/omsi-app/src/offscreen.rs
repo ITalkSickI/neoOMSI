@@ -1898,6 +1898,27 @@ pub(crate) fn run_offscreen(
             }
             runs.sort_by(|a, b| b.1.total_cmp(&a.1));
             log::info!("road check: {naked} of {checked} points along the driving lanes have no road surface under them ({:.1}%)", naked as f32 / checked.max(1) as f32 * 100.0);
+            // OMSI_CHECK_SPLINES: chained splines whose ends do not meet in height
+            if omsi_cfg::env::var_os("OMSI_CHECK_SPLINES").is_some() {
+                let ends = crate::scene::SPLINE_ENDS.lock();
+                let mut bad: Vec<(f64, String)> = Vec::new();
+                for (id, (a, b, prev, next, file)) in ends.iter() {
+                    for (me, other) in [(*b, *next), (*a, *prev)] {
+                        let Some((oa, ob, ..)) = ends.get(&other) else { continue };
+                        // the other's end that lies at this one (a chain may run either way)
+                        let there = if (oa.truncate() - me.truncate()).length() <= (ob.truncate() - me.truncate()).length() { *oa } else { *ob };
+                        let (d2, dz) = ((there.truncate() - me.truncate()).length(), (there.z - me.z).abs());
+                        if d2 < 1.0 && dz > 0.1 && id < &other {
+                            bad.push((dz, format!("spline {id} ({file}) and {other}: {dz:.2} m apart in height at ({:.0}, {:.0}, {:.2})", me.x, me.y, me.z)));
+                        }
+                    }
+                }
+                bad.sort_by(|x, y| y.0.total_cmp(&x.0));
+                log::info!("spline check: {} of {} chained ends differ in height by over 10 cm", bad.len(), ends.len());
+                for (_, l) in bad.iter().take(15) {
+                    log::info!("  {l}");
+                }
+            }
             log::info!(
                 "  {} stretches longer than 15 m (a hole rather than a raster edge)",
                 runs.len()

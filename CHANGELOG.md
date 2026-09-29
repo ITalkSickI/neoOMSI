@@ -34,6 +34,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   put there (Ctrl+click on the map does it too, now also on a duty).
 - The pause menu no longer flickers its top line while the mouse moves over it.
 - Phones: the on-screen wheel turns the bus's wheel one to one.
+- Windows and Linux: the automatic render scale draws at full size up to 4K (it drew a 4K
+  screen at 58 %, and enhanced graphics looked like low-quality textures).
+- `OMSI_CHECK_SPLINES=1` with `--offscreen` lists the map's spline chains whose ends do not
+  meet (for map makers).
 
 ### Controllers
 - No hidden dead zone on wheels any more: gilrs's default filters took 10 % of every axis (90

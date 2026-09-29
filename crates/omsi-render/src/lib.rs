@@ -1173,8 +1173,12 @@ impl Default for RenderOptions {
 /// Automatic render scale: a window of up to this many pixels is drawn at full size (the
 /// default 1600x900 window and a 2560x1080 screen are); a bigger one - a Retina window has
 /// four times the pixels of its size in points - gets a 3D picture of about this many
-/// pixels, scaled up. The HUD is always drawn at full size.
-pub const AUTO_SCALE_PIXELS: f32 = 2_800_000.0;
+/// pixels, scaled up. The HUD is always drawn at full size. Elsewhere (a desktop card on a
+/// 1440p or 4K screen) the picture is drawn at full size up to 4K: scaled down to 2.8
+/// million pixels, a 4K screen showed a picture of 58 % its size, and the enhanced
+/// graphics looked like textures of low quality; the frame-rate governor still steps down
+/// on a card that cannot keep up.
+pub const AUTO_SCALE_PIXELS: f32 = if cfg!(target_os = "macos") || cfg!(target_os = "android") { 2_800_000.0 } else { 8_400_000.0 };
 
 /// The enhanced pass's second target: 1 where the bus's own screens are (`MaterialExtra::
 /// screen`), 0 elsewhere. The glow takes no light from it and FXAA passes it through.

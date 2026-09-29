@@ -2808,6 +2808,9 @@ impl World {
                 continue;
             };
             let curve = SplineCurve::from_map(s, origin2);
+            if omsi_cfg::env::var_os("OMSI_CHECK_SPLINES").is_some() {
+                SPLINE_ENDS.lock().insert(s.id, (curve.point_at(0.0), curve.end_point(), s.prev_id, s.next_id, s.file.clone()));
+            }
             // editor-only splines (invisible streets, flight paths) still carry lanes
             let mut new_lanes = spline_lanes(&st.def, s, &curve, (tx, ty));
             for l in new_lanes.iter_mut() {
@@ -10186,3 +10189,6 @@ fn night_texture_name(texture: &str) -> String {
         None => format!("night\\{name}"),
     }
 }
+
+/// OMSI_CHECK_SPLINES: every spline's two ends, its neighbours in the chain and its file.
+pub(crate) static SPLINE_ENDS: std::sync::LazyLock<Mutex<HashMap<i64, (DVec3, DVec3, i64, i64, String)>>> = std::sync::LazyLock::new(Default::default);
