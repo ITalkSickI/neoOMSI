@@ -17,6 +17,9 @@ there.
 * **Linux** (Debian/Ubuntu names):
   `sudo apt install build-essential pkg-config libasound2-dev libudev-dev libgtk-3-dev libxkbcommon-dev libwayland-dev libssl-dev`.
   Vulkan drivers (Mesa, NVIDIA) are needed to play.
+* **Android**: the `aarch64-linux-android` Rust target, JDK 17, and an Android SDK with
+  platform 34 or newer, build-tools and the NDK. `scripts/build-android.sh` looks for them
+  through `android/env.sh` (`ANDROID_HOME`, `ANDROID_NDK_HOME`).
 
 ## Build
 
@@ -26,6 +29,7 @@ there.
 | Windows | `scripts\build-windows.cmd` | `dist\windows\openomsi.exe`, `openomsi-launcher.exe` |
 | Windows, from a Mac | `scripts/build-windows-cross.sh` (needs `brew install mingw-w64`) | `dist/windows/` |
 | Linux | `scripts/build-linux.sh` | `dist/linux/openomsi`, `openomsi-launcher`, `.desktop` file |
+| Android | `scripts/build-android.sh` | `dist/android/openOMSI-<version>.apk` |
 | Dedicated server | `scripts/build-server.sh [folder]` | `dist/server/` with `start.sh` |
 | 32-bit plugin host | `scripts/build-plugin-host.sh` | `dist/omsi-plugin-host32.exe` (see [PLUGINS.md](PLUGINS.md)) |
 
