@@ -459,6 +459,26 @@ pub struct DormantCar {
 /// player (memory: a dormant car is a few dozen bytes, but each one woken is a full vehicle).
 const MAP_POPULATION_FACTOR: f32 = 8.0;
 
+/// How much of `unsched_vehgroups.txt` group `u`'s traffic a path carries: its `[rule]
+/// trafficdensity` for the group (`rules`, see `Lane::group_density`), else the group's
+/// default there (`defaults`): 0 none, for the first group 1 its medium density, for any
+/// other k that of the k-th group on the same path.
+fn uvg_density(rules: &[(u16, f32)], defaults: &[i32], u: usize) -> f32 {
+    let mut u = u;
+    // (a default naming another group that names this one again would go round for ever)
+    for _ in 0..=defaults.len() {
+        if let Some(&(_, v)) = rules.iter().find(|(k, _)| *k as usize == u) {
+            return v;
+        }
+        match defaults.get(u).copied().unwrap_or(0) {
+            d if d <= 0 => return 0.0,
+            _ if u == 0 => return 1.0,
+            d => u = d as usize - 1,
+        }
+    }
+    0.0
+}
+
 fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
     (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.001 && l.length() >= 8.0)
         .then(|| l.length() as f64 * l.density.clamp(0.05, 4.0) as f64)
@@ -488,6 +508,14 @@ pub struct Traffic {
     groups: Vec<omsi_map::ailists::UnschedGroup>,
     /// The map has an `unsched_trafficdens.txt` (else the global.cfg curve applies).
     group_curves: bool,
+    /// Each group's place in `unsched_vehgroups.txt`, the number a path's `[rule]
+    /// trafficdensity` names it by (None: the map has no such file, and every group drives
+    /// wherever the lane's density lets traffic).
+    group_uvg: Vec<Option<usize>>,
+    /// The default density of every `unsched_vehgroups.txt` entry, in file order: 0 none, 1
+    /// for the first entry its medium density, for any other that of the first entry, 2 of
+    /// the second, and so on. It applies on the paths without a rule for the group.
+    uvg_defaults: Vec<i32>,
     pub cars: Vec<AiCar>,
     /// The random cars out of range (see `DormantCar`).
     pub dormant: Vec<DormantCar>,
@@ -824,6 +852,8 @@ impl Traffic {
         net.link(1.5);
         let mut types = Vec::new();
         let mut groups: Vec<omsi_map::ailists::UnschedGroup> = Vec::new();
+        let mut group_uvg: Vec<Option<usize>> = Vec::new();
+        let mut uvg_defaults: Vec<i32> = Vec::new();
         // `unsched_trafficdens.txt`: per random group a factor and its density over the day
         // (by day of the week); the global.cfg curve is the fallback of maps without it
         let dens: Vec<omsi_map::ailists::UnschedGroup> =
@@ -837,9 +867,11 @@ impl Traffic {
             // other `[aigroup_2]`s exist only for the timetable: on Berlin-Spandau "Pan Am"
             // and "Mi-8 Soviet AF" fly TXL.ttl and Relais.ttl, and taking them into the
             // random pool put airliners on the flight paths at any hour of the day. Its
-            // number is the group's default density class, and 0 means the group is off
-            // unless the player switches it on (Spandau: Trucks and GDRCars);
-            // `OMSI_TRAFFIC_ALL_GROUPS=1` switches them on.
+            // number is the group's default density on the paths without a `[rule]
+            // trafficdensity` for it (see `uvg_density`): 0 means only where the paths ask
+            // for the group. Taken as "off", Spandau had no trucks and no Trabant at all,
+            // though 865 paths ask for the one and 462 around Falkensee for the other.
+            // `OMSI_TRAFFIC_ALL_GROUPS=1` lets such groups drive everywhere.
             let all_groups = omsi_cfg::env::var_os("OMSI_TRAFFIC_ALL_GROUPS").is_some();
             let unscheduled: Option<Vec<(String, i32)>> =
                 omsi_cfg::CfgFile::read(&world.map_dir.join("unsched_vehgroups.txt"))
@@ -852,6 +884,10 @@ impl Traffic {
                     });
             if let Some(names) = &unscheduled {
                 log::info!("random traffic groups (unsched_vehgroups.txt): {names:?}");
+                uvg_defaults = names
+                    .iter()
+                    .map(|n| if all_groups && n.1 <= 0 { 1 } else { n.1 })
+                    .collect();
             }
             let lists = &world.ailists;
             for g in lists.groups.iter().filter(|g| {
@@ -863,20 +899,23 @@ impl Traffic {
                         .any(|v| v.file.to_ascii_lowercase().ends_with(".zug"))
             }) {
                 let lname = g.name.trim().to_ascii_lowercase();
-                if let Some(names) = &unscheduled {
-                    match names.iter().find(|n| n.0 == lname) {
+                let uvg = match &unscheduled {
+                    Some(names) => match names.iter().position(|n| n.0 == lname) {
                         None => continue,
-                        Some((_, 0)) if !all_groups => {
-                            log::info!(
-                                "random traffic group {} is off by default (unsched_vehgroups.txt)",
-                                g.name
-                            );
-                            continue;
+                        Some(u) => {
+                            if uvg_defaults.get(u).copied().unwrap_or(0) <= 0 {
+                                log::info!(
+                                    "random traffic group {} drives only where its paths ask for it (unsched_vehgroups.txt)",
+                                    g.name
+                                );
+                            }
+                            Some(u)
                         }
-                        _ => {}
-                    }
-                }
+                    },
+                    None => None,
+                };
                 let gi = groups.len();
+                group_uvg.push(uvg);
                 groups.push(
                     dens.iter()
                         .find(|d| d.name.trim().eq_ignore_ascii_case(g.name.trim()))
@@ -1057,6 +1096,8 @@ impl Traffic {
             types,
             groups,
             group_curves,
+            group_uvg,
+            uvg_defaults,
             cars: Vec::new(),
             dormant: Vec::new(),
             dormant_time: 0.0,
@@ -1279,7 +1320,18 @@ impl Traffic {
         (groups.iter().map(|&g| self.group_density(g)).sum::<f32>() / factors).clamp(0.0, 2.0)
     }
 
-    fn pick_type(&mut self, kind: LaneKind) -> Option<Arc<VehicleType>> {
+    /// How much of group `g`'s traffic `lane` carries: the path's `[rule] trafficdensity`
+    /// for the group, else the group's default (see `uvg_defaults`).
+    fn lane_group_density(&self, lane: &omsi_sim::traffic::Lane, g: usize) -> f32 {
+        match self.group_uvg.get(g).copied().flatten() {
+            Some(u) => uvg_density(&lane.group_density, &self.uvg_defaults, u),
+            None => lane.density,
+        }
+    }
+
+    /// A random vehicle type for a lane of `kind`: on a street `lane`, of the groups that
+    /// lane carries, as much as it carries of each.
+    fn pick_type(&mut self, kind: LaneKind, lane: Option<usize>) -> Option<Arc<VehicleType>> {
         // a vehicle's share: its weight within its group times what the group makes now
         let group_weight: Vec<f32> = (0..self.groups.len())
             .map(|g| {
@@ -1293,7 +1345,11 @@ impl Traffic {
         let dens: Vec<f32> = (0..self.groups.len())
             .map(|g| {
                 if kind == LaneKind::Street {
-                    self.group_density(g)
+                    let here = lane
+                        .and_then(|i| self.net.lanes.get(i))
+                        .map(|l| self.lane_group_density(l, g))
+                        .unwrap_or(1.0);
+                    self.group_density(g) * here
                 } else {
                     1.0
                 }
@@ -1971,8 +2027,9 @@ impl Traffic {
             {
                 continue; // not into a car parked in the lane
             }
-            let Some(ty) = self.pick_type(kind) else {
-                break;
+            // (a lane may carry none of the groups that drive now: try another)
+            let Some(ty) = self.pick_type(kind, Some(lane)) else {
+                continue;
             };
             // (nor onto the rear section of an articulated bus, nor the player's bus)
             if kind != LaneKind::Air && !self.spawn_clear(&ty, p, heading) {
@@ -2115,8 +2172,8 @@ impl Traffic {
             let x = self.rand_f() as f32 * acc;
             let lane = outside[cumulative.partition_point(|&c| c < x).min(outside.len() - 1)].0;
             let s = (self.rand_f() * (self.net.lanes[lane].length() as f64 - 4.0)) as f32 + 2.0;
-            let Some(ty) = self.pick_type(LaneKind::Street) else {
-                return;
+            let Some(ty) = self.pick_type(LaneKind::Street, Some(lane)) else {
+                continue;
             };
             let seed = self.rand();
             let scheme = if ty.paint_schemes.is_empty() { None } else { Some((seed >> 8) as usize % ty.paint_schemes.len().min(AI_SCHEMES)) };
@@ -6521,6 +6578,41 @@ impl Traffic {
             ctl.time = time;
             ctl.held = held;
         }
+    }
+}
+
+#[cfg(test)]
+mod group_density_tests {
+    use super::uvg_density;
+
+    /// Berlin-Spandau's `unsched_vehgroups.txt`: NormalCars 1, Trucks 0, Commercials 1,
+    /// Ambulance 1, GDRCars 0.
+    const SPANDAU: [i32; 5] = [1, 0, 1, 1, 0];
+
+    #[test]
+    fn a_group_off_by_default_drives_where_a_path_asks_for_it() {
+        // a Falkensee path: no rule for the normal cars, the GDR cars asked for
+        let rules = [(4u16, 1.0f32)];
+        assert_eq!(uvg_density(&rules, &SPANDAU, 4), 1.0);
+        assert_eq!(uvg_density(&rules, &SPANDAU, 0), 1.0);
+        // and nowhere else
+        assert_eq!(uvg_density(&[], &SPANDAU, 4), 0.0);
+        assert_eq!(uvg_density(&[(0, 0.5)], &SPANDAU, 1), 0.0);
+    }
+
+    #[test]
+    fn a_default_follows_the_first_group_on_the_path() {
+        // commercials (default 1) take the normal cars' density of the path
+        assert_eq!(uvg_density(&[(0, 0.4)], &SPANDAU, 2), 0.4);
+        assert_eq!(uvg_density(&[(0, 0.0)], &SPANDAU, 2), 0.0);
+        assert_eq!(uvg_density(&[], &SPANDAU, 2), 1.0);
+        // an own rule wins
+        assert_eq!(uvg_density(&[(0, 0.4), (2, 2.0)], &SPANDAU, 2), 2.0);
+    }
+
+    #[test]
+    fn defaults_naming_each_other_end() {
+        assert_eq!(uvg_density(&[], &[1, 3, 2], 1), 0.0);
     }
 }
 

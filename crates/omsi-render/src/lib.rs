@@ -1276,7 +1276,41 @@ impl Renderer {
             .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: surface, force_fallback_adapter: false, ..Default::default() })
             .await
             .map_err(|e| anyhow!("no graphics adapter that can draw the game was found (Metal, Vulkan, DirectX 12 or OpenGL 3.3 or later); updating the graphics driver often helps: {e}"))?;
+        Self::new_on(adapter, surface, format, options).await
+    }
+
+    /// The adapters of `instance` that can show `surface`, the ones worth trying first first:
+    /// a graphics card of its own, then the processor's graphics, then anything else (a
+    /// software renderer last).
+    pub fn adapters_for(instance: &wgpu::Instance, surface: &wgpu::Surface<'_>) -> Vec<wgpu::Adapter> {
+        let mut v: Vec<wgpu::Adapter> = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all()))
+            .into_iter()
+            .filter(|a| a.is_surface_supported(surface))
+            .collect();
+        let rank = |a: &wgpu::Adapter| match a.get_info().device_type {
+            wgpu::DeviceType::DiscreteGpu => 0,
+            wgpu::DeviceType::IntegratedGpu => 1,
+            wgpu::DeviceType::VirtualGpu | wgpu::DeviceType::Other => 2,
+            wgpu::DeviceType::Cpu => 3,
+        };
+        v.sort_by_key(rank);
+        v
+    }
+
+    /// Create a renderer on this adapter.
+    pub async fn new_on(
+        adapter: wgpu::Adapter,
+        surface: Option<&wgpu::Surface<'_>>,
+        format: Option<wgpu::TextureFormat>,
+        options: RenderOptions,
+    ) -> Result<Renderer> {
         let info = adapter.get_info();
+        // test hooks for an adapter that cannot be opened: an error, or wgpu going down
+        match omsi_cfg::env::var("OMSI_FAKE_GPU_ERROR").as_deref() {
+            Ok("open") => return Err(anyhow!("test: {} refused (OMSI_FAKE_GPU_ERROR=open)", info.name)),
+            Ok("open-panic") => panic!("test: {} went down while being opened (OMSI_FAKE_GPU_ERROR=open-panic)", info.name),
+            _ => {}
+        }
         // What the textures may take on this adapter (wgpu does not tell a card's memory):
         // a discrete card is taken for one of 2-4 GB, whose rest the pictures (the render
         // targets, the shadow maps) and the driver need; an integrated one shares the
@@ -9746,4 +9780,13 @@ thread_local! {
 /// does not report it as the end of the game).
 pub fn catching() -> bool {
     CATCHING.with(|c| c.get())
+}
+
+/// Run `f`; a panic in it (a driver wgpu cannot use, taking it down in a way it does not
+/// turn into an error) is caught and gives None, and is not reported as the end of the game.
+pub fn catch<R>(f: impl FnOnce() -> R) -> Option<R> {
+    let was = CATCHING.with(|c| c.replace(true));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    CATCHING.with(|c| c.set(was));
+    r.ok()
 }
