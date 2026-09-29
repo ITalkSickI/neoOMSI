@@ -1182,7 +1182,12 @@ impl Renderer {
         // a discrete card is taken for one of 2-4 GB, whose rest the pictures (the render
         // targets, the shadow maps) and the driver need; an integrated one shares the
         // system's memory, Apple's generously
+        let pascal_3gb = cfg!(windows)
+            && info.backend == wgpu::Backend::Vulkan
+            && info.vendor == 0x10de
+            && info.name.to_ascii_lowercase().contains("gtx 1060 3gb");
         let guess_mb: u64 = match info.device_type {
+            wgpu::DeviceType::DiscreteGpu if pascal_3gb => 500,
             wgpu::DeviceType::DiscreteGpu => 1600,
             wgpu::DeviceType::IntegratedGpu if info.backend == wgpu::Backend::Metal => 3000,
             wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::VirtualGpu => 1000,
@@ -1215,15 +1220,14 @@ impl Renderer {
             || omsi_cfg::env::var_os("OMSI_GPU_SAFE_MODE").is_some();
         if gpu_safe {
             log::warn!(
-                "conservative GPU profile enabled for {} ({:?}, driver: {}): 1x MSAA, 1x anisotropy, SSAO and runtime texture compression off, no optional device features",
+                "conservative GPU profile enabled for {} ({:?}, driver: {}): 1x MSAA, 1x anisotropy, SSAO and runtime texture compression off",
                 info.name, info.backend, info.driver
             );
         }
         let options = if gpu_safe {
-            log::warn!(
-                "Intel Vulkan adapter detected ({}): using the stable driver profile (1x MSAA, 1x anisotropy, SSAO and runtime texture compression off); set OMSI_INTEL_FULL_GPU=1 after updating the Intel driver to retry the requested settings",
-                info.name
-            );
+            if intel_vulkan_safe {
+                log::warn!("Intel Vulkan adapter detected ({}): using the stable driver profile; set OMSI_INTEL_FULL_GPU=1 to retry full settings", info.name);
+            }
             RenderOptions {
                 msaa: 1,
                 anisotropy: 1,
@@ -1304,9 +1308,13 @@ impl Renderer {
             required_features |= adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
         }
         if gpu_safe {
-            // Keep vkCreateDevice entirely free of optional extensions. Compressed source
-            // textures are decoded to RGBA by upload_texture on this device.
-            required_features = wgpu::Features::empty();
+            // Intel's legacy driver needs no optional features. On Pascal, keeping the
+            // adapter's BC support avoids expanding DXT content to RGBA on a 3 GB card.
+            required_features = if pascal_vulkan_safe && omsi_cfg::env::var_os("OMSI_NO_BC").is_none() {
+                adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC
+            } else {
+                wgpu::Features::empty()
+            };
         }
         log::info!("opening graphics device: {} ({:?}, vendor {:#06x}, device {:#06x}), features {:?}, max buffer {} MB, max storage binding {} MB", info.name, info.backend, info.vendor, info.device, required_features, limits.max_buffer_size / 1_000_000, limits.max_storage_buffer_binding_size as u64 / 1_000_000);
         let (device, queue) = adapter
