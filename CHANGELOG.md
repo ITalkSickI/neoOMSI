@@ -59,6 +59,14 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   after the four of `[illumination_interior]`; OMSI 2 reads the first four), PBR maps up to
   4096 px, and 32 lights per 25 m of the world instead of 16. What openOMSI allows beyond
   OMSI 2 is written down in docs/MODDING.md and on the site.
+- Door keys: Shift+1, Shift+2 ... are the bus's doors front to back, found from the model
+  (where each door leaf sits along the bus and which leaves each door trigger moves). The
+  LiAZ's Shift+1 opened its middle and rear doors together and its front door had no key;
+  a mod door script that mentions a closing variable while opening had its two leaves on
+  two keys (one leaf moved, the other needed its own press). The game's log lists the keys
+  of each bus ("door keys: ...").
+- The release notes list what changed since the release before (they said "Small changes
+  and fixes" for every release without a section of its own here).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

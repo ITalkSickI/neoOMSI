@@ -94,6 +94,11 @@ pub(crate) fn spawn_player(
         vt.program.blocks.len(),
         vt.program.var_names.len()
     );
+    let doors = crate::player::door_keys(&vt);
+    if !doors.is_empty() {
+        let keys: Vec<String> = doors.iter().enumerate().map(|(i, g)| format!("Shift+{} = {}", i + 1, g.join(" + "))).collect();
+        log::info!("door keys: {}", keys.join(", "));
+    }
     let mut host = omsi_sim::VehicleHost::new(start_clock(args));
     // the maintenance condition of the options (AI vehicles never wear)
     host.wear_lifespan = crate::settings::Settings::load().wear_lifespan();

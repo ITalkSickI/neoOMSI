@@ -299,7 +299,7 @@ impl App {
             let sb_on = p.vehicle.var("bremse_halte_sw").or_else(|| p.vehicle.var("haltestellenbremse")).is_some_and(|v| v > 0.5);
             push(&mut b, Btn::StopBrake, rb(bx, h - pad - br * 3.0 - 10.0 * u, br), "back_hand", "", sb_on, true);
             // the doors: one button for each door, front to back, above the gearbox
-            let doors = crate::player::door_trigger_groups(&p.vehicle.ty.program).len().clamp(1, 4);
+            let doors = crate::player::door_keys(&p.vehicle.ty).len().clamp(1, 4);
             let dr = 23.0 * u;
             let dy = gy - 12.0 * u - dr;
             for k in 0..doors {

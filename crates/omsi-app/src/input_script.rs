@@ -323,7 +323,7 @@ impl App {
                 if self.view != "free" && shift_held_now(&self.keys) {
                     if let Some(n) = digit_of(code) {
                         if let Some(p) = self.player.as_mut() {
-                            let groups = door_trigger_groups(&p.vehicle.ty.program);
+                            let groups = crate::player::door_keys(&p.vehicle.ty);
                             if let Some(group) = groups.get(n - 1) {
                                 let fire = crate::player::door_group_to_fire(&p.vehicle, group);
                                 for name in &fire {
