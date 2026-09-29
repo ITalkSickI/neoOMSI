@@ -33,6 +33,9 @@ pub(crate) struct Player {
     pub(crate) auto_drag: Option<AutoDrag>,
     /// Running auto-start (Shift+U).
     pub(crate) startup: Option<omsi_sim::startup::StartUp>,
+    /// When the running auto-start began (one that has gone on for long is given up by the
+    /// next Shift+U).
+    pub(crate) startup_at: Option<std::time::Instant>,
     /// The ticket key was pressed this frame (sell the requested ticket).
     pub(crate) give_ticket: bool,
     /// OMSI's `change_give` / `change_take` keys: hand the passenger
@@ -705,12 +708,18 @@ impl Player {
     /// service. Returns what to show in the HUD.
     pub(crate) fn start_up(&mut self) -> String {
         if let Some(s) = self.startup.as_ref() {
-            return if s.shutting_down() { "Switching the vehicle off ..." } else { "Putting the vehicle into service ..." }.to_string();
+            // (one going on for long - a bus whose switches never get it there - is given up
+            // and begun again, rather than saying the same for ever)
+            if self.startup_at.is_none_or(|t| t.elapsed().as_secs_f32() < 20.0) {
+                return if s.shutting_down() { "Switching the vehicle off ..." } else { "Putting the vehicle into service ..." }.to_string();
+            }
+            log::info!("auto-start given up after 20 s: begun again");
         }
-        let shutting_down = omsi_sim::startup::power_on(&self.vehicle)
-            || omsi_sim::startup::engine_running(&self.vehicle);
         let bound = self.bound_actions();
-        self.startup = Some(omsi_sim::startup::StartUp::new(&self.vehicle, &bound));
+        let s = omsi_sim::startup::StartUp::new(&self.vehicle, &bound);
+        let shutting_down = s.shutting_down();
+        self.startup = Some(s);
+        self.startup_at = Some(std::time::Instant::now());
         if shutting_down {
             "Switching the vehicle off ...".to_string()
         } else {

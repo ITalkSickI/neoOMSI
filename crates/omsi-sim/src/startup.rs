@@ -485,7 +485,10 @@ impl StartUp {
             stop_n: 0,
             report: Vec::new(),
         };
-        if power_on(v) || engine_running(v) {
+        // (a bus under power whose engine has died - a crash stalled it - is started again:
+        // taken for a running bus, it was "shut down" by pressing its switches round and
+        // round, and every Shift+U after said "shutting down" for good)
+        if engine_running(v) {
             s.enter(v, bound, Step::Shutdown);
         } else {
             s.enter(v, bound, Step::Power);

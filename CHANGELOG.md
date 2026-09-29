@@ -141,6 +141,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   runs on Macs with Apple silicon only, is not needed for them). Chinese, Japanese and Hindi
   are drawn with the system's own fonts. OMSI's own texts (key names, descriptions) show in
   English where OMSI has no such language.
+- Shift+U after a crash starts the bus again: a bus under power whose engine had died was
+  taken for a running one and "switched off" round and round ("Shutting down..." for good).
+  An auto-start that has gone on for 20 s is begun again by the next Shift+U.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

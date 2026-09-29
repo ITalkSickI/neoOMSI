@@ -360,6 +360,7 @@ pub(crate) fn spawn_player(
         auto_drag: None,
         pressed_trailer_mesh: None,
         startup: None,
+        startup_at: None,
         give_ticket: false,
         give_change: false,
         cam_before_special: None,
