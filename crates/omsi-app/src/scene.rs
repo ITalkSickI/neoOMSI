@@ -1698,11 +1698,27 @@ fn probe_tile(
             probe = probe.merge(omsi_geometry::Probe::of(h, top as f32));
         }
     }
+    // A wall's top (a narrow height profile high on a wall spline) is never stood on: where
+    // it stands a step over the ground here it is a wall the tyre meets, whatever the height
+    // it is probed from; nearer the ground than that the wheel rolls on the road beside it
+    // (where the wall's top met the road the wheels went up onto it and rode along it)
+    if let Some(s) = surface {
+        let walls = s.drive.probe_walls(lx, ly, f32::MAX);
+        if let (Some(zw), Some(g)) = (walls.below, probe.below) {
+            if zw > g + WALL_TOP_STEP {
+                probe.above = Some(probe.above.map_or(zw, |a| a.min(zw)));
+            }
+        }
+    }
     omsi_sim::rigid::GroundProbe {
         below: probe.below.map(|z| z as f64),
         above: probe.above.map(|z| z as f64),
     }
 }
+
+/// How far over the ground a wall's top must stand to be a wall to the wheels (a kerb is
+/// less, and the tyre climbs it).
+const WALL_TOP_STEP: f32 = 0.3;
 
 /// The ground the player's wheels stand on: [`drive_probe`] over the loaded tiles.
 pub struct DriveGround {
@@ -4067,7 +4083,7 @@ impl World {
                     // what the wheels roll on: the splines' height profiles
                     for (hp, b) in &q.drive {
                         if !outside(b) {
-                            ts.add_drive_mesh(hp, &Mat4::IDENTITY, q.origin, tx, ty);
+                            ts.add_height_profiles(hp, q.origin, tx, ty);
                             wheel_meshes += 1;
                         }
                     }

@@ -46,6 +46,26 @@ pub(crate) struct Device {
     pub buttons: usize,
 }
 
+/// Take the device again (after the window left the front). DirectInput resets a force
+/// feedback wheel when it is taken: its own centring came back on, and a G29 pulled itself
+/// to the middle after the pause until mouse steering was switched on and off.
+fn reacquire(dev: &IDirectInputDevice8W, ff: bool) -> bool {
+    unsafe {
+        let off = || {
+            let mut ac = DIPROPDWORD { diph: DIPROPHEADER { dwSize: std::mem::size_of::<DIPROPDWORD>() as u32, dwHeaderSize: std::mem::size_of::<DIPROPHEADER>() as u32, dwObj: 0, dwHow: DIPH_DEVICE }, dwData: DIPROPAUTOCENTER_OFF };
+            let _ = dev.SetProperty(prop(9), &mut ac.diph);
+        };
+        if ff {
+            off();
+        }
+        let ok = dev.Acquire().is_ok();
+        if ff {
+            off();
+        }
+        ok
+    }
+}
+
 impl Device {
     /// The axes the device has: (slot, value -1..1).
     pub fn axes(&self) -> Vec<(usize, f32)> {
@@ -239,7 +259,7 @@ impl DirectInput {
             };
             let ok = match read(&mut s) {
                 Ok(()) => true,
-                Err(_) => unsafe { d.dev.Acquire().is_ok() && read(&mut s).is_ok() },
+                Err(_) => reacquire(&d.dev, d.ff.is_some()) && read(&mut s).is_ok(),
             };
             if !ok {
                 continue;
@@ -300,7 +320,7 @@ impl DirectInput {
             unsafe {
                 // (a device taken away - the window left the front - is taken again)
                 if e.SetParameters(&mut eff, DIEP_TYPESPECIFICPARAMS | DIEP_START).is_err() {
-                    let _ = d.dev.Acquire();
+                    reacquire(&d.dev, true);
                     let _ = e.SetParameters(&mut eff, DIEP_TYPESPECIFICPARAMS | DIEP_START);
                 }
             }

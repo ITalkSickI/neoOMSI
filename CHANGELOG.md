@@ -36,6 +36,17 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Phones: the on-screen wheel turns the bus's wheel one to one.
 - Windows and Linux: the automatic render scale draws at full size up to 4K (it drew a 4K
   screen at 58 %, and enhanced graphics looked like low-quality textures).
+- Automatic rear doors (SD202, SD200 and the like) close again: passengers walking to the
+  door or standing at the back of the queue kept asking for it, and the script starts its
+  closing time again on every request. A request now opens a shut door; an open one is held
+  only by somebody in the doorway, as by the light barrier.
+- Walls with a height profile on their top (the stone and brick walls of UK maps) are walls
+  to the wheels, not a road: where a wall's top met the road the bus drove up onto it and
+  along it as the road fell away.
+- Esc → Destination display → *Route number*: the route (line) number on the displays, from
+  the depot file's routes and the map's timetable; the destination stays.
+- Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
+  (taken back by the game, its own centring spring came back on).
 - `OMSI_CHECK_SPLINES=1` with `--offscreen` lists the map's spline chains whose ends do not
   meet (for map makers).
 

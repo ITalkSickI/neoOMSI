@@ -1091,7 +1091,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                         self.chooser = Some(k.min(self.admin_list.as_ref().map(|l| l.len().saturating_sub(1)).unwrap_or(0)));
                     }
                 }
-                None if action != "back" && matches!(kind, crate::game_lists::ListKind::Tours(_) | crate::game_lists::ListKind::Numbers | crate::game_lists::ListKind::Destinations | crate::game_lists::ListKind::Hofs) => self.close_game_menu(),
+                None if action != "back" && matches!(kind, crate::game_lists::ListKind::Tours(_) | crate::game_lists::ListKind::Numbers | crate::game_lists::ListKind::Destinations | crate::game_lists::ListKind::RouteNumbers | crate::game_lists::ListKind::Hofs) => self.close_game_menu(),
                 None => {}
             }
             return;

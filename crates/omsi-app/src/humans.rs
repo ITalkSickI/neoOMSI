@@ -1593,6 +1593,9 @@ enum Place {
 /// Seconds after which a passenger's request at an exit lapses (see `write_pax_vars`).
 const EXIT_REQ_LAPSE: f32 = 40.0;
 
+/// How near an open door (m) a passenger holds it open (the light barrier's reach).
+const DOORWAY: f64 = 1.6;
+
 pub struct Person {
     id: u32,
     ty: Arc<HumanType>,
@@ -4683,13 +4686,32 @@ impl Humans {
         for r in self.entry_req.iter_mut().chain(self.exit_req.iter_mut()) {
             *r = false;
         }
+        // A request opens a shut door; an open one it holds only from the doorway, as the
+        // light barrier does - one on the way from the upper deck or at the back of the
+        // queue held the SD202's automatic rear door open until the last of them was through
+        // (its script starts the closing time again on every frame with a request).
+        let in_doorway = |p: &Person, entry: Option<usize>, exit: Option<usize>| -> bool {
+            let Some(pb) = player else { return true };
+            let (door, open) = match (entry, exit) {
+                (Some(i), _) => (pb.cabin.entries.get(i), pb.entry_open.get(i).copied().unwrap_or(false)),
+                (_, Some(i)) => (pb.cabin.exits.get(i), pb.exit_open.get(i).copied().unwrap_or(false)),
+                _ => (None, false),
+            };
+            let Some(door) = door.filter(|_| open) else { return true };
+            // (inside, the bus frame: a rider's world position is not kept up)
+            let near = |q: Vec3| match p.place {
+                Place::Bus(_, local) => (q - local).truncate().length() < DOORWAY as f32,
+                Place::Ground => (pb.world(q) - p.position).truncate().length() < DOORWAY,
+            };
+            near(door.inside) || near(door.outside) || near(door.wait)
+        };
         for p in &self.people {
             match p.state {
                 State::Queue {
                     bus: BusId::Player,
                     entry,
                     ..
-                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
+                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) && in_doorway(p, Some(entry), None) => {
                     if let Some(r) = self.entry_req.get_mut(entry) {
                         *r = true;
                     }
@@ -4705,7 +4727,7 @@ impl Humans {
                     bus: BusId::Player,
                     goal: Goal::ExitWait(exit),
                     ..
-                } if p.leaving_here && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
+                } if p.leaving_here && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) && in_doorway(p, None, Some(exit)) => {
                     if let Some(r) = self.exit_req.get_mut(exit) {
                         *r = true;
                     }
@@ -4717,7 +4739,7 @@ impl Humans {
                     bus: BusId::Player,
                     goal: Goal::Exit(exit),
                     ..
-                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
+                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) && in_doorway(p, None, Some(exit)) => {
                     if let Some(r) = self.exit_req.get_mut(exit) {
                         *r = true;
                     }
