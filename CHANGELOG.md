@@ -155,6 +155,8 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   installation's own file: Z / X / C (the indicators), Shift+number (the doors), W A S D and
   the arrows no longer take over a key bound to something else. What counts as changed is
   told from OMSI 2's own assignment, built into the game, with Shift held as well.
+- The hazard lights go off again (X, and the phone's hazard button): pressed with them on,
+  the key let go of the indicator lever instead of their own switch.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

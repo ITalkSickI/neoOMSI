@@ -307,7 +307,13 @@ impl App {
                         if let Some(l) = lever {
                             p.blinker_key_state = l;
                         }
-                        let action = if p.blinker_key_state == want {
+                        // (the hazard lights have a switch of their own that toggles: pressed
+                        // again with them on, "blinker_off" only let go of the indicator
+                        // lever, and the hazards - the phone's button too - never went off)
+                        let action = if want == 3 {
+                            p.blinker_key_state = if p.blinker_key_state == 3 { 0 } else { 3 };
+                            "blinker_warn_toggle"
+                        } else if p.blinker_key_state == want {
                             p.blinker_key_state = 0;
                             "blinker_off"
                         } else {
