@@ -801,19 +801,8 @@ impl App {
             return;
         }
         // on foot: the own bus's switches, doors and flaps from inside it or standing by it
-        // (a hand's reach round its body; the click still has to hit one of its meshes)
-        if self.view == "foot" && self.foot_bus() != Some(crate::humans::BusId::Player) {
-            let near = match (self.player.as_ref(), self.camera.as_ref()) {
-                (Some(p), Some(c)) => {
-                    let bb = p.vehicle.ty.def.bounding_box.unwrap_or([2.5, 12.0, 3.0, 0.0, 0.0, 1.5]);
-                    let reach = (bb[0].max(bb[1]) as f64) * 0.5 + 3.0;
-                    (c.position - p.vehicle.position).length() < reach
-                }
-                _ => false,
-            };
-            if !near {
-                return;
-            }
+        if self.view == "foot" && !self.foot_reaches_bus() {
+            return;
         }
         if let (Some(p), Some(cam), Some(s)) = (
             self.player.as_mut(),
@@ -2106,13 +2095,29 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         self.shot = Some(path);
     }
 
+    /// On foot, the own bus is within reach: inside it, or standing by it (a hand's reach
+    /// round its body; a click still has to hit one of its meshes).
+    pub(crate) fn foot_reaches_bus(&self) -> bool {
+        if self.foot_bus() == Some(crate::humans::BusId::Player) {
+            return true;
+        }
+        match (self.player.as_ref(), self.camera.as_ref()) {
+            (Some(p), Some(c)) => {
+                let bb = p.vehicle.ty.def.bounding_box.unwrap_or([2.5, 12.0, 3.0, 0.0, 0.0, 1.5]);
+                let reach = (bb[0].max(bb[1]) as f64) * 0.5 + 3.0;
+                (c.position - p.vehicle.position).length() < reach
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn update_hover(&mut self) {
         let found = match (
             self.player.as_ref(),
             self.camera.as_ref(),
             self.surface.as_ref(),
         ) {
-            (Some(p), Some(cam), Some(s)) if self.view != "free" && (self.view != "foot" || self.foot_bus() == Some(crate::humans::BusId::Player)) => {
+            (Some(p), Some(cam), Some(s)) if self.view != "free" && (self.view != "foot" || self.foot_reaches_bus()) => {
                 let (o, d) = cursor_ray(
                     cam,
                     self.cursor.0,
