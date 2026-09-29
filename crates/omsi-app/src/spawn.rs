@@ -152,6 +152,13 @@ pub(crate) fn spawn_player(
                 // (a bridge over the place, a lower level) is not this one
                 if let Some(g) = world.ground_height(pos.x, pos.y).filter(|g| (g - pos.z).abs() < 2.5) {
                     vehicle.position.z = g;
+                } else if crate::scene::drive_probe(&world.terrains, &world.surfaces, pos.x, pos.y, pos.z + 1.5).below.is_none() {
+                    // nothing under the place at all (the marker came out under the ground):
+                    // on the ground above, not in the void under the map
+                    if let Some(g) = world.walk_height(pos.x, pos.y) {
+                        log::info!("entry point {}: nothing under its height {:.1}; put on the ground at {:.1}", ep.index, pos.z, g);
+                        vehicle.position.z = g;
+                    }
                 }
                 vehicle.heading = rot[0];
                 log::info!(

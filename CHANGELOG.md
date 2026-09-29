@@ -101,6 +101,12 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   - mods use `door_<n>` for other things, and a bus with its doors shut said they were open;
   "Air pressure is low" is no longer said with the tanks full (the spring brake is then held
   by the bus's own parking brake).
+- The rear doors of the Berlin buses (SD, NL, EN/GN) close on Shift+2: switching their
+  release off with the doors open shuts them at once, rather than when the passengers'
+  last request has lapsed.
+- An entry point whose marker lies under the ground (nothing under its height at all) puts
+  the bus on the ground above it, not in the void under the map; a real lower level (a car
+  park's floor) is kept.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

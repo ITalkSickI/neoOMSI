@@ -332,6 +332,19 @@ impl App {
                             if let Some(group) = groups.get(n - 1) {
                                 let fire = crate::player::door_group_to_fire(&p.vehicle, group);
                                 log::info!("door key Shift+{n}: {}", fire.join(" + "));
+                                // the automatic rear doors of the stock Berlin buses (SD, NL): the
+                                // key is their release, and switched off with the doors open it
+                                // shuts them now rather than when the last request has lapsed
+                                // ("why can I not close the rear doors at all?")
+                                if group.len() == 1 && group[0] == "bus_dooraft" {
+                                    let v = &mut p.vehicle;
+                                    let release_on = v.var("bremse_halte_sw").is_some_and(|x| x > 0.5);
+                                    let open = v.var("doorTarget_23").is_some_and(|x| x > 0.5);
+                                    if release_on && open && v.var("doorAftLastOpen").is_some() {
+                                        v.set_var("haltewunsch", 0.0);
+                                        v.set_var("doorAftLastOpen", 1000.0);
+                                    }
+                                }
                                 for name in &fire {
                                     p.vehicle.trigger(name);
                                 }
