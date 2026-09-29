@@ -142,6 +142,8 @@ pub struct AiCar {
     /// Seconds this car has been standing still without a stop of its own: a red light or
     /// a queue is seconds, a jam that never clears grows without bound.
     pub stopped: f32,
+    /// The car it follows now (its id), when one is close ahead.
+    pub lead_car: Option<u64>,
     /// Seconds it has crept along below 1 m/s (a claim of one that crawls in a jam of its
     /// own is no car about to come either).
     pub crawl: f32,
@@ -1511,6 +1513,8 @@ impl Traffic {
         }
         let far = self.spawn_radius * DESPAWN_FACTOR;
         self.advance_dormant();
+        // the cars somebody stands behind
+        let queued: std::collections::HashSet<u64> = self.cars.iter().filter(|c| c.stopped > 5.0).filter_map(|c| c.lead_car).collect();
         let mut i = 0;
         let mut off_ground = 0usize;
         let mut asleep = 0usize;
@@ -1559,7 +1563,9 @@ impl Traffic {
                 self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0
             } else if !random {
                 false
-            } else if at_end && (self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0) {
+            } else if at_end && (self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0 || (c.stopped > 25.0 && queued.contains(&c.id) && from_eye > 25.0)) {
+                // (and in view too once others wait behind it: a fire engine at the end of a
+                // dead-end street held a queue of fourteen cars for two and a half minutes)
                 // (taken at once it vanished in plain view 300 m ahead; but a car kept
                 // until nobody could see it stood for good at the end of a long straight
                 // road in view, and the queue behind it - timetable buses with their
@@ -2290,6 +2296,7 @@ impl Traffic {
             trailer_renders,
             body,
             stopped: 0.0,
+            lead_car: None,
             crawl: 0.0,
             bus: bus.map(|b| Box::new(BusService::new(b.stops, b.riders))),
             sounds: None,
@@ -5139,6 +5146,7 @@ impl Traffic {
                 .filter(|&j| j < self.cars.len())
                 .map(|j| self.cars[j].id);
             let car = &mut self.cars[i];
+            car.lead_car = lead_id;
             if car.state.speed.abs() < 0.1 && !car.at_stop() {
                 car.stopped += dt;
             } else {
@@ -6432,6 +6440,7 @@ impl Traffic {
             trailer_renders,
             body,
             stopped: 0.0,
+            lead_car: None,
             crawl: 0.0,
             bus: scheduled.then(|| Box::new(BusService::new(Vec::new(), 0))),
             sounds: None,

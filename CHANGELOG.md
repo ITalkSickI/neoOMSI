@@ -192,6 +192,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   whose size the object reaches, else the last. The stock Sv signals list their detailed
   level before their low one; sorted by size, the low one stood in close up and the signal
   vanished in the distance. A model with a single `[LOD]` is drawn at any size.
+- A car that has reached a dead end goes after 25 seconds, even in view, when others are
+  waiting behind it: a fire engine at the end of a dead-end street held a queue of fourteen
+  cars for two and a half minutes, and the junctions before it jammed full (Westcountry 3,
+  38 cars stuck for over a minute in five minutes of traffic, now none).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
