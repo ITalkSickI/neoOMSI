@@ -86,16 +86,14 @@ mod world_load;
 
 // the interface's translations (locales/app.yml; the English text is the key)
 rust_i18n::i18n!("locales");
+// (the tables are read when this crate compiles: this makes cargo compile it again when they
+// change - the macro alone left the old texts in the program)
+const _LOCALES: &str = include_str!("../locales/app.yml");
 
 /// Show the interface in `code` (the settings' ENG / DEU / FRA / RUS).
 pub(crate) fn ui_language(code: &str) {
     omsi_ui::i18n::set_lookup(|lang, text| _rust_i18n_try_translate(lang, text).map(|t| t.into_owned()));
-    omsi_ui::i18n::set_language(match code {
-        "RUS" => "ru",
-        "DEU" => "de",
-        "FRA" => "fr",
-        _ => "",
-    });
+    omsi_ui::i18n::set_language(omsi_launcher_lib::language_iso(code));
 }
 
 use anyhow::{anyhow, Context, Result};

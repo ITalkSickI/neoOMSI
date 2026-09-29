@@ -80,6 +80,15 @@ fn nllb(lang: &str) -> Option<&'static str> {
         "cs" => "ces_Latn",
         "es" => "spa_Latn",
         "it" => "ita_Latn",
+        "be" => "bel_Cyrl",
+        "kk" => "kaz_Cyrl",
+        "hu" => "hun_Latn",
+        "pt" => "por_Latn",
+        "nl" => "nld_Latn",
+        "tr" => "tur_Latn",
+        "ja" => "jpn_Jpan",
+        "zh" => "zho_Hans",
+        "hi" => "hin_Deva",
         _ => return None,
     })
 }

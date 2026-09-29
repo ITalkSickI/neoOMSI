@@ -133,6 +133,14 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   the clouds no longer drift and jump back into place when the camera flies fast.
 - Launcher: the bus list is built again only when the search, the buses or the host's list
   change (it was rebuilt every frame, every name copied - scrolling it stuttered on phones).
+- 14 more interface languages: Українська, Беларуская, Қазақша, Polski, Čeština, Magyar,
+  Español, Português (Brasil), Italiano, Nederlands, Türkçe, 日本語, 中文 (简体), हिन्दी -
+  with English, German, French and Russian 18 in all (Settings → Language), and every text
+  of the launcher and the game menus the tables lacked now translated in all of them. The
+  tables are in the program, so they work on every system (the machine translation, which
+  runs on Macs with Apple silicon only, is not needed for them). Chinese, Japanese and Hindi
+  are drawn with the system's own fonts. OMSI's own texts (key names, descriptions) show in
+  English where OMSI has no such language.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
