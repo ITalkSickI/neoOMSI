@@ -448,6 +448,7 @@ impl ApplicationHandler for App {
                 ctl.pedal_throttle = self.settings.pedal_throttle;
                 ctl.pedal_brake = self.settings.pedal_brake;
                 ctl.ff_invert = self.settings.ff_invert;
+                ctl.ff_enabled = self.settings.ff_enabled;
                 ctl.steer_gain = if self.settings.wheel_lock >= 45.0 { (self.settings.wheel_range / self.settings.wheel_lock).clamp(0.1, 20.0) } else { 1.0 };
                 if ctl.disabled.is_empty() && !self.settings.ctrl_off.is_empty() {
                     ctl.disabled = self.settings.ctrl_off.split('|').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();

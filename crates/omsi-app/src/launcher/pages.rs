@@ -530,11 +530,13 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         s["wheel_lock"] = json!(if lock < 45.0 { 0.0 } else { lock.round() });
         *dirty = 0.3;
     }
+    toggle_setting(ui, s, dirty, row(&mut y), "Force feedback and vibration", "ff_enabled");
     toggle_setting(ui, s, dirty, row(&mut y), "Invert force feedback", "ff_invert");
     if ui.button("s-wreset", row(&mut y), "Reset wheel settings", Some("restart_alt"), ButtonKind::Normal) {
         s["wheel_range"] = json!(900.0);
         s["wheel_lock"] = json!(0.0);
         s["ff_invert"] = json!(false);
+        s["ff_enabled"] = json!(true);
         *dirty = 0.3;
     }
     // the pedals' response: softer (below 1) or stronger (above 1) than the pedal reads

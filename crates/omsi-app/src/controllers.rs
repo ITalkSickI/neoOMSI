@@ -356,6 +356,8 @@ pub struct Controllers {
     pub disabled: Vec<String>,
     /// Force feedback the other way round (Settings: `ff_invert`).
     pub ff_invert: bool,
+    /// Force feedback and rumble switched on (Settings: `ff_enabled`).
+    pub ff_enabled: bool,
     /// The wheel's rotation over the rotation that is the bus's full lock (Settings:
     /// `wheel_range` / `wheel_lock`; 1 = the whole wheel is the full lock, as OMSI).
     pub steer_gain: f32,
@@ -381,7 +383,7 @@ impl Controllers {
         for c in devices.connected() {
             log::info!("game controller: {} ({})", c.name, if cfg.iter().any(|d| names_match(&d.name, &c.name)) { "set up in gamectrler.cfg" } else if c.gamepad { "as a gamepad" } else { "not set up: its X axis steers" });
         }
-        Controllers { devices, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
+        Controllers { devices, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, ff_enabled: true, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
     }
 
     /// A wheel or joystick steers the bus (then the arrow keys look around, as in OMSI:
@@ -497,7 +499,7 @@ impl Controllers {
     /// standing still, the shaking of the engine and the road (`FF_Vib_Amp`); on any other
     /// device that can, the shaking as a rumble.
     pub fn feedback(&mut self, f: FfInput) {
-        let on = self.enabled && f.on;
+        let on = self.enabled && f.on && self.ff_enabled;
         #[cfg(windows)]
         if let (Some((name, x, x0, true)), Some(di)) = (self.steer.clone(), self.devices.di.as_mut()) {
             // (the file's [FFScale] of the device: springs and drag, the effects)

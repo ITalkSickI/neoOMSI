@@ -107,6 +107,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - An entry point whose marker lies under the ground (nothing under its height at all) puts
   the bus on the ground above it, not in the void under the map; a real lower level (a car
   park's floor) is kept.
+- Settings → Controllers → *Force feedback and vibration* (and Esc → More → Options):
+  switches the wheel's forces and a pad's rumble off altogether (a pad left plugged in
+  shook all the time).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
