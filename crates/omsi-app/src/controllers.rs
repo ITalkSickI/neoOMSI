@@ -219,6 +219,14 @@ impl Devices {
         false
     }
 
+    /// A device was plugged in or removed; ask the worker to rescan without blocking a frame.
+    pub(crate) fn refresh(&self) {
+        #[cfg(windows)]
+        if let Some(d) = self.di.as_ref() {
+            d.refresh();
+        }
+    }
+
     /// Read the devices; the buttons pressed (true) and let go since the last call:
     /// (device, button number from 0, as DirectInput and `gamectrler.cfg` count them).
     pub fn poll(&mut self) -> Vec<(String, usize, bool)> {
@@ -377,6 +385,10 @@ pub struct Controllers {
 }
 
 impl Controllers {
+    pub(crate) fn refresh_devices(&self) {
+        self.devices.refresh();
+    }
+
     pub fn new(root: &Path, hwnd: Option<isize>) -> Controllers {
         let devices = Devices::new(hwnd, true);
         let cfg = read_cfg(root);

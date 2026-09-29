@@ -29,7 +29,7 @@ use std::time::Instant;
 use theme::*;
 use ui::{Key, Ui};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{DeviceEvent, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -273,6 +273,14 @@ impl Launcher {
 }
 
 impl ApplicationHandler for Launcher {
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _id: winit::event::DeviceId, event: DeviceEvent) {
+        if matches!(event, DeviceEvent::Added | DeviceEvent::Removed) {
+            if let Some(io) = self.pages.pads.io.as_ref() {
+                io.refresh();
+            }
+        }
+    }
+
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         // (a phone: the app went to the background and its window's surface goes with it)
         self.surface = None;

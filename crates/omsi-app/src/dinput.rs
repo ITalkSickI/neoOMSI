@@ -5,11 +5,11 @@
 //! 128 buttons, and force feedback: one constant force on the wheel's axis the game sets
 //! every frame (its centring spring, the drag of the steering, the shaking of the bus).
 //!
-//! The list of devices is looked up on a thread of its own every few seconds (with some
-//! drivers that takes a tenth of a second - the game would stutter); the devices themselves
-//! are opened and read here.
+//! The list of devices is looked up on a thread of its own when Windows reports a device
+//! change. Some drivers take a tenth of a second to enumerate and can stall input polling
+//! even when the enumeration is on another thread.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 use windows::core::{Interface, GUID};
 use windows::Win32::Devices::HumanInterfaceDevice::*;
@@ -85,6 +85,7 @@ pub(crate) struct DirectInput {
     ff: bool,
     pub devices: Vec<Device>,
     found: Arc<Mutex<Option<Vec<(GUID, String)>>>>,
+    scan: mpsc::Sender<()>,
     /// Button changes since the last `poll`: (device, button, down).
     pub events: Vec<(String, usize, bool)>,
     last_force: Instant,
@@ -156,18 +157,21 @@ impl DirectInput {
         let di = create()?;
         let found = Arc::new(Mutex::new(Some(list(&di))));
         let f2 = found.clone();
+        let (scan, requests) = mpsc::channel();
         let _ = std::thread::Builder::new().name("game controllers".into()).spawn(move || {
             let Some(di) = create() else { return };
-            loop {
-                std::thread::sleep(Duration::from_secs(3));
-                if Arc::strong_count(&f2) < 2 {
-                    return;
-                }
+            while requests.recv().is_ok() {
+                // One plug/unplug can produce several events. Enumerate only once for them.
+                while requests.try_recv().is_ok() {}
                 let v = list(&di);
                 *f2.lock().unwrap() = Some(v);
             }
         });
-        Some(DirectInput { di, hwnd: HWND(hwnd as *mut _), ff, devices: Vec::new(), found, events: Vec::new(), last_force: Instant::now() })
+        Some(DirectInput { di, hwnd: HWND(hwnd as *mut _), ff, devices: Vec::new(), found, scan, events: Vec::new(), last_force: Instant::now() })
+    }
+
+    pub fn refresh(&self) {
+        let _ = self.scan.send(());
     }
 
     fn open(&self, guid: &GUID, name: &str) -> Option<Device> {

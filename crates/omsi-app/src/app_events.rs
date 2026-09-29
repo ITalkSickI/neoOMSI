@@ -1936,6 +1936,11 @@ impl ApplicationHandler for App {
         _device_id: winit::event::DeviceId,
         event: DeviceEvent,
     ) {
+        if matches!(&event, DeviceEvent::Added | DeviceEvent::Removed) {
+            if let Some(controllers) = self.controllers.as_ref() {
+                controllers.refresh_devices();
+            }
+        }
         if let DeviceEvent::MouseMotion { delta } = event {
             if self.mouse_look {
                 self.look_by(delta.0 as f32 * 0.15, delta.1 as f32 * 0.15);
