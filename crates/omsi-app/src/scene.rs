@@ -2080,7 +2080,7 @@ impl World {
                             mesh_def_index.push(start + i);
                             mesh_pivots.push(omsi_sim::anim::pivot_from_mesh(&m));
                         }
-                        Err(e) => log::debug!("{}: {e}", mesh_path.display()),
+                        Err(e) => log::warn!("scenery mesh {} (object {}): {e}", mesh_path.display(), path.display()),
                     }
                 }
             }
@@ -2095,11 +2095,15 @@ impl World {
                     } else {
                         omsi_cfg::resolve_path(&model_dir, &md.file)
                     };
-                    if let Ok(m) = omsi_o3d::load_mesh(&mesh_path) {
-                        list.push((mesh_from_o3d(&m), m.materials.clone(), md.materials.clone()));
+                    match omsi_o3d::load_mesh(&mesh_path) {
+                        Ok(m) => list.push((mesh_from_o3d(&m), m.materials.clone(), md.materials.clone())),
+                        Err(e) => log::warn!("scenery LOD {l} mesh {} (object {}): {e}", mesh_path.display(), path.display()),
                     }
                 }
                 lower_lods.push((model.lods[l].min_size, list));
+            }
+            if meshes.is_empty() && !model.lods.is_empty() && !model.lod_meshes(0).is_empty() {
+                log::warn!("scenery object {}: none of the {} primary meshes loaded; object may be invisible", path.display(), model.lod_meshes(0).len());
             }
             let lod0_min = model.lods.first().map(|l| l.min_size).unwrap_or(0.0);
             // [CTC] paint schemes (.cti items): texture substitutions for the chosen scheme
@@ -5348,8 +5352,13 @@ impl World {
                             ));
                             // an object lying on the road (a crossing, markings, a zebra)
                             // goes over the splines it overlaps
-                            if let Some(x) = scene.instances.get_mut(i) {
-                                x.decal = true;
+                            // Surface is an OMSI rendering classification, not a guarantee that
+                            // the geometry is a road marking. Keep the surface render path,
+                            // but reserve decal ordering for actual ground-warped crossings.
+                            if warped.is_some() {
+                                if let Some(x) = scene.instances.get_mut(i) {
+                                    x.decal = true;
+                                }
                             }
                             i
                         } else {
