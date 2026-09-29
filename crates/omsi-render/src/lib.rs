@@ -5199,11 +5199,15 @@ impl Renderer {
     }
 
     /// A dynamic alpha value is never allowed to fade an opaque body panel; only
-    /// genuinely transparent materials (blend/test) may follow the script value.
+    /// blended materials follow the script value. An alpha-tested slot is cut out by its
+    /// texture or transmap alone: the Thüringer Wald buses put `[alphascale]
+    /// Envir_Brightness` on their transmapped body and roof (`[matl_alpha] 1`), which is 0
+    /// at night, and scaled by it the whole roof went at dusk - with alpha to coverage
+    /// under MSAA the colour pass drew none of its samples - while in OMSI it stays.
     pub fn clamp_slot_alpha(alpha: f32, material_alpha: AlphaMode) -> f32 {
         match material_alpha {
-            AlphaMode::Opaque => 1.0,
-            _ => alpha,
+            AlphaMode::Opaque | AlphaMode::Test => 1.0,
+            AlphaMode::Blend => alpha,
         }
     }
 
@@ -9862,7 +9866,8 @@ mod tests {
     fn opaque_materials_ignore_dynamic_alpha() {
         assert_eq!(Renderer::clamp_slot_alpha(0.0, AlphaMode::Opaque), 1.0);
         assert_eq!(Renderer::clamp_slot_alpha(0.35, AlphaMode::Opaque), 1.0);
-        assert_eq!(Renderer::clamp_slot_alpha(0.35, AlphaMode::Test), 0.35);
+        assert_eq!(Renderer::clamp_slot_alpha(0.0, AlphaMode::Test), 1.0);
+        assert_eq!(Renderer::clamp_slot_alpha(0.35, AlphaMode::Test), 1.0);
         assert_eq!(Renderer::clamp_slot_alpha(0.85, AlphaMode::Blend), 0.85);
     }
 }
