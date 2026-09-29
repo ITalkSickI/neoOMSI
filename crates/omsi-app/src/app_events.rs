@@ -99,9 +99,10 @@ impl ApplicationHandler for App {
                     );
                 }
             }
+            // (the middle button - the wheel pressed - turns the view as well: OMSI's pan)
             WindowEvent::MouseInput {
                 state,
-                button: winit::event::MouseButton::Right,
+                button: winit::event::MouseButton::Right | winit::event::MouseButton::Middle,
                 ..
             } => {
                 if self.navigator.as_ref().map(|n| n.map_open()).unwrap_or(false) {
@@ -2044,12 +2045,17 @@ impl App {
                 }
             }
         }
-        if self.view == "outside" && self.player.is_some() {
+        let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+        if self.view == "outside" && self.player.is_some() && ctrl {
+            // Ctrl+wheel: the outside camera stays where it is and narrows its field of view
+            // (a telephoto; OMSI's own zoom there only moves the camera, as the wheel does)
+            self.zoom_by(amount);
+        } else if self.view == "outside" && self.player.is_some() {
             self.orbit = (self.orbit - amount * 1.5).clamp(ORBIT_MIN, ORBIT_MAX);
         } else if matches!(self.view.as_str(), "driver" | "pax") && self.player.is_some() {
             // inside the bus the wheel zooms, as in OMSI (the camera itself stays in the seat)
             self.zoom_by(amount);
-        } else if matches!(self.view.as_str(), "free" | "foot") && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::ControlRight) {
+        } else if matches!(self.view.as_str(), "free" | "foot") && !ctrl {
             // the free camera and on foot: the wheel zooms too (Ctrl+wheel moves the free
             // camera on, as the wheel alone did)
             self.zoom_by(amount);
