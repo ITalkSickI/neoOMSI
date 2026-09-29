@@ -1288,7 +1288,7 @@ impl ApplicationHandler for App {
                                 let wheels = puddles::wheel_contacts(&p.vehicle);
                                 let speed = p.vehicle.physics.velocity_kmh().abs() / 3.6;
                                 let wetness = self.wetness;
-                                scene.coronas.extend(self.splashes.update(
+                                scene.smoke.extend(self.splashes.update(
                                     dt,
                                     &wheels,
                                     speed,

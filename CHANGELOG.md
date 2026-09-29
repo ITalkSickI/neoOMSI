@@ -127,6 +127,8 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   give it an action right there.
 - Railway signals clear for the player's own train as well (driven on the rails): its
   signals stayed at stop, as only an AI train ever asked for them.
+- Puddle splashes are a mist of water - soft, lit by the scene, widening and thinning out as
+  it sinks - instead of rings of glowing light flying off the wheels.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

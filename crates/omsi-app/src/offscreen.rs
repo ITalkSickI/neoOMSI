@@ -2174,7 +2174,7 @@ pub(crate) fn run_offscreen(
                 let mut sp = puddles::Splashes::new();
                 for _ in 0..30 {
                     scene
-                        .coronas
+                        .smoke
                         .extend(sp.update(1.0 / 30.0, &wheels, speed, &|x, y| {
                             puddles::puddle_coverage(x, y, world.wet_road_at(x, y, wetness))
                         }));
