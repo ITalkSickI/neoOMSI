@@ -6395,7 +6395,16 @@ impl Renderer {
         } else {
             (full_w, full_h)
         };
-        let scaled = (width, height) != (full_w, full_h);
+        // FXAA on the plain graphics too, where there is no multisampling to smooth the
+        // edges (the Enhanced path has it in its post passes): the picture is drawn into a
+        // texture of the window's size and smoothed on its way to the window, the HUD after
+        let vanilla_fxaa = with_overlays
+            && (width, height) == (full_w, full_h)
+            && self.options.fxaa
+            && self.options.msaa <= 1
+            && !(lighting.enhanced && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none())
+            && omsi_cfg::env::var_os("OMSI_NO_FXAA").is_none();
+        let scaled = (width, height) != (full_w, full_h) || vanilla_fxaa;
         let scene_target: Option<(wgpu::TextureView, wgpu::BindGroup)> = if scaled {
             Some(self.scale_target(width, height))
         } else {
@@ -7926,7 +7935,7 @@ impl Renderer {
             self.queue.write_buffer(
                 &self.upscale_buf,
                 0,
-                bytemuck::cast_slice(&[width as f32, height as f32, sharpen.clamp(0.0, 0.8), 0.0]),
+                bytemuck::cast_slice(&[width as f32, height as f32, sharpen.clamp(0.0, 0.8), if vanilla_fxaa { 1.0 } else { 0.0 }]),
             );
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("upscale"),
