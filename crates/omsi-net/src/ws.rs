@@ -153,6 +153,7 @@ pub fn http_base(target: &str) -> Option<String> {
 
 /// Ask a server (by its address as typed) about itself: its status and its icon.
 pub fn query(target: &str, with_icon: bool) -> Result<ServerInfo, String> {
+    let target = &crate::official::resolve_target(target)?;
     let base = http_base(target).ok_or_else(|| "not a server address (https://…)".to_string())?;
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(6)).user_agent("openOMSI").build();
     let body = agent.get(&format!("{base}/status")).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string())?;

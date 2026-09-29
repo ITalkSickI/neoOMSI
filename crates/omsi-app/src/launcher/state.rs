@@ -55,6 +55,14 @@ fn host_status(code: &str) -> Result<omsi_net::ws::ServerInfo, String> {
     }
 }
 
+/// The list as saved, with the official server first when it is not in it.
+fn with_official(mut list: Vec<ServerEntry>) -> Vec<ServerEntry> {
+    if !list.iter().any(|s| omsi_net::official::is_alias(&s.address)) {
+        list.insert(0, ServerEntry { name: omsi_net::official::NAME.into(), address: omsi_net::official::ALIAS.into() });
+    }
+    list
+}
+
 fn servers_path() -> std::path::PathBuf {
     core::data_dir().join("servers.json")
 }
@@ -248,7 +256,7 @@ impl State {
             poll_t: 0.0,
             polling: false,
             second_armed: None,
-            servers: std::fs::read(servers_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default(),
+            servers: with_official(std::fs::read(servers_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()),
             server_info: Default::default(),
             server_asked: Default::default(),
             joined_server: None,
