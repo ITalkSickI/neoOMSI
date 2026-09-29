@@ -1966,6 +1966,14 @@ pub fn duty_args(d: &Duty) -> Result<Vec<String>> {
         if let Some(p) = d.profile.as_deref().filter(|p| !p.trim().is_empty()) {
             a.extend(["--driver".into(), format!("Drivers/{}.odr", p.trim())]);
         }
+        // the traffic and the people as for any other start: a situation file keeps the
+        // vehicles the player placed, not how busy the streets are (OMSI takes that from its
+        // options), and without these a continued session had the timetable buses alone -
+        // no cars, nobody at the stops (#136)
+        a.extend(["--traffic".into(), d.traffic.unwrap_or(30).to_string()]);
+        if d.passengers.unwrap_or(true) {
+            a.push("--passengers".into());
+        }
         return Ok(a);
     }
     let mut a: Vec<String> = vec!["--root".into(), root.to_string_lossy().to_string(), "--no-menu".into(), "--map".into(), d.map.clone(), "--bus".into(), d.bus.clone(), "--time".into(), if d.time.trim().is_empty() { "09:00".into() } else { d.time.trim().to_string() }];
