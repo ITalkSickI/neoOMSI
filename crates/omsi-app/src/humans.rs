@@ -718,6 +718,25 @@ fn crosses_street(net: &Network, a: DVec2, b: DVec2) -> bool {
     false
 }
 
+/// Whether a point lies on a carriageway: within half a street lane's width (and 30 cm)
+/// of its centre line, at about the height of `z`.
+fn on_carriageway(net: &Network, p: DVec3) -> bool {
+    let q = p.truncate();
+    net.grid
+        .get(&Network::grid_cell(p))
+        .map(|v| v.as_slice())
+        .unwrap_or(&[])
+        .iter()
+        .map(|&i| &net.lanes[i])
+        .filter(|l| l.kind == LaneKind::Street)
+        .any(|l| {
+            l.points.windows(2).any(|w| {
+                let (c, _) = crowd::project_on_segment(q, w[0].truncate(), w[1].truncate());
+                c.distance(q) < l.width as f64 * 0.5 + 0.3 && (w[0].z - p.z).abs() < 2.0
+            })
+        })
+}
+
 /// Whether the segments `a`-`b` and `c`-`d` cross.
 fn segments_cross(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> bool {
     let side = |p: DVec2, q: DVec2, r: DVec2| (q - p).perp_dot(r - p);
@@ -5486,9 +5505,14 @@ impl Humans {
                     // and allowed 4 m they stood out on the road before the bus had stopped
                     // (a bus pulling in along the far lane, #123)
                     let clear = bn.half.x + 1.0;
-                    if lat > clear + 0.3 {
-                        let home = sp.floor().truncate();
-                        let target = home + (pos2 - side / lat * (lat - clear) - home).clamp_length_max(1.2);
+                    let home = sp.floor().truncate();
+                    let target = home + (pos2 - side / lat.max(1e-6) * (lat - clear) - home).clamp_length_max(1.2);
+                    // (never off the pavement: a waiting place at the kerb's edge had them
+                    // step out onto the carriageway in front of the bus, #123)
+                    let off_kerb = net.is_some_and(|n| {
+                        on_carriageway(n, target.extend(sp.floor().z)) || crosses_street(n, home, target)
+                    });
+                    if lat > clear + 0.3 && !off_kerb {
                         let d = (target - pos2).length();
                         self.people[i].why = "steps forward to meet the bus";
                         return Want {
@@ -7303,7 +7327,6 @@ impl Humans {
         buses: &[BusNow],
         bus_ix: &HashMap<BusId, usize>,
     ) {
-        let ground_floor = |at: DVec2| world.walk_height(at.x, at.y);
         for i in 0..self.people.len() {
             if let Some(pp) = self.people[i].puppet {
                 if pp.mode == PuppetMode::Avatar {
@@ -7475,6 +7498,8 @@ impl Humans {
                     b.cabin.floor_at(at, b.half.x, level)
                 }
             });
+            // (the floor at the feet' own height: a shelter's roof over them is no floor)
+            let ground_floor = move |at: DVec2| world.walk_height_near(at.x, at.y, level);
             let floor: &dyn Fn(DVec2) -> Option<f64> = match &bus_floor {
                 Some(f) => f,
                 None => &ground_floor,
@@ -8388,7 +8413,8 @@ impl Humans {
                 // (in the air the feet go with the body: the floor under them is where they are)
                 let air_floor = origin.z;
                 let floor_air = move |_: DVec2| Some(air_floor);
-                let floor_ground = |at: DVec2| world.walk_height(at.x, at.y);
+                let level = origin.z;
+                let floor_ground = move |at: DVec2| world.walk_height_near(at.x, at.y, level);
                 let floor: &dyn Fn(DVec2) -> Option<f64> = if airborne { &floor_air } else { &floor_ground };
                 let speed = cmd.vel.length();
                 let input = PoseInput {
