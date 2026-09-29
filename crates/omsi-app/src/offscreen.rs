@@ -605,6 +605,21 @@ pub(crate) fn run_offscreen(
                     last_reasons = why;
                 }
                 lay_down_poles(&world, &renderer, &mut scene, &mut player.vehicle);
+                // the worst the bus did on the way (a bus on end, flying, through the ground)
+                {
+                    let v = &player.vehicle;
+                    let g = world.ground_height(v.position.x, v.position.y).map(|g| v.position.z - g).unwrap_or(0.0);
+                    let mut e = DRIVE_EXTREMES.lock();
+                    if v.pitch.abs() > e.0.abs() {
+                        e.0 = v.pitch;
+                        e.4 = (v.position, t_s);
+                    }
+                    if v.bank.abs() > e.1.abs() {
+                        e.1 = v.bank;
+                    }
+                    e.2 = e.2.max(g);
+                    e.3 = e.3.min(g);
+                }
                 if physics_log > 0.0
                     && (t_s / physics_log).floor() != ((t_s + dt) / physics_log).floor()
                 {
@@ -1062,6 +1077,10 @@ pub(crate) fn run_offscreen(
                         probe(0.0, 0.0, -1.0)
                     );
                 }
+            }
+            {
+                let e = DRIVE_EXTREMES.lock();
+                log::info!("drive extremes: pitch {:.1} (at ({:.1}, {:.1}, {:.1}), {:.1} s) bank {:.1}, origin {:+.2}..{:+.2} m over the ground", e.0, e.4 .0.x, e.4 .0.y, e.4 .0.z, e.4 .1, e.1, e.3, e.2);
             }
             if let Ok(list) = omsi_cfg::env::var("OMSI_DEBUG_VARS") {
                 for v in list.split(',').map(str::trim).filter(|v| !v.is_empty()) {
@@ -2500,6 +2519,10 @@ fn tyre_lows(v: &omsi_sim::VehicleInstance, world: &World) -> Vec<(DVec3, f64)> 
     }
     out
 }
+
+/// The worst pitch and bank of the drive, the origin's highest and lowest over the ground,
+/// and where and when the worst pitch was.
+static DRIVE_EXTREMES: parking_lot::Mutex<(f32, f32, f64, f64, (DVec3, f32))> = parking_lot::Mutex::new((0.0, 0.0, f64::MIN, f64::MAX, (DVec3::ZERO, 0.0)));
 
 /// `OMSI_CAM_VEHICLE=x,y,z,yaw,pitch[,fov]`: a camera in the bus's own frame (x right,
 /// y forward, z up; yaw relative to the bus) for close-ups of displays and switches - the

@@ -457,6 +457,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         controllers: None,
         mouse_drive: false,
         mouse_steer: (0.0, 0.0),
+        mouse_edge: 0.0,
         mouse_pedals: (0.0, 0.0),
         mouse_kmh: 0.0,
         tutorial: None,

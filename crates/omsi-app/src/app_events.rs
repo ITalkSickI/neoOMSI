@@ -488,7 +488,10 @@ impl ApplicationHandler for App {
                     let k_v = 1.0 - (-dt / 0.4).exp();
                     self.mouse_kmh += (raw_kmh - self.mouse_kmh) * k_v;
                     let kmh = self.mouse_kmh;
-                    let target = (crate::player::mouse_steering(self.cursor.0, w, kmh) * self.settings.mouse_sens).clamp(-1.0, 1.0);
+                    let base = (crate::player::mouse_steering(self.cursor.0, w, kmh) * self.settings.mouse_sens).clamp(-1.0, 1.0);
+                    // (what the mouse added at the edge, up to the full lock)
+                    self.mouse_edge = self.mouse_edge.clamp((-1.0 - base).min(0.0), (1.0 - base).max(0.0));
+                    let target = (base + self.mouse_edge).clamp(-1.0, 1.0);
                     // the pedals as Omsi.exe has them: from the middle of the window to its
                     // top edge the throttle, to the bottom one the brake, straight on
                     let y = (2.0 * self.cursor.1 / h.max(1.0) - 1.0).clamp(-1.0, 1.0);
@@ -1920,11 +1923,16 @@ impl ApplicationHandler for App {
         if let DeviceEvent::MouseMotion { delta } = event {
             if self.mouse_look {
                 self.look_by(delta.0 as f32 * 0.15, delta.1 as f32 * 0.15);
+            } else if self.mouse_drive && self.game_menu.is_none() {
+                self.mouse_past_edge(delta.0 as f32);
             }
         }
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if self.mouse_edge != 0.0 && !self.mouse_drive {
+            self.mouse_edge = 0.0;
+        }
         if let Some(w) = &self.window {
             w.request_redraw();
         }
@@ -2019,6 +2027,10 @@ impl App {
             self.orbit = (self.orbit - amount * 1.5).clamp(ORBIT_MIN, ORBIT_MAX);
         } else if matches!(self.view.as_str(), "driver" | "pax") && self.player.is_some() {
             // inside the bus the wheel zooms, as in OMSI (the camera itself stays in the seat)
+            self.zoom_by(amount);
+        } else if matches!(self.view.as_str(), "free" | "foot") && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::ControlRight) {
+            // the free camera and on foot: the wheel zooms too (Ctrl+wheel moves the free
+            // camera on, as the wheel alone did)
             self.zoom_by(amount);
         } else if let Some(cam) = self.camera.as_mut() {
             let f = cam.forward();

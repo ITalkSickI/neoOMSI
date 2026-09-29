@@ -116,6 +116,11 @@ pub(crate) struct App {
     /// Mouse steering: the steering it gives (fraction of the full lock) and how long (s)
     /// it still eases in after being switched on (OMSI: a second, see app_events).
     pub(crate) mouse_steer: (f32, f32),
+    /// Mouse steering past the window's edge: the lock the mouse added while the cursor stood
+    /// pinned at the left or right edge (-1..1 of full lock). OMSI divides the width by the
+    /// speed, and at 30 km/h the edge of the screen was a third of the lock, with nowhere
+    /// further to move.
+    pub(crate) mouse_edge: f32,
     /// The mouse's throttle and brake (eased in with the steering).
     pub(crate) mouse_pedals: (f32, f32),
     /// The speed mouse steering divides by, smoothed.

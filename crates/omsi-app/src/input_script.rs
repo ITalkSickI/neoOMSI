@@ -481,9 +481,13 @@ impl App {
                 self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight);
             let covers_vehicle_key = fallback_action(code, wasd).is_some() && self.view != "free";
             let driving_key = covers_vehicle_key && !shift;
+            // (the keys that fly the free camera are the camera's: W switched the wipers on
+            // while flying)
+            let fly_key = self.view == "free"
+                && matches!(code, KeyCode::KeyW | KeyCode::KeyA | KeyCode::KeyS | KeyCode::KeyD | KeyCode::KeyQ | KeyCode::KeyE | KeyCode::Space | KeyCode::ShiftLeft | KeyCode::ArrowLeft | KeyCode::ArrowRight | KeyCode::ArrowUp | KeyCode::ArrowDown);
             if let (Some(p), Some(scan)) = (
                 self.player.as_mut(),
-                keys::dik_code(code).filter(|_| !driving_key),
+                keys::dik_code(code).filter(|_| !driving_key && !fly_key),
             ) {
                 if !repeat {
                     let m = if covers_vehicle_key {
@@ -662,6 +666,29 @@ impl App {
     /// draining - no frame was drawn while the mouse moved.
     pub(crate) fn on_mouse_moved(&mut self, x: f32, y: f32) {
         self.move_cursor(x, y);
+    }
+
+    /// Mouse steering beyond the window's edge: with the cursor pinned at the left or right
+    /// edge, the mouse moving on outwards turns the wheel further (the whole width per full
+    /// lock, as standing); moving back gives that back first, the cursor held at the edge
+    /// until it is used up, so the wheel never jumps.
+    pub(crate) fn mouse_past_edge(&mut self, dx: f32) {
+        let Some(w) = self.surface.as_ref().map(|s| s.config.width as f32) else { return };
+        let per_px = 2.0 / w.max(1.0);
+        let (at_left, at_right) = (self.cursor.0 <= 2.0, self.cursor.0 >= w - 3.0);
+        let before = self.mouse_edge;
+        if (at_right && dx > 0.0) || (at_left && dx < 0.0) {
+            self.mouse_edge = (self.mouse_edge + dx * per_px).clamp(-2.0, 2.0);
+        } else if (self.mouse_edge > 0.0 && dx < 0.0) || (self.mouse_edge < 0.0 && dx > 0.0) {
+            let m = self.mouse_edge + dx * per_px;
+            self.mouse_edge = if m.signum() != before.signum() { 0.0 } else { m };
+            // (the cursor stays where it was: the move went into the wheel)
+            if let Some(win) = self.window.as_ref() {
+                let x = if before > 0.0 { w - 2.0 } else { 1.0 };
+                let _ = win.set_cursor_position(winit::dpi::PhysicalPosition::new(x as f64, self.cursor.1 as f64));
+                self.cursor.0 = x;
+            }
+        }
     }
 
     /// Take the cursor's new place; false when the move was someone else's (the object
@@ -866,6 +893,14 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 "move" => {
                     let (x, y) = xy();
                     self.on_cursor(x * scale, y * scale);
+                }
+                // `rawmouse dx`: the mouse moved by dx device units (past the window's edge
+                // too, as mouse steering takes it)
+                "rawmouse" => {
+                    let (dx, _) = xy();
+                    if self.mouse_drive && self.game_menu.is_none() {
+                        self.mouse_past_edge(dx);
+                    }
                 }
                 "drag" => {
                     let (dx, dy) = xy();

@@ -47,6 +47,14 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   yellow surface marking: paint 10 cm up, height profile 50 cm) is taken at the drawn
   height: it was an invisible wall across the road. `OMSI_CHECK_WHEELS=1` with `--offscreen`
   lists what the wheels meet along the driving lanes (for map makers).
+- Mouse steering turns on to the full lock past the window's edge: with the cursor at the
+  edge, moving the mouse on outwards keeps turning the wheel (the width of the window is a
+  smaller part of the lock the faster the bus goes, as in OMSI, and at 30 km/h the edge was
+  a third of it); moving back gives that turn back first.
+- The free camera (F4): its keys (W A S D Q E, Space, Shift, the arrows) no longer work the
+  bus as well (W switched the wipers on), and the mouse wheel zooms there and on foot
+  (Ctrl+wheel moves the camera on).
+- Snow is matte: it no longer takes the rain's gloss and shines like plastic in the lights.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

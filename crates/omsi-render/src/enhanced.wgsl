@@ -465,8 +465,11 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         }
     }
     // rain: roads with [moisture] turn dark and smooth, everything outside a little glossier
-    let wet_road = camera.shadow.w * material.params2.z * outside;
-    let wet_any = camera.shadow.w * outside * select(0.35, 0.0, glass);
+    // (not under snow: a snowy road took the rain's gloss and the snow on it shone like
+    // plastic in every headlight)
+    let dry_snow = 1.0 - clamp(enh.weather.y, 0.0, 1.0);
+    let wet_road = camera.shadow.w * material.params2.z * outside * dry_snow;
+    let wet_any = camera.shadow.w * outside * select(0.35, 0.0, glass) * dry_snow;
     if (wet_road > 0.0) {
         albedo = albedo * mix(1.0, 0.5, wet_road);
         rough = mix(rough, 0.12, wet_road);
@@ -521,8 +524,9 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         let ground = select(0.0, 1.0, terrain || material.params2.z > 0.0);
         let cover = snow * clamp(max(ground, smoothstep(0.78, 0.95, up) * 0.8), 0.0, 1.0) * (0.55 + 0.35 * tex.a);
         albedo = mix(albedo, vec3<f32>(0.82, 0.84, 0.88), cover);
-        rough = mix(rough, 0.65, cover);
-        f0 = mix(f0, vec3<f32>(0.03), cover);
+        // fresh snow is all but matte: it scatters the light and shows no highlight
+        rough = mix(rough, 0.95, cover);
+        f0 = mix(f0, vec3<f32>(0.02), cover);
         metal = metal * (1.0 - cover);
     }
     // specular antialiasing: where the normal turns quickly across a pixel (a low-poly
