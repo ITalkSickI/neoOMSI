@@ -5,6 +5,13 @@
   </picture>
 </p>
 
+<a href="https://discord.gg/nHgQWHrTXy">
+  <img alt="Aurora Discord" src="https://img.shields.io/badge/Aurora-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white">
+</a>
+<a href="https://member.aurora-studio.org/">
+  <img alt="Aurora Member Portal" src="https://img.shields.io/badge/Aurora-Member_Portal-f47f30?style=for-the-badge">
+</a>
+
 <p align="center">
   <a href="https://github.com/turbo-devv/openOMSI/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/turbo-devv/openOMSI?label=version&color=f47f30&style=for-the-badge"></a>
   <a href="https://github.com/turbo-devv/openOMSI/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/turbo-devv/openOMSI/release.yml?branch=main&style=for-the-badge&label=build"></a>
