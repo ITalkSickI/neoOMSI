@@ -6342,6 +6342,17 @@ impl Renderer {
         with_overlays: bool,
         exclude_texture: Option<TextureId>,
     ) {
+        // test hook for a lost device (a driver reset): its resources are taken away and
+        // the session has to end in order
+        if omsi_cfg::env::var("OMSI_FAKE_GPU_ERROR").as_deref() == Ok("lost")
+            && with_overlays
+            && self.started.elapsed().as_secs_f32() > 3.0
+            && self.device_lost().is_none()
+        {
+            log::error!("the graphics device was lost (test): OMSI_FAKE_GPU_ERROR=lost");
+            self.device.destroy();
+            *self.device_lost.lock().unwrap_or_else(|e| e.into_inner()) = Some("test".into());
+        }
         // the device is gone: nothing can be drawn, and the readbacks (the exposure meter)
         // would find their buffers taken away - "Error in Buffer::get_mapped_range:
         // Validation Error" ended the game instead of the session ending in order
@@ -7875,7 +7886,9 @@ impl Renderer {
                     );
                     self.adapt_front = 1 - front;
                 }
-                if let Some(log) = self.exposure_log.as_mut().filter(|_| with_overlays) {
+                // (a device lost since this frame began took the meter's buffer as well)
+                let lost = self.device_lost().is_some();
+                if let Some(log) = self.exposure_log.as_mut().filter(|_| with_overlays && !lost) {
                     let pre = self.exposure.unwrap_or(0.0) / std::f32::consts::LN_2;
                     log.sample(&mut encoder, &self.adapt_views[self.adapt_front], pre, m);
                 }
@@ -9070,8 +9083,25 @@ fn point_in_vehicle_box(p: DVec3, (origin, heading, bb): &(DVec3, f64, [f32; 6])
 
 /// Helper for windowed rendering.
 pub struct SurfaceState<'w> {
-    pub surface: wgpu::Surface<'w>,
+    /// (let go of in `drop`, unless the device was lost - see there)
+    pub surface: std::mem::ManuallyDrop<wgpu::Surface<'w>>,
     pub config: wgpu::SurfaceConfiguration,
+    /// The renderer's `device_lost`.
+    lost: Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl Drop for SurfaceState<'_> {
+    fn drop(&mut self) {
+        // After a lost device the frame it was drawing never finishes, and its swapchain
+        // image with it: letting the surface go (or configuring it again) then tears the
+        // swapchain down under that image - "Trying to destroy a SwapchainAcquireSemaphore
+        // that is still in use by a SurfaceTexture" (Vulkan) ended the game instead of the
+        // session ending in order. The window goes with the process anyway.
+        if self.lost.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
+            // SAFETY: dropped only here, once
+            unsafe { std::mem::ManuallyDrop::drop(&mut self.surface) };
+        }
+    }
 }
 
 impl<'w> SurfaceState<'w> {
@@ -9116,12 +9146,16 @@ impl<'w> SurfaceState<'w> {
         config.width = width.max(1);
         config.height = height.max(1);
         surface.configure(&renderer.device, &config);
-        Ok(SurfaceState { surface, config })
+        Ok(SurfaceState { surface: std::mem::ManuallyDrop::new(surface), config, lost: renderer.device_lost.clone() })
     }
 
     pub fn resize(&mut self, renderer: &Renderer, width: u32, height: u32) {
         self.config.width = width.max(1);
         self.config.height = height.max(1);
+        // (not after a lost device: see `drop`)
+        if renderer.device_lost().is_some() {
+            return;
+        }
         self.surface.configure(&renderer.device, &self.config);
     }
 }
