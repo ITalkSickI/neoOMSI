@@ -575,6 +575,10 @@ struct Placing {
     objects: usize,
     /// Seconds per phase (OMSI_PROFILE).
     secs: [f64; 4],
+    /// The tile's ground materials for `[terrainmapping]` slots: the base layer (without
+    /// the roads' cut, which would punch holes into a traffic island) and every painted
+    /// layer (`true`), as the ground itself is drawn.
+    ground_mats: Vec<(MaterialId, bool)>,
 }
 
 impl PendingUpload {
@@ -661,6 +665,11 @@ struct TypeGpu {
     /// `lods`).
     lod0_lo: f32,
     lod0_max: f32,
+    /// Material slots whose texture carries `[terrainmapping]`: (level: 0 the first,
+    /// k the k-th of `lods`, mesh index in that level, slot).
+    terrain_slots: Vec<(usize, usize, usize)>,
+    /// The meshes without those slots, made once for all placements: ((level, mesh), id).
+    terrain_rest: Vec<((usize, usize), MeshId)>,
 }
 
 struct SplineGpu {
@@ -668,6 +677,9 @@ struct SplineGpu {
     materials: Vec<MaterialId>,
     textures: Vec<PathBuf>,
     users: usize,
+    /// Texture slots with `[terrainmapping]` (the grass verges of Berlin-Spandau's
+    /// `Splines/Ruede`): drawn with the ground of the tile, like such an object's slots.
+    terrain: Vec<usize>,
 }
 
 struct TreeGpu {
@@ -1025,6 +1037,7 @@ impl GpuCache {
                 let t = self.types.remove(&key).unwrap();
                 let mut meshes: Vec<MeshId> = t.meshes.iter().map(|m| m.0).collect();
                 meshes.extend(t.lods.iter().flat_map(|l| l.2.iter().map(|m| m.0)));
+                meshes.extend(t.terrain_rest.iter().map(|r| r.1));
                 for m in meshes {
                     renderer.free_mesh(scene, m);
                     self.free_meshes.push(m);
@@ -1167,6 +1180,64 @@ fn bilinear_alpha(img: &Image, u: f32, v: f32) -> f32 {
     let top = a(x0, y0) * (1.0 - tx) + a(x0 + 1, y0) * tx;
     let bottom = a(x0, y0 + 1) * (1.0 - tx) + a(x0 + 1, y0 + 1) * tx;
     top * (1.0 - ty) + bottom * ty
+}
+
+/// Split the material slots of an object mesh whose texture carries `[terrainmapping]`
+/// off into a mesh of their own. OMSI does not draw such a slot with its texture (the
+/// stock ones are a 1x1 placeholder, TH_Wald's Gras01.dds a single green pixel): the slot
+/// takes on the ground of the tile it stands on, so that the grass on top of a rock, a
+/// traffic island or a roundabout runs on seamlessly from the meadow around it. The split
+/// mesh therefore gets the terrain's own uv (tile space, see `build_terrain_mesh`) for
+/// the object placed at `pos`/`xf` on the tile at `origin`, and is drawn with the tile's
+/// ground materials. Returns the mesh without those slots and the split-off one.
+#[cfg(test)]
+fn split_terrain_mapped(
+    src: &MeshData,
+    slots: &[usize],
+    pos: DVec3,
+    xf: Mat4,
+    origin: DVec3,
+) -> (MeshData, MeshData) {
+    (terrain_rest(src, slots), terrain_ground(src, slots, pos, xf, origin))
+}
+
+/// The mesh without its `[terrainmapping]` slots (see `split_terrain_mapped`): the same for
+/// every placement of a type, so it is made once per type.
+fn terrain_rest(src: &MeshData, slots: &[usize]) -> MeshData {
+    let mut rest = src.clone();
+    rest.ranges.retain(|r| !slots.contains(&(r.2 as usize)));
+    rest
+}
+
+/// The `[terrainmapping]` slots of a mesh in tile space (see `split_terrain_mapped`).
+fn terrain_ground(src: &MeshData, slots: &[usize], pos: DVec3, xf: Mat4, origin: DVec3) -> MeshData {
+    let mut ground = MeshData {
+        one_sided: src.one_sided,
+        ..MeshData::default()
+    };
+    let mut map: HashMap<u32, u32> = HashMap::new();
+    let to_tile = (pos - origin) / tile_size();
+    for &(start, count, slot) in &src.ranges {
+        if !slots.contains(&(slot as usize)) {
+            continue;
+        }
+        for &k in &src.indices[start as usize..(start + count) as usize] {
+            let v = *map.entry(k).or_insert_with(|| {
+                let p = src.positions[k as usize];
+                let local = xf.transform_point3(p).as_dvec3() / tile_size() + to_tile;
+                ground.positions.push(p);
+                ground.normals.push(src.normals.get(k as usize).copied().unwrap_or(glam::Vec3::Z));
+                ground.uvs.push(glam::Vec2::new(local.x as f32, local.y as f32));
+                ground.positions.len() as u32 - 1
+            });
+            ground.indices.push(v);
+        }
+    }
+    let n = ground.indices.len() as u32;
+    if n > 0 {
+        ground.ranges.push((0, n, 0));
+    }
+    ground
 }
 
 /// Two crossed unit quads (1 m wide, 1 m tall, centred at x=0, standing on z=0).
@@ -4710,6 +4781,8 @@ impl World {
             auto_night: false,
             lod0_lo: 0.0,
             lod0_max: f32::MAX,
+            terrain_slots: Vec::new(),
+            terrain_rest: Vec::new(),
         };
         for (mesh, o3d_mats, overrides) in &ot.meshes {
             let mut mats: Vec<MaterialId> = Vec::new();
@@ -4834,6 +4907,9 @@ impl World {
                     if c.moisture || c.puddles {
                         extra.moisture = 1.0;
                     }
+                    if c.terrain_mapping {
+                        t.terrain_slots.push((0, t.meshes.len(), slot));
+                    }
                 }
                 let clamp = overrides
                     .iter()
@@ -4934,6 +5010,12 @@ impl World {
                             None => None,
                         }
                     };
+                    if tex.is_some() {
+                        let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
+                        if self.textures.cfg(&m.texture, &dirs_ref).terrain_mapping {
+                            t.terrain_slots.push((k + 1, l.len(), slot));
+                        }
+                    }
                     let mat = renderer.add_material_night(
                         scene,
                         tex,
@@ -5253,6 +5335,27 @@ impl World {
                             Mat4::IDENTITY,
                             vec![mat]
                         ));
+                        // (the base layer once more without the cut, when the tile has one)
+                        let uncut = match (&p.cut, lm) {
+                            (None, _) => mat,
+                            (Some(_), None) => plain_terrain_mat,
+                            (Some(_), Some(_)) => {
+                                let m = renderer.add_terrain_material(
+                                    scene,
+                                    ground_id,
+                                    None,
+                                    ground_detail,
+                                    ground_repeats,
+                                    lm,
+                                    ground_wet,
+                                );
+                                let m = gpu.material(renderer, scene, m);
+                                tg.materials.push(m);
+                                m
+                            }
+                        };
+                        pl.ground_mats.clear();
+                        pl.ground_mats.push((uncut, false));
                         // The painted ground: every further [groundtex] the editor's brush put on this
                         // tile is the same tile mesh once more, blended in through its own mask - which
                         // is how OMSI's car parks get their asphalt, its side streets their cobbles and
@@ -5291,6 +5394,7 @@ impl World {
                             );
                             let m = gpu.material(renderer, scene, m);
                             tg.materials.push(m);
+                            pl.ground_mats.push((m, true));
                             let li = instance!(renderer.add_surface_instance(
                                 scene,
                                 id,
@@ -5357,6 +5461,7 @@ impl World {
                             materials: Vec::new(),
                             textures: Vec::new(),
                             users: 0,
+                            terrain: Vec::new(),
                         };
                         for t in &st.def.textures {
                             let tex = gpu.texture(renderer, scene, &t.file, &dirs, images).map(
@@ -5373,6 +5478,9 @@ impl World {
                             let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
                             let cfg = self.textures.cfg(&t.file, &dirs_ref);
                             let wet = cfg.moisture || cfg.puddles;
+                            if cfg.terrain_mapping {
+                                sg.terrain.push(sg.materials.len());
+                            }
                             // (lit at night by the tile's light map, as OMSI lights the roads)
                             renderer.light_map_next.set(true);
                             let m = renderer.add_material_wet(
@@ -5409,7 +5517,24 @@ impl World {
                             / mesh.normals.len().max(1) as f32;
                         log::info!("upload spline {} origin={:?} ranges={:?} mats={:?} mean normal z={mean_nz:+.2} verts={} first positions {:?}", st.def.path.display(), p.origin, &mesh.ranges[..mesh.ranges.len().min(3)], mats, mesh.positions.len(), &mesh.positions[..mesh.positions.len().min(3)]);
                     }
-                    let id = gpu.add_mesh(renderer, scene, mesh);
+                    // [terrainmapping] slots take the ground of the tile: the spline's mesh
+                    // is in tile space already, so the ground's uv is its own position
+                    let terrain: Vec<usize> = if pl.ground_mats.is_empty() {
+                        Vec::new()
+                    } else {
+                        sg.terrain.iter().copied().filter(|t| mesh.ranges.iter().any(|r| r.2 as usize == *t)).collect()
+                    };
+                    let id = if terrain.is_empty() {
+                        gpu.add_mesh(renderer, scene, mesh)
+                    } else {
+                        let ground = terrain_ground(mesh, &terrain, p.origin, Mat4::IDENTITY, p.origin);
+                        let gid = gpu.add_mesh(renderer, scene, &ground);
+                        tg.meshes.push(gid);
+                        for &(mat, _) in &pl.ground_mats {
+                            let _ = instance!(renderer.add_surface_instance(scene, gid, p.origin, Mat4::IDENTITY, vec![mat]));
+                        }
+                        gpu.add_mesh(renderer, scene, &terrain_rest(mesh, &terrain))
+                    };
                     tg.meshes.push(id);
                     let _ = instance!(renderer.add_surface_instance(
                         scene,
@@ -5496,9 +5621,9 @@ impl World {
                         gpu.types.get_mut(&tkey).unwrap().users += 1;
                         tg.types.push(tkey);
                     }
-                    let (type_meshes, type_variants, type_lods, type_auto_night, lod0_lo, lod0_max) = {
+                    let (type_meshes, type_variants, mut type_lods, type_auto_night, lod0_lo, lod0_max, terrain_slots) = {
                         let t = &gpu.types[&tkey];
-                        (t.meshes.clone(), t.variants.clone(), t.lods.clone(), t.auto_night, t.lod0_lo, t.lod0_max)
+                        (t.meshes.clone(), t.variants.clone(), t.lods.clone(), t.auto_night, t.lod0_lo, t.lod0_max, t.terrain_slots.clone())
                     };
                     let surface =
                         !matches!(ot.sco.render_type, omsi_scenery::sco::RenderType::Normal)
@@ -5511,7 +5636,7 @@ impl World {
                     let mut script_texts: Vec<(TextureId, omsi_sim::texttex::TextTextureState)> =
                         Vec::new();
                     // a crossing warped onto the ground has meshes of its own
-                    let own_meshes: Option<Vec<(MeshId, Vec<MaterialId>)>> = warped.map(|ms| {
+                    let own_meshes: Option<Vec<(MeshId, Vec<MaterialId>)>> = warped.as_ref().map(|ms| {
                         ms.iter()
                             .zip(type_meshes.iter())
                             .map(|(m, (_, mats))| {
@@ -5521,8 +5646,59 @@ impl World {
                             })
                             .collect()
                     });
-                    let mesh_list: &Vec<(MeshId, Vec<MaterialId>)> =
-                        own_meshes.as_ref().unwrap_or(&type_meshes);
+                    let mut mesh_list: Vec<(MeshId, Vec<MaterialId>)> =
+                        own_meshes.unwrap_or_else(|| type_meshes.clone());
+                    // [terrainmapping] slots: drawn with the ground of this tile, from a mesh
+                    // of this placement's own (see split_terrain_mapped); (level, mesh, id)
+                    let mut ground_meshes: Vec<(usize, usize, MeshId)> = Vec::new();
+                    if !pl.ground_mats.is_empty() {
+                        let mut parts: Vec<(usize, usize)> =
+                            terrain_slots.iter().map(|t| (t.0, t.1)).collect();
+                        parts.dedup();
+                        for (level, mi) in parts {
+                            let slots: Vec<usize> = terrain_slots
+                                .iter()
+                                .filter(|t| (t.0, t.1) == (level, mi))
+                                .map(|t| t.2)
+                                .collect();
+                            let src = if level == 0 {
+                                warped.as_ref().and_then(|w| w.get(mi)).or(ot.meshes.get(mi).map(|m| &m.0))
+                            } else {
+                                ot.lower_lods.get(level - 1).and_then(|l| l.1.get(mi)).map(|m| &m.0)
+                            };
+                            let Some(src) = src else { continue };
+                            let ground = terrain_ground(src, &slots, pos, xf, p.origin);
+                            if ground.is_empty() {
+                                continue;
+                            }
+                            // (a crossing warped onto the ground has a mesh of its own; the
+                            // rest of every other object is the same for all its placements)
+                            let rest_id = if level == 0 && warped.is_some() {
+                                let id = gpu.add_mesh(renderer, scene, &terrain_rest(src, &slots));
+                                tg.meshes.push(id);
+                                id
+                            } else if let Some(&(_, id)) = gpu.types[&tkey].terrain_rest.iter().find(|r| r.0 == (level, mi)) {
+                                id
+                            } else {
+                                let id = gpu.add_mesh(renderer, scene, &terrain_rest(src, &slots));
+                                if let Some(t) = gpu.types.get_mut(&tkey) {
+                                    t.terrain_rest.push(((level, mi), id));
+                                }
+                                id
+                            };
+                            let slot = if level == 0 {
+                                mesh_list.get_mut(mi)
+                            } else {
+                                type_lods.get_mut(level - 1).and_then(|l| l.2.get_mut(mi))
+                            };
+                            if let Some(slot) = slot {
+                                slot.0 = rest_id;
+                            }
+                            let ground_id = gpu.add_mesh(renderer, scene, &ground);
+                            tg.meshes.push(ground_id);
+                            ground_meshes.push((level, mi, ground_id));
+                        }
+                    }
                     for (mi, (mesh_id, mats)) in mesh_list.iter().enumerate() {
                         let inst = if surface || ot.mesh_shadow.get(mi).copied().unwrap_or(false) {
                             let i = instance!(renderer.add_surface_instance(
@@ -5701,7 +5877,40 @@ impl World {
                         all_instances.push(inst);
                     }
                     let mut lod_instances = Vec::new();
-                    if has_lower && !surface && lamp.is_none() && ot.program.is_none() {
+                    let lod_drawn = has_lower && !surface && lamp.is_none() && ot.program.is_none();
+                    for &(level, _, ground_id) in &ground_meshes {
+                        // the first level without lower ones is drawn at any size
+                        let range = if level == 0 {
+                            lod_drawn.then_some((lod0_lo, lod0_max))
+                        } else if lod_drawn {
+                            type_lods.get(level - 1).map(|l| (l.0, l.1))
+                        } else {
+                            continue;
+                        };
+                        // the ground as the tile draws it: the base layer, then every painted
+                        // layer blended over it; on a surface object (a crossing) all of them
+                        // pulled towards the eye like the object itself
+                        for &(mat, layer) in &pl.ground_mats {
+                            let inst = if surface || layer {
+                                instance!(renderer.add_surface_instance(scene, ground_id, pos, xf, vec![mat]))
+                            } else {
+                                instance!(renderer.add_instance(scene, ground_id, pos, xf, vec![mat]))
+                            };
+                            if let Some(x) = scene.instances.get_mut(inst) {
+                                x.decal = surface;
+                                x.ground_layer = layer && !surface;
+                            }
+                            if let Some((lo, hi)) = range {
+                                renderer.set_lod_range(scene, inst, lo, hi);
+                            }
+                            if level == 0 {
+                                all_instances.push(inst);
+                            } else {
+                                lod_instances.push(inst);
+                            }
+                        }
+                    }
+                    if lod_drawn {
                         for (min_size, max_size, meshes) in &type_lods {
                             for (mesh_id, mats) in meshes {
                                 let inst = instance!(renderer.add_instance(
@@ -10094,6 +10303,35 @@ fn object_lanes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `[terrainmapping]` slot (TH_Wald's Fels01: rock in slot 0, grass top in slot 1)
+    /// leaves the object's own mesh and comes back in tile space, where the ground under the
+    /// placed object is: turned a quarter, 10 m into a tile whose corner is at 300/600.
+    #[test]
+    fn terrain_mapped_slots_split_off_in_tile_space() {
+        let mut src = MeshData::default();
+        for p in [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0], [3.0, 0.0, 2.0], [0.0, 3.0, 2.0]] {
+            src.positions.push(glam::Vec3::from_array(p));
+            src.normals.push(glam::Vec3::Z);
+            src.uvs.push(glam::Vec2::ZERO);
+        }
+        src.indices = vec![0, 1, 2, 3, 4, 5];
+        src.ranges = vec![(0, 3, 0), (3, 3, 1)];
+        src.one_sided = true;
+        let origin = DVec3::new(300.0, 600.0, 0.0);
+        let pos = DVec3::new(310.0, 620.0, 5.0);
+        let xf = Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2);
+        let (rest, ground) = split_terrain_mapped(&src, &[1], pos, xf, origin);
+        assert_eq!(rest.ranges, vec![(0, 3, 0)]);
+        assert_eq!(ground.ranges, vec![(0, 3, 0)]);
+        assert!(ground.one_sided);
+        assert_eq!(ground.positions, src.positions[3..6].to_vec());
+        // (3, 0) turned a quarter is (0, 3): 10/23 m into the tile
+        let uv = ground.uvs[1] * tile_size() as f32;
+        assert!((uv - glam::Vec2::new(10.0, 23.0)).length() < 1e-3, "{uv:?}");
+        let (_, none) = split_terrain_mapped(&src, &[2], pos, xf, origin);
+        assert!(none.is_empty() && none.ranges.is_empty());
+    }
 
     /// The Spandau neon lamp (Streetobjects_RUE/neonlight_M_whip_S.sco) declares its glow
     /// after the far mesh of `[LOD] 0`: it still glows, near or far.

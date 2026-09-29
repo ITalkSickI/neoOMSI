@@ -219,6 +219,14 @@ impl Devices {
         false
     }
 
+    /// A device was plugged in or removed; ask the worker to rescan without blocking a frame.
+    pub(crate) fn refresh(&self) {
+        #[cfg(windows)]
+        if let Some(d) = self.di.as_ref() {
+            d.refresh();
+        }
+    }
+
     /// Read the devices; the buttons pressed (true) and let go since the last call:
     /// (device, button number from 0, as DirectInput and `gamectrler.cfg` count them).
     pub fn poll(&mut self) -> Vec<(String, usize, bool)> {
@@ -377,6 +385,10 @@ pub struct Controllers {
 }
 
 impl Controllers {
+    pub(crate) fn refresh_devices(&self) {
+        self.devices.refresh();
+    }
+
     pub fn new(root: &Path, hwnd: Option<isize>) -> Controllers {
         let devices = Devices::new(hwnd, true);
         let cfg = read_cfg(root);
@@ -648,7 +660,9 @@ pub(crate) fn di_slots(axes: &[(u32, f32)]) -> Vec<(usize, f32)> {
 
 /// OMSI stores DirectInput's product name; the system's may differ in spacing and case.
 pub(crate) fn names_match(a: &str, b: &str) -> bool {
-    let n = |s: &str| s.to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>();
+    // (letters of any script: a name of Cyrillic or Chinese letters only was empty here and
+    // matched nothing)
+    let n = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
     let (a, b) = (n(a), n(b));
     !a.is_empty() && (a == b || a.contains(&b) || b.contains(&a))
 }
@@ -692,6 +706,8 @@ mod tests {
     fn names() {
         assert!(super::names_match("Logitech G25 Racing Wheel USB", "Logitech G25 Racing Wheel"));
         assert!(!super::names_match("", "x"));
+        assert!(super::names_match("Кнопочная панель", "кнопочная  панель"));
+        assert!(!super::names_match("Кнопочная панель", "Руль"));
     }
 }
 

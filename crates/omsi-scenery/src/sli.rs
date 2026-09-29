@@ -30,12 +30,30 @@ pub struct HeightProfile {
     pub z1: f32,
 }
 
+/// `[patchwork_chain]` after a `[texture]`: the texture is cut lengthwise into as many parts
+/// as there are weights, and the spline shows them one after another in a random order in
+/// which the letters of `chain` join up (part i runs from letter i to letter i+1).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PatchworkChain {
+    /// Metres per part (roughly: the spline is cut into `trunc(length / this) + 1`).
     pub segment_length: f32,
     pub chain: String,
+    /// One digit per part: how often it is drawn among those that fit.
     pub weights: String,
+    /// One `0`/`1` per part: whether it may also be laid backwards.
     pub invertable: String,
+}
+
+impl PatchworkChain {
+    /// Whether OMSI takes the chain (Omsi.exe sub_5ab908: as many weights and inverse flags
+    /// as the chain has transitions, the flags only `0` and `1`; else it is left out).
+    pub fn valid(&self) -> bool {
+        let n = self.chain.len();
+        n >= 2
+            && self.weights.len() + 1 == n
+            && self.invertable.len() + 1 == n
+            && self.invertable.bytes().all(|b| b == b'0' || b == b'1')
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -43,6 +61,9 @@ pub struct SplineTexture {
     pub file: String,
     pub patchwork: Option<PatchworkChain>,
     pub alpha: i32,
+    /// `[scaleTexByLength]` after this texture: its v runs over the whole spline, however
+    /// long (the sagging wires), instead of per metre.
+    pub scale_by_length: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -88,7 +109,13 @@ impl Spline {
                 "texture" => {
                     s.textures.push(SplineTexture { file: r.str().to_string(), ..Default::default() });
                 }
-                "scaletexbylength" => s.scale_tex_by_length = true,
+                "scaletexbylength" => {
+                    // (a flag of the last texture, Omsi.exe 0x5ac01f)
+                    s.scale_tex_by_length = true;
+                    if let Some(t) = s.textures.last_mut() {
+                        t.scale_by_length = true;
+                    }
+                }
                 "patchwork_chain" => {
                     let pc = PatchworkChain { segment_length: r.f32(), chain: r.word().to_string(), weights: r.word().to_string(), invertable: r.word().to_string() };
                     if let Some(t) = s.textures.last_mut() {
