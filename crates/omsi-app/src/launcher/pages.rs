@@ -42,6 +42,9 @@ pub struct PadsView {
     /// Waiting for a button of the shown device to be pressed (to add its binding).
     pub capturing: bool,
     pub dirty: bool,
+    /// The button last pressed on the shown device and when: its line is lit, so that one
+    /// sees which it is and what it does, and can give it an action there.
+    pub last_pressed: Option<(usize, std::time::Instant)>,
 }
 
 /// The set-up assistant of a device: the player lets go of everything, then turns the wheel
@@ -987,6 +990,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     }
     actions.dedup();
     let mut dirty = false;
+    let lit = pv.last_pressed.filter(|(_, t)| t.elapsed().as_secs_f32() < 4.0).map(|(b, _)| b);
     // (the axes, then every button of the device: the list scrolls - it stopped at the ten
     // buttons that fitted)
     let list = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 50.0);
@@ -1037,6 +1041,9 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                 Some(h) => format!("Hat {} {}", h / 4 + 1, ["up", "right", "down", "left"][h % 4]),
                 None => format!("Button {}", b + 1),
             };
+            if lit == Some(b) {
+                ui.p().rounded(Rect::new(r.x - 4.0, r.y - 2.0, r.w + 8.0, r.h + 4.0), 6.0, ACCENT.alpha(0.28));
+            }
             ui.label(Rect::new(r.x, r.y, 90.0, r.h), &label);
             let mut sel = actions.iter().position(|a| a.eq_ignore_ascii_case(act)).unwrap_or(0);
             if ui.select(&format!("pad-btn-{b}"), Rect::new(r.x + 90.0, r.y, r.w - 90.0, r.h), &mut sel, &actions) {
@@ -1060,7 +1067,16 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             if pv.capturing {
                 pv.capturing = false;
             }
-            l.state.set_status(format!("{name}: button {} - choose what it does", n + 1), false);
+            pv.last_pressed = Some((n, std::time::Instant::now()));
+            let now = d.buttons.get(n).map(|b| b.0.clone()).filter(|a| !a.is_empty());
+            let label = match n.checked_sub(crate::controllers::HAT_BUTTONS) {
+                Some(h) => format!("hat {} {}", h / 4 + 1, ["up", "right", "down", "left"][h % 4]),
+                None => format!("button {}", n + 1),
+            };
+            l.state.set_status(match now {
+                Some(a) => format!("{name}: {label} - {} (lit in the list: choose another there)", action_label(&a)),
+                None => format!("{name}: {label} - nothing yet (lit in the list: choose what it does)"),
+            }, false);
         }
     }
     let add_r = Rect::new(inner.x, inner.bottom() - 40.0, 260.0, 36.0);

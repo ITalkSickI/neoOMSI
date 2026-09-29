@@ -122,6 +122,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - The bus radio also plays the stations of OMSI's radio plugins (SuperRadio's `.opl` and
   its lists under `plugins`): every stream address found there is a station, after the
   ones of `~/.openomsi/radio.cfg`.
+- Controls → Game controllers: a button pressed on the wheel lights its line in the list for
+  a few seconds, and the status line says which button it is and what it does - press it and
+  give it an action right there.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
