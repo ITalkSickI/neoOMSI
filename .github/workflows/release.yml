@@ -25,6 +25,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify Cargo.lock matches workspace manifests
+        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - id: v
         run: echo "version=$(sh scripts/version.sh)" >> "$GITHUB_OUTPUT"
       - run: echo "### openOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
