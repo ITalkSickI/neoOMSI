@@ -8297,15 +8297,22 @@ pub(crate) fn material_alpha(
     slot: usize,
     overrides: &[MaterialDef],
 ) -> AlphaMode {
-    // the first plain [matl] override of this slot decides; without one: opaque. A
+    // the plain [matl] overrides of this slot decide; without one: opaque. A
     // `[matl_change]` record only opens the variants (`[matl_item]`) and says nothing of the
     // slot's own look: a `[matl]` of the same slot after it does. (The LED matrices of
     // churaPixel/Krüger++ open a change first and give the slot `[matl_alpha] 2` and the
     // script texture as its mask in a `[matl]` after it: taken as opaque from the change,
     // the mask cut nothing and the whole panel was lit.)
+    // Several plain [matl] of one slot are one material in OMSI: each selects it again and
+    // the commands after it modify it, so the last `[matl_alpha]` among them counts. (Taken
+    // from the first block alone, an alpha-tested texture whose `[matl_alpha]` sits in a
+    // second [matl] was drawn opaque, its transparent parts as solid areas.)
     let mine: Vec<&MaterialDef> = overrides.iter().filter(|o| !o.item && omsi_sim::vehicle::override_slot(materials, o) == Some(slot)).collect();
-    mine.iter()
-        .find(|o| o.change.is_none())
+    let plain = || mine.iter().filter(|o| o.change.is_none());
+    plain()
+        .rev()
+        .find(|o| o.alpha_set)
+        .or_else(|| plain().next())
         .or(mine.first())
         .map(|o| alpha_mode(o.alpha))
         .unwrap_or(AlphaMode::Opaque)
@@ -10456,6 +10463,24 @@ mod material_tests {
         assert_eq!(c, [1.0; 4]);
         assert_eq!(e, [0.24, 0.23, 0.2]);
         assert_eq!(s[3], 0.0);
+    }
+
+    /// A second `[matl]` of the same slot with `[matl_alpha] 1` makes the slot
+    /// alpha-tested; a later `[matl_alpha] 0` makes it opaque again,
+    /// and a later `[matl]` without one keeps the mode.
+    #[test]
+    fn later_matl_of_the_same_slot_sets_its_alpha() {
+        let mats = [omsi_o3d::Material { texture: "Chain.dds".into(), ..Default::default() }];
+        let def = |alpha: Option<i32>| MaterialDef {
+            texture: "chain.dds".into(),
+            alpha: alpha.unwrap_or(0),
+            alpha_set: alpha.is_some(),
+            ..Default::default()
+        };
+        assert_eq!(material_alpha(&mats, 0, &[def(None), def(Some(1))]), AlphaMode::Test);
+        assert_eq!(material_alpha(&mats, 0, &[def(Some(1)), def(None)]), AlphaMode::Test);
+        assert_eq!(material_alpha(&mats, 0, &[def(Some(2)), def(Some(0))]), AlphaMode::Opaque);
+        assert_eq!(material_alpha(&mats, 0, &[def(None), def(None)]), AlphaMode::Opaque);
     }
 
     #[test]
