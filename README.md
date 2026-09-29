@@ -124,3 +124,11 @@ Issues and pull requests are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 openOMSI is released under the [MIT License](LICENSE). OMSI and OMSI 2 are trademarks of their
 respective owners. openOMSI is an independent project and is not affiliated with them.
+
+## Aurora Studio Community
+
+Connect with the Aurora Studio community for discussions,
+feedback, development updates and project-related support.
+
+- 💬 **Discord Community:** https://discord.gg/nHgQWHrTXy
+- 🌐 **Aurora Member Portal:** https://member.aurora-studio.org/
