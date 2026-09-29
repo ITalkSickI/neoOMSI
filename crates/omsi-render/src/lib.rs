@@ -784,6 +784,11 @@ pub struct Instance {
     /// The model marks the mesh `[shadow]`: one OMSI casts a shadow from (with the
     /// option `omsi_shadow_casters` only these do).
     pub omsi_caster: bool,
+    /// It may cast a sun shadow: every ordinary instance, no surface - a surface lies on
+    /// the ground, and a caster in one plane with what it falls on paints dark patches into
+    /// it - except a spline standing clear of the ground (a bridge deck, an elevated
+    /// railway), which is raised with `set_casts_shadow`.
+    pub casts_shadow: bool,
     /// Part of a vehicle whose roof lies this high over its origin (model frame): what faces
     /// up under the roof (the floor, the seats) is out of the weather - no snow nor wet on
     /// it. (Only the vehicle the camera is in was spared, by its box; every other bus showed
@@ -4756,6 +4761,7 @@ impl Renderer {
             any_distance: false,
             mirror_only: false,
             omsi_caster: false,
+            casts_shadow: true,
             roof: None,
         });
         scene.instances.len() - 1
@@ -4799,6 +4805,7 @@ impl Renderer {
             any_distance: false,
             mirror_only: false,
             omsi_caster: false,
+            casts_shadow: false,
             roof: None,
         });
         scene.instances.len() - 1
@@ -4885,6 +4892,13 @@ impl Renderer {
     pub fn set_omsi_caster(&self, scene: &mut Scene, instance: usize, on: bool) {
         if let Some(i) = scene.instances.get_mut(instance) {
             i.omsi_caster = on;
+        }
+    }
+
+    /// Let an instance cast a sun shadow or not (see [`Instance::casts_shadow`]).
+    pub fn set_casts_shadow(&self, scene: &mut Scene, instance: usize, on: bool) {
+        if let Some(i) = scene.instances.get_mut(instance) {
+            i.casts_shadow = on;
         }
     }
 
@@ -6730,7 +6744,7 @@ impl Renderer {
                 .unwrap_or(3.0);
             items.clear();
             for inst in scene.instances.iter() {
-                if !inst.visible || inst.surface || (self.options.omsi_shadow_casters && !inst.omsi_caster) {
+                if !inst.visible || !inst.casts_shadow || (self.options.omsi_shadow_casters && !inst.omsi_caster) {
                     continue;
                 }
                 let m = &scene.meshes[inst.mesh];

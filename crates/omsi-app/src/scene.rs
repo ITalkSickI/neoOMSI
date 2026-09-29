@@ -380,7 +380,16 @@ struct StagedSpline {
     /// Every profile of it is blended (`[matl_alpha] 2`): a layer laid over the ground or a
     /// road, not a surface of its own (see `prepare_surfaces`).
     overlay: bool,
+    /// It stands clear of the ground all along (see `SPLINE_SHADOW_CLEARANCE`): it casts a
+    /// sun shadow.
+    casts_shadow: bool,
 }
+
+/// How far a spline has to stand clear of the ground under it, everywhere, before it casts
+/// a sun shadow: a bridge deck, a viaduct or an elevated railway does, a road lying on the
+/// terrain does not - a caster in one plane with what it falls on paints dark patches into
+/// it (the sun shadow's bias is 6 cm). Splines are surfaces and cast nothing otherwise.
+const SPLINE_SHADOW_CLEARANCE: f32 = 0.75;
 
 /// A tile read and tessellated, its objects typed but not yet standing on the ground. Kept
 /// (by [`World::prepare_tiles`]) while a loaded tile or one on its way depends on it.
@@ -538,7 +547,8 @@ pub struct Prepared {
     /// `tile.map.water`: the height of the tile's water surface at its four corners.
     water: Option<[f32; 4]>,
     /// Spline meshes are local to the tile origin.
-    splines: Vec<(Arc<MeshData>, Arc<SplineType>)>,
+    /// Spline meshes (local to the tile origin), their type and whether they cast a shadow.
+    splines: Vec<(Arc<MeshData>, Arc<SplineType>, bool)>,
     objects: Vec<PlacedObject>,
     /// (type, texture, position, height, width, heading)
     trees: Vec<(Arc<ObjectType>, String, DVec3, f64, f64, f64)>,
@@ -3002,7 +3012,18 @@ impl World {
             if !mesh.is_empty() {
                 // `[spline_terrain_align]` / `_2 <m>`: the editor pulled the ground onto
                 // this road, and OMSI does it again on every load.
-                if s.terrain_align_flag || s.terrain_align.is_some() {
+                let aligned = s.terrain_align_flag || s.terrain_align.is_some();
+                // (a road the ground was pulled onto lies on it whatever the heights say; a
+                // wire - under a metre across - would only flicker in the shadow map)
+                let (lo_x, hi_x) = st.def.profiles.iter().flat_map(|p| p.points.iter().map(|q| q.x)).fold((f32::MAX, f32::MIN), |(a, b), x| (a.min(x), b.max(x)));
+                let casts_shadow = !aligned && hi_x - lo_x >= 1.0 && {
+                    let step = mesh.positions.len().div_ceil(64).max(1);
+                    mesh.positions.iter().step_by(step).all(|p| p.z - out.base_terrain.sample(p.x.clamp(0.0, tile_size() as f32), p.y.clamp(0.0, tile_size() as f32)) > SPLINE_SHADOW_CLEARANCE)
+                };
+                if casts_shadow && debug_splines {
+                    log::info!("tile {tx},{ty} spline {} {} stands clear of the ground: it casts a sun shadow", s.id, s.file);
+                }
+                if aligned {
                     out.align
                         .push((out.splines.len(), s.terrain_align.unwrap_or(1.0) as f32));
                 }
@@ -3022,6 +3043,7 @@ impl World {
                     bounds,
                     drivable,
                     overlay,
+                    casts_shadow,
                 });
                 meshes.push(Arc::new(mesh));
             }
@@ -4150,7 +4172,7 @@ impl World {
         let splines = meshes
             .into_iter()
             .zip(st.splines.iter())
-            .map(|(m, sp)| (m, sp.ty.clone()))
+            .map(|(m, sp)| (m, sp.ty.clone(), sp.casts_shadow))
             .collect();
         Some(Prepared {
             tx,
@@ -4532,7 +4554,7 @@ impl World {
                     .collect(),
                 p.splines
                     .iter()
-                    .map(|(_, st)| Arc::as_ptr(st) as usize)
+                    .map(|(_, st, _)| Arc::as_ptr(st) as usize)
                     .filter(|k| gpu.splines.contains_key(k))
                     .collect(),
                 p.trees
@@ -4587,7 +4609,7 @@ impl World {
                 }
             }
         }
-        for (_, st) in &p.splines {
+        for (_, st, _) in &p.splines {
             if have_splines.contains(&(Arc::as_ptr(st) as usize)) {
                 continue;
             }
@@ -5451,7 +5473,7 @@ impl World {
                         pl.next = 0;
                         continue;
                     }
-                    let (mesh, st) = &p.splines[pl.next];
+                    let (mesh, st, casts_shadow) = &p.splines[pl.next];
                     pl.next += 1;
                     let skey = Arc::as_ptr(st) as usize;
                     if !gpu.splines.contains_key(&skey) {
@@ -5536,13 +5558,18 @@ impl World {
                         gpu.add_mesh(renderer, scene, &terrain_rest(mesh, &terrain))
                     };
                     tg.meshes.push(id);
-                    let _ = instance!(renderer.add_surface_instance(
+                    let si = instance!(renderer.add_surface_instance(
                         scene,
                         id,
                         p.origin,
                         Mat4::IDENTITY,
                         mats
                     ));
+                    // a bridge deck or an elevated railway casts a sun shadow (see
+                    // `SPLINE_SHADOW_CLEARANCE`)
+                    if *casts_shadow {
+                        renderer.set_casts_shadow(scene, si, true);
+                    }
                     pl.splines += 1;
                     done_some = true;
                 }
