@@ -654,7 +654,9 @@ struct TypeGpu {
     users: usize,
     /// Some texture has a night copy in the `night` folder beside it (lit windows).
     auto_night: bool,
-    /// The screen size up to which the first level (`meshes`) is drawn (see `lods`).
+    /// The screen sizes from and up to which the first level (`meshes`) is drawn (see
+    /// `lods`).
+    lod0_lo: f32,
     lod0_max: f32,
 }
 
@@ -4691,6 +4693,7 @@ impl World {
             textures: Vec::new(),
             users: 0,
             auto_night: false,
+            lod0_lo: 0.0,
             lod0_max: f32::MAX,
         };
         for (mesh, o3d_mats, overrides) in &ot.meshes {
@@ -4880,16 +4883,21 @@ impl World {
                 },
             ));
         }
-        // lower LODs (plain materials). Each level is drawn from its own least size up to the
-        // next larger least size of any level: models list them in either order (the stock
-        // Sv signals say [LOD] 0.1 before [LOD] 1.0), and taken in file order a level came out
-        // as "from 1.0 up to 0.1" - never drawn, a signal or post blinking out as the view
-        // turned.
+        // lower LODs (plain materials). OMSI picks a level the way the model lists them
+        // (Omsi.exe 0x5ef860): the first whose least size the object's screen size reaches,
+        // else the last one whatever its own. A level is so drawn from its least size (the
+        // last from 0) up to the least of the sizes listed before it. The stock Sv signals
+        // say [LOD] 0.1 (the signal) before [LOD] 1 (its low version): taken as size bands
+        // the low version stood in close up and the signal vanished in the distance; and a
+        // model with a single [LOD] 0.5 is drawn at any size.
         let mins: Vec<f32> = std::iter::once(ot.lod0_min).chain(ot.lower_lods.iter().map(|l| l.0)).collect();
-        let upper_of = |m: f32| mins.iter().copied().filter(|&x| x > m).fold(f32::MAX, f32::min);
-        t.lod0_max = upper_of(ot.lod0_min);
-        for (min_size, meshes) in &ot.lower_lods {
-            let upper = upper_of(*min_size);
+        let band = |i: usize| -> (f32, f32) {
+            let lo = if i + 1 == mins.len() { 0.0 } else { mins[i] };
+            (lo, mins[..i].iter().copied().fold(f32::MAX, f32::min))
+        };
+        (t.lod0_lo, t.lod0_max) = band(0);
+        for (k, (_, meshes)) in ot.lower_lods.iter().enumerate() {
+            let (lo, upper) = band(k + 1);
             let mut l = Vec::new();
             for (mesh, o3d_mats, overrides) in meshes {
                 let mut mats = Vec::new();
@@ -4934,7 +4942,7 @@ impl World {
                     },
                 ));
             }
-            t.lods.push((*min_size, upper, l));
+            t.lods.push((lo, upper, l));
         }
         gpu.types.insert(key, t);
         key
@@ -5473,9 +5481,9 @@ impl World {
                         gpu.types.get_mut(&tkey).unwrap().users += 1;
                         tg.types.push(tkey);
                     }
-                    let (type_meshes, type_variants, type_lods, type_auto_night, lod0_max) = {
+                    let (type_meshes, type_variants, type_lods, type_auto_night, lod0_lo, lod0_max) = {
                         let t = &gpu.types[&tkey];
-                        (t.meshes.clone(), t.variants.clone(), t.lods.clone(), t.auto_night, t.lod0_max)
+                        (t.meshes.clone(), t.variants.clone(), t.lods.clone(), t.auto_night, t.lod0_lo, t.lod0_max)
                     };
                     let surface =
                         !matches!(ot.sco.render_type, omsi_scenery::sco::RenderType::Normal)
@@ -5524,7 +5532,7 @@ impl World {
                         // or a lamp keeps its first level, which alone the script poses -
                         // limited as well, it vanished when small, with nothing in its place)
                         if has_lower && !surface && lamp.is_none() && ot.program.is_none() {
-                            renderer.set_lod_range(scene, inst, ot.lod0_min, lod0_max);
+                            renderer.set_lod_range(scene, inst, lod0_lo, lod0_max);
                         }
                         // [matl_change] variants of this mesh
                         for (_, slot, base, item, var) in type_variants.iter().filter(|v| v.0 == mi)
@@ -9600,7 +9608,15 @@ impl World {
                     let body_hint = named_body
                         || ov.iter().any(|o| o.bumpmap.is_some())
                         || (!mesh_has_overlay && material_has_vehicle_volume(&vm.data, slot));
-                    let repair_body_depth = is_vehicle_body_material(&def.file, &m.texture, tex.is_some(), transmap.is_some(), ov.iter().any(|o| o.no_z_write), body_hint);
+                    // a layer over another mesh of the same shape drawn before it (the WH UK
+                    // AI cars' baked shading over their paint, `[matl_alpha] 2`): blended as
+                    // the model says - made opaque, the dark bake covered the paint and the
+                    // cars drove about black, or with black roofs
+                    let layer = vt.mesh_boxes.get(mesh_index).is_some_and(|&(lo, hi)| {
+                        (hi - lo).max_element() > 0.5
+                            && vt.mesh_boxes[..mesh_index].iter().any(|&(l2, h2)| (l2 - lo).abs().max_element() < 0.03 && (h2 - hi).abs().max_element() < 0.03)
+                    });
+                    let repair_body_depth = !layer && is_vehicle_body_material(&def.file, &m.texture, tex.is_some(), transmap.is_some(), ov.iter().any(|o| o.no_z_write), body_hint);
                     if repair_body_depth && !dirt_overlay && !transparent_layer_hint {
                         alpha = AlphaMode::Opaque;
                     }

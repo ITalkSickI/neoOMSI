@@ -298,7 +298,7 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     }
     if (material.params.z > 0.5) {
         let tm = textureSample(t_trans, s_diffuse, in.uv);
-        tex.a = select(tm.r, tm.a, material.params.w > 0.5);
+        tex.a = select(1.0, tm.a, material.params.w > 0.5);
         if (terrain && material.params.x > 1.5) {
             let lum = dot(tex.rgb, vec3<f32>(0.333, 0.333, 0.333));
             let m = tex.a + (lum - 0.5) * 0.45;

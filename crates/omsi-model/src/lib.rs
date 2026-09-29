@@ -350,6 +350,8 @@ impl ParticleSystemDef {
 pub struct Model {
     pub path: PathBuf,
     pub lods: Vec<Lod>,
+    /// The first level was opened by a `[mesh]` before any `[LOD]` (see "lod" below).
+    pub implicit_lod: bool,
     pub meshes: Vec<MeshDef>,
     pub vfd_max_min: Option<[f32; 6]>,
     pub detail_factor: f32,
@@ -445,7 +447,18 @@ impl Model {
         match k {
             "lod" => {
                 let min_size = r.f32();
-                self.lods.push(Lod { min_size, first_mesh: self.meshes.len() });
+                // Meshes written before the first [LOD] belong to that first level: OMSI gives
+                // them the level index its loader holds then, which no [LOD] has set yet. The
+                // WH UK AI cars (Westcountry, London) put their shadow there: as a level of its
+                // own the shadow was all an AI car had (only the first level is loaded for a
+                // vehicle), and the traffic drove about as shadows and lamps.
+                if self.implicit_lod && self.lods.len() == 1 {
+                    self.lods[0].min_size = min_size;
+                    self.implicit_lod = false;
+                } else {
+                    self.implicit_lod = false;
+                    self.lods.push(Lod { min_size, first_mesh: self.meshes.len() });
+                }
             }
             "vfdmaxmin" => self.vfd_max_min = Some(r.f32s::<6>()),
             "detail_factor" => self.detail_factor = r.f32(),
@@ -512,6 +525,7 @@ impl Model {
             "mesh" => {
                 if self.lods.is_empty() {
                     self.lods.push(Lod { min_size: 0.0, first_mesh: 0 });
+                    self.implicit_lod = true;
                 }
                 let file = r.str().to_string();
                 // OMSI: a new mesh takes the interior lights of the
@@ -947,6 +961,19 @@ pub fn load_texchanges(base: &Path, files: &[String]) -> Vec<TexChangeMaster> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A mesh before the first [LOD] belongs to that level (the WH UK AI cars' shadow).
+    #[test]
+    fn a_mesh_before_the_first_lod_joins_it() {
+        let text = "[mesh]\nshadow.o3d\n\n[LOD]\n0.075\n[mesh]\nbody.o3d\n\n[LOD]\n0.04\n[mesh]\nlow.o3d\n";
+        let m = Model::parse(&omsi_cfg::CfgFile::from_str("car.cfg", text));
+        assert_eq!(m.lods.len(), 2);
+        assert_eq!(m.lods[0].min_size, 0.075);
+        let first: Vec<&str> = m.lod_meshes(0).iter().map(|d| d.file.as_str()).collect();
+        assert_eq!(first, vec!["shadow.o3d", "body.o3d"]);
+        assert_eq!(m.lod_meshes(1)[0].file, "low.o3d");
+    }
+
     use super::*;
 
     /// A tab-indented block (the stock F90 lorry's second rear axle, whose mesh does not

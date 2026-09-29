@@ -180,6 +180,18 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Road markings laid over road markings (where lines cross, a box junction over a lane's
   arrows) are no step for the wheels: every layer of paint is looked through, not only the
   first.
+- Traffic of the UK car packs (WH UK AI: Westcountry, London and others) is no longer
+  invisible, only shadows and lamps driving about: a mesh written before a model's first
+  `[LOD]` belongs to that level, as in OMSI. These cars put their shadow there; as a level
+  of its own it was all a moving car had.
+- Their paint: a `[matl_transmap]` picture without an alpha channel is opaque, as Direct3D
+  reads it (the cars' paint layer has a black 24-bit `transmap_null.tga` and was invisible),
+  and a layer drawn over another mesh of the same shape keeps its blending (the baked
+  shading over the paint had been made opaque: black cars, black roofs).
+- An object's `[LOD]` level is chosen as OMSI does: the first level in the model's order
+  whose size the object reaches, else the last. The stock Sv signals list their detailed
+  level before their low one; sorted by size, the low one stood in close up and the signal
+  vanished in the distance. A model with a single `[LOD]` is drawn at any size.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
