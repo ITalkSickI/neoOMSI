@@ -6,7 +6,7 @@
 //! Every text is rendered once into a small texture and kept while it is shown; the
 //! overlays are rectangles in physical pixels (`Scene::overlays`).
 
-use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
+use ab_glyph::{Font, FontVec, PxScale, ScaleFont};
 use omsi_render::{Renderer, Scene, TextureId};
 
 /// Roboto (Apache 2.0), the interface font.
@@ -23,14 +23,14 @@ struct Label {
 
 /// Texts rendered into textures, kept while they are used.
 pub struct TextCache {
-    font: FontArc,
+    font: FontVec,
     labels: hashbrown::HashMap<(String, u32, [u8; 4]), Label>,
     frame: u64,
 }
 
 impl TextCache {
     pub fn new() -> Option<TextCache> {
-        let font = FontArc::try_from_slice(ROBOTO).ok()?;
+        let font = FontVec::try_from_vec(ROBOTO.to_vec()).ok()?;
         Some(TextCache { font, labels: hashbrown::HashMap::new(), frame: 0 })
     }
 
@@ -54,16 +54,19 @@ impl TextCache {
     /// Text width in pixels, without rendering it.
     pub fn width(&self, text: &str, px: f32) -> f32 {
         let text = &*omsi_ui::tr(text);
-        let f = self.font.as_scaled(PxScale::from(px));
         let mut w = 0.0;
-        let mut prev = None;
+        let mut prev: Option<(ab_glyph::GlyphId, *const FontVec)> = None;
         for c in text.chars() {
+            let font = font_for(&self.font, c);
+            let f = font.as_scaled(PxScale::from(px));
             let id = f.glyph_id(c);
-            if let Some(p) = prev {
-                w += f.kern(p, id);
+            if let Some((p, pf)) = prev {
+                if std::ptr::eq(pf, font) {
+                    w += f.kern(p, id);
+                }
             }
             w += f.h_advance(id);
-            prev = Some(id);
+            prev = Some((id, font as *const FontVec));
         }
         w + outline_px(px) * 2.0 + 2.0
     }
@@ -87,31 +90,46 @@ fn outline_px(px: f32) -> f32 {
     (px / 9.0).clamp(1.0, 3.0)
 }
 
+/// The font that draws `c`: Roboto, else the system's font for the script (Chinese,
+/// Japanese, Korean, Thai, Hindi - the menu was a column of boxes in those languages).
+fn font_for(roboto: &FontVec, c: char) -> &FontVec {
+    if omsi_ui::text::needs_fallback(roboto, c) {
+        if let Some(f) = omsi_ui::text::fallback_font(c) {
+            return f;
+        }
+    }
+    roboto
+}
+
 /// `text` as straight-alpha RGBA: the glyphs in `color` over a dark outline.
-fn render_text(font: &FontArc, text: &str, px: f32, color: [u8; 4]) -> omsi_texture::Image {
+fn render_text(font: &FontVec, text: &str, px: f32, color: [u8; 4]) -> omsi_texture::Image {
     let f = font.as_scaled(PxScale::from(px));
     let stroke = outline_px(px);
     let pad = stroke.ceil() as i32 + 1;
     let asc = f.ascent();
     let h = (asc - f.descent()).ceil() as i32 + pad * 2;
     // lay the glyphs out
-    let mut glyphs = Vec::new();
+    let mut glyphs: Vec<(&FontVec, ab_glyph::Glyph)> = Vec::new();
     let mut x = pad as f32;
-    let mut prev = None;
+    let mut prev: Option<(ab_glyph::GlyphId, *const FontVec)> = None;
     for c in text.chars() {
-        let id = f.glyph_id(c);
-        if let Some(p) = prev {
-            x += f.kern(p, id);
+        let gf = font_for(font, c);
+        let sf = gf.as_scaled(PxScale::from(px));
+        let id = sf.glyph_id(c);
+        if let Some((p, pf)) = prev {
+            if std::ptr::eq(pf, gf) {
+                x += sf.kern(p, id);
+            }
         }
-        glyphs.push(id.with_scale_and_position(PxScale::from(px), ab_glyph::point(x, pad as f32 + asc)));
-        x += f.h_advance(id);
-        prev = Some(id);
+        glyphs.push((gf, id.with_scale_and_position(PxScale::from(px), ab_glyph::point(x, pad as f32 + asc))));
+        x += sf.h_advance(id);
+        prev = Some((id, gf as *const FontVec));
     }
     let w = (x.ceil() as i32 + pad).max(1);
     let (wu, hu) = (w as usize, h.max(1) as usize);
     let mut cov = vec![0f32; wu * hu];
-    for g in glyphs {
-        if let Some(o) = font.outline_glyph(g) {
+    for (gf, g) in glyphs {
+        if let Some(o) = gf.outline_glyph(g) {
             let b = o.px_bounds();
             o.draw(|gx, gy, c| {
                 let xx = b.min.x as i32 + gx as i32;
@@ -665,13 +683,31 @@ mod tests {
 
     #[test]
     fn text_renders_with_an_outline() {
-        let f = FontArc::try_from_slice(ROBOTO).unwrap();
+        let f = FontVec::try_from_vec(ROBOTO.to_vec()).unwrap();
         let img = render_text(&f, "Savva: hi", 16.0, [255, 255, 255, 220]);
         assert!(img.width > 40 && img.height > 14);
         // white text and dark outline pixels are both there
         let px: Vec<&[u8]> = img.rgba.chunks(4).collect();
         assert!(px.iter().any(|p| p[3] > 200 && p[0] > 240));
         assert!(px.iter().any(|p| p[3] > 100 && p[0] < 40));
+    }
+
+    /// The Esc menu in Chinese, Korean and Thai: the system's fonts, not boxes.
+    #[test]
+    fn scripts_roboto_lacks_come_from_the_system() {
+        let f = FontVec::try_from_vec(ROBOTO.to_vec()).unwrap();
+        for t in ["继续", "繼續", "계속", "ดำเนินการต่อ"] {
+            if t.chars().next().and_then(omsi_ui::text::fallback_font).is_none() {
+                continue;
+            }
+            for c in t.chars() {
+                let g = font_for(&f, c);
+                assert!(!std::ptr::eq(g, &f) && g.glyph_id(c).0 != 0, "{t}: {c}");
+            }
+            let img = render_text(&f, t, 20.0, [255, 255, 255, 220]);
+            let ink = img.rgba.chunks(4).filter(|p| p[3] > 128 && p[0] > 128).count();
+            assert!(ink > 30, "{t}: {ink}");
+        }
     }
 
     #[test]
