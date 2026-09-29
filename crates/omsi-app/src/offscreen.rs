@@ -575,6 +575,17 @@ pub(crate) fn run_offscreen(
                     }
                 }
                 player.vehicle.update(dt);
+                // OMSI_JOINT_ANGLE=degrees: the rear section held at that angle to the front
+                // one (the joint and its bellows seen bent, without driving a curve)
+                if let Some(a) = omsi_cfg::env::var("OMSI_JOINT_ANGLE").ok().and_then(|v| v.trim().parse::<f64>().ok()) {
+                    let v = &mut player.vehicle;
+                    let (pos, rot, heading) = (v.position, v.body_rotation(), v.heading);
+                    if let Some(t) = v.trailers.first_mut() {
+                        let c = t.coupling_point(pos, rot);
+                        let h = (heading + a).to_radians();
+                        t.place_pivot(c - DVec3::new(h.sin(), h.cos(), 0.0) * t.pivot_length() as f64);
+                    }
+                }
                 crate::rail_drive::frame(player, traffic.as_ref().map(|t| &t.net), &world, dt);
                 // the driver's hands follow the wheel frame by frame (as in the window), so
                 // that the snapshots show them where the hand-over-hand has got to
