@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <!--
+      A page the driver can operate: a number pad for the line, buttons that press the bus's
+      triggers, and a live read-out. Use it as [htmltexture] 800x480.
+
+      The names below are the stock IBIS variable and made-up trigger names: every bus names
+      its own, so change CONFIG to what the bus's scripts use.
+    -->
+    <style>
+        html,body{margin:0;width:800px;height:480px;background:#101820;color:#ffb000;font-family:sans-serif}
+        h1{font-size:26px;margin:0;padding:10px 16px;background:#1c2a38}
+        .pane{display:inline-block;width:380px;margin:10px 0 0 14px}
+        .lbl{font-size:16px;color:#7f8c99;margin:6px 0}
+        #pad{width:270px}
+        #entry{font-size:48px;height:64px;padding:0 12px;background:#000;color:#ffb000;border-radius:6px;margin-bottom:8px}
+        button{width:82px;height:64px;margin:0 6px 6px 0;padding:0;font-size:28px;background:#2b3a4a;color:#ffb000}
+        button.wide{width:170px}
+        button.on{background:#ffb000;color:#101820}
+        .tog{width:184px;font-size:20px}
+        #speed{font-size:64px;text-align:center;margin:6px 0}
+        #stop{font-size:24px;text-align:center;color:#ffffff}
+    </style>
+</head>
+<body>
+<h1>Cab panel</h1>
+
+<div class="pane">
+    <div class="lbl">Line</div>
+    <div id="entry"></div>
+    <div id="pad"></div>
+</div>
+
+<div class="pane">
+    <div id="speed">0</div>
+    <div id="stop"></div>
+    <div class="lbl">Bus</div>
+    <div id="toggles"></div>
+</div>
+
+<script>
+    var CONFIG = {
+        lineVar: 'IBIS_Linie',                 // set when OK is pressed
+        toggles: [                              // label, trigger to press
+            { label: 'Doors',    trigger: 'door_toggle' },
+            { label: 'Kneeling', trigger: 'kneel_toggle' },
+            { label: 'Lights',   trigger: 'light_toggle' },
+            { label: 'Stop req.', trigger: 'stop_request' }
+        ]
+    };
+
+    var typed = '';
+    var entry = document.getElementById('entry');
+    var pad = document.getElementById('pad');
+
+    function show() { entry.textContent = typed; }
+
+    function key(label, cls, action) {
+        var b = document.createElement('button');
+        b.textContent = label;
+        if (cls) b.className = cls;
+        b.addEventListener('click', action);
+        pad.appendChild(b);
+    }
+
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(function (d) {
+        key(d, '', function () { if (typed.length < 4) { typed += d; show(); } });
+    });
+    key('C', '', function () { typed = ''; show(); });
+    key('0', '', function () { if (typed.length < 4) { typed += '0'; show(); } });
+    key('OK', '', function () { if (typed.length > 0) omsi.setVar(CONFIG.lineVar, parseInt(typed)); });
+
+    var tog = document.getElementById('toggles');
+    CONFIG.toggles.forEach(function (t) {
+        var b = document.createElement('button');
+        b.className = 'tog';
+        b.textContent = t.label;
+        b.onclick = function () {
+            omsi.trigger(t.trigger);
+            b.classList.add('on');
+            setTimeout(function () { b.classList.remove('on'); }, 300);   // a short flash
+        };
+        tog.appendChild(b);
+    });
+
+    window.omsi = window.omsi || {};
+    window.omsi.update = function (d) {
+        if (d.num && 'velocity_kmh' in d.num) document.getElementById('speed').textContent = Math.round(d.num.velocity_kmh);
+        if (d.str && 'next_stop' in d.str) document.getElementById('stop').textContent = d.str.next_stop;
+    };
+    show();
+</script>
+</body>
+</html>
