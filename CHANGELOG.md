@@ -94,6 +94,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   of the windscreen, facing the bus), and a door shut for a moment no longer sends the
   waiting people away: they wait on 25 s after a door of the standing bus was last open
   (they turned away at once and came back when it opened again).
+- Camera monitors: `reflexionN.bmp` is camera N's picture wherever a vehicle's material
+  names it (its light map, night map, a `[matl_item]` switched on by the script), not only
+  as the plain texture - monitors that show the camera once switched on were white.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

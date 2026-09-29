@@ -9391,9 +9391,16 @@ impl World {
         let mut mesh_secs = 0.0f64;
         let tex_time = std::cell::RefCell::new((0usize, 0.0f64));
         macro_rules! tex {
-            ($name:expr, $dirs:expr) => {
-                tex!($name, $dirs, vehicle_texture)
-            };
+            // (`reflexionN.bmp` wherever a material names it - its light map, its night map,
+            // a `[matl_item]`'s - is camera N's picture: a monitor that shows the camera once
+            // switched on names it so, and was white)
+            ($name:expr, $dirs:expr) => {{
+                let nm: &str = &$name;
+                match mirror_index(nm) {
+                    Some(mi) => Some(self.mirror_texture(renderer, scene, mi)),
+                    None => tex!(nm, $dirs, vehicle_texture),
+                }
+            }};
             ($name:expr, $dirs:expr, $how:ident) => {{
                 let t = std::time::Instant::now();
                 let n = tex_ids.len();
