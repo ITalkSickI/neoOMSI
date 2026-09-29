@@ -1053,6 +1053,9 @@ pub struct Renderer {
     )>,
     /// The pre-exposure (natural log) as it follows the sky's.
     exposure: Option<f32>,
+    /// The projection's width over height while a picture is drawn into a texture (see
+    /// `render_to_texture`), whatever the texture's own shape.
+    texture_aspect: Option<f32>,
     last_frame: Option<std::time::Instant>,
     /// The next frame stands alone (an offscreen picture): the exposure is there at once.
     pub instant_exposure: bool,
@@ -3430,6 +3433,7 @@ impl Renderer {
             sky_state: None,
             sky_job: None,
             exposure: None,
+            texture_aspect: None,
             last_frame: None,
             instant_exposure: false,
             overlay_pipeline_1x,
@@ -3965,19 +3969,24 @@ impl Renderer {
     }
 
     /// Render the scene from `camera` into a texture made by `add_render_texture`.
+    /// `aspect`: the projection's width over height (OMSI draws its mirrors 1.6 wide into
+    /// square textures, and their meshes show the middle of that).
     pub fn render_to_texture(
         &mut self,
         scene: &mut Scene,
         id: TextureId,
         camera: &Camera,
         lighting: &Lighting,
+        aspect: f32,
     ) {
         let Some(t) = scene.textures.get(id) else {
             return;
         };
         let view = t.view.clone();
         let (w, h) = t.size;
+        self.texture_aspect = Some(aspect);
         self.render_inner(scene, &view, w, h, camera, lighting, false, Some(id));
+        self.texture_aspect = None;
     }
 
     /// Replace the pixels of a texture (same size as when created, no mipmaps regenerated).
@@ -6400,7 +6409,7 @@ impl Renderer {
             None
         };
         let scene_view: &wgpu::TextureView = scene_target.as_ref().map(|t| &t.0).unwrap_or(target);
-        let aspect = width as f32 / height.max(1) as f32;
+        let aspect = self.texture_aspect.unwrap_or(width as f32 / height.max(1) as f32);
         let cam_rel = (camera.position - ro).as_vec3();
         // The mirrors are drawn with the plain shading even in Enhanced: without the depth
         // prepass (sized for the window) every layer of a mirror's picture ran the enhanced
