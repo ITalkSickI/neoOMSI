@@ -110,6 +110,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Settings → Controllers → *Force feedback and vibration* (and Esc → More → Options):
   switches the wheel's forces and a pad's rumble off altogether (a pad left plugged in
   shook all the time).
+- Spaces on displays and signs: a font without a space character (many display fonts have
+  none) leaves the width of a narrow letter between the words; the words of a destination
+  ran into one another.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

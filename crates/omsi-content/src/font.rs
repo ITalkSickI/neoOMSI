@@ -174,10 +174,26 @@ impl FontAtlas {
         for ch in text.chars() {
             match self.font.glyph(ch) {
                 Some(g) => x += (g.x1 - g.x0).max(0) + self.font.gap,
-                None => x += self.font.gap.max(1),
+                None => x += self.missing_advance(ch),
             }
         }
         x
+    }
+
+    /// How far a character the font lacks moves on: a space as wide as a narrow letter
+    /// (many display fonts have no space at all, and the words of a destination ran into
+    /// one another), anything else by the gap.
+    fn missing_advance(&self, ch: char) -> i32 {
+        if ch.is_whitespace() {
+            let w = ['n', 'N', 'i', '1', 'I']
+                .iter()
+                .find_map(|c| self.font.glyph(*c))
+                .map(|g| (g.x1 - g.x0).max(1))
+                .unwrap_or((self.font.height / 3).max(2));
+            w + self.font.gap
+        } else {
+            self.font.gap.max(1)
+        }
     }
 
     /// Render `text` centred into a `w`×`h` RGBA image; text wider than the image is
@@ -251,7 +267,7 @@ impl FontAtlas {
         let mut x = align.offset(w as i32, self.text_width(text), self.font.gap);
         for ch in text.chars() {
             let Some(g) = self.font.glyph(ch) else {
-                x += self.font.gap.max(1);
+                x += self.missing_advance(ch);
                 continue;
             };
             let gw = (g.x1 - g.x0).max(0);
