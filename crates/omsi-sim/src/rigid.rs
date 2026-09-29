@@ -402,6 +402,11 @@ pub struct RigidBody {
     /// move towards the nearest side pushed it back in). `None` until the first collision
     /// check after `place`.
     pub spawned_inside: Option<Vec<i64>>,
+    /// The faces a wheel cannot climb stop it (a platform's edge, a kerb too high for it).
+    /// Off with the collisions with objects: the wheels then keep to the ground under them,
+    /// as OMSI's do - its wheels know no faces - and a step nobody sees (a height profile
+    /// over the drawn road, a helper object's collision box) is no invisible wall.
+    pub wheel_walls: bool,
 }
 
 impl RigidBody {
@@ -447,7 +452,7 @@ impl RigidBody {
         let inv_min_turn_radius = if def.inv_min_turn_radius > 0.0 { def.inv_min_turn_radius } else { max_steer_deg.to_radians().tan() / s };
         let springs: f32 = def.axles.iter().map(|a| 2.0 * if a.spring > 0.0 { a.spring } else { 150.0 }).sum();
         let body_freq = (springs / (mass / 1000.0)).max(0.0).sqrt();
-        RigidBody { mass, inertia, cog, position: DVec3::ZERO, orientation: Quat::IDENTITY, velocity: Vec3::ZERO, omega: Vec3::ZERO, wheels, wheel_axle, steer_deg: 0.0, max_steer_deg, rot_pnt_long: def.rot_pnt_long, inv_min_turn_radius, body_freq, holding: true, rolling_resistance: if def.rolling_resistance > 0.0 { def.rolling_resistance } else { 0.008 * mass * 9.81 }, accel_body: Vec3::ZERO, friction: 0.85, wheel_impacts: Vec::new(), coupled: Vec::new(), spawned_inside: None }
+        RigidBody { mass, inertia, cog, position: DVec3::ZERO, orientation: Quat::IDENTITY, velocity: Vec3::ZERO, omega: Vec3::ZERO, wheels, wheel_axle, steer_deg: 0.0, max_steer_deg, rot_pnt_long: def.rot_pnt_long, inv_min_turn_radius, body_freq, holding: true, rolling_resistance: if def.rolling_resistance > 0.0 { def.rolling_resistance } else { 0.008 * mass * 9.81 }, accel_body: Vec3::ZERO, friction: 0.85, wheel_impacts: Vec::new(), coupled: Vec::new(), spawned_inside: None, wheel_walls: true }
     }
 
     /// Place the body at rest with its wheels on the ground plane at `origin.z`: heading
@@ -660,7 +665,7 @@ impl RigidBody {
                 };
                 // across the tread: a kerb under part of it (see `tread_step`)
                 let ground = ground.map(|(need, slope, x)| (need + tread_step(probe, hub, fwd_h, r, z_top), slope, x));
-                let walls = track_walls(probe, &w.walls, &line, hub, fwd_h, r, z_top, wall_top, look.y);
+                let walls = if self.wheel_walls { track_walls(probe, &w.walls, &line, hub, fwd_h, r, z_top, wall_top, look.y) } else { Vec::new() };
                 found.push(ground);
                 let w = &mut self.wheels[i];
                 w.walls = walls;
