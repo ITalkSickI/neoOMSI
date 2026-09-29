@@ -688,7 +688,12 @@ impl ApplicationHandler for App {
                             if let Some(t) = tracked {
                                 p.seat += glam::Vec3::new(t.pos[0], -t.pos[2], t.pos[1]).clamp(glam::Vec3::splat(-60.0), glam::Vec3::splat(60.0)) / 100.0;
                             }
-                            let mut cam = p.camera_look(&self.view, cam, self.look, self.orbit);
+                            // (the outside view's field of view starts from the plain 60
+                            // degrees every frame: taken from the last frame's camera, the
+                            // zoom was applied on top of itself and ran off to its narrowest
+                            // or widest at once)
+                            let base = omsi_render::Camera { fov_deg: 60.0, ..*cam };
+                            let mut cam = p.camera_look(&self.view, &base, self.look, self.orbit);
                             if let Some(mut t) = tracked {
                                 for (k, axis) in ["yaw", "pitch", "roll"].iter().enumerate() {
                                     if self.settings.head_tracking_invert.contains(axis) {
