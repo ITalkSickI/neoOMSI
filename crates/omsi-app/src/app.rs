@@ -198,6 +198,8 @@ pub(crate) struct App {
     pub(crate) fps_t: Instant,
     /// Last workshop / fuel pump / wash message, and how long it still shows.
     pub(crate) service_msg: Option<(String, f32)>,
+    /// What the log has said (see applog.rs).
+    pub(crate) log_state: crate::applog::LogState,
     /// The driver's personnel file and this session's statistics.
     pub(crate) career: career::Career,
     /// How wet the roads are (0..1), built up by rain and dried by the sun.
@@ -398,6 +400,7 @@ impl App {
         renderer: &Renderer,
         mut scene: &mut Scene,
     ) {
+        report_missing_content(&w, &mut self.service_msg);
         {
             {
                 // (once more when it fails: a file read while the start was still reading
@@ -777,4 +780,51 @@ pub(crate) fn start_centers(args: &Args, cam: &Camera, world: Option<&World>) ->
         out.push(cam.position);
     }
     out
+}
+
+/// What the map needs and this installation lacks, said on the screen and written to
+/// `~/.openomsi/missing_content.txt` by add-on folder: a map short of an add-on showed
+/// holes, bare roads and white objects, and nobody could tell that from a fault of the game.
+pub(crate) fn report_missing_content(w: &World, msg: &mut Option<(String, f32)>) {
+    let (files, textures) = w.missing_content();
+    if files.is_empty() && textures.is_empty() {
+        return;
+    }
+    // the add-on a file comes with: the folder under Sceneryobjects / Splines / Vehicles
+    let addon = |f: &str| f.split('/').take(2).collect::<Vec<_>>().join("/");
+    let mut by_addon: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for (f, what) in &files {
+        by_addon.entry(addon(f)).or_default().push(format!("{what}: {f}"));
+    }
+    let mut text = format!("openOMSI: content this map uses that is not installed\nmap: {}\n\n", w.map_dir.display());
+    for (a, list) in &by_addon {
+        text.push_str(&format!("{a} ({} files)\n", list.len()));
+        for l in list {
+            text.push_str(&format!("  {l}\n"));
+        }
+    }
+    if !textures.is_empty() {
+        text.push_str(&format!("\ntextures not found ({}):\n", textures.len()));
+        for t in &textures {
+            text.push_str(&format!("  {t}\n"));
+        }
+    }
+    let Some(dir) = crate::lan::data_dir() else { return };
+    let path = dir.join("missing_content.txt");
+    let _ = std::fs::write(&path, text);
+    let objects = files.iter().filter(|(_, w)| *w != "spline").count();
+    let splines = files.len() - objects;
+    let addons: Vec<&String> = by_addon.keys().take(4).collect();
+    let more = if by_addon.len() > 4 { format!(" and {} more", by_addon.len() - 4) } else { String::new() };
+    log::warn!("missing content: {objects} objects, {splines} splines, {} textures (list: {})", textures.len(), path.display());
+    if !files.is_empty() {
+        *msg = Some((
+            format!(
+                "This map uses {objects} objects and {splines} splines that are not installed (add-ons: {}{more}). The list is in {}",
+                addons.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", "),
+                path.display()
+            ),
+            15.0,
+        ));
+    }
 }

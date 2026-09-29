@@ -452,6 +452,9 @@ impl Player {
     /// Fire a keyboard action as a script trigger, falling back to the names the stock
     /// scripts use for it. Returns whether any script block ran.
     pub(crate) fn action(&mut self, name: &str, pressed: bool) -> bool {
+        if pressed {
+            log::info!("action: {name}");
+        }
         let suffix = if pressed { "" } else { "_off" };
         // the ticket key of Inputs/keyboard.cfg (T): sell the ticket the passenger at the
         // desk asked for, on buses whose script has no ticket printer

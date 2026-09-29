@@ -73,6 +73,15 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - A bus on a lower level (a car park under a building, a road under a bridge) is no longer
   taken for one fallen through the world and put up on the roof: it has fallen only with
   nothing under it at all. A teleport to a place with a height lands on that level.
+- A map that uses objects or splines that are not installed says so when it loads (how
+  many, and the add-on folders they come from), and every missing object, spline and
+  texture is listed by add-on in `~/.openomsi/missing_content.txt` (written again when the
+  game ends, with the tiles loaded on the way). Holes, bare roads and white objects of such a
+  map are a missing download, not a fault of the game - now one can tell.
+- The game's log records the whole session: the system (OS, processor, memory), the command
+  line and every setting at the start; then everything said on the screen, each view, pause
+  and resume, every key action and door key, and a status line every minute (frame rate and
+  the worst frame, where the bus is, its speed, the view, the time, the traffic).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

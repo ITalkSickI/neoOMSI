@@ -157,6 +157,7 @@ impl ApplicationHandler for App {
                 };
                 let now = Instant::now();
                 let raw_dt = (now - self.last).as_secs_f32();
+                self.log_frame(raw_dt);
                 let profiling = omsi_cfg::env::var_os("OMSI_PROFILE").is_some();
                 let waited: f64 = ["acquire", "present", "gpu"].iter()
                     .map(|&k| self.profile.get(k).copied().unwrap_or(0.0))

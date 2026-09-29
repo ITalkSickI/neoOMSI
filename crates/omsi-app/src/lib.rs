@@ -55,6 +55,7 @@ mod ui;
 
 // the game itself, split by what each part does
 mod app;
+mod applog;
 mod app_events;
 mod bus_service;
 mod camera_util;
@@ -310,6 +311,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         place_on_duty(&mut args);
     }
     let settings = settings::Settings::load();
+    applog::log_system(&settings);
     if args.drive_keys.eq_ignore_ascii_case("simple")
         && !settings.drive_keys.eq_ignore_ascii_case("simple")
     {
@@ -495,6 +497,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         frames: 0,
         fps_t: Instant::now(),
         service_msg: clock_note.map(|m| (m, 10.0)),
+        log_state: Default::default(),
         plugins: None,
         career: Default::default(),
         wetness: 0.0,

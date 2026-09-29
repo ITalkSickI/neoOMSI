@@ -7,6 +7,11 @@ impl App {
     /// and the frames the loop still runs before it stops count no more time).
     pub(crate) fn finish_session(&mut self) {
         self.exiting = true;
+        // (the tiles loaded on the way added to what the map lacks)
+        if let Some(w) = self.world.clone() {
+            let mut none = None;
+            crate::app::report_missing_content(&w, &mut none);
+        }
         // PluginFinalize, as OMSI calls it on the way out
         if let Some(mut p) = self.plugins.take() {
             p.finalize();
@@ -326,6 +331,7 @@ impl App {
                             let groups = crate::player::door_keys(&p.vehicle.ty);
                             if let Some(group) = groups.get(n - 1) {
                                 let fire = crate::player::door_group_to_fire(&p.vehicle, group);
+                                log::info!("door key Shift+{n}: {}", fire.join(" + "));
                                 for name in &fire {
                                     p.vehicle.trigger(name);
                                 }

@@ -1395,8 +1395,8 @@ pub struct World {
     seeded: Mutex<hashbrown::HashSet<(i32, i32)>>,
     /// The GPU side of the loaded tiles.
     gpu: Mutex<GpuCache>,
-    /// Types this installation lacks, logged once each.
-    missing: Mutex<hashbrown::HashSet<String>>,
+    /// Types this installation lacks, logged once each (file, what it is).
+    missing: Mutex<hashbrown::HashMap<String, &'static str>>,
     /// Tiles read and typed that loaded tiles (or tiles on their way) depend on.
     staged: Mutex<HashMap<(i32, i32), Arc<StagedTile>>>,
     layout: Mutex<Option<Arc<TileLayout>>>,
@@ -3024,13 +3024,23 @@ impl World {
     }
 
     /// Note a type that is not in this installation, once per file.
-    fn note_missing(&self, file: &str, what: &str, tx: i32, ty: i32, id: i64) {
+    fn note_missing(&self, file: &str, what: &'static str, tx: i32, ty: i32, id: i64) {
         let key = file.trim().to_ascii_lowercase().replace('\\', "/");
-        if self.missing.lock().insert(key.clone()) {
+        if self.missing.lock().insert(key.clone(), what).is_none() {
             // the folder under Sceneryobjects/Splines names the add-on it comes with
             let addon = key.split('/').nth(1).unwrap_or("");
             log::warn!("{what} not found: {file} (add-on folder \"{addon}\"; first used by id {id} in tile {tx},{ty}) - left out");
         }
+    }
+
+    /// What the map uses and this installation lacks: the objects, splines and parked
+    /// cars (file, what) and the textures of the tiles loaded so far.
+    pub fn missing_content(&self) -> (Vec<(String, &'static str)>, Vec<String>) {
+        let mut files: Vec<(String, &'static str)> = self.missing.lock().iter().map(|(f, w)| (f.clone(), *w)).collect();
+        files.sort();
+        let mut tex: Vec<String> = self.gpu.lock().misses.iter().cloned().collect();
+        tex.sort();
+        (files, tex)
     }
 
     /// The type an object record puts on the map: a parking space gets a random car of the
