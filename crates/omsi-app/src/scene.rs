@@ -1308,6 +1308,13 @@ fn tree_quad_mesh() -> MeshData {
 /// Where textures are looked up for a given content directory.
 /// How far a road surface may ride above the ground and still have the ground cut away
 /// under it. Anything higher is a bridge or an embankment, where cutting would open a hole.
+/// `OMSI_HEIGHTPROFILE_GROUND=1`: the wheels stand on the splines' `[heightprofile]`s as
+/// they did before, instead of on the drawn splines as Omsi.exe stands them (A/B runs).
+fn heightprofile_ground() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| omsi_cfg::env::var_os("OMSI_HEIGHTPROFILE_GROUND").is_some())
+}
+
 fn surface_flush() -> f32 {
     omsi_cfg::env::var("OMSI_SURFACE_FLUSH")
         .ok()
@@ -3013,10 +3020,22 @@ impl World {
                 }
                 continue;
             }
-            let hp = omsi_geometry::build_height_profile_mesh(&st.def, &curve, s.mirror, origin);
-            if !hp.is_empty() {
-                let b = mesh_bounds(&hp, &Mat4::IDENTITY, origin);
-                out.drive.push((hp, b));
+            // What the wheels stand on is the spline's drawn mesh, not its `[heightprofile]`:
+            // Omsi.exe's ground query (0x7a0814) casts a ray from 3 m over the point down
+            // into each spline segment of the tile (0x5b2d94 -> 0x7c40c8, D3DXIntersect on
+            // the segment's mesh +0xa0), and that mesh is the one TSplineSegment.Generate
+            // (0x5b1e14) builds from the `[profile]`/`[profilepnt]` lists (+0xc) for drawing.
+            // The height profile (+0x20) is read by the editor's "is the point on this
+            // spline" test alone (0x5b2b1c). Taken as the ground, a height profile wider than
+            // the drawn road reached under the bus from the road beside it, one lower than
+            // the asphalt sank the wheels into it, and a road without one had no ground at
+            // all. `OMSI_HEIGHTPROFILE_GROUND=1` goes back to the height profiles (A/B).
+            if heightprofile_ground() {
+                let hp = omsi_geometry::build_height_profile_mesh(&st.def, &curve, s.mirror, origin);
+                if !hp.is_empty() {
+                    let b = mesh_bounds(&hp, &Mat4::IDENTITY, origin);
+                    out.drive.push((hp, b));
+                }
             }
             let mesh = build_spline_mesh(&st.def, &curve, s.mirror, origin);
             if debug_splines {
@@ -3055,6 +3074,10 @@ impl World {
                     indices: mesh.indices.clone(),
                     ..Default::default()
                 };
+                // (every spline the game draws: Omsi.exe asks them all, roads or not)
+                if !heightprofile_ground() {
+                    out.drive.push((shape.clone(), bounds));
+                }
                 let drivable = st.def.paths.iter().any(|pd| pd.kind == 0 || pd.kind == 1);
                 let overlay = !st.def.profiles.is_empty()
                     && st.def.profiles.iter().all(|p| st.def.textures.get(p.texture).is_some_and(|t| t.alpha == 2));
@@ -3916,6 +3939,20 @@ impl World {
                     o.id,
                     &o.rules,
                 );
+                // An object tilted on a slope (the map's pitch and bank) tilts its paths with
+                // it, as the whole object matrix places them in Omsi.exe: laid out by the
+                // heading alone, a junction on a hill had flat lanes through a sloping plate
+                // and its traffic drove into the road on one side and over it on the other.
+                let yaw = omsi_geometry::object_rotation([heading, 0.0, 0.0]);
+                let tilt = xf * yaw.inverse();
+                if !tilt.abs_diff_eq(Mat4::IDENTITY, 1e-5) {
+                    for l in own.iter_mut() {
+                        for q in l.points.iter_mut() {
+                            *q = pos + tilt.transform_point3((*q - pos).as_vec3()).as_dvec3();
+                        }
+                        l.refresh();
+                    }
+                }
                 // a junction plate raised by its height field carries its paths with it
                 if let (Some(field), true) = (ot.deform.as_ref(), res.warped.contains_key(&oi)) {
                     let inv = xf.inverse();
