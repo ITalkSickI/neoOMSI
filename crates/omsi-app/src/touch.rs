@@ -487,7 +487,9 @@ impl App {
                 if self.touch.fingers[k].moved {
                     // (degrees for a point dragged: a full turn is a few swipes)
                     let k = 0.28 / u;
-                    self.look_by(-(p.x - last.x) * k, -(p.y - last.y) * k);
+                    // (the view turns the way the finger moves: taken the other way round,
+                    // as grabbing the world, every direction felt inverted)
+                    self.look_by((p.x - last.x) * k, (p.y - last.y) * k);
                 }
             }
             _ => {}

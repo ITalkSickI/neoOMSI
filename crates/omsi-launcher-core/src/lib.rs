@@ -155,7 +155,8 @@ pub fn omsi_options(root: &Path) -> Option<OmsiOptions> {
     let o = omsi_content::options::Options::load(&root.join("options.cfg")).ok()?;
     let mut v = json!({});
     let num = |k: &str| o.str(k).and_then(|x| x.trim().replace(',', ".").parse::<f64>().ok()).filter(|x| x.is_finite());
-    if let Some(x) = num("maxfps") {
+    // (not on a phone: the PC's OMSI caps at 30, and a phone played at 30 frames)
+    if let Some(x) = num("maxfps").filter(|_| !cfg!(target_os = "android")) {
         v["max_fps"] = json!(x.max(0.0) as i64);
     }
     if let Some(x) = num("performance_minobjsize") {
@@ -1590,7 +1591,9 @@ pub fn option_presets() -> Vec<(String, Value)> {
         let Ok(o) = omsi_content::options::Options::load(&f) else { continue };
         let name = f.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let mut v = json!({});
-        v["max_fps"] = json!(o.i32("maxfps", 0).max(0));
+        if !cfg!(target_os = "android") {
+            v["max_fps"] = json!(o.i32("maxfps", 0).max(0));
+        }
         v["min_obj_size"] = json!(o.f32("performance_minobjsize", 0.013) as f64);
         v["max_obj_dist"] = json!((o.f32("performance_maxobjdist", 900.0).round() as i64).to_string());
         if let Some(af) = o.values.get("texfilter").and_then(|x| x.get(1)).and_then(|x| x.parse::<i64>().ok()) {

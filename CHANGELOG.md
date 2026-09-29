@@ -67,6 +67,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   of each bus ("door keys: ...").
 - The release notes list what changed since the release before (they said "Small changes
   and fixes" for every release without a section of its own here).
+- Phones: 60 frames a second by default (the settings took the PC OMSI's limit of 30 from
+  its options.cfg), and dragging the view turns it the way the finger moves (it was the
+  other way round, left for right and up for down).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

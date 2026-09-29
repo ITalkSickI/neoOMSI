@@ -268,7 +268,13 @@ impl Settings {
                 "auto_clutch" | "automatic_clutch" => s.auto_clutch = b(v),
                 "min_obj_size" | "performance_minobjsize" => s.min_obj_size = v.parse::<f32>().map(|x| x.clamp(0.0, 0.2)).unwrap_or(s.min_obj_size),
                 "max_obj_dist" | "performance_maxobjdist" => s.max_obj_dist = if v.eq_ignore_ascii_case("off") { 0.0 } else if v.eq_ignore_ascii_case("auto") { -1.0 } else { v.parse::<f32>().map(|x| x.max(0.0)).unwrap_or(s.max_obj_dist) },
-                "max_fps" | "maxfps" => s.max_fps = v.parse::<f32>().map(|x| x.max(0.0) as u32).unwrap_or(s.max_fps),
+                "max_fps" | "maxfps" => {
+                    s.max_fps = v.parse::<f32>().map(|x| x.max(0.0) as u32).unwrap_or(s.max_fps);
+                    // a phone given the PC OMSI's 30 by the settings import: 60
+                    if cfg!(target_os = "android") && s.max_fps == 30 {
+                        s.max_fps = 60;
+                    }
+                }
                 "chat" => s.chat = b(v),
                 "tooltips" | "mouseover" => s.tooltips = b(v),
                 "name_tags" | "nametags" => s.name_tags = b(v),
