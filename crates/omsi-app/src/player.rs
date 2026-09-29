@@ -1069,6 +1069,18 @@ impl Player {
         pick_in(&self.vehicle, origin, dir, spread)
     }
 
+    /// The page (`[htmltexture]`) under a ray and where it lands on it: the script texture
+    /// index and `u`/`v` from 0 to 1 across the page, `v` down from the top.
+    pub(crate) fn html_hit(&self, origin: DVec3, dir: Vec3) -> Option<(usize, f32, f32)> {
+        pick_html_in(&self.vehicle, origin, dir)
+    }
+
+    /// A press, release or move on a page. What the page does with it (`omsi.setVar`,
+    /// `omsi.trigger`) reaches the bus at once.
+    pub(crate) fn html_pointer(&mut self, page: usize, u: f32, v: f32, kind: omsi_sim::htmltex::PointerKind) -> bool {
+        self.vehicle.html_pointer(page, u, v, kind)
+    }
+
     /// The same forgiving pick as `pick`, for the coupled sections of an articulated bus.
     pub(crate) fn pick_trailer(&self, origin: DVec3, dir: Vec3, spread: f32) -> Option<(usize, usize)> {
         pick_trailer_in(&self.vehicle, origin, dir, spread)
@@ -1550,6 +1562,50 @@ pub(crate) fn pick_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: V
         }
     }
     None
+}
+
+/// The page of an `[htmltexture]` a ray lands on: its script texture index and the place on it
+/// (`u`/`v` from 0 to 1, `v` down from the top), for the nearest such surface. The nearest
+/// triangle of a mesh decides: a bezel of the same mesh in front of the screen takes the click
+/// away from it.
+pub(crate) fn pick_html_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: Vec3) -> Option<(usize, f32, f32)> {
+    if vehicle.html_textures.is_empty() {
+        return None;
+    }
+    let pages: Vec<usize> = vehicle.html_textures.iter().map(|t| t.script_index).collect();
+    let o = (origin - vehicle.position).as_vec3();
+    let mut best: Option<(f32, usize, f32, f32)> = None;
+    for (i, vm) in vehicle.ty.meshes.iter().enumerate() {
+        if !vehicle.mesh_props[i].visible {
+            continue;
+        }
+        let def = &vehicle.ty.model.meshes[vm.def_index];
+        let shows_page = |n: Option<i32>| n.is_some_and(|n| pages.contains(&(n.max(0) as usize)));
+        if !def.materials.iter().any(|m| shows_page(m.use_script_texture)) {
+            continue;
+        }
+        let xf = vehicle.mesh_local_transform(i);
+        if !ray_may_hit(&vehicle.ty, i, &xf, o, dir, 0.0) {
+            continue;
+        }
+        let Some(hit) = omsi_geometry::ray_mesh_hit(o, dir, &vm.data, &xf) else {
+            continue;
+        };
+        // the page the hit material slot shows (a slot that shows none is in the way)
+        let slot = vm.data.slot_of(hit.index) as usize;
+        let page = def
+            .materials
+            .iter()
+            .filter(|m| omsi_sim::vehicle::override_slot(&vm.materials, m) == Some(slot))
+            .find_map(|m| m.use_script_texture)
+            .map(|n| n.max(0) as usize)
+            .filter(|n| pages.contains(n));
+        let Some(page) = page else { continue };
+        if best.is_none_or(|b| hit.t < b.0) {
+            best = Some((hit.t, page, hit.uv.x.clamp(0.0, 1.0), hit.uv.y.clamp(0.0, 1.0)));
+        }
+    }
+    best.map(|(_, page, u, v)| (page, u, v))
 }
 
 /// The same forgiving pick as `pick`, but for the coupled sections of an articulated

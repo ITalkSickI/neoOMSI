@@ -97,8 +97,8 @@ impl App {
                     KeyCode::SuperLeft,
                     KeyCode::SuperRight,
                 ]
-                .iter()
-                .any(|k| self.keys.contains(k));
+                    .iter()
+                    .any(|k| self.keys.contains(k));
                 if lan::chat_key(l, &mut self.remotes, code, pressed, repeat, modifiers) {
                     return;
                 }
@@ -187,7 +187,7 @@ impl App {
                     && m == 0
                     && !own
                     && (fallback_action(code, &self.args.drive_keys).is_some()
-                        || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
+                    || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
                 if let Some(scan) = keys::dik_code(code).filter(|_| !ours) {
                     let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.modifier == m).map(|b| b.action.clone());
                     if let Some(a) = action {
@@ -346,56 +346,56 @@ impl App {
                         self.ego = false;
                     }
                     KeyCode::KeyU
-                        if self.keys.contains(&KeyCode::ShiftLeft)
-                            || self.keys.contains(&KeyCode::ShiftRight) =>
-                    {
-                        // Shift+U: toggle a bus's service state by itself (start a shut
-                        // bus, shut down a running one), and set its IBIS to the current
-                        // duty as the driver would do while putting it into service.
-                        if let Some(p) = self.player.as_mut() {
-                            let msg = p.start_up();
-                            self.service_msg = Some((msg, 6.0));
-                            if let Some(d) = self.duty.as_ref() {
-                                let (trip, stop) = d.trip_for_ibis();
-                                p.set_duty_destination(trip, stop);
+                    if self.keys.contains(&KeyCode::ShiftLeft)
+                        || self.keys.contains(&KeyCode::ShiftRight) =>
+                        {
+                            // Shift+U: toggle a bus's service state by itself (start a shut
+                            // bus, shut down a running one), and set its IBIS to the current
+                            // duty as the driver would do while putting it into service.
+                            if let Some(p) = self.player.as_mut() {
+                                let msg = p.start_up();
+                                self.service_msg = Some((msg, 6.0));
+                                if let Some(d) = self.duty.as_ref() {
+                                    let (trip, stop) = d.trip_for_ibis();
+                                    p.set_duty_destination(trip, stop);
+                                }
                             }
                         }
-                    }
 
                     KeyCode::KeyR
-                        if self.keys.contains(&KeyCode::ShiftLeft)
-                            || self.keys.contains(&KeyCode::ShiftRight) =>
-                    {
-                        // Shift+R: the next internet radio station (see radio.rs)
-                        let msg = self.radio.next_station();
-                        self.service_msg = Some((msg, 4.0));
-                    }
-                    KeyCode::KeyM
-                        if self.keys.contains(&KeyCode::ShiftLeft)
-                            || self.keys.contains(&KeyCode::ShiftRight) =>
-                    {
-                        // Shift+M: the city map (M alone is the starter)
-                        if let Some(n) = self.navigator.as_mut() {
-                            n.toggle_map();
+                    if self.keys.contains(&KeyCode::ShiftLeft)
+                        || self.keys.contains(&KeyCode::ShiftRight) =>
+                        {
+                            // Shift+R: the next internet radio station (see radio.rs)
+                            let msg = self.radio.next_station();
+                            self.service_msg = Some((msg, 4.0));
                         }
-                    }
-                    KeyCode::KeyN
-                        if self.keys.contains(&KeyCode::ShiftLeft)
-                            || self.keys.contains(&KeyCode::ShiftRight) =>
-                    {
-                        // Shift+N: navigator → navigator with the schedule → off (N alone is
-                        // the gearbox's neutral)
-                        if let Some(n) = self.navigator.as_mut() {
-                            match (n.enabled, n.schedule) {
-                                (true, false) => n.schedule = true,
-                                (true, true) => {
-                                    n.enabled = false;
-                                    n.schedule = false;
-                                }
-                                _ => n.enabled = true,
+                    KeyCode::KeyM
+                    if self.keys.contains(&KeyCode::ShiftLeft)
+                        || self.keys.contains(&KeyCode::ShiftRight) =>
+                        {
+                            // Shift+M: the city map (M alone is the starter)
+                            if let Some(n) = self.navigator.as_mut() {
+                                n.toggle_map();
                             }
                         }
-                    }
+                    KeyCode::KeyN
+                    if self.keys.contains(&KeyCode::ShiftLeft)
+                        || self.keys.contains(&KeyCode::ShiftRight) =>
+                        {
+                            // Shift+N: navigator → navigator with the schedule → off (N alone is
+                            // the gearbox's neutral)
+                            if let Some(n) = self.navigator.as_mut() {
+                                match (n.enabled, n.schedule) {
+                                    (true, false) => n.schedule = true,
+                                    (true, true) => {
+                                        n.enabled = false;
+                                        n.schedule = false;
+                                    }
+                                    _ => n.enabled = true,
+                                }
+                            }
+                        }
                     KeyCode::F11 => {
                         // (Ctrl+F11; F11 alone is OMSI's pedestrian view)
                         // where am I: so a place that looks wrong can be named
@@ -485,13 +485,13 @@ impl App {
                     } else {
                         shift as i32 * 1
                             | (self.keys.contains(&KeyCode::ControlLeft)
-                                || self.keys.contains(&KeyCode::ControlRight))
-                                as i32
-                                * 2
+                            || self.keys.contains(&KeyCode::ControlRight))
+                            as i32
+                            * 2
                             | (self.keys.contains(&KeyCode::AltLeft)
-                                || self.keys.contains(&KeyCode::AltRight))
-                                as i32
-                                * 4
+                            || self.keys.contains(&KeyCode::AltRight))
+                            as i32
+                            * 4
                     };
                     p.key(scan, m, pressed);
                 }
@@ -695,7 +695,23 @@ impl App {
     }
 
     pub(crate) fn on_mouse_moved(&mut self, x: f32, y: f32) {
-        self.move_cursor(x, y);
+        if self.move_cursor(x, y) {
+            self.html_move();
+        }
+    }
+
+    /// The pointer moved with the button down on a page: the page sees it as long as the
+    /// pointer stays on that page.
+    fn html_move(&mut self) {
+        let Some((page, ..)) = self.html_pressed else { return };
+        let (Some(p), Some(cam), Some(s)) = (self.player.as_mut(), self.camera.as_ref(), self.surface.as_ref()) else {
+            return;
+        };
+        let (o, d) = cursor_ray(cam, self.cursor.0, self.cursor.1, s.config.width as f32, s.config.height as f32);
+        if let Some((pg, u, v)) = p.html_hit(o, d).filter(|h| h.0 == page) {
+            p.html_pointer(pg, u, v, omsi_sim::htmltex::PointerKind::Move);
+            self.html_pressed = Some((pg, u, v));
+        }
     }
 
     /// Mouse steering beyond the window's edge: with the cursor pinned at the left or right
@@ -818,10 +834,26 @@ impl App {
                     s.config.width as f32,
                     s.config.height as f32,
                 );
+                // a page of the bus (a screen with buttons on it) takes the click
+                if let Some((page, u, v)) = p.html_hit(o, d) {
+                    p.release();
+                    p.html_pointer(page, u, v, omsi_sim::htmltex::PointerKind::Down);
+                    self.html_pressed = Some((page, u, v));
+                    self.dragging = false;
+                    return;
+                }
                 self.dragging = p
                     .click(o, d, pixel_angle(cam, s.config.height as f32) * 6.0)
                     .is_some();
             } else {
+                if let Some((page, u, v)) = self.html_pressed.take() {
+                    // let go where the pointer is now, if that is still the page
+                    let (o, d) = cursor_ray(cam, self.cursor.0, self.cursor.1, s.config.width as f32, s.config.height as f32);
+                    let (u, v) = p.html_hit(o, d).filter(|h| h.0 == page).map_or((u, v), |h| (h.1, h.2));
+                    p.html_pointer(page, u, v, omsi_sim::htmltex::PointerKind::Up);
+                    self.dragging = false;
+                    return;
+                }
                 p.release();
                 self.dragging = false;
             }
@@ -845,48 +877,48 @@ impl App {
     }
 
     /// A key of the input script by name: a letter, a digit, F1..F12, or one of the named keys.
-pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
-    use KeyCode::*;
-    pub(crate) const LETTERS: [KeyCode; 26] = [KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ];
-    pub(crate) const DIGITS: [KeyCode; 10] = [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9];
-    pub(crate) const FKEYS: [KeyCode; 12] = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12];
-    let b = name.as_bytes();
-    if b.len() == 1 && b[0].is_ascii_alphabetic() {
-        return Some(LETTERS[(b[0].to_ascii_uppercase() - b'A') as usize]);
+    pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
+        use KeyCode::*;
+        pub(crate) const LETTERS: [KeyCode; 26] = [KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ];
+        pub(crate) const DIGITS: [KeyCode; 10] = [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9];
+        pub(crate) const FKEYS: [KeyCode; 12] = [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12];
+        let b = name.as_bytes();
+        if b.len() == 1 && b[0].is_ascii_alphabetic() {
+            return Some(LETTERS[(b[0].to_ascii_uppercase() - b'A') as usize]);
+        }
+        if b.len() == 1 && b[0].is_ascii_digit() {
+            return Some(DIGITS[(b[0] - b'0') as usize]);
+        }
+        if let Some(n) = name.strip_prefix('F').and_then(|n| n.parse::<usize>().ok()) {
+            return FKEYS.get(n.wrapping_sub(1)).copied();
+        }
+        Some(match name {
+            "Shift" => ShiftLeft,
+            "Ctrl" => ControlLeft,
+            "Alt" => AltLeft,
+            "." => Period,
+            "," => Comma,
+            "Up" => ArrowUp,
+            "Down" => ArrowDown,
+            "Left" => ArrowLeft,
+            "Right" => ArrowRight,
+            "Enter" => Enter,
+            "Escape" => Escape,
+            "Backspace" => Backspace,
+            "Space" => Space,
+            "PageUp" => PageUp,
+            "PageDown" => PageDown,
+            "Insert" => Insert,
+            "Home" => Home,
+            "End" => End,
+            "Delete" => Delete,
+            "[" => BracketLeft,
+            "]" => BracketRight,
+            _ => return None,
+        })
     }
-    if b.len() == 1 && b[0].is_ascii_digit() {
-        return Some(DIGITS[(b[0] - b'0') as usize]);
-    }
-    if let Some(n) = name.strip_prefix('F').and_then(|n| n.parse::<usize>().ok()) {
-        return FKEYS.get(n.wrapping_sub(1)).copied();
-    }
-    Some(match name {
-        "Shift" => ShiftLeft,
-        "Ctrl" => ControlLeft,
-        "Alt" => AltLeft,
-        "." => Period,
-        "," => Comma,
-        "Up" => ArrowUp,
-        "Down" => ArrowDown,
-        "Left" => ArrowLeft,
-        "Right" => ArrowRight,
-        "Enter" => Enter,
-        "Escape" => Escape,
-        "Backspace" => Backspace,
-        "Space" => Space,
-        "PageUp" => PageUp,
-        "PageDown" => PageDown,
-        "Insert" => Insert,
-        "Home" => Home,
-        "End" => End,
-        "Delete" => Delete,
-        "[" => BracketLeft,
-        "]" => BracketRight,
-        _ => return None,
-    })
-}
 
-/// `OMSI_INPUT`: scripted window input, so the very same handlers the mouse and keyboard
+    /// `OMSI_INPUT`: scripted window input, so the very same handlers the mouse and keyboard
     /// reach can be driven from the command line and checked without a hand on the mouse:
     /// `t=3 move 1045,826; t=3.2 press; t=3.5 drag 0,-80; t=4 release; t=4.5 log bremse_feststell;
     /// t=5 key F3` - coordinates in logical pixels, `drag` relative, `key` a winit key name;
