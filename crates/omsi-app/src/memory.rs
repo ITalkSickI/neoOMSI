@@ -47,11 +47,19 @@ pub(crate) fn physical_memory() -> Option<u64> {
 /// eighth of the machine's memory (2 GB on a 16 GB Mac - Ahlheim's main station needs
 /// about 1.5).
 pub(crate) fn texture_budget(settings: &settings::Settings) -> u64 {
-    let mb = omsi_cfg::env::var("OMSI_TEXTURE_MEMORY")
+    let override_mb = omsi_cfg::env::var("OMSI_TEXTURE_MEMORY")
         .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(settings.texture_memory as u64);
+        .and_then(|v| v.parse::<u64>().ok());
+    let mb = override_mb.unwrap_or(settings.texture_memory as u64);
     if mb > 0 {
+        // A saved setting of 800 MB on a GTX 1060 3GB leaves too little room for
+        // renderer targets, meshes and the driver's transient upload allocations.
+        // Keep the environment override for deliberate comparison runs.
+        if override_mb.is_none()
+            && omsi_render::ADAPTER_TEXTURE_MB.load(std::sync::atomic::Ordering::Relaxed) == 500
+        {
+            return mb.min(500) * 1_000_000;
+        }
         return mb * 1_000_000;
     }
     // automatic: an eighth of the system's memory, but no more than the graphics adapter
