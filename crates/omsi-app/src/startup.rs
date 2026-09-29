@@ -130,6 +130,9 @@ pub(crate) fn graphics_instance() -> wgpu::Instance {
     }
     descriptor.backends = if cfg!(target_os = "macos") {
         wgpu::Backends::METAL
+    } else if cfg!(windows) {
+        // Prefer a compatible native backend instead of requiring Vulkan alone.
+        wgpu::Backends::DX12 | wgpu::Backends::VULKAN
     } else {
         wgpu::Backends::VULKAN
     };
