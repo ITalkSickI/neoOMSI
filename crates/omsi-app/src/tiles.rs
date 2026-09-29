@@ -517,6 +517,39 @@ fn loader_pool() -> &'static rayon::ThreadPool {
     })
 }
 
+/// Candidates whose tile rectangles may touch `radius` around a center. The exact
+/// circular distance check follows in `missing`.
+fn tile_candidates(
+    lookup: &hashbrown::HashMap<(i32, i32), Vec<usize>>,
+    tile_count: usize,
+    centers: &[DVec3],
+    radius: f64,
+) -> Vec<usize> {
+    let ts = tile_size();
+    let mut candidates: Vec<usize> = Vec::new();
+    for c in centers {
+        let min_x = ((c.x - radius) / ts).floor() as i32 - 1;
+        let max_x = ((c.x + radius) / ts).floor() as i32;
+        let min_y = ((c.y - radius) / ts).floor() as i32 - 1;
+        let max_y = ((c.y + radius) / ts).floor() as i32;
+        let cells = (max_x as i64 - min_x as i64 + 1) * (max_y as i64 - min_y as i64 + 1);
+        if cells > tile_count as i64 * 2 {
+            candidates.extend(0..tile_count);
+            break;
+        }
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                if let Some(indices) = lookup.get(&(x, y)) {
+                    candidates.extend_from_slice(indices);
+                }
+            }
+        }
+    }
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
+}
+
 /// Loads the tiles around a few points as they move (the camera, and the player's bus,
 /// which must not lose the ground under it when the free camera flies off), like OMSI's
 /// tile streaming: the tiles within `load_radius` of any of them are read, tessellated and
@@ -526,6 +559,8 @@ fn loader_pool() -> &'static rayon::ThreadPool {
 pub struct Streamer {
     world: std::sync::Arc<crate::scene::World>,
     tiles: Vec<(i32, i32, PathBuf)>,
+    /// Indices into `tiles`, including duplicate coordinates, in map-file order.
+    tile_lookup: hashbrown::HashMap<(i32, i32), Vec<usize>>,
     pub load_radius: f64,
     pub unload_radius: f64,
     tx: std::sync::mpsc::Sender<Batch>,
@@ -559,10 +594,15 @@ impl Streamer {
     /// first area, which is what the loading screen waits for.
     pub fn new(world: std::sync::Arc<crate::scene::World>, centers: &[DVec3], load_radius: f64, initial_radius: f64) -> Streamer {
         let tiles = world.select_tiles(None, None);
+        let mut tile_lookup: hashbrown::HashMap<(i32, i32), Vec<usize>> = hashbrown::HashMap::new();
+        for (i, t) in tiles.iter().enumerate() {
+            tile_lookup.entry((t.0, t.1)).or_default().push(i);
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         let mut s = Streamer {
             world,
             tiles,
+            tile_lookup,
             load_radius,
             unload_radius: load_radius + tile_size() * 1.5,
             tx,
@@ -635,9 +675,9 @@ impl Streamer {
 
     fn missing(&self, centers: &[DVec3]) -> Vec<(f64, (i32, i32, PathBuf))> {
         let loaded: hashbrown::HashSet<(i32, i32)> = self.world.loaded_tiles().into_iter().collect();
-        let mut out: Vec<(f64, (i32, i32, PathBuf))> = self
-            .tiles
-            .iter()
+        let mut out: Vec<(f64, (i32, i32, PathBuf))> = tile_candidates(&self.tile_lookup, self.tiles.len(), centers, self.load_radius)
+            .into_iter()
+            .map(|i| &self.tiles[i])
             .filter(|t| !loaded.contains(&(t.0, t.1)) && !self.requested.contains(&(t.0, t.1)) && !self.failed.contains(&(t.0, t.1)))
             .map(|t| (Self::nearest(centers, t.0, t.1), t.clone()))
             .filter(|(d, _)| *d <= self.load_radius)
@@ -816,6 +856,31 @@ impl Streamer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn indexed_tile_search_matches_full_distance_scan() {
+        let coords: Vec<(i32, i32)> = (-5..=5).flat_map(|x| (-5..=5).map(move |y| (x, y))).collect();
+        let mut lookup: hashbrown::HashMap<(i32, i32), Vec<usize>> = hashbrown::HashMap::new();
+        for (i, &key) in coords.iter().enumerate() {
+            lookup.entry(key).or_default().push(i);
+        }
+        let ts = tile_size();
+        for centers in [
+            vec![DVec3::new(0.0, 0.0, 0.0)],
+            vec![DVec3::new(-0.3 * ts, 1.8 * ts, 0.0), DVec3::new(3.2 * ts, -2.1 * ts, 0.0)],
+        ] {
+            for radius in [0.0, 0.7 * ts, 2.5 * ts, 20.0 * ts] {
+                let expected: Vec<usize> = coords.iter().enumerate()
+                    .filter_map(|(i, &(x, y))| (Streamer::nearest(&centers, x, y) <= radius).then_some(i))
+                    .collect();
+                let actual: Vec<usize> = tile_candidates(&lookup, coords.len(), &centers, radius)
+                    .into_iter()
+                    .filter(|&i| Streamer::nearest(&centers, coords[i].0, coords[i].1) <= radius)
+                    .collect();
+                assert_eq!(actual, expected, "centers {centers:?}, radius {radius}");
+            }
+        }
+    }
 
     /// The objects row record `att` puts on its own spline `spline`.
     fn row_objects(att: &SplineAttachment, spline: &MapSpline, origin: DVec2, index: Option<&MapIndex>) -> Vec<RowObject> {

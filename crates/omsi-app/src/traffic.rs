@@ -454,8 +454,15 @@ pub struct DormantCar {
 /// player (memory: a dormant car is a few dozen bytes, but each one woken is a full vehicle).
 const MAP_POPULATION_FACTOR: f32 = 8.0;
 
+fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
+    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.001 && l.length() >= 8.0)
+        .then(|| l.length() as f64 * l.density.clamp(0.05, 4.0) as f64)
+}
+
 pub struct Traffic {
     pub net: Network,
+    /// Sum of the spawn weights of every street lane, updated only as tiles add lanes.
+    street_weight: f64,
     /// Parked cars standing in or beside a lane: per lane, (distance along it, signed
     /// lateral offset of the car's centre, + = right). A car in the lane's middle is an
     /// obstacle to stop behind; one over the kerb side is passed with a swerve to the left.
@@ -1034,8 +1041,10 @@ impl Traffic {
         let light_log = omsi_cfg::env::var("OMSI_DEBUG_LIGHTS").ok();
         let light_prev = lights.iter().map(|c| vec![-100; c.lights.len()]).collect();
         let lanes = 0..net.lanes.len();
+        let street_weight = net.lanes.iter().filter_map(street_lane_weight).sum();
         let mut t = Traffic {
             net,
+            street_weight,
             parked,
             parked_waiting: Vec::new(),
             lane_tiles: lane_tiles.into_iter().collect(),
@@ -1615,11 +1624,10 @@ impl Traffic {
         // ... and so does how much road there is around: the same number of cars looks
         // empty on a six-lane Berlin junction and crowded on a village lane, so the count
         // asked for is per a neighbourhood of about 250 lanes
-        let near = self
-            .net
-            .lanes
-            .iter()
-            .filter(|l| {
+        let near = self.net.lanes_starting_near(center, self.spawn_radius)
+            .into_iter()
+            .filter(|&i| {
+                let l = &self.net.lanes[i];
                 l.kind == LaneKind::Street
                     && l.points
                         .first()
@@ -1836,12 +1844,11 @@ impl Traffic {
         } else {
             self.spawn_radius
         };
+        let nearby = self.net.lanes_starting_near(center, radius);
         // candidate lanes of this kind near the centre
         let pick = |through: bool| -> Vec<(usize, f32)> {
-            self.net
-                .lanes
-                .iter()
-                .enumerate()
+            nearby.iter().copied()
+                .map(|i| (i, &self.net.lanes[i]))
                 .filter(|(_, l)| {
                     l.kind == kind
                         && l.length() > 8.0
@@ -2060,27 +2067,37 @@ impl Traffic {
         }
         let far = self.spawn_radius * DESPAWN_FACTOR;
         let centers: Vec<DVec3> = std::iter::once(center).chain(self.lan_centers.iter().copied()).collect();
-        let (mut total, mut near) = (0f64, 0f64);
-        let mut outside: Vec<(usize, f32)> = Vec::new();
-        for (i, l) in self.net.lanes.iter().enumerate() {
-            if l.kind != LaneKind::Street || l.no_cars || l.density <= 0.001 || l.length() < 8.0 {
-                continue;
-            }
-            let w = l.length() as f64 * l.density.clamp(0.05, 4.0) as f64;
-            total += w;
+        let mut nearby: Vec<usize> = centers.iter()
+            .flat_map(|&c| self.net.lanes_starting_near(c, self.spawn_radius))
+            .collect();
+        nearby.sort_unstable();
+        nearby.dedup();
+        let mut near = 0f64;
+        for i in nearby {
+            let l = &self.net.lanes[i];
+            let Some(w) = street_lane_weight(l) else { continue };
             let d = centers.iter().map(|c| (l.start() - *c).truncate().length()).fold(f64::MAX, f64::min);
             if d < self.spawn_radius {
                 near += w;
-            } else if d > far {
-                outside.push((i, w as f32));
             }
         }
-        if near < 50.0 || outside.is_empty() {
+        if near < 50.0 {
             return;
         }
-        let map_target = ((street_target as f64 * total / near).min(street_target as f64 * MAP_POPULATION_FACTOR as f64)) as usize;
+        let map_target = ((street_target as f64 * self.street_weight / near).min(street_target as f64 * MAP_POPULATION_FACTOR as f64)) as usize;
         let present = self.cars.iter().filter(|c| !c.is_bus() && !c.gone).count() + self.dormant.len();
         if present >= map_target {
+            return;
+        }
+        // The full outside list is only needed while replenishing the map population.
+        let outside: Vec<(usize, f32)> = self.net.lanes.iter().enumerate()
+            .filter_map(|(i, l)| {
+                let w = street_lane_weight(l)?;
+                let d = centers.iter().map(|c| (l.start() - *c).truncate().length()).fold(f64::MAX, f64::min);
+                (d > far).then_some((i, w as f32))
+            })
+            .collect();
+        if outside.is_empty() {
             return;
         }
         let mut acc = 0.0f32;
@@ -6173,6 +6190,7 @@ impl Traffic {
         let mut added = self.net.lanes.len()..self.net.lanes.len();
         if n > 0 {
             added = self.net.extend(new, 1.5);
+            self.street_weight += self.net.lanes[added.clone()].iter().filter_map(street_lane_weight).sum::<f64>();
             log::debug!(
                 "traffic: {} lanes added ({} in all)",
                 added.len(),

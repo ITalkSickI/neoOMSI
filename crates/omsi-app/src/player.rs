@@ -1365,17 +1365,20 @@ pub(crate) fn pick_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: V
             );
         }
     }
+    // The same broad-phase applies to every ring. A large cockpit can contain
+    // hundreds of meshes; calculating their posed transforms three times made
+    // hovering over its controls needlessly expensive.
+    let candidates: Vec<(usize, glam::Mat4)> = vehicle.ty.meshes.iter().enumerate().filter_map(|(i, vm)| {
+        if vehicle.ty.model.meshes[vm.def_index].mouse_event.is_none() || !vehicle.mesh_props[i].visible {
+            return None;
+        }
+        let xf = vehicle.mesh_local_transform(i);
+        ray_may_hit(&vehicle.ty, i, &xf, o, dir, spread * 2.2).then_some((i, xf))
+    }).collect();
     for dirs in &rings {
         let mut best: Option<(f32, usize)> = None;
-        for (i, vm) in vehicle.ty.meshes.iter().enumerate() {
-            let def = &vehicle.ty.model.meshes[vm.def_index];
-            if def.mouse_event.is_none() || !vehicle.mesh_props[i].visible {
-                continue;
-            }
-            let xf = vehicle.mesh_local_transform(i);
-            if !ray_may_hit(&vehicle.ty, i, &xf, o, dir, spread * 2.2) {
-                continue;
-            }
+        for &(i, xf) in &candidates {
+            let vm = &vehicle.ty.meshes[i];
             for d in dirs {
                 if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
                     if best.map(|(bt, _)| t < bt).unwrap_or(true) {
@@ -1412,24 +1415,26 @@ pub(crate) fn pick_trailer_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3
             );
         }
     }
+    let candidates: Vec<(usize, usize, glam::Mat4)> = vehicle.trailers.iter().enumerate().flat_map(|(ti, trailer)| {
+        let o = (origin - trailer.position).as_vec3();
+        trailer.ty.meshes.iter().enumerate().filter_map(move |(i, vm)| {
+            if trailer.ty.model.meshes[vm.def_index].mouse_event.is_none() || !trailer.mesh_props[i].visible {
+                return None;
+            }
+            let xf = trailer.mesh_local_transform(i);
+            ray_may_hit(&trailer.ty, i, &xf, o, dir, spread * 2.2).then_some((ti, i, xf))
+        })
+    }).collect();
     for dirs in &rings {
         let mut best: Option<(f32, usize, usize)> = None;
-        for (ti, trailer) in vehicle.trailers.iter().enumerate() {
+        for &(ti, i, xf) in &candidates {
+            let trailer = &vehicle.trailers[ti];
             let o = (origin - trailer.position).as_vec3();
-            for (i, vm) in trailer.ty.meshes.iter().enumerate() {
-                let def = &trailer.ty.model.meshes[vm.def_index];
-                if def.mouse_event.is_none() || !trailer.mesh_props[i].visible {
-                    continue;
-                }
-                let xf = trailer.mesh_local_transform(i);
-                if !ray_may_hit(&trailer.ty, i, &xf, o, dir, spread * 2.2) {
-                    continue;
-                }
-                for d in dirs {
-                    if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
-                        if best.map(|(bt, _, _)| t < bt).unwrap_or(true) {
-                            best = Some((t, ti, i));
-                        }
+            let vm = &trailer.ty.meshes[i];
+            for d in dirs {
+                if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
+                    if best.map(|(bt, _, _)| t < bt).unwrap_or(true) {
+                        best = Some((t, ti, i));
                     }
                 }
             }

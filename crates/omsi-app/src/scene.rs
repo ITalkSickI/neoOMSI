@@ -6637,16 +6637,16 @@ impl World {
         let textures = gpu.free_textures.free_tail(scene.textures.len());
         let materials = gpu.free_materials.free_tail(scene.materials.len());
         // instances are free by slot count: their tail across all counts
-        let mut free_inst: Vec<usize> = gpu
-            .free_instances
-            .values()
-            .flat_map(|l| l.0.iter().map(|r| r.0))
-            .collect();
-        free_inst.sort_unstable();
         let mut instances = scene.instances.len();
-        while instances > 0 && free_inst.last() == Some(&(instances - 1)) {
-            free_inst.pop();
-            instances -= 1;
+        // Most checks have no free slot at the end. Avoid sorting every free instance
+        // after each streaming burst just to discover that the tail cannot shrink.
+        if instances > 0 && gpu.free_instances.values().any(|l| l.0.iter().any(|r| r.0 == instances - 1)) {
+            let free: hashbrown::HashSet<usize> = gpu.free_instances.values()
+                .flat_map(|l| l.0.iter().map(|r| r.0))
+                .collect();
+            while instances > 0 && free.contains(&(instances - 1)) {
+                instances -= 1;
+            }
         }
         let lens = [
             scene.meshes.len(),

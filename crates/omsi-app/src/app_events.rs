@@ -5,6 +5,16 @@ const MIRROR_RATE: f32 = 75.0;
 /// The least a mirror is redrawn a second (see the mirrors in `window_event`).
 const MIRROR_MIN_HZ: f32 = 8.0;
 
+fn render_scale_step(fps: f32, slow_frame_wait_share: f32) -> f32 {
+    if fps < 45.0 && slow_frame_wait_share >= 0.35 {
+        -0.1
+    } else if fps > 57.0 || slow_frame_wait_share < 0.35 {
+        0.05
+    } else {
+        0.0
+    }
+}
+
 use super::*;
 
 impl ApplicationHandler for App {
@@ -148,6 +158,11 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let raw_dt = (now - self.last).as_secs_f32();
                 let profiling = omsi_cfg::env::var_os("OMSI_PROFILE").is_some();
+                let waited: f64 = ["acquire", "present", "gpu"].iter()
+                    .map(|&k| self.profile.get(k).copied().unwrap_or(0.0))
+                    .sum();
+                let wait_this_frame = (waited - self.governor_wait_prev).max(0.0) as f32;
+                self.governor_wait_prev = waited;
                 if self.total_frames > 60 {
                     if raw_dt > 0.05 {
                         self.spikes += 1;
@@ -183,32 +198,30 @@ impl ApplicationHandler for App {
                         }
                     }
                     self.worst_ms = self.worst_ms.max(raw_dt * 1000.0);
-                    // The frame-rate governor: a graphics chip that cannot hold 45 frames a
-                    // second (an older laptop's, at the window's full size with the enhanced
-                    // picture) gets the 3D picture drawn smaller, down to 0.6 of the window,
-                    // and back up once there is room. Judged every two seconds; a render
-                    // scale the player set, OMSI_FIXED_SCALE or a frame limit below 50 keep
-                    // it where it is.
+                    // Reduce resolution only when slow frames spend substantial time waiting
+                    // for presentation or the GPU. Traffic, scripts and tile work can drop
+                    // the frame rate too, but fewer pixels cannot make those stages faster.
+                    // Keep the player's chosen scale and explicit fixed-scale override.
+                    // A fast V-synced frame can wait for the next refresh without being
+                    // GPU-bound. Count presentation wait only on slow frames.
+                    if raw_dt > 0.02 {
+                        self.governor.2 += wait_this_frame;
+                    }
                     self.governor.0 += raw_dt;
                     self.governor.1 += 1;
                     if self.governor.0 >= 2.0 {
                         let fps = self.governor.1 as f32 / self.governor.0;
-                        self.governor = (0.0, 0);
+                        let wait_share = self.governor.2 / self.governor.0;
+                        self.governor = (0.0, 0, 0.0);
                         let free = self.settings.render_scale <= 0.0
                             && (self.settings.max_fps == 0 || self.settings.max_fps >= 50)
                             && omsi_cfg::env::var_os("OMSI_FIXED_SCALE").is_none();
                         if let (Some(r), true) = (self.renderer.as_ref(), free) {
                             let s = r.dynamic_scale();
-                            let next = if fps < 45.0 {
-                                s - 0.1
-                            } else if fps > 57.0 {
-                                s + 0.05
-                            } else {
-                                s
-                            };
+                            let next = s + render_scale_step(fps, wait_share);
                             r.set_dynamic_scale(next);
                             if (r.dynamic_scale() - s).abs() > 1e-3 {
-                                log::info!("frame rate {fps:.0} fps: the 3D picture is drawn at {:.0} % of the window now", r.dynamic_scale() * 100.0);
+                                log::info!("frame rate {fps:.0} fps (presentation wait {:.0}%): the 3D picture is drawn at {:.0} % of the window now", wait_share * 100.0, r.dynamic_scale() * 100.0);
                             }
                         }
                     }
@@ -2082,4 +2095,16 @@ fn info_line(clock: &omsi_sim::SimClock, player: Option<&Player>, duty: Option<&
         }
     }
     parts.join("   ·   ")
+}
+
+#[cfg(test)]
+mod governor_tests {
+    use super::render_scale_step;
+
+    #[test]
+    fn cpu_stutters_do_not_reduce_picture_quality() {
+        assert!(render_scale_step(35.0, 0.1) > 0.0);
+        assert!(render_scale_step(35.0, 0.6) < 0.0);
+        assert!(render_scale_step(60.0, 0.6) > 0.0);
+    }
 }

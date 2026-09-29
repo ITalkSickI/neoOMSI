@@ -204,8 +204,11 @@ pub(crate) struct App {
     /// Frames longer than 50 ms (stutters) and the worst frame, for the exit summary.
     pub(crate) spikes: u32,
     pub(crate) worst_ms: f32,
-    /// The frame-rate governor's window: seconds and frames since it last judged.
-    pub(crate) governor: (f32, u32),
+    /// The frame-rate governor's two-second window.
+    /// Window seconds, frames, and time waiting on presentation/GPU in that window.
+    pub(crate) governor: (f32, u32, f32),
+    /// Cumulative presentation wait at the previous frame, independent of OMSI_PROFILE.
+    pub(crate) governor_wait_prev: f64,
     /// Frames the window was hidden for (they are not drawn) and whether the exit is under way.
     pub(crate) hidden_frames: u32,
     pub(crate) exiting: bool,
