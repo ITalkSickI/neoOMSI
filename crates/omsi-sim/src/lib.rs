@@ -7,6 +7,7 @@ pub mod collision;
 pub mod crowd;
 pub mod daylight;
 pub mod host;
+pub mod htmlengine;
 pub mod htmltex;
 pub mod ibis;
 pub mod human;

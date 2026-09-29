@@ -880,7 +880,7 @@ impl VehicleInstance {
             .html_textures
             .iter()
             .map(|d| {
-                let html = std::fs::read_to_string(host.content_dir.join(d.path.replace('\\', "/"))).unwrap_or_default();
+                let html = crate::htmltex::load_page(&[ty.model_dir.as_path(), ty.def.dir()], &d.path);
                 crate::htmltex::HtmlTexture::new(d.script_index, d.width, d.height, &html)
             })
             .collect();
