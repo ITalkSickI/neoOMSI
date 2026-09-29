@@ -70,6 +70,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Phones: 60 frames a second by default (the settings took the PC OMSI's limit of 30 from
   its options.cfg), and dragging the view turns it the way the finger moves (it was the
   other way round, left for right and up for down).
+- A bus on a lower level (a car park under a building, a road under a bridge) is no longer
+  taken for one fallen through the world and put up on the roof: it has fallen only with
+  nothing under it at all. A teleport to a place with a height lands on that level.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
