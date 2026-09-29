@@ -1020,7 +1020,16 @@ pub fn take_host_map(args: &mut Args, lan: &mut LanSession) {
     let Some(theirs) = lan.welcome.as_ref().map(|w| w.world.map.trim().replace('\\', "/")) else {
         return;
     };
-    let norm = |s: &str| s.trim().replace('\\', "/").to_ascii_lowercase();
+    // (the same map, however its path was written: from its `maps/` folder on - a map
+    // chosen as a whole path, or out of an archive, is still the host's one, and taking it
+    // for another map dropped the line and tour chosen: everybody drove without a duty)
+    let norm = |s: &str| {
+        let s = s.trim().replace('\\', "/").to_ascii_lowercase();
+        match s.rfind("maps/") {
+            Some(k) => s[k..].to_string(),
+            None => s,
+        }
+    };
     if theirs.is_empty() || norm(&theirs) == norm(&args.map) {
         return;
     }

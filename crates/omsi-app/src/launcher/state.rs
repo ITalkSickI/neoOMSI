@@ -26,6 +26,9 @@ pub enum Msg {
     Installed(Result<core::install::Progress, String>),
     Join(serde_json::Value),
     Server { address: String, info: Result<omsi_net::ws::ServerInfo, String> },
+    /// A background job stopped on an error of its own (a panic): whatever it was loading
+    /// is not coming.
+    Crashed(String),
 }
 
 /// A server in the Multiplayer page's list (`~/.openomsi/servers.json`), as the player
@@ -269,7 +272,17 @@ impl State {
     fn spawn(&self, f: impl FnOnce() -> Msg + Send + 'static) {
         let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(f());
+            // (a job that panics - an odd file of some mod - sent nothing, and the page
+            // it was loading for said "loading" for ever: it says what went wrong instead)
+            let m = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|e| {
+                let why = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "an unknown error".into());
+                Msg::Crashed(why)
+            });
+            let _ = tx.send(m);
         });
     }
 
@@ -546,6 +559,12 @@ impl State {
 
     fn handle(&mut self, m: Msg) {
         match m {
+            Msg::Crashed(why) => {
+                log::error!("launcher: a background job stopped: {why}");
+                self.loading_content = false;
+                self.loading_lines = false;
+                self.set_status(format!("Reading the content stopped on an error: {why}"), true);
+            }
             Msg::Server { address, info } => {
                 self.server_info.insert(address, (Instant::now(), info));
             }
