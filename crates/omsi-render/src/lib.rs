@@ -5438,7 +5438,9 @@ impl Renderer {
                 let far = match p.cube_eye {
                     Some(e) if p.cube_filled => {
                         let m = cam_w - e;
-                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.03
+                        // (a third of what it was: flying the free camera fast, the clouds
+                        // drifted with the old cube for 400 m and then jumped back into place)
+                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.01
                     }
                     _ => true,
                 };
