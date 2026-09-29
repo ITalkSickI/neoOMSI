@@ -419,7 +419,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         menu: None,
         populate_t: 0.0,
         humans_populate_t: 0.0,
-        radio: radio::Radio::load(),
+        radio: radio::Radio::load(&args_root_for_keys),
         profile: Default::default(),
         profile_prev: Default::default(),
         first_populate: true,
