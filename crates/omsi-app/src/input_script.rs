@@ -1521,6 +1521,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             Some("number") => self.open_list(crate::game_lists::ListKind::Numbers),
             Some("dest") => self.open_list(crate::game_lists::ListKind::Destinations),
             Some("hof") => self.open_list(crate::game_lists::ListKind::Hofs),
+            Some("clock") => self.open_list(crate::game_lists::ListKind::Clock),
             Some("teleport") => {
                 self.close_game_menu();
                 if let Some(n) = self.navigator.as_mut() {
@@ -2198,7 +2199,7 @@ impl crate::App {
         }
         // (a client's clock and weather are the host's)
         if self.lan.as_ref().map(|l| l.role == omsi_net::Role::Client).unwrap_or(false) {
-            v.retain(|x| !matches!(x.0, "weather" | "later" | "earlier" | "later10" | "earlier10" | "editor"));
+            v.retain(|x| !matches!(x.0, "weather" | "clock" | "later" | "earlier" | "later10" | "earlier10" | "editor"));
         }
         // the everyday lines first; the rest behind "More..." (27 lines to scroll through
         // was the pause menu players found confusing)
@@ -2218,7 +2219,7 @@ impl crate::App {
 const MENU_BASIC: [&str; 12] = ["resume", "tobus", "options", "duty", "dest", "map", "timetable", "getout", "reset", "save", "admin", "quit"];
 
 /// The lines of the game menu: (what, label).
-pub(crate) const GAME_MENU: [(&str, &str); 32] = [
+pub(crate) const GAME_MENU: [(&str, &str); 33] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("duty", "Line and tour..."),
@@ -2239,6 +2240,7 @@ pub(crate) const GAME_MENU: [(&str, &str); 32] = [
     ("save", "Save the situation"),
     ("load", "Load the quicksave"),
     ("weather", "Next weather"),
+    ("clock", "Set the clock..."),
     ("later", "Clock +1 hour"),
     ("later10", "Clock +10 minutes"),
     ("earlier10", "Clock -10 minutes"),

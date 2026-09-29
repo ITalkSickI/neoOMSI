@@ -7,6 +7,12 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 ## 0.1.14 - 2026-09-28
 
 ### More fixes
+- Esc → More → *Set the clock...*: the clock one, five, fifteen or sixty minutes on or back,
+  and on a duty *On time with the timetable* (early or late by six minutes: the clock is
+  put where the bus is on time).
+- Discord shows "Playing openOMSI" with the bus, the map and the line (Rich Presence, over
+  Discord's local connection; `discord_app_id` in the settings, `discord_status=0` turns it
+  off).
 - AI traffic no longer stands for minutes on a free road: a car crawling in a jam of its own
   kept its claim on the junction ahead, and the cars that give way to it waited behind it
   in a chain (one Golf stood 81 s on Spandau; none now in four minutes of 80 cars).

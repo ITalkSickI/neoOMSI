@@ -10,6 +10,7 @@
 //! window of one process.
 
 mod admin;
+mod discord;
 mod headtrack;
 #[cfg(target_os = "macos")]
 mod mac_hid;
@@ -450,6 +451,8 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         pad_look: [false; 4],
         arrow_glance: false,
         teleport_pick: false,
+        discord: None,
+        discord_t: 0.0,
         headtrack: None,
         controllers: None,
         mouse_drive: false,

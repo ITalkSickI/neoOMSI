@@ -19,6 +19,8 @@ pub(crate) enum ListKind {
     Destinations,
     /// The depot files (.hof) of the bus driven.
     Hofs,
+    /// The clock set by hand: steps, and on a duty the time the timetable wants.
+    Clock,
     /// Placing a vehicle: its livery, then its depot file (bus file; bus file and livery).
     PlaceLivery(String),
     PlaceHof(String, String),
@@ -143,6 +145,22 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             }
             if out.is_empty() {
                 out.push((tr("This bus has no depot file (.hof) with destinations"), "back".into()));
+            }
+        }
+        ListKind::Clock => {
+            let t = app.clock.time;
+            out.push((format!("{}: {:02}:{:02}:{:02}", tr("Now"), (t / 3600.0) as i64 % 24, (t / 60.0) as i64 % 60, t as i64 % 60), "back".into()));
+            if let (Some(_), Some(p)) = (app.duty.as_ref(), app.player.as_ref()) {
+                let d = p.vehicle.host.tt_delay as f64;
+                if d.abs() >= 1.0 {
+                    out.push((format!("{} ({}{}:{:02})", tr("On time with the timetable"), if d < 0.0 { "−" } else { "+" }, (d.abs() / 60.0) as i64, d.abs() as i64 % 60), format!("clock {}", -d)));
+                }
+            }
+            for m in [1i64, 5, 15, 60] {
+                out.push((format!("+{m} min"), format!("clock {}", m * 60)));
+            }
+            for m in [1i64, 5, 15, 60] {
+                out.push((format!("−{m} min"), format!("clock {}", -m * 60)));
             }
         }
         ListKind::Hofs => {
@@ -316,6 +334,16 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
         ListKind::Drivers => {
             switch_driver(app, arg);
             Some(ListKind::Drivers)
+        }
+        ListKind::Clock => {
+            if let Ok(secs) = arg.trim().parse::<f64>() {
+                if app.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client) {
+                    app.service_msg = Some(("In a LAN session the host sets the clock".into(), 3.0));
+                } else {
+                    app.shift_clock(secs);
+                }
+            }
+            Some(ListKind::Clock)
         }
         ListKind::Hofs => {
             if let Some(p) = app.player.as_mut() {

@@ -103,6 +103,9 @@ pub(crate) struct App {
     pub(crate) arrow_glance: bool,
     /// The next click on the city map puts the bus there (Esc → Move the bus on the map).
     pub(crate) teleport_pick: bool,
+    /// Discord's "Playing openOMSI" status, and when it was last brought up to date.
+    pub(crate) discord: Option<crate::discord::Discord>,
+    pub(crate) discord_t: f32,
     /// Head tracking (Settings → head tracking), started with the first frame that wants it.
     pub(crate) headtrack: Option<crate::headtrack::HeadTracker>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).
