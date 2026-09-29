@@ -731,6 +731,9 @@ impl ApplicationHandler for App {
                     }
                     *self.profile.entry("player.hover").or_default() +=
                         __th.elapsed().as_secs_f64();
+                    if let Some(a) = self.audio.as_ref() {
+                        a.follow_device();
+                    }
                     if let (Some(a), Some(cam)) = (self.audio.as_ref(), self.camera.as_ref()) {
                         let (reverb_time, reverb_mix) = self.world.as_ref().map(|w| w.reverb_at(cam.position)).unwrap_or((0.0, 0.0));
                         a.set_listener(omsi_audio::Listener {

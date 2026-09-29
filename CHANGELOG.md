@@ -164,6 +164,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   its wheels stand on near the entry point's height (a road, a deck, an underground floor),
   not the highest surface of the map's height raster there, which is a wall's top beside a
   pavement (London) or a deck over the road.
+- The sound follows the system's output device: a Bluetooth headset or headphones connected
+  while the game runs take the sound over, and disconnected, the sound comes back on the
+  speakers (it had stayed on the speakers, or stopped for good).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
