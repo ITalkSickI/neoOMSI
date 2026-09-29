@@ -1037,15 +1037,19 @@ mod tests {
         assert_eq!(files, vec!["a.o3d", "c.o3d"]);
     }
 
-    /// Two `[matl]` blocks of one slot: the second one's
-    /// `[matl_alpha]` is marked as given, the first one's default is not.
+    /// `[matl_alpha]` is marked as given where a block has one: a `[matl]` without it
+    /// leaves the flag off, and a second block of the same material that has it turns it on
+    /// for the one definition both blocks make.
     #[test]
     fn repeated_matl_marks_its_own_alpha() {
-        let text = "[mesh]\nb.o3d\n[matl]\nchain.dds\n0\n[matl_envmap]\nenv.dds\n0.03\n\n[matl]\nchain.dds\n0\n[matl_alpha]\n1\n";
+        let text = "[mesh]\nb.o3d\n[matl]\nchain.dds\n0\n[matl_envmap]\nenv.dds\n0.03\n\n[matl]\nother.dds\n0\n";
         let m = Model::parse(&CfgFile::from_str("x.sco", text));
+        assert!(m.meshes[0].materials.iter().all(|d| !d.alpha_set));
+        let text = format!("{text}\n[matl]\nchain.dds\n0\n[matl_alpha]\n1\n");
+        let m = Model::parse(&CfgFile::from_str("x.sco", &text));
         let d = &m.meshes[0].materials;
         assert_eq!(d.len(), 2);
-        assert!(d[0].envmap.is_some() && !d[0].alpha_set);
-        assert!(d[1].alpha_set && d[1].alpha == 1);
+        let chain = d.iter().find(|d| d.texture == "chain.dds").unwrap();
+        assert!(chain.envmap.is_some() && chain.alpha_set && chain.alpha == 1);
     }
 }

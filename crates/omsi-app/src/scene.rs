@@ -8348,7 +8348,9 @@ pub(crate) fn material_alpha(
     // Several plain [matl] of one slot are one material in OMSI: each selects it again and
     // the commands after it modify it, so the last `[matl_alpha]` among them counts. (Taken
     // from the first block alone, an alpha-tested texture whose `[matl_alpha]` sits in a
-    // second [matl] was drawn opaque, its transparent parts as solid areas.)
+    // second [matl] was drawn opaque, its transparent parts as solid areas.) omsi-model
+    // already joins blocks spelt the same; this covers those that reach the slot otherwise
+    // (an index of -1 selects the first one, as 0 does).
     let mine: Vec<&MaterialDef> = overrides.iter().filter(|o| !o.item && omsi_sim::vehicle::override_slot(materials, o) == Some(slot)).collect();
     let plain = || mine.iter().filter(|o| o.change.is_none());
     plain()
