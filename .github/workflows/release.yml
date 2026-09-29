@@ -40,6 +40,20 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
+      - name: Diagnose Windows GPU dependency features
+        shell: bash
+        continue-on-error: true
+        run: |
+          echo "::group::wgpu-hal feature sources"
+          cargo tree -e features -i wgpu-hal --target x86_64-pc-windows-msvc
+          echo "::endgroup::"
+          echo "::group::gpu-allocator reverse dependencies"
+          cargo tree -i gpu-allocator --target x86_64-pc-windows-msvc
+          echo "::endgroup::"
+          echo "::group::Windows binding versions"
+          cargo tree -i windows@0.54.0 --target x86_64-pc-windows-msvc || true
+          cargo tree -i windows@0.62.2 --target x86_64-pc-windows-msvc || true
+          echo "::endgroup::"
       - name: Build
         shell: cmd
         run: scripts\build-windows.cmd

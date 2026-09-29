@@ -1199,7 +1199,27 @@ impl Renderer {
             && info.backend == wgpu::Backend::Vulkan
             && info.vendor == 0x8086
             && omsi_cfg::env::var_os("OMSI_INTEL_FULL_GPU").is_none();
-        let options = if intel_vulkan_safe {
+        // Pascal-era NVIDIA Vulkan adapters (notably GTX 1060) can lose the
+        // device during session startup. Start with the same conservative profile
+        // used for legacy Intel drivers. This is a diagnostic mitigation, not a
+        // claim that all Pascal device-loss cases are driver defects.
+        // OMSI_GPU_SAFE_MODE=1 also enables this profile for any adapter;
+        // OMSI_GPU_FULL_MODE=1 disables automatic Pascal fallback for comparison.
+        let pascal_vulkan_safe = cfg!(windows)
+            && info.backend == wgpu::Backend::Vulkan
+            && info.vendor == 0x10de
+            && info.name.to_ascii_lowercase().contains("gtx 1060")
+            && omsi_cfg::env::var_os("OMSI_GPU_FULL_MODE").is_none();
+        let gpu_safe = intel_vulkan_safe
+            || pascal_vulkan_safe
+            || omsi_cfg::env::var_os("OMSI_GPU_SAFE_MODE").is_some();
+        if gpu_safe {
+            log::warn!(
+                "conservative GPU profile enabled for {} ({:?}, driver: {}): 1x MSAA, 1x anisotropy, SSAO and runtime texture compression off, no optional device features",
+                info.name, info.backend, info.driver
+            );
+        }
+        let options = if gpu_safe {
             log::warn!(
                 "Intel Vulkan adapter detected ({}): using the stable driver profile (1x MSAA, 1x anisotropy, SSAO and runtime texture compression off); set OMSI_INTEL_FULL_GPU=1 after updating the Intel driver to retry the requested settings",
                 info.name
@@ -1216,9 +1236,9 @@ impl Renderer {
         };
         let shadow_size = options
             .shadow_size
-            .clamp(512, if intel_vulkan_safe { 2048 } else { 8192 });
+            .clamp(512, if gpu_safe { 2048 } else { 8192 });
         let mut limits = wgpu::Limits::default().using_resolution(adapter.limits());
-        if intel_vulkan_safe {
+        if gpu_safe {
             // Do not request every large limit the Intel driver advertises. In particular,
             // asking for its maximum storage-buffer and buffer sizes makes 31.0.101.2141
             // crash in vkCreateDevice instead of returning a VkResult. The WebGPU defaults
@@ -1283,7 +1303,7 @@ impl Renderer {
         if omsi_cfg::env::var_os("OMSI_NO_BC").is_none() {
             required_features |= adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
         }
-        if intel_vulkan_safe {
+        if gpu_safe {
             // Keep vkCreateDevice entirely free of optional extensions. Compressed source
             // textures are decoded to RGBA by upload_texture on this device.
             required_features = wgpu::Features::empty();
