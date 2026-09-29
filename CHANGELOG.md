@@ -131,6 +131,8 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   it sinks - instead of rings of glowing light flying off the wheels.
 - Enhanced graphics: the sky is drawn again after a third of the way it waited before, so
   the clouds no longer drift and jump back into place when the camera flies fast.
+- Launcher: the bus list is built again only when the search, the buses or the host's list
+  change (it was rebuilt every frame, every name copied - scrolling it stuttered on phones).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

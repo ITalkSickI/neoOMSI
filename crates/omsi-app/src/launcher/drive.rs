@@ -10,10 +10,18 @@ use glam::Vec2;
 use omsi_ui::paint::Align;
 use omsi_ui::{Color, Rect, Weight};
 
+/// A line of the bus list: index, name, file, new, installed, liveries, parts missing.
+type BusItem = (usize, String, String, bool, bool, usize, bool);
+
 #[derive(Default)]
 pub struct DriveView {
     pub step: usize,
     pub bus_filter: String,
+    /// The bus list as last built, and what it was built for (the filter, how many buses
+    /// were known, the host's list): rebuilt only when one of those changes - it was built
+    /// afresh every frame, every name and path copied, and scrolling stuttered on a phone.
+    bus_items: std::sync::Arc<Vec<BusItem>>,
+    bus_items_key: (String, usize, usize, usize),
     pub line_filter: String,
     /// The list was scrolled to the chosen bus (once, when the lists came).
     pub scrolled_to_bus: bool,
@@ -74,15 +82,21 @@ fn step_bus(l: &mut Launcher, r: Rect) {
     }
     let list_h = (r.h - ROW - 12.0 - 190.0).max(160.0);
     let list = Rect::new(r.x - 4.0, search.bottom() + 10.0, r.w + 8.0, list_h);
-    let items: Vec<(usize, String, String, bool, bool, usize, bool)> = l
-        .state
-        .vehicles
-        .iter()
-        .enumerate()
-        .filter(|(_, v)| q.is_empty() || format!("{} {}", v.name, v.file).to_lowercase().contains(&q))
-        .filter(|(_, v)| allowed.as_ref().map(|a| a.contains(&norm(&v.file))).unwrap_or(true))
-        .map(|(i, v)| (i, v.name.clone(), v.file.clone(), l.state.fresh.contains_key(&v.file), v.installed, v.paints.len(), !v.missing_packs.is_empty()))
-        .collect();
+    let key = (q.clone(), l.state.vehicles.len(), allowed.as_ref().map(|a| a.len()).unwrap_or(usize::MAX), l.state.fresh.len());
+    if key != l.drive.bus_items_key || (l.drive.bus_items.is_empty() && !l.state.vehicles.is_empty()) {
+        let built: Vec<BusItem> = l
+            .state
+            .vehicles
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| q.is_empty() || format!("{} {}", v.name, v.file).to_lowercase().contains(&q))
+            .filter(|(_, v)| allowed.as_ref().map(|a| a.contains(&norm(&v.file))).unwrap_or(true))
+            .map(|(i, v)| (i, v.name.clone(), v.file.clone(), l.state.fresh.contains_key(&v.file), v.installed, v.paints.len(), !v.missing_packs.is_empty()))
+            .collect();
+        l.drive.bus_items = std::sync::Arc::new(built);
+        l.drive.bus_items_key = key;
+    }
+    let items = l.drive.bus_items.clone();
     let chosen = l.state.choice.bus.clone();
     if !l.drive.scrolled_to_bus && !items.is_empty() {
         if let Some(k) = items.iter().position(|i| i.2 == chosen) {
