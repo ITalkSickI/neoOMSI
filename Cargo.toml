@@ -45,7 +45,7 @@ hashbrown = "0.15"
 smallvec = "1"
 parking_lot = "0.12"
 rand = "0.9"
-wgpu = { version = "29", default-features = false, features = ["std", "parking_lot", "metal", "vulkan", "wgsl", "noop"] }
+wgpu = { version = "29", default-features = false, features = ["std", "parking_lot", "metal", "vulkan", "dx12", "wgsl", "noop"] }
 winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
