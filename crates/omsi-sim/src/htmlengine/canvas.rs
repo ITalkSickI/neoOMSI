@@ -28,6 +28,9 @@ impl Canvas {
     }
 
     pub(crate) fn fill(&mut self, r: [f32; 4], c: [u8; 4], radius: f32) {
+        if !r.iter().all(|v| v.is_finite()) || !radius.is_finite() {
+            return;
+        }
         let (x0, y0) = (r[0].round() as i32, r[1].round() as i32);
         let (x1, y1) = ((r[0] + r[2]).round() as i32, (r[1] + r[3]).round() as i32);
         let rad = radius.min(r[2] / 2.0).min(r[3] / 2.0).max(0.0);
@@ -37,8 +40,18 @@ impl Canvas {
                 if rad > 0.5 {
                     let px = x as f32 + 0.5;
                     let py = y as f32 + 0.5;
-                    let cx = px.clamp(r[0] + rad, r[0] + r[2] - rad);
-                    let cy = py.clamp(r[1] + rad, r[1] + r[3] - rad);
+                    let (cx_lo, cx_hi) = {
+                        let a = r[0] + rad;
+                        let b = r[0] + r[2] - rad;
+                        (a.min(b), a.max(b))
+                    };
+                    let (cy_lo, cy_hi) = {
+                        let a = r[1] + rad;
+                        let b = r[1] + r[3] - rad;
+                        (a.min(b), a.max(b))
+                    };
+                    let cx = px.clamp(cx_lo, cx_hi);
+                    let cy = py.clamp(cy_lo, cy_hi);
                     let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
                     cov = (rad - d + 0.5).clamp(0.0, 1.0);
                 }
