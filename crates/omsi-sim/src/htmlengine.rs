@@ -2659,23 +2659,23 @@ impl Interp {
                         None => 0.0,
                     };
                     if v.is_finite() {
-                        log::info!("htmltexture: page calls setVar({name}, {v})");
+                        log::debug!("htmltexture: page calls setVar({name}, {v})");
                         self.events.push((name, v));
                     } else {
-                        log::info!("htmltexture: setVar({name}) ignored, the value is not a finite number");
+                        log::debug!("htmltexture: setVar({name}) ignored, the value is not a finite number");
                     }
                 }
                 Val::Undef
             }
             Nat::Trigger => {
                 if let Some(name) = args.first().map(to_str).filter(|n| !n.is_empty()) {
-                    log::info!("htmltexture: page presses trigger {name}");
+                    log::debug!("htmltexture: page presses trigger {name}");
                     self.triggers.push(name);
                 }
                 Val::Undef
             }
             Nat::Log => {
-                log::info!("htmltexture console: {}", args.iter().map(to_str).collect::<Vec<_>>().join(" "));
+                log::debug!("htmltexture console: {}", args.iter().map(to_str).collect::<Vec<_>>().join(" "));
                 Val::Undef
             }
             Nat::SetTimeout | Nat::SetInterval => {
@@ -2730,7 +2730,7 @@ impl EngineRenderer {
     pub fn new(width: u32, height: u32, html: &str) -> EngineRenderer {
         let dom = Dom::parse(html);
         let scripts = dom.scripts.clone();
-        log::info!(
+        log::debug!(
             "htmltexture: page parsed: {} nodes, {} css rules, {} script(s), {}x{}",
             dom.nodes.len(),
             dom.rules.len(),
@@ -2742,7 +2742,7 @@ impl EngineRenderer {
         let mut warned = false;
         for (n, s) in scripts.iter().enumerate() {
             match js.run(s) {
-                Ok(()) => log::info!("htmltexture: script {n} ran ({} steps)", js.steps),
+                Ok(()) => log::debug!("htmltexture: script {n} ran ({} steps)", js.steps),
                 Err(e) => {
                     log::warn!("htmltexture: script error: {e}");
                     warned = true;
@@ -2850,21 +2850,21 @@ impl EngineRenderer {
     fn call_update(&mut self, num: &[(String, f32)], strs: &[(String, String)]) {
         let omsi = self.js.window.lock().unwrap().get("omsi").cloned();
         let Some(Val::Obj(omsi)) = omsi else {
-            log::info!("htmltexture: the page has no window.omsi");
+            log::debug!("htmltexture: the page has no window.omsi");
             return;
         };
         let update = omsi.lock().unwrap().get("update").cloned();
         let Some(update @ Val::Func(_)) = update else {
-            log::info!("htmltexture: the page has no window.omsi.update function");
+            log::debug!("htmltexture: the page has no window.omsi.update function");
             return;
         };
-        log::info!("htmltexture: window.omsi.update with {} numeric and {} string variable(s)", num.len(), strs.len());
+        log::debug!("htmltexture: window.omsi.update with {} numeric and {} string variable(s)", num.len(), strs.len());
         let nums: HashMap<String, Val> = num.iter().map(|(k, v)| (k.clone(), Val::Num(*v as f64))).collect();
         let strv: HashMap<String, Val> = strs.iter().map(|(k, v)| (k.clone(), Val::Str(v.clone()))).collect();
         let arg = obj_of(&[("num", Val::Obj(Arc::new(Mutex::new(nums)))), ("str", Val::Obj(Arc::new(Mutex::new(strv))))]);
         self.js.steps = 0;
         let result = self.js.call(update, Val::Obj(omsi), vec![Val::Obj(arg)]);
-        log::info!("htmltexture: window.omsi.update took {} steps", self.js.steps);
+        log::debug!("htmltexture: window.omsi.update took {} steps", self.js.steps);
         if let Err(e) = result {
             if !self.warned {
                 log::warn!("htmltexture: omsi.update failed: {e}");
@@ -2892,7 +2892,7 @@ impl EngineRenderer {
         let mut b = b;
         b.st.bg = [0, 0, 0, 0];
         paint(&mut cv, &lay, &b);
-        log::info!("htmltexture: rendered {}x{} in {:?}", self.width, self.height, started.elapsed());
+        log::debug!("htmltexture: rendered {}x{} in {:?}", self.width, self.height, started.elapsed());
         cv.px
     }
 
