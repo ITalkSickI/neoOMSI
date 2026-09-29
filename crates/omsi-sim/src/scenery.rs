@@ -70,9 +70,15 @@ pub struct SceneryInstance {
 }
 
 impl SceneryInstance {
-    /// `meshes`: (mesh definition, pivot) per rendered mesh.
-    pub fn new(program: Arc<Program>, meshes: &[(&MeshDef, Mat4)], clock: crate::SimClock) -> SceneryInstance {
+    /// `meshes`: (mesh definition, pivot) per rendered mesh; `strings`: the placed object's
+    /// strings from the map, which are its string variables in order, before the `{init}`
+    /// runs (Omsi.exe sub_7eea70 copies them into the object's string variables when it
+    /// is placed - a sign's label naming its picture, a display's stop).
+    pub fn new(program: Arc<Program>, meshes: &[(&MeshDef, Mat4)], clock: crate::SimClock, strings: &[String]) -> SceneryInstance {
         let mut state = State::new(&program);
+        for (v, s) in state.str_vars.iter_mut().zip(strings) {
+            v.clone_from(s);
+        }
         let mut vm = Vm::new();
         let mut host = VehicleHost::new(clock);
         // `Colorscheme`: the object's paint scheme, −1 for its own textures (OMSI
@@ -180,5 +186,22 @@ impl SceneryInstance {
     /// Whether the script asks for the buses due at its stop (`GetArrBus*`).
     pub fn wants_arrivals(&self) -> bool {
         self.program.names.iter().any(|n| n.get(..9).map(|p| p.eq_ignore_ascii_case("getarrbus")).unwrap_or(false))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The map's strings of a placed object are its string variables, in order, before its
+    /// {init} runs; a script without that many string variables takes the first ones.
+    #[test]
+    fn the_map_strings_are_the_string_variables() {
+        let mut p = Program::default();
+        p.declare_str_var("A");
+        p.declare_str_var("B");
+        let inst = SceneryInstance::new(Arc::new(p), &[], crate::SimClock::default(), &["bss1\\14.jpg".into(), "x".into(), "ignored".into()]);
+        assert_eq!(inst.str_var("A"), "bss1\\14.jpg");
+        assert_eq!(inst.str_var("B"), "x");
     }
 }

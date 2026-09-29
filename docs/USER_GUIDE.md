@@ -95,12 +95,13 @@ and comes up slowly (0.7 per second) when the key is released.
 Left-click a cockpit switch to operate it, hold the button and move the mouse to turn a knob,
 or roll the mouse wheel over it (that is the `<event>_drag` OMSI fires); the name of the switch
 under the cursor is shown in the HUD.
-Right-drag the mouse to look around in any view (the head turns inside, the camera swings
+Right-drag the mouse (or drag with the wheel pressed, OMSI's pan) to look around in any view (the head turns inside, the camera swings
 around the bus outside), I/J/K/L does the same from the keyboard; each view keeps its own
 direction (turning the outside camera leaves the driver's head where it was), **Space** looks
 ahead again in every view (OMSI's `view_reset_all_directions`), Home recentres the view shown.
 The mouse wheel (and **=** / **-**, a pinch on a phone) zooms: outside the camera comes closer,
-inside the bus the view narrows, as in OMSI. F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
+inside the bus the view narrows, as in OMSI; **Ctrl**+wheel outside narrows the view instead
+(a telephoto, the camera stays where it is). F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
 sign and roller blind keys as in OMSI, Alt+S quick save, F9 write the run into the personnel
 file, WASD+QE in the free camera, left click on cockpit elements, **V** the chat line in a
 LAN session. Esc opens the game menu: drive the next placed vehicle, place any vehicle of

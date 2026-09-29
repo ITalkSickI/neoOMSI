@@ -267,7 +267,12 @@ impl DirectInput {
             let _ = dev.GetCapabilities(&mut caps);
             let wants_ff = self.ff && caps.dwFlags & DIDC_FORCEFEEDBACK != 0;
             let level = if wants_ff { DISCL_EXCLUSIVE | DISCL_FOREGROUND } else { DISCL_NONEXCLUSIVE | DISCL_BACKGROUND };
-            if dev.SetCooperativeLevel(self.hwnd, level).is_err() {
+            if let Err(e) = dev.SetCooperativeLevel(self.hwnd, level) {
+                if wants_ff {
+                    // (forces need the device to themselves: another program - the wheel's
+                    // own control software - may be holding it)
+                    log::warn!("{name}: force feedback needs the device to itself, which Windows refused ({e}): no forces");
+                }
                 dev.SetCooperativeLevel(self.hwnd, DISCL_NONEXCLUSIVE | DISCL_BACKGROUND).ok()?;
             }
             // every axis from -RANGE to RANGE
@@ -312,11 +317,14 @@ impl DirectInput {
                     ..Default::default()
                 };
                 let mut e: Option<IDirectInputEffect> = None;
-                if dev.CreateEffect(&GUID_ConstantForce, &mut eff, &mut e, None).is_ok() {
-                    if let Some(e) = e.as_ref() {
-                        let _ = e.Start(1, 0);
+                match dev.CreateEffect(&GUID_ConstantForce, &mut eff, &mut e, None) {
+                    Ok(()) => {
+                        if let Some(e) = e.as_ref() {
+                            let _ = e.Start(1, 0);
+                        }
+                        ff = e;
                     }
-                    ff = e;
+                    Err(err) => log::warn!("{name}: says it has force feedback, but its constant force could not be made ({err}): no forces"),
                 }
             }
             log::info!("game controller (DirectInput): {name}, {} axes, {} buttons{}", has_axis.iter().filter(|a| **a).count(), caps.dwButtons, if ff.is_some() { ", force feedback" } else { "" });

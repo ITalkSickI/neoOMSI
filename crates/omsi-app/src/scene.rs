@@ -3120,14 +3120,14 @@ impl World {
             let place = if absolute {
                 Placement::Pose(Pose {
                     pos: DVec3::new(x, y, o.pos[2]),
-                    rot: object_rotation(o.rot),
+                    rot: object_rotation(omsi_geometry::map_rotation(o.rot)),
                 })
             } else {
                 Placement::Ground {
                     x,
                     y,
                     z: o.pos[2],
-                    rot: o.rot,
+                    rot: omsi_geometry::map_rotation(o.rot),
                 }
             };
             out.objects.push(StagedObject {
@@ -3159,7 +3159,7 @@ impl World {
                     parent,
                     index: o.attach_index,
                     instance: o.instance,
-                    rot: o.rot,
+                    rot: omsi_geometry::map_rotation(o.rot),
                 },
                 rules: o.rules.clone(),
                 extra: o.extra.clone(),
@@ -3861,6 +3861,7 @@ impl World {
                         program.clone(),
                         &ot.mesh_defs(),
                         self.script_clock(),
+                        &o.extra,
                     );
                     self.scripted.lock().push(ScriptedObject {
                         ty: ot.clone(),
@@ -5757,6 +5758,8 @@ impl World {
                             ground_meshes.push((level, mi, ground_id));
                         }
                     }
+                    // (the script's string variables after its {init}, for [matl_freetex])
+                    let mut freetex_vars: Option<omsi_sim::scenery::SceneryInstance> = None;
                     for (mi, (mesh_id, mats)) in mesh_list.iter().enumerate() {
                         let inst = if surface || ot.mesh_shadow.get(mi).copied().unwrap_or(false) {
                             let i = instance!(renderer.add_surface_instance(
@@ -5780,12 +5783,21 @@ impl World {
                         // Scenery signs use [matl_freetex] with a string from the map
                         // object's [object] / [splineAttachement] record. The type's
                         // material is shared, so make a material for this placement only.
+                        // (the map's strings are the object's string variables, and its
+                        // {init} may make the file name of them: read after it has run)
                         if let Some((_, o3d_mats, overrides)) = ot.meshes.get(mi) {
                             for override_ in overrides.iter().filter(|o| !o.item && o.freetex.is_some()) {
                                 let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, override_) else { continue };
                                 let Some((_, var)) = &override_.freetex else { continue };
-                                let Some(index) = ot.program.as_ref().and_then(|p| p.str_var(var)) else { continue };
-                                let Some(name) = strings.get(index as usize).map(|s| s.trim()).filter(|s| !s.is_empty()) else { continue };
+                                let Some(program) = ot.program.as_ref() else { continue };
+                                let started = freetex_vars.get_or_insert_with(|| {
+                                    omsi_sim::scenery::SceneryInstance::new(program.clone(), &ot.mesh_defs(), self.script_clock(), &strings)
+                                });
+                                let name = started.str_var(var).trim().to_string();
+                                if name.is_empty() {
+                                    continue;
+                                }
+                                let name = name.as_str();
                                 let dirs = texture_dirs(&self.root, &ot.model_dir);
                                 let Some((tex, path)) = gpu.texture(renderer, scene, name, &dirs, images) else { continue };
                                 let Some(base) = mats.get(slot).and_then(|id| scene.materials.get(*id)) else {
@@ -5961,6 +5973,9 @@ impl World {
                         all_instances.push(inst);
                     }
                     let mut lod_instances = Vec::new();
+                    // (the meshes' own instances: a script poses them one by one, the ground
+                    // drawn in the [terrainmapping] slots after them keeps the object's place)
+                    let mesh_instances = all_instances.len();
                     let lod_drawn = has_lower && !surface && lamp.is_none() && ot.program.is_none();
                     for &(level, _, ground_id) in &ground_meshes {
                         // the first level without lower ones is drawn at any size
@@ -6092,6 +6107,7 @@ impl World {
                                 p.clone(),
                                 &ot.mesh_defs(),
                                 self.script_clock(),
+                                &strings,
                             )))
                         });
                         let lit = vec![0.0; coronas.len()];
@@ -6120,6 +6136,7 @@ impl World {
                             program.clone(),
                             &ot.mesh_defs(),
                             self.script_clock(),
+                            &strings,
                         );
                         if inst.is_dynamic()
                             || !object_variants.is_empty()
@@ -6127,6 +6144,9 @@ impl World {
                             || !script_texts.is_empty()
                         {
                             let arrivals = inst.wants_arrivals();
+                            // (a scripted object with [terrainmapping] slots had more instances
+                            // than its script has meshes: "index out of bounds", #111)
+                            all_instances.truncate(mesh_instances);
                             self.scripted.lock().push(ScriptedObject {
                                 ty: ot.clone(),
                                 pos,
@@ -7694,11 +7714,11 @@ impl World {
                 };
                 renderer.set_material(scene, *inst, *slot, if x > 0.5 { *item } else { *base });
             }
-            for (i, inst) in o.instances.iter().enumerate() {
-                renderer.set_transform(scene, *inst, o.pos, o.xf * o.inst.mesh_transforms[i]);
+            for ((inst, xf), &visible) in o.instances.iter().zip(&o.inst.mesh_transforms).zip(&o.inst.mesh_visible) {
+                renderer.set_transform(scene, *inst, o.pos, o.xf * *xf);
                 let p = &mut scene.instances[*inst];
-                if p.visible != o.inst.mesh_visible[i] {
-                    renderer.set_params(scene, *inst, &[], o.inst.mesh_visible[i], &[]);
+                if p.visible != visible {
+                    renderer.set_params(scene, *inst, &[], visible, &[]);
                 }
             }
             updated += 1;
@@ -8524,6 +8544,10 @@ pub struct VariantSlot {
     pub item: MaterialId,
     /// `[matl_change]` variable: above 0.5 the item variant shows.
     pub var: String,
+    /// The variables of the slot's further `[matl_change]`s: the item shows while any of
+    /// them is on as well (Omsi.exe sub_7c2d80: each record picks its item by its own
+    /// variable, and one at 0 leaves the material to the others).
+    pub more_vars: Vec<String>,
     /// `[texchanges]`: the (base, item) pair of every entry of the master, in order.
     pub entries: Vec<(MaterialId, MaterialId)>,
     /// `[texchanges]` variable: its integer value picks the entry.
@@ -8649,7 +8673,7 @@ impl VariantSlot {
             .ok()
             .or_else(|| var(&self.var))
             .unwrap_or(1.0);
-        if x > 0.5 {
+        if x > 0.5 || self.more_vars.iter().any(|v| var(v).is_some_and(|x| x > 0.5)) {
             item
         } else {
             base
@@ -8902,7 +8926,7 @@ impl VehiclePrefetch {
                 continue;
             }
             if let Some(d) = vt.mesh_data(i) {
-                let m = omsi_render::prepare_mesh(&self.gpu.0, &d);
+                let m = omsi_render::prepare_mesh(&self.gpu.0, &self.gpu.1, &d);
                 self.ready.lock().meshes.entry(key).or_insert(m);
             }
         }
@@ -9866,7 +9890,11 @@ impl World {
                     let ov_all: Vec<&MaterialDef> = vm.overrides.iter().filter(|o| omsi_sim::vehicle::override_slot(&vm.materials, o) == Some(slot)).collect();
                     let ov_item: Vec<&MaterialDef> = ov_all.iter().copied().filter(|o| o.item).collect();
                     let ov: Vec<&MaterialDef> = ov_all.iter().copied().filter(|o| !o.item).collect();
-                    let change_var = ov.iter().find_map(|o| o.change.as_ref().map(|c| c.2.clone()));
+                    // (every [matl_change] of the slot: Omsi.exe keeps one switch per record,
+                    // each showing its item while its variable is on - the Procity's door
+                    // buttons light with door_light_n as well as with haltewunschlampe)
+                    let change_vars: Vec<String> = ov.iter().filter_map(|o| o.change.as_ref().map(|c| c.2.clone())).collect();
+                    let change_var = change_vars.first().cloned();
                     let base_overrides: Vec<MaterialDef> = ov.iter().map(|o| (*o).clone()).collect();
                     let mut alpha = material_alpha(&vm.materials, slot, &base_overrides);
                     // what the model.cfg says: without [matl_alpha] OMSI draws a slot opaque
@@ -10121,9 +10149,9 @@ impl World {
                     };
                     if spec.item.is_some() || !entries.is_empty() || free.is_some() {
                         let tex_var = master.map(|m| m.variable.clone()).unwrap_or_default();
-                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: change_var.unwrap_or_default(), entries, tex_var, free, spec, base_tex, entry_tex, lights: multi_light(base, item) });
+                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: change_var.unwrap_or_default(), more_vars: change_vars.iter().skip(1).cloned().collect(), entries, tex_var, free, spec, base_tex, entry_tex, lights: multi_light(base, item) });
                     } else if let Some(lights) = multi_light(base, item) {
-                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: String::new(), entries, tex_var: String::new(), free: None, spec, base_tex, entry_tex, lights: Some(lights) });
+                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: String::new(), more_vars: Vec::new(), entries, tex_var: String::new(), free: None, spec, base_tex, entry_tex, lights: Some(lights) });
                     } else if base_dyn.any() {
                         dyn_slots.push(DynSlot { mesh: instances.len(), slot, text: text_slot, script: script_slot, script_trans, tex, alpha, transmap, night, lightmap, envmap, clamp, extra, color, emissive });
                     }

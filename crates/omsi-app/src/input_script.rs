@@ -969,6 +969,8 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                         self.placing_wheel(n);
                     } else if self.game_menu.is_some() {
                         self.menu_wheel(n);
+                    } else {
+                        self.wheel(n);
                     }
                     log::info!("input script: wheel {n}: menu line {:?}, chooser {:?}, placing heading {:?}", self.game_menu, self.chooser, self.placing.as_ref().map(|p| p.heading));
                 }

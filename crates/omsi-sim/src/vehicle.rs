@@ -1090,16 +1090,9 @@ impl VehicleInstance {
     /// Re-render changed text textures; returns the indices with a pending image.
     pub fn update_text_textures(&mut self) -> Vec<usize> {
         let mut changed = Vec::new();
-        // `Refresh_Strings`: a one-shot request to draw every text texture again (OMSI
-        // the original → the original, then the variable back to 0); changed strings are drawn
-        // anyway
+        // `Refresh_Strings` is reset; an unchanged string would draw the same picture again
         if let Some(id) = self.ty.program.var("Refresh_Strings") {
-            if self.state.vars[id as usize] != 0.0 {
-                self.state.vars[id as usize] = 0.0;
-                for t in self.text_textures.iter_mut() {
-                    t.last_text = None;
-                }
-            }
+            self.state.vars[id as usize] = 0.0;
         }
         for i in 0..self.text_textures.len() {
             let var = self.text_textures[i].def.variable.clone();

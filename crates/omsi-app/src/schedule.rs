@@ -2779,16 +2779,23 @@ fn terminus_match_score(t: &omsi_vehicle::hof::Terminus, wanted: &str) -> u8 {
     score
 }
 
+/// The depot file's terminus a trip's destination names. OMSI takes the first whose ident
+/// is the name (Omsi.exe TRoadVehicleInst.virtual_10: that row is `AI_target_index`); else
+/// the best of the looser matches - the first of equals, not the last (a depot file whose
+/// codes are not in row order put the AI bus's matrix on another terminus's picture, #110).
 fn find_terminus(hof: &omsi_vehicle::Hof, wanted: &str) -> Option<usize> {
-    hof.termini
-        .iter()
-        .enumerate()
-        .filter_map(|(i, t)| {
-            let score = terminus_match_score(t, wanted);
-            (score > 0).then_some((i, score))
-        })
-        .max_by_key(|(_, score)| *score)
-        .map(|(i, _)| i)
+    let exact = wanted.trim();
+    if let Some(i) = hof.termini.iter().position(|t| t.texture_id == exact) {
+        return Some(i);
+    }
+    let mut best: Option<(usize, u8)> = None;
+    for (i, t) in hof.termini.iter().enumerate() {
+        let score = terminus_match_score(t, wanted);
+        if score > 0 && best.is_none_or(|(_, b)| score > b) {
+            best = Some((i, score));
+        }
+    }
+    best.map(|(i, _)| i)
 }
 
 /// The IBIS codes of a trip from the depot file, and the terminus index they lead to.
@@ -3880,6 +3887,18 @@ impl PlayerDuty {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The row OMSI's AI bus is given: the first whose ident is the destination, whatever
+    /// the codes' order; of equally loose matches the first as well.
+    #[test]
+    fn a_terminus_is_the_first_row_of_its_name() {
+        let t = |code: i32, id: &str, s: &[&str]| omsi_vehicle::hof::Terminus { code, texture_id: id.into(), terminus_stop: Some(id.into()), all_exit: false, strings: s.iter().map(|x| x.to_string()).collect() };
+        let hof = omsi_vehicle::Hof { termini: vec![t(0, "Depot", &[]), t(3, "61-Other", &["61-MaoFangChang"]), t(4, "61-Third", &[]), t(1, "61-MaoFangChang", &["61-MaoFangChang"]), t(2, "Wickenberg Nord", &[])], ..Default::default() };
+        assert_eq!(super::find_terminus(&hof, "61-MaoFangChang"), Some(3));
+        assert_eq!(super::find_terminus(&hof, "  61-MaoFangChang "), Some(3));
+        let hof = omsi_vehicle::Hof { termini: vec![t(0, "A", &["Wickenberg"]), t(1, "B", &["Wickenberg"])], ..Default::default() };
+        assert_eq!(super::find_terminus(&hof, "wickenberg"), Some(0));
+    }
 
     #[test]
     fn complex_line_keeps_letter_suffix() {
