@@ -125,7 +125,7 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Frame rate"), tr(on_off(s.show_fps))), "fps".into()));
             out.push((format!("{}: {}", tr("Camera collisions"), tr(on_off(s.camera_collision))), "camcoll".into()));
             out.push((format!("{}: {}", tr("Force feedback and vibration"), tr(on_off(s.ff_enabled))), "ff".into()));
-            out.push((format!("{}: {}", tr("Keyboard pedals stay where they are"), tr(on_off(s.pedal_hold))), "pedal_hold".into()));
+            out.push((format!("{}: {}", tr("Keyboard brake stays on until the throttle"), tr(on_off(s.brake_hold))), "brake_hold".into()));
             out.push((format!("{} (opentrack UDP {}): {}", tr("Head tracking"), s.head_tracking_port, tr(on_off(s.head_tracking))), "headtrack".into()));
             out.push((format!("{}: x{}", tr("Throttle pedal strength"), s.pedal_throttle), "pedal_t".into()));
             out.push((format!("{}: x{}", tr("Brake pedal strength"), s.pedal_brake), "pedal_b".into()));
@@ -344,9 +344,9 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     s.seat[k] = ((s.seat[k] + d) * 100.0).round().clamp(-150.0, 150.0) / 100.0;
                     Some((["seat_x", "seat_y", "seat_z"][k], s.seat[k].to_string()))
                 }
-                "pedal_hold" => {
-                    s.pedal_hold = !s.pedal_hold;
-                    Some(("pedal_hold", (s.pedal_hold as u8).to_string()))
+                "brake_hold" => {
+                    s.brake_hold = !s.brake_hold;
+                    Some(("brake_hold", (s.brake_hold as u8).to_string()))
                 }
                 "ff" => {
                     s.ff_enabled = !s.ff_enabled;

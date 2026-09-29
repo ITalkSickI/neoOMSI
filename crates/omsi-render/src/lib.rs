@@ -784,6 +784,11 @@ pub struct Instance {
     /// The model marks the mesh `[shadow]`: one OMSI casts a shadow from (with the
     /// option `omsi_shadow_casters` only these do).
     pub omsi_caster: bool,
+    /// It may cast a sun shadow: every ordinary instance, no surface - a surface lies on
+    /// the ground, and a caster in one plane with what it falls on paints dark patches into
+    /// it - except a spline standing clear of the ground (a bridge deck, an elevated
+    /// railway), which is raised with `set_casts_shadow`.
+    pub casts_shadow: bool,
     /// Part of a vehicle whose roof lies this high over its origin (model frame): what faces
     /// up under the roof (the floor, the seats) is out of the weather - no snow nor wet on
     /// it. (Only the vehicle the camera is in was spared, by its box; every other bus showed
@@ -936,6 +941,30 @@ struct PassPipelines {
 /// Texture memory (MB) the adapter is taken to have room for (0 = no adapter yet), see
 /// `Renderer::new`.
 pub static ADAPTER_TEXTURE_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The card's own memory in MB where the system tells it: Windows, through DXGI, for
+/// whichever backend draws (wgpu does not say).
+fn dedicated_vram_mb(info: &wgpu::AdapterInfo) -> Option<u64> {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
+        let f: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+        let mut i = 0;
+        while let Ok(a) = f.EnumAdapters1(i) {
+            i += 1;
+            let Ok(d) = a.GetDesc1() else { continue };
+            if d.VendorId == info.vendor && d.DeviceId == info.device {
+                return Some(d.DedicatedVideoMemory as u64 >> 20);
+            }
+        }
+        None
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = info;
+        None
+    }
+}
 
 pub struct Renderer {
     pub device: wgpu::Device,
@@ -1250,14 +1279,17 @@ impl Renderer {
         // a discrete card is taken for one of 2-4 GB, whose rest the pictures (the render
         // targets, the shadow maps) and the driver need; an integrated one shares the
         // system's memory, Apple's generously
+        let vram = dedicated_vram_mb(&info);
         let guess_mb: u64 = match info.device_type {
-            wgpu::DeviceType::DiscreteGpu => 1600,
+            // (a card of 2 or 3 GB, where Windows says: half of it - 1600 MB of a GTX 1050's
+            // 2 GB left too little for the rest, and its Vulkan device was lost at the start)
+            wgpu::DeviceType::DiscreteGpu => vram.filter(|v| *v >= 512).map_or(1600, |v| (v / 2).min(1600)),
             wgpu::DeviceType::IntegratedGpu if info.backend == wgpu::Backend::Metal => 3000,
             wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::VirtualGpu => 1000,
             _ => 800,
         };
         ADAPTER_TEXTURE_MB.store(guess_mb, std::sync::atomic::Ordering::Relaxed);
-        log::info!("graphics adapter: {} ({:?}, {:?}), texture memory taken for it: {guess_mb} MB", info.name, info.device_type, info.backend);
+        log::info!("graphics adapter: {} ({:?}, {:?}{}), texture memory taken for it: {guess_mb} MB", info.name, info.device_type, info.backend, vram.map(|v| format!(", {v} MB of its own")).unwrap_or_default());
         // The legacy Intel Windows Vulkan branch has repeatedly crashed inside igvk64.dll
         // while compiling the larger multisampled/SSAO pipeline set. This is a driver access
         // violation, so wgpu cannot turn it into a recoverable error. Start those adapters
@@ -4736,6 +4768,7 @@ impl Renderer {
             any_distance: false,
             mirror_only: false,
             omsi_caster: false,
+            casts_shadow: true,
             roof: None,
         });
         scene.instances.len() - 1
@@ -4779,6 +4812,7 @@ impl Renderer {
             any_distance: false,
             mirror_only: false,
             omsi_caster: false,
+            casts_shadow: false,
             roof: None,
         });
         scene.instances.len() - 1
@@ -4865,6 +4899,13 @@ impl Renderer {
     pub fn set_omsi_caster(&self, scene: &mut Scene, instance: usize, on: bool) {
         if let Some(i) = scene.instances.get_mut(instance) {
             i.omsi_caster = on;
+        }
+    }
+
+    /// Let an instance cast a sun shadow or not (see [`Instance::casts_shadow`]).
+    pub fn set_casts_shadow(&self, scene: &mut Scene, instance: usize, on: bool) {
+        if let Some(i) = scene.instances.get_mut(instance) {
+            i.casts_shadow = on;
         }
     }
 
@@ -6301,6 +6342,12 @@ impl Renderer {
         with_overlays: bool,
         exclude_texture: Option<TextureId>,
     ) {
+        // the device is gone: nothing can be drawn, and the readbacks (the exposure meter)
+        // would find their buffers taken away - "Error in Buffer::get_mapped_range:
+        // Validation Error" ended the game instead of the session ending in order
+        if self.device_lost.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+            return;
+        }
         if omsi_cfg::env::var("OMSI_FAKE_GPU_ERROR").as_deref() == Ok("frame")
             && self.options.msaa > 1
             && self.started.elapsed().as_secs_f32() > 3.0
@@ -6355,7 +6402,16 @@ impl Renderer {
         } else {
             (full_w, full_h)
         };
-        let scaled = (width, height) != (full_w, full_h);
+        // FXAA on the plain graphics too, where there is no multisampling to smooth the
+        // edges (the Enhanced path has it in its post passes): the picture is drawn into a
+        // texture of the window's size and smoothed on its way to the window, the HUD after
+        let vanilla_fxaa = with_overlays
+            && (width, height) == (full_w, full_h)
+            && self.options.fxaa
+            && self.options.msaa <= 1
+            && !(lighting.enhanced && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none())
+            && omsi_cfg::env::var_os("OMSI_NO_FXAA").is_none();
+        let scaled = (width, height) != (full_w, full_h) || vanilla_fxaa;
         let scene_target: Option<(wgpu::TextureView, wgpu::BindGroup)> = if scaled {
             Some(self.scale_target(width, height))
         } else {
@@ -6704,7 +6760,7 @@ impl Renderer {
                 .unwrap_or(3.0);
             items.clear();
             for inst in scene.instances.iter() {
-                if !inst.visible || inst.surface || (self.options.omsi_shadow_casters && !inst.omsi_caster) {
+                if !inst.visible || !inst.casts_shadow || (self.options.omsi_shadow_casters && !inst.omsi_caster) {
                     continue;
                 }
                 let m = &scene.meshes[inst.mesh];
@@ -7208,11 +7264,10 @@ impl Renderer {
                     (rank, dist, i)
                 })
                 .collect();
-            keyed.sort_unstable_by(|a, b| {
-                a.0.cmp(&b.0)
-                    .then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
-                    .then(a.2.cmp(&b.2))
-            });
+            // (a total order even where a distance is NaN - an instance at a NaN position:
+            // partial_cmp's "equal" for it broke the sort's order, and since Rust 1.81 the
+            // sort panics on that, which ended the game)
+            keyed.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)).then(a.2.cmp(&b.2)));
             items.clear();
             for (_, _, i) in keyed {
                 let inst = &scene.instances[i];
@@ -7898,7 +7953,7 @@ impl Renderer {
             self.queue.write_buffer(
                 &self.upscale_buf,
                 0,
-                bytemuck::cast_slice(&[width as f32, height as f32, sharpen.clamp(0.0, 0.8), 0.0]),
+                bytemuck::cast_slice(&[width as f32, height as f32, sharpen.clamp(0.0, 0.8), if vanilla_fxaa { 1.0 } else { 0.0 }]),
             );
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("upscale"),

@@ -383,11 +383,22 @@ fn vs_main(in: VsIn) -> VsOut {
 }
 
 // Shadow map passes: depth from the sun, alpha-tested materials cut out by their texture.
+// A surface that casts - a spline standing clear of the ground, a bridge deck - casts from
+// half a metre further away from the sun: what lies right under it (the embankment object
+// under a railway, the ground a ramp touches down on) is no darker for it, while the ground
+// metres below a deck gets its shadow.
+fn shadow_caster_pos(e: u32, wp: vec4<f32>) -> vec4<f32> {
+    if (abs(inst_params[e * 2u + 1u].w - 1.0) < 0.01) {
+        return vec4<f32>(wp.xyz - camera.sun_dir.xyz * 0.5, wp.w);
+    }
+    return wp;
+}
+
 @vertex
 fn vs_shadow(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
     let m = model_matrix(e);
-    let wp = m * vec4<f32>(in.pos, 1.0);
+    let wp = shadow_caster_pos(e, m * vec4<f32>(in.pos, 1.0));
     var out: VsOut;
     out.clip = camera.light_view_proj * wp;
     out.world = wp.xyz;
@@ -406,7 +417,7 @@ fn vs_shadow(in: VsIn) -> VsOut {
 fn vs_shadow_close(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
     let m = model_matrix(e);
-    let wp = m * vec4<f32>(in.pos, 1.0);
+    let wp = shadow_caster_pos(e, m * vec4<f32>(in.pos, 1.0));
     var out: VsOut;
     out.clip = camera.light_view_proj_close * wp;
     out.world = wp.xyz;
@@ -425,7 +436,7 @@ fn vs_shadow_close(in: VsIn) -> VsOut {
 fn vs_shadow_far(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
     let m = model_matrix(e);
-    let wp = m * vec4<f32>(in.pos, 1.0);
+    let wp = shadow_caster_pos(e, m * vec4<f32>(in.pos, 1.0));
     var out: VsOut;
     out.clip = camera.light_view_proj_far * wp;
     out.world = wp.xyz;

@@ -1645,7 +1645,7 @@ pub(crate) fn way_back(net: &Network, bus: DVec3, heading: f64, ahead: &[usize],
     impl Eq for Node {}
     impl Ord for Node {
         fn cmp(&self, o: &Self) -> Ordering {
-            o.0.partial_cmp(&self.0).unwrap_or(Ordering::Equal)
+            o.0.total_cmp(&self.0)
         }
     }
     impl PartialOrd for Node {

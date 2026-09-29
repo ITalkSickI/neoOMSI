@@ -743,6 +743,11 @@ struct BusNow {
     walk_open: Option<(Vec<bool>, Vec<bool>)>,
     /// The stop it is serving (standing at it).
     stop: Option<i64>,
+    /// The stop it is pulling in to: one ahead of it within 60 m, facing its way, while it
+    /// still rolls. Omsi.exe lists a vehicle at a stop from 60 m out (sub_61f238) and the
+    /// people waiting there set off towards a bus of theirs while it is still faster than
+    /// 2 m/s (sub_62a6a0 at 0x62baa2): the driver sees who wants to get on before stopping.
+    approach: Option<i64>,
     interior: f32,
     /// The saloon's air and the light outside, for what boarding passengers say.
     air: CabinAir,
@@ -3541,6 +3546,20 @@ impl Humans {
                 })
                 .map(|s| s.0)
         };
+        let approaching = |pos: DVec3, heading: f64, speed: f64| -> Option<i64> {
+            if speed.abs() < 0.3 {
+                return None;
+            }
+            stops
+                .iter()
+                .filter(|s| {
+                    let d = (s.1 - pos).truncate();
+                    let bearing = d.x.atan2(d.y).to_degrees();
+                    d.length() < 60.0 && crowd::angle_diff(heading, bearing).abs() < 80.0 && crowd::angle_diff(heading, s.2).abs() <= 100.0
+                })
+                .min_by(|a, c| (a.1 - pos).length().total_cmp(&(c.1 - pos).length()))
+                .map(|s| s.0)
+        };
         let bb_of = |v: &VehicleInstance| {
             let bb =
                 v.ty.def
@@ -3599,6 +3618,7 @@ impl Humans {
                 speed,
                 entry_open,
                 exit_open,
+                approach: if stop.is_none() && !all_exit { approaching(b.position, b.heading, speed) } else { None },
                 stop,
                 interior: b.interior_light(),
                 air: CabinAir::of(b),
@@ -3679,6 +3699,7 @@ impl Humans {
                     speed,
                     entry_open,
                     exit_open,
+                    approach: if stop.is_none() { approaching(c.vehicle.position, c.vehicle.heading, speed) } else { None },
                     stop,
                     interior: c.vehicle.interior_light(),
                     air: CabinAir::of(&c.vehicle),
@@ -3735,6 +3756,7 @@ impl Humans {
             heading: v.heading,
             speed: v.physics.velocity_kmh() as f64 / 3.6,
             stop: None,
+            approach: None,
             interior: v.interior_light(),
             air: CabinAir::of(v),
             half: DVec2::new(bb[0] as f64 * 0.5, bb[1] as f64 * 0.5),
@@ -3844,6 +3866,7 @@ impl Humans {
                 heading: v.heading,
                 speed: v.physics.velocity_kmh() as f64 / 3.6,
                 stop: None,
+                approach: None,
                 interior: v.interior_light(),
                 air: CabinAir::of(v),
                 half: DVec2::new(bb[0] as f64 * 0.5, bb[1] as f64 * 0.5),
@@ -5430,6 +5453,42 @@ impl Humans {
                         },
                     );
                     return stand;
+                }
+                // a bus of theirs pulling in: up and a step or two towards the kerb to meet it,
+                // facing it (see `BusNow::approach`); they board once it stands, as above
+                let coming = buses
+                    .iter()
+                    .filter(|b| b.approach == Some(stop) && !b.all_exit && avoid != Some(b.id))
+                    .filter(|b| !mirror || b.id == BusId::Player)
+                    .filter(|_| self.people[i].takes_next || t_state >= 300.0)
+                    .min_by(|a, c| (a.pos.truncate() - pos2).length().total_cmp(&(c.pos.truncate() - pos2).length()));
+                if let Some(bn) = coming {
+                    let h = bn.heading.to_radians();
+                    let dir = DVec2::new(h.sin(), h.cos());
+                    let rel = pos2 - bn.pos.truncate();
+                    let side = rel - dir * rel.dot(dir);
+                    let lat = side.length();
+                    let to_bus = bn.pos.truncate() - pos2;
+                    let face = to_bus.x.atan2(to_bus.y).to_degrees();
+                    // a metre clear of its side, and never more than 4 m from the waiting place
+                    let clear = bn.half.x + 1.0;
+                    if lat > clear + 0.3 {
+                        let home = sp.floor().truncate();
+                        let target = home + (pos2 - side / lat * (lat - clear) - home).clamp_length_max(4.0);
+                        let d = (target - pos2).length();
+                        self.people[i].why = "steps forward to meet the bus";
+                        return Want {
+                            vel: arrive(pos2, target, pace * 0.7),
+                            face: Some(face),
+                            give: 0.5,
+                            corridor: None,
+                            idle: Activity::Stand,
+                            follow: false,
+                            goal_dist: Some(d),
+                        };
+                    }
+                    self.people[i].why = "waits at the kerb for the bus";
+                    return Want::stand(Some(face), Activity::Stand);
                 }
                 if t_state > patience && !buses.iter().any(|b| b.stop == Some(stop)) {
                     // waited long enough: walks off (and somebody else will come)

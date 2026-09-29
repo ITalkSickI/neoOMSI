@@ -431,6 +431,17 @@ pub fn build_spline_mesh(def: &Spline, curve: &SplineCurve, mirror: bool, origin
         mesh.ranges.push((first_index, count, profile.texture as u32));
     }
     compute_normals(&mut mesh);
+    // Drawn from the side a profile faces only, as OMSI draws splines: the makers orient
+    // every face - 7560 of 7630 level faces in the stock and two add-on maps' splines face
+    // up, the other 70 are the undersides of bridges, roofs and tunnel ceilings - and a
+    // fence or guard rail is two faces a couple of centimetres apart, one per side, which
+    // drawn from both sides fought in the depth buffer and flickered as the camera moved.
+    // (The winding is turned to the content meshes' clockwise front; the normals, made
+    // above, stay as they are.)
+    for t in mesh.indices.chunks_exact_mut(3) {
+        t.swap(1, 2);
+    }
+    mesh.one_sided = true;
     mesh
 }
 

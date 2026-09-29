@@ -681,7 +681,18 @@ impl Model {
                 let texture = r.str().to_string();
                 let index = r.i32();
                 if let Some(m) = self.cur_mesh() {
-                    m.materials.push(MaterialDef { texture, index, ..Default::default() });
+                    // [matl] selects a material and what follows changes it: a second [matl] of
+                    // the same one goes on with it (TH_Wald's chain barrier gives its slot an
+                    // envmap in one block and [matl_alpha] 1 in the next - the second block was
+                    // lost and the chain stood on a white band)
+                    let same = |d: &MaterialDef| !d.item && d.change.is_none() && d.index == index && d.texture.eq_ignore_ascii_case(&texture);
+                    match m.materials.iter().position(same) {
+                        Some(k) => {
+                            let d = m.materials.remove(k);
+                            m.materials.push(d);
+                        }
+                        None => m.materials.push(MaterialDef { texture, index, ..Default::default() }),
+                    }
                 }
             }
             "matl_change" => {
@@ -961,6 +972,18 @@ pub fn load_texchanges(base: &Path, files: &[String]) -> Vec<TexChangeMaster> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Two [matl] blocks of one material are one material (Absperrung_grau.sco).
+    #[test]
+    fn a_second_matl_block_goes_on_with_the_same_material() {
+        let f = omsi_cfg::CfgFile::from_str("x.sco", "[mesh]\nx.o3d\n\n[matl]\nAbsperr_gr.dds\n0\n[matl_envmap]\nenvmap_Glas.dds\n0.03\n\n[matl]\nOther.dds\n0\n\n[matl]\nAbsperr_gr.dds\n0\n[matl_alpha]\n1\n");
+        let m = super::Model::parse(&f);
+        let mats = &m.meshes[0].materials;
+        assert_eq!(mats.len(), 2, "{mats:?}");
+        let a = mats.iter().find(|d| d.texture == "Absperr_gr.dds").unwrap();
+        assert_eq!(a.alpha, 1);
+        assert!(a.envmap.is_some());
+    }
 
     /// A mesh before the first [LOD] belongs to that level (the WH UK AI cars' shadow).
     #[test]
