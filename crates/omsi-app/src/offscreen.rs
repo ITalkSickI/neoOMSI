@@ -1665,6 +1665,55 @@ pub(crate) fn run_offscreen(
             }
         }
     }
+    // OMSI_CHECK_WHEELS: probe the ground along the wheel tracks of every driving lane as a
+    // tyre does - a face a little over the road there is an invisible wall to the wheels, a
+    // ground far off the lane's height a hump or a hole
+    if omsi_cfg::env::var_os("OMSI_CHECK_WHEELS").is_some() {
+        if let Some(t) = traffic.as_ref() {
+            let (mut points, mut walls, mut steps) = (0usize, Vec::new(), Vec::new());
+            for l in t.net.lanes.iter().filter(|l| l.kind == omsi_sim::traffic::LaneKind::Street && !l.invisible) {
+                let len = l.length();
+                let mut s = 1.0f32;
+                while s < len - 1.0 {
+                    let (p, hdg) = l.at(s);
+                    s += 2.0;
+                    let h = (hdg as f64).to_radians();
+                    let right = DVec3::new(h.cos(), -h.sin(), 0.0);
+                    for side in [-1.0, 1.0] {
+                        let w = p + right * side;
+                        points += 1;
+                        // (from the ground under the wheel, as the tyre probes: 0.8 of a
+                        // half-metre radius over it)
+                        let g = crate::scene::drive_probe(&world.terrains, &world.surfaces, w.x, w.y, p.z + 0.4);
+                        let g = match g.below {
+                            Some(b) => crate::scene::drive_probe(&world.terrains, &world.surfaces, w.x, w.y, b + 0.4),
+                            None => g,
+                        };
+                        let on_lane = g.below.is_some_and(|b| (b - p.z).abs() <= 0.3);
+                        if let (true, Some(a)) = (on_lane, g.above.filter(|a| *a < p.z + 2.0)) {
+                            walls.push((w, a - p.z));
+                        } else if let Some(b) = g.below.filter(|b| (b - p.z).abs() > 0.3) {
+                            steps.push((w, b - p.z));
+                        } else if g.below.is_none() {
+                            steps.push((w, f64::NAN));
+                        }
+                    }
+                }
+            }
+            log::info!("wheel check: {points} wheel points, {} under a face (a wall to the tyre), {} off the lane's height by more than 30 cm", walls.len(), steps.len());
+            let mut hist = [0usize; 17];
+            for (_, d) in &walls {
+                hist[((d * 10.0) as usize).min(16)] += 1;
+            }
+            log::info!("  wall faces by height over the lane (0.1 m steps from 0): {hist:?}");
+            for (w, d) in walls.iter().take(40) {
+                log::info!("  wall at ({:.1}, {:.1}, {:.1}): face {d:+.2} m over the lane", w.x, w.y, w.z);
+            }
+            for (w, d) in steps.iter().take(40) {
+                log::info!("  ground at ({:.1}, {:.1}, {:.1}): {d:+.2} m off the lane", w.x, w.y, w.z);
+            }
+        }
+    }
     // What the map says about traffic on its roads
     if omsi_cfg::env::var_os("OMSI_CHECK_ROADS").is_some() {
         if let Some(t) = traffic.as_ref() {

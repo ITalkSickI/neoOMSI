@@ -43,6 +43,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Walls with a height profile on their top (the stone and brick walls of UK maps) are walls
   to the wheels, not a road: where a wall's top met the road the bus drove up onto it and
   along it as the road fell away.
+- A spline's height profile lying well over everything the spline draws (Westcountry's
+  yellow surface marking: paint 10 cm up, height profile 50 cm) is taken at the drawn
+  height: it was an invisible wall across the road. `OMSI_CHECK_WHEELS=1` with `--offscreen`
+  lists what the wheels meet along the driving lanes (for map makers).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

@@ -279,9 +279,13 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
             continue;
         }
         let base = mesh.positions.len() as u32;
+        let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
+            Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
+            _ => (hp.z0, hp.z1),
+        };
         for i in 0..=n {
             let s = curve.length * i as f64 / n as f64;
-            for (x, z) in [(hp.x0, hp.z0), (hp.x1, hp.z1)] {
+            for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
                 mesh.positions.push((curve.offset_point(s, x as f64 * sign, z as f64) - origin).as_vec3());
                 mesh.normals.push(Vec3::Z);
                 mesh.uvs.push(Vec2::ZERO);
@@ -302,6 +306,31 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
         mesh.ranges.push((flat_end, mesh.indices.len() as u32 - flat_end, 1));
     }
     mesh
+}
+
+/// How far a height profile may lie over everything the spline draws across it before it
+/// counts as a slip of its maker and is brought down to the drawn surface.
+const PHANTOM_LIFT: f32 = 0.25;
+
+/// The highest point the spline's drawn profiles reach between `xa` and `xb` (none: nothing
+/// is drawn there - an invisible footway, which keeps its height profile as it is).
+/// Westcountry's yellow surface marking draws its paint 10 cm up and says 50 cm in its
+/// `[heightprofile]`: every wheel met it as a 40 cm wall across the carriageway.
+fn drawn_height(def: &Spline, xa: f32, xb: f32) -> Option<f32> {
+    let mut best: Option<f32> = None;
+    for p in &def.profiles {
+        for w in p.points.windows(2) {
+            let (a, b) = (&w[0], &w[1]);
+            let (lo, hi) = (a.x.min(b.x), a.x.max(b.x));
+            if hi < xa - 0.05 || lo > xb + 0.05 {
+                continue;
+            }
+            // (a vertical face, a kerb's edge, counts with its top)
+            let z = a.z.max(b.z);
+            best = Some(best.map_or(z, |m: f32| m.max(z)));
+        }
+    }
+    best
 }
 
 /// A height profile that is the top of a wall: a strip narrower than a wheel could stand on
