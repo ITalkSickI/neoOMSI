@@ -379,6 +379,9 @@ struct StagedSpline {
     bounds: [f64; 4],
     /// It carries a road or a footway (a railway embankment or a bridge deck does not).
     drivable: bool,
+    /// Only ground-bearing splines may cut the terrain. Decorative geometry such as
+    /// overhead power lines must never write a terrain mask or ground height.
+    cuts_terrain: bool,
 }
 
 /// A tile read and tessellated, its objects typed but not yet standing on the ground. Kept
@@ -2842,11 +2845,18 @@ impl World {
                     ..Default::default()
                 };
                 let drivable = st.def.paths.iter().any(|pd| pd.kind == 0 || pd.kind == 1);
+                // A spline's visible profile is not necessarily a ground surface.
+                // Power cables, fences and overhead trim can have horizontal quads;
+                // rasterizing them used to erase terrain under their footprints.
+                // Height profiles identify authored ground-bearing surfaces, while
+                // road/footway paths also count as ground-bearing splines.
+                let cuts_terrain = !st.def.height_profiles.is_empty() || drivable;
                 out.splines.push(StagedSpline {
                     shape,
                     ty: st,
                     bounds,
                     drivable,
+                    cuts_terrain,
                 });
                 meshes.push(Arc::new(mesh));
             }
@@ -3982,7 +3992,9 @@ impl World {
                 // on: only splines that carry a road or footway path count as drivable
                 for q in &order {
                     for sp in &q.splines {
-                        if outside(&sp.bounds) {
+                        // Decorative splines are rendered, but cannot remove terrain or
+                        // masquerade as a road in the surface/ground raster.
+                        if !sp.cuts_terrain || outside(&sp.bounds) {
                             continue;
                         }
                         report(&sp.shape, &Mat4::IDENTITY, q.origin, &sp.bounds, &|| {
