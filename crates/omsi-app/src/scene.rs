@@ -66,12 +66,14 @@ pub struct ObjectType {
 }
 
 impl World {
-    /// The map's `parklist_p.txt`: scenery objects (parked cars) placed on `[carpark_p]` spaces.
-    pub fn parked_car_types(&self) -> Vec<String> {
+    /// The map's indexed parking lists: index 0 is `parklist_p.txt`, and an
+    /// editor caption of 1 selects `parklist_p_1.txt` for that parking space.
+    pub fn parked_car_types(&self, index: usize) -> Vec<String> {
         let mut g = self.parklist.lock();
-        if g.is_none() {
+        if !g.contains_key(&index) {
+            let filename = if index == 0 { "parklist_p.txt".to_string() } else { format!("parklist_p_{index}.txt") };
             let text =
-                omsi_cfg::vfs::read(&omsi_cfg::resolve_path(&self.map_dir, "parklist_p.txt"))
+                omsi_cfg::vfs::read(&omsi_cfg::resolve_path(&self.map_dir, &filename))
                     .ok()
                     .map(|b| omsi_cfg::decode_text(&b))
                     .unwrap_or_default();
@@ -80,10 +82,10 @@ impl World {
                 .map(|l| l.trim().to_string())
                 .filter(|l| !l.is_empty() && l.to_ascii_lowercase().ends_with(".sco"))
                 .collect();
-            log::info!("parklist_p: {} parked car types", list.len());
-            *g = Some(list);
+            log::info!("{filename}: {} parked car types", list.len());
+            g.insert(index, list);
         }
-        g.clone().unwrap_or_default()
+        g.get(&index).cloned().unwrap_or_default()
     }
 
     /// Render texture of mirror `i` (created on first use, as large as the `mirror_size`
@@ -1243,8 +1245,8 @@ pub struct World {
     pub root: PathBuf,
     pub global: GlobalCfg,
     pub map_dir: PathBuf,
-    /// `parklist_p.txt` of the map: parked car objects for `[carpark_p]` spaces.
-    parklist: Mutex<Option<Vec<String>>>,
+    /// Indexed parked car lists of the map, loaded when a parking space uses one.
+    parklist: Mutex<HashMap<usize, Vec<String>>>,
     /// Render textures of the player's mirrors (`reflexionN.bmp`), by camera index.
     pub mirror_textures: Mutex<Vec<Option<TextureId>>>,
     object_types: Mutex<HashMap<String, Option<Arc<ObjectType>>>>,
@@ -1953,7 +1955,7 @@ impl World {
             root: root.to_path_buf(),
             global,
             map_dir,
-            parklist: Mutex::new(None),
+            parklist: Mutex::new(HashMap::new()),
             mirror_textures: Mutex::new(Vec::new()),
             chrono_dirs: parking_lot::RwLock::new(chrono_dirs),
             ailists,
@@ -2873,7 +2875,7 @@ impl World {
             if !wanted(&o.file) {
                 continue;
             }
-            let Some((ot, parked)) = self.placed_type(&o.file, o.id, tx, ty, &counts) else {
+            let Some((ot, parked)) = self.placed_type(&o.file, &o.extra, o.id, tx, ty, &counts) else {
                 continue;
             };
             // Objects connected to splines (crossings, switches) are stored with absolute
@@ -2911,7 +2913,7 @@ impl World {
             if !wanted(&o.file) {
                 continue;
             }
-            let Some((ot, parked)) = self.placed_type(&o.file, o.id, tx, ty, &counts) else {
+            let Some((ot, parked)) = self.placed_type(&o.file, &o.extra, o.id, tx, ty, &counts) else {
                 continue;
             };
             let Some(parent) = o.parent_id else { continue };
@@ -2958,7 +2960,7 @@ impl World {
                 }
                 // every car park of a row draws its own car
                 let key = a.id.wrapping_mul(1_000_003).wrapping_add(ro.index as i64);
-                let Some((ot, parked)) = self.placed_type(&a.file, key, tx, ty, &counts) else {
+                let Some((ot, parked)) = self.placed_type(&a.file, &a.strings, key, tx, ty, &counts) else {
                     continue;
                 };
                 let key = row_object_key(tx, ty, a.id, ro.index);
@@ -2999,6 +3001,7 @@ impl World {
     fn placed_type(
         &self,
         file: &str,
+        captions: &[String],
         key: i64,
         tx: i32,
         ty: i32,
@@ -3019,7 +3022,8 @@ impl World {
         if !ot.sco.is_car_park {
             return Some((ot, false));
         }
-        let list = self.parked_car_types();
+        let index = captions.first().and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(0);
+        let list = self.parked_car_types(index);
         if list.is_empty() {
             return Some((ot, false));
         }
