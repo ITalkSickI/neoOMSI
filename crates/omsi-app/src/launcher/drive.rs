@@ -339,7 +339,7 @@ fn step_route_rest(l: &mut Launcher, r: Rect, mut y: f32) {
     }
 }
 
-fn natural(s: &str) -> (u64, String) {
+pub(super) fn natural(s: &str) -> (u64, String) {
     let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
     (digits.parse().unwrap_or(u64::MAX), s.to_string())
 }
@@ -693,6 +693,11 @@ fn summary(l: &mut Launcher, side: Rect) {
         l.ui.text_in(&note, nr, 12.5, Weight::Regular, if h { TEXT } else { OK }, Align::Center);
     }
     let _ = fmt_bytes;
+}
+
+/// The phone's Start: as the desktop's.
+pub(super) fn start_from_phone(l: &mut Launcher) {
+    start(l);
 }
 
 fn start(l: &mut Launcher) {
