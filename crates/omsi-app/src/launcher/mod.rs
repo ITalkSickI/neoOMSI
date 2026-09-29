@@ -247,7 +247,13 @@ impl Launcher {
         if self.renderer.is_none() {
             let surface = self.instance.create_surface(window.clone()).expect("surface");
             let settings = crate::settings::Settings::load();
-            let renderer = pollster::block_on(Renderer::new_with(&self.instance, Some(&surface), None, showroom_options(&settings))).expect("renderer");
+            let renderer = match pollster::block_on(Renderer::new_with(&self.instance, Some(&surface), None, showroom_options(&settings))) {
+                Ok(renderer) => renderer,
+                Err(err) => {
+                    crate::startup::fatal_dialog("openOMSI graphics initialization failed", &format!("{err:#}"));
+                    return;
+                }
+            };
             drop(surface);
             self.gpu = Some(omsi_ui::Gpu::new(&renderer.device, renderer.format(), 4, self.ui.atlas.size));
             self.ui.atlas = omsi_ui::Atlas::new(self.ui.atlas.size);
@@ -285,7 +291,14 @@ impl ApplicationHandler for Launcher {
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         let surface = self.instance.create_surface(window.clone()).expect("surface");
         let settings = crate::settings::Settings::load();
-        let renderer = pollster::block_on(Renderer::new_with(&self.instance, Some(&surface), None, showroom_options(&settings))).expect("renderer");
+        let renderer = match pollster::block_on(Renderer::new_with(&self.instance, Some(&surface), None, showroom_options(&settings))) {
+            Ok(renderer) => renderer,
+            Err(err) => {
+                crate::startup::fatal_dialog("openOMSI graphics initialization failed", &format!("{err:#}"));
+                event_loop.exit();
+                return;
+            }
+        };
         drop(surface);
         let size = window.inner_size();
         let surface = SurfaceState::new_with(&self.instance, window.clone(), &renderer, size.width, size.height, true).expect("surface");
