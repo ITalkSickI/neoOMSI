@@ -5329,6 +5329,7 @@ impl World {
                     let mut script_texts: Vec<(TextureId, omsi_sim::texttex::TextTextureState)> =
                         Vec::new();
                     // a crossing warped onto the ground has meshes of its own
+                    let is_warped_crossing = warped.is_some();
                     let own_meshes: Option<Vec<(MeshId, Vec<MaterialId>)>> = warped.map(|ms| {
                         ms.iter()
                             .zip(type_meshes.iter())
@@ -5355,7 +5356,7 @@ impl World {
                             // Surface is an OMSI rendering classification, not a guarantee that
                             // the geometry is a road marking. Keep the surface render path,
                             // but reserve decal ordering for actual ground-warped crossings.
-                            if warped.is_some() {
+                            if is_warped_crossing {
                                 if let Some(x) = scene.instances.get_mut(i) {
                                     x.decal = true;
                                 }
