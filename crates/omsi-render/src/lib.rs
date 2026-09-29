@@ -7136,8 +7136,8 @@ impl Renderer {
                         has_blend = true;
                         continue;
                     }
-                    // a render target cannot be sampled while being drawn into (mirror glass)
-                    if exclude_texture.is_some() && mat.texture == exclude_texture {
+                    // a render target cannot be sampled while being drawn into (mirror glass, or a reflection map of it)
+                    if exclude_texture.is_some_and(|t| mat.uses_texture(t)) {
                         continue;
                     }
                     items.push(DrawItem {
@@ -7263,7 +7263,7 @@ impl Renderer {
                     let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
                     let mat = &scene.materials[mat_id];
                     if (mat.alpha != AlphaMode::Blend && !mat.no_z_check)
-                        || (exclude_texture.is_some() && mat.texture == exclude_texture)
+                        || exclude_texture.is_some_and(|t| mat.uses_texture(t))
                     {
                         continue;
                     }
