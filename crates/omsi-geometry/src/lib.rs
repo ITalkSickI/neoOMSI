@@ -47,6 +47,11 @@ pub struct SplineCurve {
     /// Cant in percent: the rise across per metre.
     pub cant_start: f64,
     pub cant_end: f64,
+    /// Longitudinal shear at the start and end cross-sections (the map's
+    /// `[spline]` skew fields). These miter neighbouring spline segments at
+    /// their shared corners.
+    pub skew_start: f64,
+    pub skew_end: f64,
     /// How far out from the centre line the cant lifts (`[halfcantwidth]` of the .sli;
     /// beyond it the profile keeps the height it has there). See [`half_cant_width`].
     pub half_cant_width: f64,
@@ -93,6 +98,8 @@ impl SplineCurve {
             delta_h: s.delta_h,
             cant_start: s.cant_start,
             cant_end: s.cant_end,
+            skew_start: s.skew_start,
+            skew_end: s.skew_end,
             half_cant_width: DEFAULT_HALF_CANT_WIDTH,
         }
     }
@@ -211,8 +218,7 @@ pub fn build_spline_mesh(def: &Spline, curve: &SplineCurve, mirror: bool, origin
     if curve.length <= 0.0 {
         return mesh;
     }
-    let step = curve.step();
-    let n = ((curve.length / step).ceil() as usize).max(1);
+    let n = spline_station_count(curve);
     let stations: Vec<f64> = (0..=n).map(|i| curve.length * i as f64 / n as f64).collect();
     let mirror_sign = if mirror { -1.0 } else { 1.0 };
     let curve = &curve.with_sli(def);
@@ -220,17 +226,38 @@ pub fn build_spline_mesh(def: &Spline, curve: &SplineCurve, mirror: bool, origin
         if profile.points.len() < 2 {
             continue;
         }
+        // OMSI sweeps each profile segment over eight cross-section columns.
+        // Sampling the authored endpoints alone folds a wide profile into a
+        // couple of large triangles when its inner edge passes the arc centre,
+        // leaving the angular island noses seen at tight spline corners.
+        const PROFILE_COLUMNS: usize = 8;
+        let mut section: Vec<(f64, f64, f32, f32)> = Vec::with_capacity(
+            (profile.points.len() - 1) * (PROFILE_COLUMNS - 1) + 1,
+        );
+        for pair in profile.points.windows(2) {
+            let (a, b) = (&pair[0], &pair[1]);
+            for column in 0..(PROFILE_COLUMNS - 1) {
+                let t = column as f32 / (PROFILE_COLUMNS - 1) as f32;
+                section.push((
+                    (a.x + (b.x - a.x) * t) as f64,
+                    (a.z + (b.z - a.z) * t) as f64,
+                    a.u + (b.u - a.u) * t,
+                    a.v_scale + (b.v_scale - a.v_scale) * t,
+                ));
+            }
+        }
+        let last = profile.points.last().unwrap();
+        section.push((last.x as f64, last.z as f64, last.u, last.v_scale));
         let first_index = mesh.indices.len() as u32;
         let base = mesh.positions.len() as u32;
-        let pn = profile.points.len() as u32;
+        let pn = section.len() as u32;
         for &s in &stations {
-            for pt in &profile.points {
-                let x = pt.x as f64 * mirror_sign;
-                let p = curve.offset_point(s, x, pt.z as f64) - origin;
+            for &(x, z, u, v_scale) in &section {
+                let p = spline_mesh_point(curve, s, x * mirror_sign, z) - origin;
                 mesh.positions.push(p.as_vec3());
                 mesh.normals.push(Vec3::Z);
-                let v = if pt.v_scale != 0.0 { s as f32 * pt.v_scale } else { 0.0 };
-                mesh.uvs.push(Vec2::new(pt.u, v));
+                let v = if v_scale != 0.0 { s as f32 * v_scale } else { 0.0 };
+                mesh.uvs.push(Vec2::new(u, v));
             }
         }
         for i in 0..n as u32 {
@@ -265,8 +292,7 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
     if curve.length <= 0.0 || def.height_profiles.is_empty() {
         return mesh;
     }
-    let step = curve.step();
-    let n = ((curve.length / step).ceil() as usize).max(1);
+    let n = spline_station_count(curve);
     let sign = if mirror { -1.0 } else { 1.0 };
     let curve = &curve.with_sli(def);
     // the ordinary profiles first (material 0), then the wall tops (material 1)
@@ -278,6 +304,7 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
         if (hp.x1 - hp.x0).abs() < 1e-3 {
             continue;
         }
+        const PROFILE_COLUMNS: u32 = 8;
         let base = mesh.positions.len() as u32;
         let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
             Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
@@ -285,16 +312,23 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
         };
         for i in 0..=n {
             let s = curve.length * i as f64 / n as f64;
-            for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
-                mesh.positions.push((curve.offset_point(s, x as f64 * sign, z as f64) - origin).as_vec3());
+            for column in 0..PROFILE_COLUMNS {
+                let t = column as f32 / (PROFILE_COLUMNS - 1) as f32;
+                let x = hp.x0 + (hp.x1 - hp.x0) * t;
+                let z = z0 + (z1 - z0) * t;
+                mesh.positions.push(
+                    (spline_mesh_point(curve, s, x as f64 * sign, z as f64) - origin).as_vec3(),
+                );
                 mesh.normals.push(Vec3::Z);
                 mesh.uvs.push(Vec2::ZERO);
             }
         }
         for i in 0..n as u32 {
-            let (a, b) = (base + i * 2, base + i * 2 + 1);
-            let (c, d) = (a + 2, b + 2);
-            mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
+            for column in 0..(PROFILE_COLUMNS - 1) {
+                let a = base + i * PROFILE_COLUMNS + column;
+                let (b, c, d) = (a + 1, a + PROFILE_COLUMNS, a + PROFILE_COLUMNS + 1);
+                mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
+            }
         }
     }
     if pass == 0 {
@@ -306,6 +340,54 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
         mesh.ranges.push((flat_end, mesh.indices.len() as u32 - flat_end, 1));
     }
     mesh
+}
+
+/// Number of longitudinal samples for the rendered and drivable spline surfaces.
+/// Curved segments need at least 32 rows: a tight authored arc can otherwise
+/// span only a handful of chords even when its analytic centreline is correct.
+fn spline_station_count(curve: &SplineCurve) -> usize {
+    let adaptive = ((curve.length / curve.step()).ceil() as usize).max(1);
+    if curve.radius.is_finite() && curve.radius.abs() > 0.01 {
+        adaptive.max(32)
+    } else {
+        adaptive
+    }
+}
+
+/// Build a profile vertex with the authored mitre at a segment endpoint.
+///
+/// OMSI stores the longitudinal shear coefficients on `[spline]` / `[spline_h]`
+/// and applies them only to the first and last cross-section. Extending those
+/// rows by two centimetres also closes small export and rasterisation gaps at
+/// connected spline joints.
+fn spline_mesh_point(curve: &SplineCurve, s: f64, lateral: f64, height: f64) -> DVec3 {
+    const ENDPOINT_OVERLAP: f64 = 0.02;
+
+    let mut point = curve.offset_point(s, lateral, height);
+    let endpoint_offset = if s <= 1e-5 {
+        let skew = if curve.skew_start.is_finite() {
+            curve.skew_start.clamp(-32.0, 32.0)
+        } else {
+            0.0
+        };
+        lateral * skew - ENDPOINT_OVERLAP
+    } else if s >= curve.length - 1e-5 {
+        let skew = if curve.skew_end.is_finite() {
+            curve.skew_end.clamp(-32.0, 32.0)
+        } else {
+            0.0
+        };
+        lateral * skew + ENDPOINT_OVERLAP
+    } else {
+        0.0
+    };
+
+    if endpoint_offset.abs() > 1e-5 {
+        let tangent = SplineCurve::dir(curve.heading_at(s));
+        point.x += tangent.x * endpoint_offset;
+        point.y += tangent.y * endpoint_offset;
+    }
+    point
 }
 
 /// How far a height profile may lie over everything the spline draws across it before it
@@ -558,14 +640,14 @@ mod tests {
         def.height_profiles.push(omsi_scenery::sli::HeightProfile { x0: -4.5, x1: 4.5, z0: 0.1, z1: 0.1 });
         def.height_profiles.push(omsi_scenery::sli::HeightProfile { x0: 4.5, x1: 7.5, z0: 0.25, z1: 0.25 });
         def.height_profiles.push(omsi_scenery::sli::HeightProfile { x0: -1.25, x1: -1.25, z0: 0.25, z1: 0.25 });
-        let c = SplineCurve { start: DVec3::new(10.0, 10.0, 30.0), heading_deg: 0.0, length: 20.0, radius: 0.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 0.0, cant_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
+        let c = SplineCurve { start: DVec3::new(10.0, 10.0, 30.0), heading_deg: 0.0, length: 20.0, radius: 0.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 0.0, cant_end: 0.0, skew_start: 0.0, skew_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
         let m = build_height_profile_mesh(&def, &c, false, DVec3::ZERO);
         let mut g = DriveGrid::default();
         for t in m.indices.chunks_exact(3) {
             g.push([m.positions[t[0] as usize], m.positions[t[1] as usize], m.positions[t[2] as usize]]);
         }
         g.build(300.0);
-        assert_eq!(g.tris.len(), 4, "the zero-width segment is no surface");
+        assert_eq!(g.tris.len(), 28, "the zero-width segment is no surface");
         assert!((g.probe(10.0, 15.0, 31.0).below.unwrap() - 30.1).abs() < 1e-4);
         assert!((g.probe(16.0, 15.0, 31.0).below.unwrap() - 30.25).abs() < 1e-4);
         // mirrored, the pavement is on the left
@@ -599,20 +681,60 @@ mod tests {
 
     #[test]
     fn straight_and_arc() {
-        let c = SplineCurve { start: DVec3::ZERO, heading_deg: 90.0, length: 10.0, radius: 0.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 0.0, cant_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
+        let c = SplineCurve { start: DVec3::ZERO, heading_deg: 90.0, length: 10.0, radius: 0.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 0.0, cant_end: 0.0, skew_start: 0.0, skew_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
         let e = c.end_point();
         assert!((e.x - 10.0).abs() < 1e-9 && e.y.abs() < 1e-9);
         // quarter circle to the right from heading 0 with radius 10 ends at (10, 10), heading 90
-        let c = SplineCurve { start: DVec3::ZERO, heading_deg: 0.0, length: std::f64::consts::FRAC_PI_2 * 10.0, radius: 10.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 0.0, cant_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
+        let c = SplineCurve { start: DVec3::ZERO, heading_deg: 0.0, length: std::f64::consts::FRAC_PI_2 * 10.0, radius: 10.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 0.0, cant_end: 0.0, skew_start: 0.0, skew_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
         let e = c.end_point();
         assert!((e.x - 10.0).abs() < 1e-9 && (e.y - 10.0).abs() < 1e-9, "{e:?}");
         assert!((c.heading_at(c.length) - 90.0).abs() < 1e-9);
     }
 
     #[test]
+    fn curved_spline_mesh_subdivides_folded_profiles() {
+        let mut def = Spline::default();
+        def.profiles.push(omsi_scenery::sli::SplineProfile {
+            texture: 0,
+            points: vec![
+                omsi_scenery::sli::SplineProfilePoint { x: -4.0, ..Default::default() },
+                omsi_scenery::sli::SplineProfilePoint { x: 4.0, ..Default::default() },
+            ],
+        });
+        def.height_profiles.push(omsi_scenery::sli::HeightProfile {
+            x0: -4.0,
+            x1: 4.0,
+            z0: 0.0,
+            z1: 0.0,
+        });
+        let curve = SplineCurve {
+            start: DVec3::ZERO,
+            heading_deg: 0.0,
+            length: std::f64::consts::FRAC_PI_2 * 2.0,
+            radius: 2.0,
+            grad_start: 0.0,
+            grad_end: 0.0,
+            delta_h: None,
+            cant_start: 0.0,
+            cant_end: 0.0,
+            skew_start: 0.0,
+            skew_end: 0.0,
+            half_cant_width: DEFAULT_HALF_CANT_WIDTH,
+        };
+
+        let surface = build_spline_mesh(&def, &curve, false, DVec3::ZERO);
+        assert_eq!(surface.positions.len(), 33 * 8);
+        assert_eq!(surface.indices.len(), 32 * 7 * 6);
+
+        let drive = build_height_profile_mesh(&def, &curve, false, DVec3::ZERO);
+        assert_eq!(drive.positions.len(), 33 * 8);
+        assert_eq!(drive.indices.len(), 32 * 7 * 6);
+    }
+
+    #[test]
     fn spline_h_height() {
         // the Ahlheim underpass ramp: 73.86 m, leaves at 6.19 %, arrives level, 5.85 m up
-        let c = SplineCurve { start: DVec3::new(0.0, 0.0, -5.79), heading_deg: 0.0, length: 73.86, radius: 0.0, grad_start: 6.19, grad_end: 0.0, delta_h: Some(5.85), cant_start: 0.0, cant_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
+        let c = SplineCurve { start: DVec3::new(0.0, 0.0, -5.79), heading_deg: 0.0, length: 73.86, radius: 0.0, grad_start: 6.19, grad_end: 0.0, delta_h: Some(5.85), cant_start: 0.0, cant_end: 0.0, skew_start: 0.0, skew_end: 0.0, half_cant_width: DEFAULT_HALF_CANT_WIDTH };
         assert!((c.height_at(0.0) + 5.79).abs() < 1e-9);
         assert!((c.height_at(c.length) - 0.06).abs() < 1e-9, "{}", c.height_at(c.length));
         assert!((c.slope_at(0.0) - 0.0619).abs() < 1e-9);
@@ -1338,7 +1460,7 @@ mod cant_tests {
 
     #[test]
     fn cant_is_a_percentage_within_the_half_cant_width() {
-        let c = SplineCurve { start: DVec3::ZERO, heading_deg: 0.0, length: 10.0, radius: 0.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 5.0, cant_end: 5.0, half_cant_width: 3.0 };
+        let c = SplineCurve { start: DVec3::ZERO, heading_deg: 0.0, length: 10.0, radius: 0.0, grad_start: 0.0, grad_end: 0.0, delta_h: None, cant_start: 5.0, cant_end: 5.0, skew_start: 0.0, skew_end: 0.0, half_cant_width: 3.0 };
         // 2 m right at 5 %: 10 cm down
         assert!((c.offset_point(5.0, 2.0, 0.0).z + 0.10).abs() < 1e-9);
         // beyond the half cant width the height stays what it is at its edge
