@@ -142,6 +142,9 @@ pub struct AiCar {
     /// Seconds this car has been standing still without a stop of its own: a red light or
     /// a queue is seconds, a jam that never clears grows without bound.
     pub stopped: f32,
+    /// Seconds it has crept along below 1 m/s (a claim of one that crawls in a jam of its
+    /// own is no car about to come either).
+    pub crawl: f32,
     /// A timetable bus: its trip's stops, the doors, the layover, the people aboard (see
     /// `bus_service`). Everything else about it is this car's.
     pub bus: Option<Box<BusService>>,
@@ -2287,6 +2290,7 @@ impl Traffic {
             trailer_renders,
             body,
             stopped: 0.0,
+            crawl: 0.0,
             bus: bus.map(|b| Box::new(BusService::new(b.stops, b.riders))),
             sounds: None,
             half_width,
@@ -3782,7 +3786,8 @@ impl Traffic {
                         .get(&m)
                         .map(|r| r.contains(&j))
                         .unwrap_or(false)
-                        && !(o.stopped > 4.0 && o.state.speed < 0.1);
+                        && !(o.stopped > 4.0 && o.state.speed < 0.1)
+                        && o.crawl < 8.0;
                     let theirs = dj - c.other_before - o.state.front;
                     // it waits for someone else before this meeting place (a car that gives
                     // way further on still rolls through here on its way to its line)
@@ -5092,6 +5097,11 @@ impl Traffic {
             } else {
                 car.stopped = 0.0;
             }
+            if car.state.speed.abs() < 1.0 && !car.at_stop() {
+                car.crawl += dt;
+            } else {
+                car.crawl = 0.0;
+            }
             // a random car that has stood for a minute without a light or a junction
             // holding it has given up: it leaves as soon as nobody sees it
             // (one yielding for minutes is in a gridlock nobody else will end)
@@ -6375,6 +6385,7 @@ impl Traffic {
             trailer_renders,
             body,
             stopped: 0.0,
+            crawl: 0.0,
             bus: scheduled.then(|| Box::new(BusService::new(Vec::new(), 0))),
             sounds: None,
             half_width,

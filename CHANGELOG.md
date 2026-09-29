@@ -7,6 +7,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 ## 0.1.14 - 2026-09-28
 
 ### More fixes
+- AI traffic no longer stands for minutes on a free road: a car crawling in a jam of its own
+  kept its claim on the junction ahead, and the cars that give way to it waited behind it
+  in a chain (one Golf stood 81 s on Spandau; none now in four minutes of 80 cars).
 - On a road the wheels stand on the road, as in OMSI: the terrain over or through the
   carriageway (an embankment the road runs under, ground poking through the asphalt) was an
   invisible wall under bridges and a bump that threw the bus.
