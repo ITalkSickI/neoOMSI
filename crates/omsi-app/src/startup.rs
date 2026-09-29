@@ -131,8 +131,13 @@ pub(crate) fn graphics_instance() -> wgpu::Instance {
     descriptor.backends = if cfg!(target_os = "macos") {
         wgpu::Backends::METAL
     } else if cfg!(windows) {
-        // Prefer a compatible native backend instead of requiring Vulkan alone.
-        wgpu::Backends::DX12 | wgpu::Backends::VULKAN
+        // Allow explicit backend selection to diagnose driver-specific device loss.
+        // Example: set OMSI_GPU_BACKEND=dx12 before starting openOMSI.
+        match std::env::var("OMSI_GPU_BACKEND").unwrap_or_default().to_ascii_lowercase().as_str() {
+            "dx12" | "d3d12" => wgpu::Backends::DX12,
+            "vulkan" | "vk" => wgpu::Backends::VULKAN,
+            _ => wgpu::Backends::DX12 | wgpu::Backends::VULKAN,
+        }
     } else {
         wgpu::Backends::VULKAN
     };
