@@ -201,6 +201,12 @@ repair_time_min years realyearoffset ticketpack splineObjTypes scenObjList backg
 map addseason trafficdensity_road trafficdensity_passenger. Calendar: Holidays.txt (`[holidays]`
 range + name, `[holiday]` day + name), timezone.txt (`[timezone]`, `[DST]`), `[location]`.
 
+`[entrypoints]` records: index, object id, 0, x, height, y (within the tile), quaternion
+(x, y, z, w; heading = 2·atan2(y, w)), the index of the object's tile in the `[map]` list,
+name. Tile indices of the map's files (entry points, `[splineAttachement_repeater]`,
+timetable tracks) count every `[map]` entry, a tile listed twice included (Westcountry 3
+lists 33 twice). Object ids are not unique across a map joined from two.
+
 `tile_x_y.map` keywords: version terrain water variable_terrainlightmap variable_terrain object
 attachObj spline spline_h splineAttachement splineAttachement_repeater varparent
 spline_terrain_align spline_terrain_align_2 rule kill_rule; chrono patch files add selobject
@@ -396,6 +402,18 @@ come from `options.cfg`: `[performance_maxObjDist]` (750 in the shipped file, 90
 presets, 1200 for Chicago), `[performance_minObjSize]` (0.013; 0.020 in "PC 2006") and, for
 reflections, `[performance_minObjSizeRefl]` (0.046). A detail factor above 1 therefore makes
 an object vanish sooner (clutter), below 1 keeps it longer.
+
+**`[LOD]` choice (OMSI 0x5ef860, Sept 2026).** Each `[LOD] x` appends x to the model's list and
+makes its index the level of the meshes after it. With that `size`, OMSI takes the *first*
+level in file order whose x ≤ size, else the *last* level whatever its own x (a model with one
+`[LOD]` is drawn at any size; the stock Sv signals' `[LOD] 0.1` is the signal and `[LOD] 1`
+its far version). A mesh written before the first `[LOD]` gets the loader's level index
+before any `[LOD]` has set it (an uninitialised local); here it joins the first level - the
+WH UK AI cars put their shadow there.
+
+**`[matl_transmap]`** is the effect's `gMatlTransMapOn` map (the material's `AlphaMap`, +0x58):
+its *alpha* is the slot's alpha, and a picture without an alpha channel is opaque as Direct3D
+samples it (the WH UK AI cars' paint layer uses a black 24-bit `transmap_null.tga`).
 
 `[texchanges] <file>` names a `chtex_*.cfg` **relative to the vehicle's own folder**
 (`texture\chtex_SD.cfg`, `..\Anzeigen\Rollband_SD79\chtex_rollband.cfg`), not to the
