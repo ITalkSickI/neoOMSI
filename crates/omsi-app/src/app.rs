@@ -99,6 +99,10 @@ pub(crate) struct App {
     pub(crate) clock_hold: f32,
     /// A controller button held for looking left, right, up, down (`view_look_*`).
     pub(crate) pad_look: [bool; 4],
+    /// The arrow keys turned the head (a glance that comes back when they are let go).
+    pub(crate) arrow_glance: bool,
+    /// The next click on the city map puts the bus there (Esc → Move the bus on the map).
+    pub(crate) teleport_pick: bool,
     /// Head tracking (Settings → head tracking), started with the first frame that wants it.
     pub(crate) headtrack: Option<crate::headtrack::HeadTracker>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).

@@ -448,6 +448,8 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         plugin_keys: Vec::new(),
         clock_hold: 0.0,
         pad_look: [false; 4],
+        arrow_glance: false,
+        teleport_pick: false,
         headtrack: None,
         controllers: None,
         mouse_drive: false,

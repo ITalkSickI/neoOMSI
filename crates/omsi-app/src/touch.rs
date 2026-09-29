@@ -999,8 +999,9 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
 /// wheel comes back by itself when let go. (120 degrees was a lock in a flick.)
 const WHEEL_LOCK_ANGLE: f32 = 3.0 * std::f32::consts::PI;
 
-/// The wheel's turn as the bus gets it: gentle round the middle (a finger's small wobble is a
-/// small correction), the full lock still at the end of the travel.
+/// The wheel's turn as the bus gets it: one to one, the drawn wheel and the bus's wheel
+/// turn alike (a curve that was gentle round the middle made the bus turn faster and
+/// faster as the finger went on round).
 fn steer_curve(s: f32) -> f32 {
-    s.signum() * s.abs().powf(1.7)
+    s
 }

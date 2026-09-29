@@ -200,6 +200,13 @@ impl App {
                         return;
                     }
                     // the interior cameras: Ctrl+Left/Right (the arrows drive)
+                    // a manual gearbox: Ctrl+Up / Ctrl+Down shift up and down - the stock key file
+                    // has no keys for it, and a bus like the LiAZ MKPP stayed in its gear
+                    KeyCode::ArrowUp | KeyCode::ArrowDown if ctrl && !alt => {
+                        let up = code == KeyCode::ArrowUp;
+                        self.shift_gear(up);
+                        return;
+                    }
                     // (Ctrl+Alt+arrows turn the mirror looked at, see the frame)
                     KeyCode::ArrowLeft | KeyCode::ArrowRight | KeyCode::ArrowUp | KeyCode::ArrowDown if ctrl && alt => return,
                     KeyCode::ArrowLeft if ctrl => {
@@ -701,10 +708,13 @@ impl App {
         if let Some(n) = self.navigator.as_mut() {
             if n.map_open() {
                 let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
-                if pressed && ctrl {
-                    // Ctrl+click: the bus to the street nearest that point, as OMSI's map
-                    // window places vehicles (free drive and a game of one's own only)
+                if pressed && (ctrl || self.teleport_pick) {
+                    // Ctrl+click (or a click after Esc → Move the bus): the bus to the street
+                    // nearest that point, as OMSI's map window places vehicles
                     if let Some(at) = n.map_point(x, y) {
+                        if std::mem::take(&mut self.teleport_pick) {
+                            n.toggle_map();
+                        }
                         self.place_bus_at(at);
                     }
                 } else if pressed {
@@ -1511,6 +1521,16 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             Some("number") => self.open_list(crate::game_lists::ListKind::Numbers),
             Some("dest") => self.open_list(crate::game_lists::ListKind::Destinations),
             Some("hof") => self.open_list(crate::game_lists::ListKind::Hofs),
+            Some("teleport") => {
+                self.close_game_menu();
+                if let Some(n) = self.navigator.as_mut() {
+                    if !n.map_open() {
+                        n.toggle_map();
+                    }
+                    self.teleport_pick = true;
+                    self.service_msg = Some(("Click a street on the map: the bus is put there".into(), 6.0));
+                }
+            }
             Some("uncouple") => {
                 self.close_game_menu();
                 self.uncouple();
@@ -1831,6 +1851,48 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
     }
 
     /// OMSI's `sim_pause`: the simulation stands still, the camera and the picture go on.
+    /// Shift a manual gearbox up or down: the first of the usual trigger names the bus's
+    /// scripts have (pressed and let go). False when it has none.
+    pub(crate) fn shift_gear(&mut self, up: bool) -> bool {
+        let names: &[&str] = if up {
+            &["kw_s_plus", "upshift", "gear_up", "gearup", "shift_up", "gang_hoch", "schalten_hoch", "manual_up"]
+        } else {
+            &["kw_s_minus", "downshift", "gear_down", "geardown", "shift_down", "gang_runter", "schalten_runter", "manual_down"]
+        };
+        let Some(p) = self.player.as_mut() else { return false };
+        // a gear lever with a trigger per gate (`kw_s_1`..`kw_s_10`, `kw_s_N`, `kw_s_R`: the
+        // LiAZ MKPP - its `kw_s_plus` never fires, the script's condition is broken): the
+        // next gate from the gear engaged, with the clutch down as the gates want it
+        if p.vehicle.ty.program.trigger("kw_s_1").is_some() {
+            let cur = p.vehicle.var("antrieb_getr_aktugang").unwrap_or(0.0).round() as i32;
+            let to = if up { cur + 1 } else { cur - 1 };
+            let name = match to {
+                0 => "kw_s_N".to_string(),
+                -1 => "kw_s_R".to_string(),
+                n => format!("kw_s_{n}"),
+            };
+            if to < -1 || p.vehicle.ty.program.trigger(&name).is_none() {
+                return false;
+            }
+            // (as a driver does it: the clutch down, the gear in, the clutch let up over a
+            // second and a half as OMSI's clutch key lets it - let go at once, a bus pulling
+            // away stalled its engine)
+            p.vehicle.set_var("Clutch", 1.0);
+            p.axes.clutch = 1.0;
+            p.vehicle.trigger(&name);
+            p.vehicle.trigger(&format!("{name}_off"));
+            self.service_msg = Some((format!("Gear {}", match to { 0 => "N".to_string(), -1 => "R".to_string(), n => n.to_string() }), 1.5));
+            return true;
+        }
+        let Some(n) = names.iter().find(|n| p.vehicle.ty.program.trigger(n).is_some()) else {
+            self.service_msg = Some(("This vehicle has no manual gearbox to shift".into(), 2.0));
+            return false;
+        };
+        p.vehicle.trigger(n);
+        p.vehicle.trigger(&format!("{n}_off"));
+        true
+    }
+
     pub(crate) fn toggle_pause(&mut self) {
         if self.lan.is_some() {
             // (a LAN session goes on for the others: the menu, without the pause)
@@ -1859,8 +1921,8 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
     /// Put the bus on the street nearest the world point `at` (the city map's Ctrl+click),
     /// facing along it.
     pub(crate) fn place_bus_at(&mut self, at: glam::DVec2) {
-        if self.duty.is_some() || self.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client) {
-            self.service_msg = Some(("The bus can be placed on the map in free drive only".into(), 4.0));
+        if self.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client) {
+            self.service_msg = Some(("In a LAN session only the host moves vehicles on the map".into(), 4.0));
             return;
         }
         let net = self.traffic.as_ref().map(|t| &t.net).or_else(|| self.navigator.as_ref().and_then(|n| n.map_net()));
@@ -2116,7 +2178,7 @@ impl crate::App {
         }
         // without a bus of one's own: nothing of a bus's to offer
         if self.player.is_none() {
-            v.retain(|x| !matches!(x.0, "remove" | "couple" | "uncouple" | "refuel" | "wash" | "repair" | "duty" | "number" | "dest" | "hof" | "getout" | "reset"));
+            v.retain(|x| !matches!(x.0, "remove" | "couple" | "uncouple" | "refuel" | "wash" | "repair" | "duty" | "number" | "dest" | "hof" | "teleport" | "getout" | "reset"));
             if self.placed.is_empty() {
                 v.retain(|x| x.0 != "switch");
             }
@@ -2156,7 +2218,7 @@ impl crate::App {
 const MENU_BASIC: [&str; 12] = ["resume", "tobus", "options", "duty", "dest", "map", "timetable", "getout", "reset", "save", "admin", "quit"];
 
 /// The lines of the game menu: (what, label).
-pub(crate) const GAME_MENU: [(&str, &str); 31] = [
+pub(crate) const GAME_MENU: [(&str, &str); 32] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("duty", "Line and tour..."),
@@ -2173,6 +2235,7 @@ pub(crate) const GAME_MENU: [(&str, &str); 31] = [
     ("getout", "Get up and out (on foot)"),
     ("reset", "Put the vehicle back on its wheels"),
     ("map", "City map"),
+    ("teleport", "Move the bus on the map..."),
     ("save", "Save the situation"),
     ("load", "Load the quicksave"),
     ("weather", "Next weather"),

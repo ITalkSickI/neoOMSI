@@ -675,6 +675,18 @@ impl StartUp {
                 }
             }
             Step::Displays => {
+                // an automatic gearbox into D, the foot on the brake as the ZF scripts want it
+                // (`(L.L.Brake) 0 >` for D: the GX7767 E500 MMC stayed in N)
+                if v.ty.program.trigger("automatic_D").is_some() && v.var("antrieb_getr_gangvorwahl").is_none_or(|g| g < 3.5) {
+                    let brake = v.var("Brake");
+                    v.set_var("Brake", 1.0);
+                    v.trigger("automatic_D");
+                    v.trigger("automatic_D_off");
+                    if let Some(b) = brake {
+                        v.set_var("Brake", b);
+                    }
+                    self.report.push("gear D".to_string());
+                }
                 for (name, var, want) in display_switches(v) {
                     for _ in 0..3 {
                         v.trigger(&name);
@@ -774,7 +786,11 @@ impl StartUp {
         match &self.pressed {
             Some((_, false)) if self.t >= PRESS => self.release(v),
             Some((_, true)) | None if self.t >= GAP || self.pressed.is_none() && self.t >= 0.0 => {
-                if self.presses >= PRESSES_PER_TRIGGER {
+                // (the starter longer: a bus's self-test after the key may hold it back for a
+                // few seconds - the GX7767 E500 MMC's lamp test takes four - and a driver
+                // presses it again once the lamps are out)
+                let per_trigger = if what == "starter" { PRESSES_PER_TRIGGER * 4 } else { PRESSES_PER_TRIGGER };
+                if self.presses >= per_trigger {
                     self.candidate += 1;
                     self.presses = 0;
                 }

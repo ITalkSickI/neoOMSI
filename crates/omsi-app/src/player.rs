@@ -761,6 +761,24 @@ impl Player {
         self.axes.lock_curvature = self.vehicle.ty.def.inv_min_turn_radius;
         self.axes.update(dt);
         let a = self.analog;
+        // The automatic clutch of the settings for a gear lever whose scripts do not read
+        // OMSI's `AutoClutch` (the LiAZ MKPP): with a gear in and the bus slow, the clutch
+        // bites as the throttle goes down, as a driver lets it up - without it every start
+        // from a stop stalled the engine unless a clutch pedal was worked.
+        if self.vehicle.host.auto_clutch > 0.5 && self.vehicle.ty.program.trigger("kw_s_1").is_some() {
+            let gear = self.vehicle.var("antrieb_getr_aktugang").unwrap_or(0.0);
+            let kmh = self.axes.speed_kmh.abs();
+            if gear.abs() > 0.5 && kmh < 12.0 {
+                let throttle = a.throttle.unwrap_or(0.0).max(self.axes.throttle);
+                // it bites as the throttle goes down and only as far as the engine keeps its
+                // revs (a clutch let go at once under full throttle stalled it all the same)
+                let n = self.vehicle.var("engine_n").unwrap_or(0.0);
+                let bite = ((throttle - 0.05) / 0.45).clamp(0.0, 1.0).min(((n - 850.0) / 700.0).clamp(0.0, 1.0));
+                let bite = bite * bite * (3.0 - 2.0 * bite);
+                let want = (1.0 - bite) * (1.0 - kmh / 12.0);
+                self.axes.clutch = self.axes.clutch.max(want);
+            }
+        }
         self.vehicle.set_controls(omsi_sim::Controls {
             throttle: a.throttle.unwrap_or(self.axes.throttle).max(self.axes.throttle),
             brake: a.brake.unwrap_or(self.axes.brake).max(self.axes.brake),

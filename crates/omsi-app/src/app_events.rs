@@ -514,6 +514,16 @@ impl ApplicationHandler for App {
                     }
                     analog.throttle = Some(self.mouse_pedals.0);
                     analog.brake = Some(self.mouse_pedals.1);
+                } else if self.mouse_drive && bus_view && self.mouse_look && self.game_menu.is_none() {
+                    // looking round with the right button: the wheel and the pedals stay where
+                    // the mouse left them, as in OMSI (they went slack until the button was let
+                    // go - no quick look round while driving)
+                    analog.steering = Some(self.mouse_steer.0);
+                    analog.throttle = Some(self.mouse_pedals.0);
+                    analog.brake = Some(self.mouse_pedals.1);
+                    if let Some(p) = self.player.as_mut() {
+                        p.axes.steering = 0.0;
+                    }
                 }
                 // the controller's view buttons are the game's, not the bus's: looking around
                 // while held (`view_look_*`), and OMSI's view actions (other cameras, views)
@@ -526,6 +536,12 @@ impl ApplicationHandler for App {
                             self.pad_look[k] = *down;
                             return false;
                         }
+                        if n == "gear_up" || n == "gear_down" {
+                            if *down {
+                                game.push(n);
+                            }
+                            return false;
+                        }
                         if n.starts_with("view_") {
                             if *down {
                                 game.push(n);
@@ -535,7 +551,11 @@ impl ApplicationHandler for App {
                         true
                     });
                     for n in game {
-                        self.game_action(&n);
+                        match n.as_str() {
+                            "gear_up" => { self.shift_gear(true); }
+                            "gear_down" => { self.shift_gear(false); }
+                            _ => { self.game_action(&n); }
+                        }
                     }
                 }
                 if let Some(p) = self.player.as_mut() {
@@ -975,11 +995,19 @@ impl ApplicationHandler for App {
                     self.look.1 = (self.look.1 + step * 0.7 * (self.pad_look[2] as i32 - self.pad_look[3] as i32) as f32).clamp(-85.0, 85.0);
                     // with a wheel steering, the arrow keys look around as in OMSI
                     if !ctrl_alt && self.controllers.as_ref().is_some_and(|c| c.wheel_steering()) && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::ControlRight) {
-                        if self.keys.contains(&KeyCode::ArrowLeft) {
-                            self.look.0 -= step * 1.5;
-                        }
-                        if self.keys.contains(&KeyCode::ArrowRight) {
-                            self.look.0 += step * 1.5;
+                        // a glance: held, the head turns (to 140 degrees at most); let go, it
+                        // comes back to the road - held, it went round and round, and the
+                        // other key never brought it back straight
+                        let (l, r) = (self.keys.contains(&KeyCode::ArrowLeft), self.keys.contains(&KeyCode::ArrowRight));
+                        if l || r {
+                            self.look.0 = (self.look.0 + step * 1.5 * (r as i32 - l as i32) as f32).clamp(-140.0, 140.0);
+                            self.arrow_glance = true;
+                        } else if self.arrow_glance {
+                            self.look.0 *= (-6.0 * dt).exp();
+                            if self.look.0.abs() < 0.5 {
+                                self.look.0 = 0.0;
+                                self.arrow_glance = false;
+                            }
                         }
                         if self.keys.contains(&KeyCode::ArrowUp) {
                             self.look.1 = (self.look.1 + step * 0.7).min(85.0);

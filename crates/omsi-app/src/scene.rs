@@ -1681,7 +1681,12 @@ fn probe_tile(
             }
         }
     }
-    if let Some(t) = terrain {
+    // On a road the wheel stands on the road, as in OMSI: the terrain under it or over it
+    // (an embankment the road runs under, ground poking through the asphalt) is no
+    // ground and no wall there. Taken with the road, a terrain face over the carriageway was
+    // an invisible wall under bridges, and one through it a bump that threw the bus.
+    let on_road = probe.below.is_some();
+    if let (Some(t), false) = (terrain, on_road) {
         // the ground counts where it is drawn; where it is cut away and nothing else is
         // there (a surface without a collision), it still carries rather than let the
         // vehicle drop out of the world

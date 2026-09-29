@@ -6,6 +6,26 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 
 ## 0.1.14 - 2026-09-28
 
+### More fixes
+- On a road the wheels stand on the road, as in OMSI: the terrain over or through the
+  carriageway (an embankment the road runs under, ground poking through the asphalt) was an
+  invisible wall under bridges and a bump that threw the bus.
+- Mod buses with a lamp test after the key (the GX7767 E500 MMC waits four seconds) start
+  with Shift+U: the starter is tried for longer; an automatic gearbox that takes D only
+  with the brake held (ZF, `(L.L.Brake) 0 >`) is put into D by the auto-start.
+- Manual gearboxes: Ctrl+Up / Ctrl+Down shift up and down (gear levers with a trigger per
+  gate, `kw_s_1`...`kw_s_10`, `kw_s_N`, `kw_s_R`, as the LiAZ MKPP), the clutch let up as
+  OMSI's clutch key lets it; with *automatic clutch* on, the clutch bites by itself when
+  pulling away, as far as the engine keeps its revs. *gear_up* / *gear_down* for buttons.
+- A situation loaded with *Continue* keeps the bus's livery.
+- Mouse steering keeps the wheel and pedals while the right button looks round, as in OMSI.
+- The arrow keys' look with a wheel is a glance: held, the head turns (at most 140 degrees);
+  let go, it comes back to the road.
+- Esc → More → *Move the bus on the map...*: click a street on the city map and the bus is
+  put there (Ctrl+click on the map does it too, now also on a duty).
+- The pause menu no longer flickers its top line while the mouse moves over it.
+- Phones: the on-screen wheel turns the bus's wheel one to one.
+
 ### Controllers
 - No hidden dead zone on wheels any more: gilrs's default filters took 10 % of every axis (90
   degrees either side on a wheel of 1800) and held back small movements; Windows: the
