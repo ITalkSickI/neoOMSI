@@ -2,6 +2,7 @@
 
 How to run openOMSI, drive, use the launcher, install mods and play over LAN. For building
 from source see [BUILDING.md](BUILDING.md).
+For OpenXR headset setup and controls on Windows, see [VR.md](VR.md).
 
 > openOMSI runs on the content of an **original OMSI 2 installation**. Without one the game does not start.
 
