@@ -1257,6 +1257,9 @@ pub struct World {
     pub textures: Arc<TextureCache>,
     /// World position (with terrain height) and rotation of every loaded map object by id.
     pub object_positions: Mutex<HashMap<i64, (DVec3, [f64; 3])>>,
+    /// The objects whose id is used on more than one tile, by (tile, id) (see
+    /// `MapIndex::duplicates`, `World::entry_point_place`).
+    pub object_dups: Mutex<HashMap<((i32, i32), i64), (DVec3, [f64; 3])>>,
     /// Loaded terrains by tile coordinate.
     pub terrains: Arc<RwLock<HashMap<(i32, i32), Arc<Terrain>>>>,
     /// Surface rasters (roads) by tile coordinate.
@@ -1783,6 +1786,35 @@ impl World {
         drive_probe(&self.terrains, &self.surfaces, x, y, near + 1.5).below.filter(|g| near - g < 3.0)
     }
 
+    /// Where entry point `ep` stands (position, heading): its object, found on the tile
+    /// the entry point names (global.cfg's `[entrypoints]` record holds the index of its
+    /// tile in the `[map]` list, and the place within that tile). An object of that id on
+    /// another tile (a map joined from two, whose ids repeat) is not it: the record's own
+    /// place is taken then.
+    pub fn entry_point_place(&self, ep: &omsi_map::global::EntryPoint) -> Option<(DVec3, [f64; 3])> {
+        let s = tile_size();
+        let tile = usize::try_from(ep.group).ok().and_then(|i| self.global.raw_tiles.get(i)).copied();
+        if let Some(t) = tile {
+            if let Some(p) = self.object_dups.lock().get(&(t, ep.object_id)) {
+                return Some(*p);
+            }
+        }
+        let found = self.object_positions.lock().get(&ep.object_id).copied();
+        let recorded = tile.filter(|_| ep.pos.iter().chain(ep.quat.iter()).all(|v| v.is_finite())).map(|(tx, ty)| {
+            let heading = (2.0 * ep.quat[1].atan2(ep.quat[3])).to_degrees().rem_euclid(360.0);
+            (DVec3::new(tx as f64 * s + ep.pos[0], ty as f64 * s + ep.pos[1], ep.pos[2]), [heading, 0.0, 0.0])
+        });
+        match (found, recorded) {
+            // (an object may stand a little outside its tile's square: far off only is another)
+            (Some(f), Some(r)) if (f.0.truncate() - r.0.truncate()).length() > 50.0 => {
+                log::info!("entry point {} \"{}\": object {} stands at ({:.0}, {:.0}), on another tile than the entry point's ({:.0}, {:.0}): the entry point's own place", ep.index, ep.name, ep.object_id, f.0.x, f.0.y, r.0.x, r.0.y);
+                Some(r)
+            }
+            (Some(f), _) => Some(f),
+            (None, r) => r,
+        }
+    }
+
     pub fn ground_height(&self, x: f64, y: f64) -> Option<f64> {
         let tx = (x / tile_size()).floor() as i32;
         let ty = (y / tile_size()).floor() as i32;
@@ -2006,6 +2038,7 @@ impl World {
             spline_types: Mutex::new(HashMap::new()),
             textures: Arc::new(TextureCache::new()),
             object_positions: Mutex::new(HashMap::new()),
+            object_dups: Mutex::new(HashMap::new()),
             terrains: Arc::new(RwLock::new(HashMap::new())),
             surfaces: Arc::new(RwLock::new(HashMap::new())),
             vehicle_gpu: Mutex::new(HashMap::new()),
@@ -2413,8 +2446,7 @@ impl World {
         self.global
             .tiles
             .iter()
-            .enumerate()
-            .map(|(i, t)| (i, t.x, t.y, omsi_cfg::resolve_path(&self.map_dir, &t.file)))
+            .map(|t| (t.index, t.x, t.y, omsi_cfg::resolve_path(&self.map_dir, &t.file)))
             .filter(|t| omsi_cfg::vfs::is_file(&t.3))
             .collect()
     }
@@ -2582,6 +2614,16 @@ impl World {
         // the index's object positions go to `object_positions` (kept once, not twice: 345 000
         // objects on Ahlheim took 30 MB in each)
         let objects = std::mem::take(&mut built.objects);
+        {
+            let dups = std::mem::take(&mut built.duplicates);
+            if !dups.is_empty() {
+                log::info!("map index: {} objects share their id with an object of another tile", dups.len());
+            }
+            let mut d = self.object_dups.lock();
+            for (k, v) in dups {
+                d.entry(k).or_insert(v);
+            }
+        }
         let ix = Arc::new(built);
         // what the map names that is not installed: counted always, listed on request
         // (OMSI_CHECK_TYPES=1); loading leaves those objects out either way
@@ -3589,6 +3631,10 @@ impl World {
                 self.object_positions
                     .lock()
                     .insert(o.id, (pos, [heading, 0.0, 0.0]));
+                let mut dups = self.object_dups.lock();
+                if let Some(d) = dups.get_mut(&(key, o.id)) {
+                    *d = (pos, [heading, 0.0, 0.0]);
+                }
             }
             if o.parked {
                 state.parked_count += 1;

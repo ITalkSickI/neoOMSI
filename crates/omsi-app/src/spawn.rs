@@ -131,7 +131,7 @@ pub(crate) fn spawn_player(
         .get(args.entry)
         .or(world.global.entry_points.first())
     {
-        let found = world.object_positions.lock().get(&ep.object_id).copied();
+        let found = world.entry_point_place(ep);
         match found {
             Some((pos, rot)) => {
                 vehicle.position = pos;

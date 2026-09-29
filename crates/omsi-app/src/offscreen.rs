@@ -1598,7 +1598,7 @@ pub(crate) fn run_offscreen(
     if omsi_cfg::env::var_os("OMSI_CHECK_ENTRIES").is_some() {
         let mut bare = 0;
         for ep in &world.global.entry_points {
-            let Some((pos, rot)) = world.object_positions.lock().get(&ep.object_id).copied() else {
+            let Some((pos, rot)) = world.entry_point_place(ep) else {
                 log::info!(
                     "entry {:3} \"{}\": object {} not loaded",
                     ep.index,

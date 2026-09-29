@@ -38,6 +38,10 @@ pub struct MapIndex {
     pub masters: HashMap<(usize, i64), (i64, f64)>,
     /// Object id → (tile, world position with the ground under it, rotation).
     pub objects: HashMap<i64, ((i32, i32), DVec3, [f64; 3])>,
+    /// The objects whose id another tile uses as well, by (tile, id): a map joined from two
+    /// maps (two towns you cannot drive between) repeats ids, and an entry point named by
+    /// its id was looked for in the other town.
+    pub duplicates: HashMap<((i32, i32), i64), (DVec3, [f64; 3])>,
     /// Every object and spline file the map names (as written, lower case), with the number
     /// of records naming it and one tile that does.
     pub files: HashMap<String, (usize, (i32, i32))>,
@@ -111,7 +115,13 @@ impl MapIndex {
             match p {
                 Some((p, (r, q))) => {
                     index.splines.extend(p.splines);
-                    index.objects.extend(p.objects);
+                    for (id, v) in p.objects {
+                        if let Some(prev) = index.objects.get(&id).filter(|prev| prev.0 != v.0) {
+                            index.duplicates.insert((prev.0, id), (prev.1, prev.2));
+                            index.duplicates.insert((v.0, id), (v.1, v.2));
+                        }
+                        index.objects.insert(id, v);
+                    }
                     index.covers.extend(p.covers);
                     for (f, (n, t)) in p.files {
                         index.files.entry(f).or_insert((0, t)).0 += n;
