@@ -306,17 +306,19 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         }
     }
     let mode = material.params.x;
-    // Keep the cutoff identical to the camera depth prepass and shadow caster, but feed
-    // alpha-to-coverage a continuous edge. A hard comparison on a mip-filtered foliage card
-    // turns one texel of the silhouette on/off as the camera moves; that is the white
-    // sparkle and crawling outline seen on trees and fences in Enhanced. The 4x MSAA scene
-    // pipeline converts this ramp to stable coverage while fully opaque texels remain 1.
+    // Keep the filtered fractional coverage, but tighten its transition around the cutout
+    // edge before MSAA turns it into sample coverage. The MSAA depth prepass skips these
+    // draws so uncovered samples keep the depth and colour of the scene behind them.
     if (ALPHA_TEST && mode > 0.5 && mode < 1.5) {
-        let aa = max(fwidth(tex.a) * 0.5, 1.0 / 255.0);
-        if (tex.a < 0.5 - aa) {
+        if (ALPHA_TO_COVERAGE) {
+            let aa = max(fwidth(tex.a) * 0.5, 1.0 / 255.0);
+            if (tex.a < 0.5 - aa) {
+                discard;
+            }
+            tex.a = smoothstep(0.5 - aa, 0.5 + aa, tex.a);
+        } else if (tex.a < 0.5) {
             discard;
         }
-        tex.a = smoothstep(0.5 - aa, 0.5 + aa, tex.a);
     }
     var alpha = tex.a * material.color.a;
     if (mode < 0.5) {

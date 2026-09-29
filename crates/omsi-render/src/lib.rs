@@ -1905,6 +1905,7 @@ impl Renderer {
                     cull: bool,
                     bias: i32,
                     alpha_to_coverage: bool| {
+            let use_alpha_to_coverage = alpha_to_coverage && msaa > 1;
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("omsi"),
                 layout: Some(&layout),
@@ -1936,7 +1937,7 @@ impl Renderer {
                 multisample: wgpu::MultisampleState {
                     count: msaa,
                     mask: !0,
-                    alpha_to_coverage_enabled: alpha_to_coverage,
+                    alpha_to_coverage_enabled: use_alpha_to_coverage,
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -1945,7 +1946,13 @@ impl Renderer {
                     // only the alpha-tested pipelines keep their `discard` (see ALPHA_TEST
                     // in shader.wgsl): early depth testing for everything else
                     compilation_options: wgpu::PipelineCompilationOptions {
-                        constants: &[("ALPHA_TEST", if alpha_to_coverage { 1.0 } else { 0.0 })],
+                        constants: &[
+                            ("ALPHA_TEST", if alpha_to_coverage { 1.0 } else { 0.0 }),
+                            (
+                                "ALPHA_TO_COVERAGE",
+                                if use_alpha_to_coverage { 1.0 } else { 0.0 },
+                            ),
+                        ],
                         ..Default::default()
                     },
                 }),
@@ -7587,7 +7594,18 @@ impl Renderer {
                     multiview_mask: None,
                 });
                 pass.set_bind_group(0, scene.camera_bind_group.as_ref().unwrap(), &[]);
-                encode_batches(&mut pass, scene, &prepass_batches, |pipe| &pipes[pipe as usize]);
+                // Alpha-tested colour draws use alpha-to-coverage, but the depth-only
+                // prepass uses a binary 0.5 cutoff. Letting those meshes write depth here
+                // can hide the opaque geometry behind samples the colour pass leaves
+                // uncovered (the sky then shows through buildings/terrain behind foliage).
+                // The main alpha-tested pass writes matching depth as it draws the colour.
+                encode_batches_filtered(
+                    &mut pass,
+                    scene,
+                    &prepass_batches,
+                    |batch| batch.pipe / 2 != PIPE_ALPHA_TEST,
+                    |pipe| &pipes[pipe as usize],
+                );
             }
         }
         let msaa_prepass = msaa_prepass && self.prepass_msaa_pipelines.is_some() && targets.is_some();
@@ -8781,8 +8799,23 @@ fn encode_batches<'a, E: wgpu::util::RenderEncoder<'a>>(
     batches: &[Batch],
     pipeline: impl Fn(u8) -> &'a wgpu::RenderPipeline,
 ) {
+    encode_batches_filtered(pass, scene, batches, |_| true, pipeline);
+}
+
+/// Record the batches accepted by `include`, setting pipeline, buffers and material only
+/// when they change.
+fn encode_batches_filtered<'a, E: wgpu::util::RenderEncoder<'a>>(
+    pass: &mut E,
+    scene: &'a Scene,
+    batches: &[Batch],
+    include: impl Fn(&Batch) -> bool,
+    pipeline: impl Fn(u8) -> &'a wgpu::RenderPipeline,
+) {
     let (mut pipe, mut mesh, mut material) = (u8::MAX, u32::MAX, u32::MAX);
     for b in batches {
+        if !include(b) {
+            continue;
+        }
         if b.pipe != pipe {
             pass.set_pipeline(pipeline(b.pipe));
             pipe = b.pipe;
