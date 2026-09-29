@@ -5341,6 +5341,32 @@ impl World {
                             renderer.set_omsi_caster(scene, i, ot.mesh_casts.get(mi).copied().unwrap_or(false));
                             i
                         };
+                        // Scenery signs use [matl_freetex] with a string from the map
+                        // object's [object] / [splineAttachement] record. The type's
+                        // material is shared, so make a material for this placement only.
+                        if let Some((_, o3d_mats, overrides)) = ot.meshes.get(mi) {
+                            for override_ in overrides.iter().filter(|o| !o.item && o.freetex.is_some()) {
+                                let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, override_) else { continue };
+                                let Some((_, var)) = &override_.freetex else { continue };
+                                let Some(index) = ot.program.as_ref().and_then(|p| p.str_var(var)) else { continue };
+                                let Some(name) = strings.get(index as usize).map(|s| s.trim()).filter(|s| !s.is_empty()) else { continue };
+                                let dirs = texture_dirs(&self.root, &ot.model_dir);
+                                let Some((tex, path)) = gpu.texture(renderer, scene, name, &dirs, images) else { continue };
+                                let Some(base) = mats.get(slot).and_then(|id| scene.materials.get(*id)) else {
+                                    gpu.release_texture(renderer, scene, &path);
+                                    continue;
+                                };
+                                let (alpha, color, unlit, transmap, night, light, env, emissive) =
+                                    (base.alpha, base.color, base.unlit, base.transmap, base.nightmap, base.lightmap, base.envmap, base.emissive);
+                                let slot_ov: Vec<&MaterialDef> = overrides.iter().filter(|o| !o.item && omsi_sim::vehicle::override_slot(o3d_mats, o) == Some(slot)).collect();
+                                let extra = material_extra(&slot_ov, base.env_mask, base.bump, [0.0; 4]);
+                                let mat = renderer.add_material_extra(scene, Some(tex), alpha, color, unlit, transmap, night, light, env, emissive, extra);
+                                let mat = gpu.material(renderer, scene, mat);
+                                tg.materials.push(mat);
+                                tg.shared_textures.push(path);
+                                renderer.set_material(scene, inst, slot, mat);
+                            }
+                        }
                         // (only where the lower levels are drawn instead: a scripted object
                         // or a lamp keeps its first level, which alone the script poses -
                         // limited as well, it vanished when small, with nothing in its place)
