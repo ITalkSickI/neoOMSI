@@ -205,6 +205,7 @@ pub(crate) fn spawn_player(
         if n > 0 {
             log::info!("spawn: {n} parked vehicle(s) cleared from the place of the bus");
         }
+        world.clear_props_under(renderer, scene, &omsi_sim::collision::Obb::from_box(bb, vehicle.position, vehicle.heading));
     }
     let render = world.add_vehicle(renderer, scene, &vt, scheme);
     // coupled rear sections / trailers

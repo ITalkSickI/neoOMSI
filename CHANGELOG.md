@@ -82,6 +82,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   line and every setting at the start; then everything said on the screen, each view, pause
   and resume, every key action and door key, and a status line every minute (frame rate and
   the worst frame, where the bus is, its speed, the view, the time, the traffic).
+- The bus is no longer put down inside scenery: an object no taller than a vehicle that
+  stands for a third or more where the bus is put (a mod map's static buses in its depot,
+  a sign) is taken away for the session, as the object editor takes one away (the map's
+  files are not changed).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

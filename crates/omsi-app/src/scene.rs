@@ -5850,6 +5850,76 @@ impl World {
         n
     }
 
+    /// Scenery the bus is put down inside (a mod map's static buses standing in its depot
+    /// where the entry point is): objects no taller than a vehicle whose collision boxes lie
+    /// for a third or more inside the bus's footprint are taken away, as the object editor
+    /// takes one away. A shelter or a sign at the kerb that the bus only touches stays.
+    pub fn clear_props_under(&self, renderer: &Renderer, scene: &mut Scene, b: &omsi_sim::collision::Obb) -> usize {
+        let [ax, ay] = b.axes();
+        let inside = |p: glam::DVec2| {
+            let d = p - b.center;
+            d.dot(ax).abs() <= b.half.x && d.dot(ay).abs() <= b.half.y
+        };
+        let mut keys: Vec<i64> = Vec::new();
+        for st in self.tile_state.lock().values() {
+            for o in st.obstacles.iter() {
+                if o.id < 0 || o.mass > 0.0 || o.z1 - o.z0 > 5.0 || o.z1 < b.z0 || o.z0 > b.z1 || !o.overlaps_plan(b) || keys.contains(&o.id) {
+                    continue;
+                }
+                let [ox, oy] = o.axes();
+                let mut n = 0;
+                for i in 0..5 {
+                    for j in 0..5 {
+                        let p = o.center + ox * o.half.x * (i as f64 / 2.0 - 1.0) + oy * o.half.y * (j as f64 / 2.0 - 1.0);
+                        if inside(p) {
+                            n += 1;
+                        }
+                    }
+                }
+                if n >= 9 {
+                    keys.push(o.id);
+                }
+            }
+        }
+        // (a prop without a collision box - most static vehicles of mod maps have none: its
+        // drawn meshes, a third of their points inside the bus's footprint)
+        let types: Vec<Arc<ObjectType>> = self.object_types.lock().values().flatten().cloned().collect();
+        let mut by_mesh: Vec<i64> = Vec::new();
+        for (id, eo) in self.edit_objects.lock().iter() {
+            if keys.contains(&eo.key) || (eo.pos.truncate() - b.center).length() > 25.0 {
+                continue;
+            }
+            let Some(ot) = types.iter().find(|t| t.sco.path == eo.sco) else { continue };
+            if ot.sco.surface || !matches!(ot.sco.render_type, omsi_scenery::sco::RenderType::Normal) {
+                continue;
+            }
+            let (mut n, mut inn, mut z0, mut z1) = (0usize, 0usize, f32::MAX, f32::MIN);
+            for (m, _, _) in ot.meshes.iter() {
+                for p in m.positions.iter().step_by(4) {
+                    let w = eo.xf.transform_point3(*p);
+                    n += 1;
+                    z0 = z0.min(w.z);
+                    z1 = z1.max(w.z);
+                    if inside(eo.pos.truncate() + glam::DVec2::new(w.x as f64, w.y as f64)) {
+                        inn += 1;
+                    }
+                }
+            }
+            if n >= 8 && z1 - z0 <= 5.0 && inn * 3 >= n {
+                by_mesh.push(*id);
+            }
+        }
+        if keys.is_empty() && by_mesh.is_empty() {
+            return 0;
+        }
+        let ids: Vec<(i64, std::path::PathBuf)> = self.edit_objects.lock().iter().filter(|(id, eo)| keys.contains(&eo.key) || by_mesh.contains(id)).map(|(id, eo)| (*id, eo.sco.clone())).collect();
+        for (id, sco) in &ids {
+            log::info!("spawn: scenery object {id} ({}) stood where the bus is put: taken away", sco.display());
+            self.apply_object_edit(renderer, scene, *id, ObjectEdit { deleted: true, ..Default::default() });
+        }
+        ids.len()
+    }
+
     /// The spaces parked cars left (key, the object that stood there), whose tile is still
     /// loaded.
     pub fn free_parking(&self) -> Vec<(i64, ParkedObject)> {
