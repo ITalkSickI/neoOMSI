@@ -157,6 +157,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   told from OMSI 2's own assignment, built into the game, with Shift held as well.
 - The hazard lights go off again (X, and the phone's hazard button): pressed with them on,
   the key let go of the indicator lever instead of their own switch.
+- Seated passengers on a high seat (on a podium, over a wheel arch) let their feet hang as a
+  sitting body does, instead of stretching the legs straight down through the seat's front
+  to the floor far below.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
