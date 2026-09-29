@@ -71,7 +71,7 @@ libc = "0.2"
 
 # Windows: the game controllers through DirectInput, as OMSI reads them (see `dinput`)
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_System_LibraryLoader"] }
+windows = { version = "0.62", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
 
 # macOS: the axes of wheels and pedals straight from their HID elements (see `mac_hid`)
 [target.'cfg(target_os = "macos")'.dependencies]

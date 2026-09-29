@@ -660,7 +660,9 @@ pub(crate) fn di_slots(axes: &[(u32, f32)]) -> Vec<(usize, f32)> {
 
 /// OMSI stores DirectInput's product name; the system's may differ in spacing and case.
 pub(crate) fn names_match(a: &str, b: &str) -> bool {
-    let n = |s: &str| s.to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>();
+    // (letters of any script: a name of Cyrillic or Chinese letters only was empty here and
+    // matched nothing)
+    let n = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
     let (a, b) = (n(a), n(b));
     !a.is_empty() && (a == b || a.contains(&b) || b.contains(&a))
 }
@@ -704,6 +706,8 @@ mod tests {
     fn names() {
         assert!(super::names_match("Logitech G25 Racing Wheel USB", "Logitech G25 Racing Wheel"));
         assert!(!super::names_match("", "x"));
+        assert!(super::names_match("Кнопочная панель", "кнопочная  панель"));
+        assert!(!super::names_match("Кнопочная панель", "Руль"));
     }
 }
 

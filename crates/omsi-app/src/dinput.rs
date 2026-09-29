@@ -5,16 +5,19 @@
 //! 128 buttons, and force feedback: one constant force on the wheel's axis the game sets
 //! every frame (its centring spring, the drag of the steering, the shaking of the bus).
 //!
-//! The list of devices is looked up on a thread of its own when Windows reports a device
-//! change. Some drivers take a tenth of a second to enumerate and can stall input polling
-//! even when the enumeration is on another thread.
+//! The list of devices is looked up on a thread of its own, when Windows says a HID device
+//! (every game controller is one) was plugged in or out: with some drivers the lookup takes
+//! a tenth of a second and stalls the reading of the devices even from another thread, so
+//! the old look every 3 seconds made driving stutter.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
-use windows::core::{Interface, GUID};
+use windows::core::{w, Interface, GUID};
 use windows::Win32::Devices::HumanInterfaceDevice::*;
-use windows::Win32::Foundation::{HINSTANCE, HWND};
+use windows::Win32::Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::WindowsAndMessaging::*;
 
 /// What a device gives: the axes (-1..1) in their DirectInput slots and 128 buttons. Laid out
 /// as the data format below says.
@@ -116,6 +119,40 @@ fn list(di: &IDirectInput8W) -> Vec<(GUID, String)> {
     v
 }
 
+/// How often Windows said a HID device came or went (see `notification_window`).
+static HID_CHANGES: AtomicU64 = AtomicU64::new(0);
+
+unsafe extern "system" fn notify_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if msg == WM_DEVICECHANGE && matches!(wp.0 as u32, DBT_DEVICEARRIVAL | DBT_DEVICEREMOVECOMPLETE) {
+        HID_CHANGES.fetch_add(1, Ordering::Relaxed);
+    }
+    unsafe { DefWindowProcW(hwnd, msg, wp, lp) }
+}
+
+/// A message-only window of the calling thread that Windows tells when a HID device is
+/// plugged in or out (the way SDL finds new controllers).
+fn notification_window() -> Option<HWND> {
+    unsafe {
+        let hinst: HINSTANCE = GetModuleHandleW(None).ok()?.into();
+        let class = w!("openOMSI game controllers");
+        let wc = WNDCLASSW { lpfnWndProc: Some(notify_proc), hInstance: hinst, lpszClassName: class, ..Default::default() };
+        // (0 when the class is there already - a second window of the launcher's)
+        let _ = RegisterClassW(&wc);
+        let hwnd = CreateWindowExW(WINDOW_EX_STYLE(0), class, w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, Some(hinst), None).ok()?;
+        let filter = DEV_BROADCAST_DEVICEINTERFACE_W {
+            dbcc_size: std::mem::size_of::<DEV_BROADCAST_DEVICEINTERFACE_W>() as u32,
+            dbcc_devicetype: DBT_DEVTYP_DEVICEINTERFACE.0,
+            dbcc_classguid: GUID_DEVINTERFACE_HID,
+            ..Default::default()
+        };
+        if RegisterDeviceNotificationW(HANDLE(hwnd.0), &filter as *const _ as *const core::ffi::c_void, DEVICE_NOTIFY_WINDOW_HANDLE).is_err() {
+            let _ = DestroyWindow(hwnd);
+            return None;
+        }
+        Some(hwnd)
+    }
+}
+
 /// The data format: `RawState`, every object optional (as the SDK's c_dfDIJoystick2 has it
 /// for the parts used here).
 fn data_format() -> (Vec<DIOBJECTDATAFORMAT>, DIDATAFORMAT) {
@@ -155,21 +192,65 @@ impl DirectInput {
     /// (the game's window: they then answer only while it is in front, as in OMSI).
     pub fn new(hwnd: isize, ff: bool) -> Option<DirectInput> {
         let di = create()?;
-        let found = Arc::new(Mutex::new(Some(list(&di))));
+        let first = list(&di);
+        log::info!("game controllers (DirectInput): {}", if first.is_empty() { "none".to_string() } else { first.iter().map(|d| d.1.as_str()).collect::<Vec<_>>().join(", ") });
+        let found = Arc::new(Mutex::new(Some(first)));
         let f2 = found.clone();
-        let (scan, requests) = mpsc::channel();
+        let (scan, requests) = mpsc::channel::<()>();
         let _ = std::thread::Builder::new().name("game controllers".into()).spawn(move || {
             let Some(di) = create() else { return };
-            while requests.recv().is_ok() {
-                // One plug/unplug can produce several events. Enumerate only once for them.
-                while requests.try_recv().is_ok() {}
-                let v = list(&di);
-                *f2.lock().unwrap() = Some(v);
+            let window = notification_window();
+            if window.is_none() {
+                log::info!("game controllers: Windows gives no device notifications - looking for new ones every 3 s");
+            }
+            let mut seen = HID_CHANGES.load(Ordering::Relaxed);
+            let mut last = Instant::now();
+            // (a device plugged in raises several notifications: look once they settle)
+            let mut pending: Option<Instant> = None;
+            loop {
+                loop {
+                    match requests.try_recv() {
+                        Ok(()) => pending = Some(Instant::now()),
+                        Err(mpsc::TryRecvError::Empty) => break,
+                        // (the game let the devices go)
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            if let Some(w) = window {
+                                unsafe {
+                                    let _ = DestroyWindow(w);
+                                }
+                            }
+                            return;
+                        }
+                    }
+                }
+                unsafe {
+                    let _ = MsgWaitForMultipleObjects(None, false, 250, QS_ALLINPUT);
+                    let mut msg = MSG::default();
+                    while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                        DispatchMessageW(&msg);
+                    }
+                }
+                let n = HID_CHANGES.load(Ordering::Relaxed);
+                if n != seen {
+                    seen = n;
+                    pending = Some(Instant::now());
+                }
+                if window.is_none() && last.elapsed() > Duration::from_secs(3) {
+                    pending = Some(Instant::now() - Duration::from_secs(1));
+                }
+                if pending.is_some_and(|t| t.elapsed() > Duration::from_millis(300)) {
+                    pending = None;
+                    last = Instant::now();
+                    let v = list(&di);
+                    log::info!("game controllers found: {}", v.iter().map(|d| d.1.as_str()).collect::<Vec<_>>().join(", "));
+                    *f2.lock().unwrap() = Some(v);
+                }
             }
         });
         Some(DirectInput { di, hwnd: HWND(hwnd as *mut _), ff, devices: Vec::new(), found, scan, events: Vec::new(), last_force: Instant::now() })
     }
 
+    /// Look for devices again (the window heard of one plugged in or out).
     pub fn refresh(&self) {
         let _ = self.scan.send(());
     }
@@ -249,8 +330,11 @@ impl DirectInput {
             self.devices.retain(|d| list.iter().any(|(g, _)| *g == d.guid));
             for (g, name) in list {
                 if !self.devices.iter().any(|d| d.guid == g) {
-                    if let Some(d) = self.open(&g, &name) {
-                        self.devices.push(d);
+                    match self.open(&g, &name) {
+                        Some(d) => self.devices.push(d),
+                        // (said once per device list, so that a log tells why a device the
+                        // system lists is missing)
+                        None => log::warn!("game controller {name}: listed by Windows, but DirectInput could not open it"),
                     }
                 }
             }
@@ -342,5 +426,17 @@ impl Drop for DirectInput {
                 let _ = d.dev.Unacquire();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window that hears of devices plugged in or out opens (it is a thread's own).
+    #[test]
+    fn notification_window_opens() {
+        let w = std::thread::spawn(|| notification_window().map(|w| unsafe { DestroyWindow(w).is_ok() })).join().unwrap();
+        assert_eq!(w, Some(true));
     }
 }
