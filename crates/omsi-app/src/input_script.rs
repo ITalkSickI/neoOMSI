@@ -2256,7 +2256,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         ) {
             (Some(p), Some(cam), Some(s)) if self.view != "free"
                 && (self.view != "foot" || self.foot_bus() == Some(crate::humans::BusId::Player))
-                && !(cfg!(windows) && self.vr.is_some() && self.mouse_drive
+                && !(self.vr_active() && self.mouse_drive
                     && matches!(self.view.as_str(), "driver" | "pax")) => {
                 let (o, d, spread) = self.cockpit_cursor_ray(cam, (s.config.width, s.config.height));
                 p.hovered_part(o, d, spread)

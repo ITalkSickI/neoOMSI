@@ -1840,7 +1840,10 @@ impl ApplicationHandler for App {
                         }
                         *self.profile.entry("mirrors").or_default() += __t.elapsed().as_secs_f64();
                         let __t = Instant::now();
+                        #[cfg(windows)]
                         let mut mirrored = false;
+                        #[cfg(not(windows))]
+                        let mirrored = false;
                         #[cfg(windows)]
                         if let Some(vr) = self.vr.as_mut() {
                             let menu_range = self.ui.as_ref().map(|u| u.menu_overlay_range.clone()).unwrap_or(0..0);
