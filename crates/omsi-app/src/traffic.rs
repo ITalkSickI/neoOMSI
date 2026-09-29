@@ -4431,6 +4431,26 @@ impl Traffic {
             .map(|p| (p.0, p.1))
             .chain(self.others.iter().map(|(_, b)| (b.0, b.1)))
             .collect();
+        for &(pos, heading) in &askers {
+            // (off the lanes - a depot yard, a car park - a gate's lane that starts just
+            // ahead, the way the bus is facing, is asked all the same: standing a few metres
+            // beside every lane there, the bus never opened the barrier in front of it)
+            let h = heading.to_radians();
+            let fwd = glam::DVec2::new(h.sin(), h.cos());
+            for l in 0..self.net.lanes.len() {
+                let lane = &self.net.lanes[l];
+                let Some((ci, li)) = lane.traffic_light else { continue };
+                let (p0, h0) = lane.at(0.0);
+                let d = (p0 - pos).truncate();
+                let (along, across) = (d.dot(fwd), d.perp_dot(fwd).abs());
+                let turn = ((h0 as f64 - heading + 540.0).rem_euclid(360.0) - 180.0).abs();
+                if (-2.0..25.0).contains(&along) && across < 6.0 && turn < 60.0 && (p0.z - pos.z).abs() < 4.0 {
+                    if let Some(r) = self.lights.get_mut(ci).and_then(|c| c.request.get_mut(li)) {
+                        *r = true;
+                    }
+                }
+            }
+        }
         for (pos, heading) in askers {
             for (l, d) in self.lanes_ahead_of(pos, heading, 160.0) {
                 if let Some((ci, li)) = self.net.lanes[l].traffic_light {
