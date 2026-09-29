@@ -1284,8 +1284,10 @@ impl Renderer {
         let vram = dedicated_vram_mb(&info);
         let guess_mb: u64 = match info.device_type {
             // (a card of 2 or 3 GB, where Windows says: half of it - 1600 MB of a GTX 1050's
-            // 2 GB left too little for the rest, and its Vulkan device was lost at the start)
-            wgpu::DeviceType::DiscreteGpu => vram.filter(|v| *v >= 512).map_or(1600, |v| (v / 2).min(1600)),
+            // 2 GB left too little for the rest, and its Vulkan device was lost at the start;
+            // a card of 2 GB a third of it - with half, 4x MSAA, SSAO and the shadows its
+            // DirectX 12 device still ran out of memory on Grundorf within seconds, #114)
+            wgpu::DeviceType::DiscreteGpu => vram.filter(|v| *v >= 512).map_or(1600, |v| if v <= 2560 { v * 35 / 100 } else { (v / 2).min(1600) }),
             wgpu::DeviceType::IntegratedGpu if info.backend == wgpu::Backend::Metal => 3000,
             wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::VirtualGpu => 1000,
             _ => 800,
