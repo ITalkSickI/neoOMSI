@@ -1,8 +1,6 @@
 //! The page: HTML parsing into a flat node list, entities, `<style>` collection and the
 //! CSS parser that turns style sheets into rules.
 
-use super::*;
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Node {
     pub(crate) tag: String,

@@ -1,7 +1,5 @@
 //! Computed style: lengths, colours and the property table a page can set.
 
-use super::*;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Len {
     Px(f32),
