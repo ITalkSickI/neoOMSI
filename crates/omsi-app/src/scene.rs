@@ -1774,6 +1774,15 @@ impl World {
         Some(t.get(&(tx, ty))?.sample(lx, ly) as f64)
     }
 
+    /// The height a vehicle put down at (x, y) stands at: the face its wheels would stand on
+    /// (a road, a deck, a floor, the ground; [`drive_probe`]) under `near` + 1.5 m and at most
+    /// 3 m below it. The raster's [`World::ground_height`] takes the surface of its texel,
+    /// and a bus put down beside a wall (an entry point on a pavement, London) stood on the
+    /// wall's top and floated there.
+    pub fn stand_height(&self, x: f64, y: f64, near: f64) -> Option<f64> {
+        drive_probe(&self.terrains, &self.surfaces, x, y, near + 1.5).below.filter(|g| near - g < 3.0)
+    }
+
     pub fn ground_height(&self, x: f64, y: f64) -> Option<f64> {
         let tx = (x / tile_size()).floor() as i32;
         let ty = (y / tile_size()).floor() as i32;

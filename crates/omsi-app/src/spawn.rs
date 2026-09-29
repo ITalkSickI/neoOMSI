@@ -150,7 +150,7 @@ pub(crate) fn spawn_player(
                 // placed on the terrain a little under (or over) the road left one axle in
                 // the asphalt and the bus stood tilted from the start; a surface metres away
                 // (a bridge over the place, a lower level) is not this one
-                if let Some(g) = world.ground_height(pos.x, pos.y).filter(|g| (g - pos.z).abs() < 2.5) {
+                if let Some(g) = world.stand_height(pos.x, pos.y, pos.z) {
                     vehicle.position.z = g;
                 } else if crate::scene::drive_probe(&world.terrains, &world.surfaces, pos.x, pos.y, pos.z + 1.5).below.is_none() {
                     // nothing under the place at all (the marker came out under the ground):
@@ -195,11 +195,9 @@ pub(crate) fn spawn_player(
             .collect();
         if v.len() >= 3 {
             // x,y,heading[,z]: a height given is the road's (the ground may lie below it)
-            let ground = world.ground_height(v[0], v[1]);
-            let z = match (v.get(3), ground) {
-                (Some(&road), Some(g)) => road.max(g),
-                (Some(&road), None) => road,
-                (None, g) => g.unwrap_or(0.0),
+            let z = match v.get(3) {
+                Some(&road) => world.stand_height(v[0], v[1], road).map_or(road, |g| road.max(g)),
+                None => world.ground_height(v[0], v[1]).unwrap_or(0.0),
             };
             vehicle.position = DVec3::new(v[0], v[1], z);
             vehicle.heading = v[2];
@@ -304,9 +302,12 @@ pub(crate) fn spawn_player(
         log::info!("rail: {} is bound to the rails", vt.def.path.display());
     }
     if args.physics != "simple" && !rail_bound {
-        if let Some(z) = world.ground_height(vehicle.position.x, vehicle.position.y) {
+        // (on what the wheels stand on near the height found above: the texel height of
+        // `ground_height` undid that, and put the bus on a wall's top or a deck over it)
+        if let Some(z) = world.stand_height(vehicle.position.x, vehicle.position.y, vehicle.position.z) {
             vehicle.position.z = z;
         }
+        log::info!("spawn: the bus stands at height {:.2}", vehicle.position.z);
         vehicle.enable_rigid_body();
         let rb = vehicle.rigid.as_ref().unwrap();
         log::info!(
