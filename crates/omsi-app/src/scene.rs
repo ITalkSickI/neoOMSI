@@ -8544,6 +8544,10 @@ pub struct VariantSlot {
     pub item: MaterialId,
     /// `[matl_change]` variable: above 0.5 the item variant shows.
     pub var: String,
+    /// The variables of the slot's further `[matl_change]`s: the item shows while any of
+    /// them is on as well (Omsi.exe sub_7c2d80: each record picks its item by its own
+    /// variable, and one at 0 leaves the material to the others).
+    pub more_vars: Vec<String>,
     /// `[texchanges]`: the (base, item) pair of every entry of the master, in order.
     pub entries: Vec<(MaterialId, MaterialId)>,
     /// `[texchanges]` variable: its integer value picks the entry.
@@ -8669,7 +8673,7 @@ impl VariantSlot {
             .ok()
             .or_else(|| var(&self.var))
             .unwrap_or(1.0);
-        if x > 0.5 {
+        if x > 0.5 || self.more_vars.iter().any(|v| var(v).is_some_and(|x| x > 0.5)) {
             item
         } else {
             base
@@ -9886,7 +9890,11 @@ impl World {
                     let ov_all: Vec<&MaterialDef> = vm.overrides.iter().filter(|o| omsi_sim::vehicle::override_slot(&vm.materials, o) == Some(slot)).collect();
                     let ov_item: Vec<&MaterialDef> = ov_all.iter().copied().filter(|o| o.item).collect();
                     let ov: Vec<&MaterialDef> = ov_all.iter().copied().filter(|o| !o.item).collect();
-                    let change_var = ov.iter().find_map(|o| o.change.as_ref().map(|c| c.2.clone()));
+                    // (every [matl_change] of the slot: Omsi.exe keeps one switch per record,
+                    // each showing its item while its variable is on - the Procity's door
+                    // buttons light with door_light_n as well as with haltewunschlampe)
+                    let change_vars: Vec<String> = ov.iter().filter_map(|o| o.change.as_ref().map(|c| c.2.clone())).collect();
+                    let change_var = change_vars.first().cloned();
                     let base_overrides: Vec<MaterialDef> = ov.iter().map(|o| (*o).clone()).collect();
                     let mut alpha = material_alpha(&vm.materials, slot, &base_overrides);
                     // what the model.cfg says: without [matl_alpha] OMSI draws a slot opaque
@@ -10141,9 +10149,9 @@ impl World {
                     };
                     if spec.item.is_some() || !entries.is_empty() || free.is_some() {
                         let tex_var = master.map(|m| m.variable.clone()).unwrap_or_default();
-                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: change_var.unwrap_or_default(), entries, tex_var, free, spec, base_tex, entry_tex, lights: multi_light(base, item) });
+                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: change_var.unwrap_or_default(), more_vars: change_vars.iter().skip(1).cloned().collect(), entries, tex_var, free, spec, base_tex, entry_tex, lights: multi_light(base, item) });
                     } else if let Some(lights) = multi_light(base, item) {
-                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: String::new(), entries, tex_var: String::new(), free: None, spec, base_tex, entry_tex, lights: Some(lights) });
+                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, var: String::new(), more_vars: Vec::new(), entries, tex_var: String::new(), free: None, spec, base_tex, entry_tex, lights: Some(lights) });
                     } else if base_dyn.any() {
                         dyn_slots.push(DynSlot { mesh: instances.len(), slot, text: text_slot, script: script_slot, script_trans, tex, alpha, transmap, night, lightmap, envmap, clamp, extra, color, emissive });
                     }
