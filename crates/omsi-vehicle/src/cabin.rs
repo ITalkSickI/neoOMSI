@@ -99,7 +99,7 @@ impl PassengerCabin {
                         c.driver_positions.push(p);
                     }
                 }
-                "illumination_interior" => c.illumination_interior = (0..4).map(|_| r.i32()).collect(),
+                "illumination_interior" => c.illumination_interior = r.i32_list(4),
                 _ => {}
             }
         }

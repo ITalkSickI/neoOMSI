@@ -155,7 +155,8 @@ pub fn omsi_options(root: &Path) -> Option<OmsiOptions> {
     let o = omsi_content::options::Options::load(&root.join("options.cfg")).ok()?;
     let mut v = json!({});
     let num = |k: &str| o.str(k).and_then(|x| x.trim().replace(',', ".").parse::<f64>().ok()).filter(|x| x.is_finite());
-    if let Some(x) = num("maxfps") {
+    // (not on a phone: the PC's OMSI caps at 30, and a phone played at 30 frames)
+    if let Some(x) = num("maxfps").filter(|_| !cfg!(target_os = "android")) {
         v["max_fps"] = json!(x.max(0.0) as i64);
     }
     if let Some(x) = num("performance_minobjsize") {
@@ -1443,14 +1444,45 @@ fn setting_key(k: &str) -> String {
     SETTING_ALIASES.iter().find(|(alias, _)| *alias == k).map(|(_, key)| key.to_string()).unwrap_or(k)
 }
 
-/// `ENG` / `DEU` / `FRA` from any spelling the game accepts (as its `describe::language_code`).
-fn language_code(s: &str) -> &'static str {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "de" | "deu" | "ger" | "german" | "deutsch" => "DEU",
-        "fr" | "fra" | "fre" | "french" | "francais" | "français" => "FRA",
-        "ru" | "rus" | "russian" | "русский" => "RUS",
-        _ => "ENG",
-    }
+/// The interface's languages: the settings' code (OMSI's three-letter style), the name in
+/// the language itself, the interface tables' code, and other spellings a file may use.
+/// OMSI's own texts (key names, `.dsc` descriptions, tutorials) exist in English, German
+/// and French: every other language shows those in English.
+pub const LANGUAGES: &[(&str, &str, &str, &[&str])] = &[
+    ("ENG", "English", "en", &["en", "english"]),
+    ("DEU", "Deutsch", "de", &["de", "ger", "german", "deutsch"]),
+    ("FRA", "Français", "fr", &["fr", "fre", "french", "francais", "français"]),
+    ("RUS", "Русский", "ru", &["ru", "russian", "русский"]),
+    ("UKR", "Українська", "uk", &["uk", "ua", "ukrainian", "українська"]),
+    ("BEL", "Беларуская", "be", &["be", "by", "belarusian", "беларуская"]),
+    ("KAZ", "Қазақша", "kk", &["kk", "kz", "kazakh", "қазақша"]),
+    ("POL", "Polski", "pl", &["pl", "polish", "polski"]),
+    ("CZE", "Čeština", "cs", &["cs", "cz", "czech", "čeština", "ces"]),
+    ("HUN", "Magyar", "hu", &["hu", "hungarian", "magyar"]),
+    ("ESP", "Español", "es", &["es", "spa", "spanish", "español"]),
+    ("PTB", "Português (Brasil)", "pt", &["pt", "br", "pt-br", "por", "portuguese", "português"]),
+    ("ITA", "Italiano", "it", &["it", "italian", "italiano"]),
+    ("NLD", "Nederlands", "nl", &["nl", "dutch", "nederlands"]),
+    ("TUR", "Türkçe", "tr", &["tr", "turkish", "türkçe"]),
+    ("JPN", "日本語", "ja", &["ja", "jp", "japanese", "日本語"]),
+    ("CHS", "中文 (简体)", "zh", &["zh", "cn", "chinese", "中文"]),
+    ("HIN", "हिन्दी", "hi", &["hi", "hindi", "हिन्दी"]),
+];
+
+/// The settings' language code from any spelling the game accepts (English when unknown).
+pub fn language_code(s: &str) -> &'static str {
+    let s = s.trim().to_lowercase();
+    LANGUAGES
+        .iter()
+        .find(|(code, _, _, aliases)| code.eq_ignore_ascii_case(&s) || aliases.iter().any(|a| *a == s))
+        .map(|l| l.0)
+        .unwrap_or("ENG")
+}
+
+/// The interface tables' code of a language (`ru`, `ja` ...; empty for English).
+pub fn language_iso(code: &str) -> &'static str {
+    let c = language_code(code);
+    LANGUAGES.iter().find(|l| l.0 == c).map(|l| if l.2 == "en" { "" } else { l.2 }).unwrap_or("")
 }
 
 /// `vanilla` (as OMSI 2), `vanilla_plus` or `enhanced`, from the ways a file may spell them
@@ -1471,7 +1503,7 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
         v[k] = d;
     }
     // openOMSI's own: what passengers say, OMSI's route arrows, getting up from the seat
-    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all")), ("reflections", json!(true)), ("mouse_sens", json!(1.0)), ("graphics_api", json!("auto")), ("ctrl_off", json!("")), ("steering_linear", json!(false)), ("old_steering", json!(false)), ("ff_invert", json!(false)), ("wheel_range", json!(900.0)), ("wheel_lock", json!(0.0)), ("fov", json!(0.0)), ("camera_collision", json!(true)), ("pedal_throttle", json!(1.0)), ("pedal_brake", json!(1.0)), ("seat_x", json!(0.0)), ("seat_y", json!(0.0)), ("seat_z", json!(0.0)), ("head_tracking", json!(false))] {
+    for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("get_up", json!(false)), ("time_speed", json!("1")), ("machine_translation", json!(false)), ("shadow_casters", json!("all")), ("reflections", json!(true)), ("mouse_sens", json!(1.0)), ("graphics_api", json!("auto")), ("ctrl_off", json!("")), ("steering_linear", json!(false)), ("old_steering", json!(false)), ("ff_invert", json!(false)), ("ff_enabled", json!(true)), ("pedal_hold", json!(false)), ("wheel_range", json!(900.0)), ("wheel_lock", json!(0.0)), ("fov", json!(0.0)), ("camera_collision", json!(true)), ("pedal_throttle", json!(1.0)), ("pedal_brake", json!(1.0)), ("seat_x", json!(0.0)), ("seat_y", json!(0.0)), ("seat_z", json!(0.0)), ("head_tracking", json!(false))] {
         v[k] = d;
     }
     // updates from the GitHub releases: looked for when the launcher starts, installed
@@ -1511,7 +1543,7 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
             "camera_collision" | "head_tracking" => v[&k] = json!(b(val)),
             "pedal_throttle" | "pedal_brake" => v[&k] = json!(val.parse::<f64>().map(|x| x.clamp(0.25, 4.0)).unwrap_or(1.0)),
             "seat_x" | "seat_y" | "seat_z" => v[&k] = json!(val.parse::<f64>().map(|x| x.clamp(-1.5, 1.5)).unwrap_or(0.0)),
-            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" | "reflections" | "steering_linear" | "old_steering" | "ff_invert" => v[&k] = json!(b(val)),
+            "nav_arrows" | "get_up" | "machine_translation" | "update_check" | "update_auto" | "reflections" | "steering_linear" | "old_steering" | "ff_invert" | "ff_enabled" | "pedal_hold" => v[&k] = json!(b(val)),
             "time_speed" => v[&k] = json!(val.trim_start_matches(['x', 'X']).parse::<f64>().map(|x| x.clamp(1.0, 30.0)).map(|x| if x.fract() == 0.0 { format!("{}", x as i64) } else { x.to_string() }).unwrap_or_else(|_| "1".into())),
             "language" => v[&k] = json!(language_code(val)),
             "graphics" | "renderer" => graphics = Some(graphics_mode(val)),
@@ -1590,7 +1622,9 @@ pub fn option_presets() -> Vec<(String, Value)> {
         let Ok(o) = omsi_content::options::Options::load(&f) else { continue };
         let name = f.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let mut v = json!({});
-        v["max_fps"] = json!(o.i32("maxfps", 0).max(0));
+        if !cfg!(target_os = "android") {
+            v["max_fps"] = json!(o.i32("maxfps", 0).max(0));
+        }
         v["min_obj_size"] = json!(o.f32("performance_minobjsize", 0.013) as f64);
         v["max_obj_dist"] = json!((o.f32("performance_maxobjdist", 900.0).round() as i64).to_string());
         if let Some(af) = o.values.get("texfilter").and_then(|x| x.get(1)).and_then(|x| x.parse::<i64>().ok()) {
@@ -1704,7 +1738,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("head_movement", true),
     );
     let text = format!(
-        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nreflections={}\nmouse_sens={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\ncamera_collision={}\npedal_throttle={}\npedal_brake={}\nseat_x={}\nseat_y={}\nseat_z={}\nhead_tracking={}\n",
+        "{text}pax_voices={}\nnav_arrows={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nreflections={}\nmouse_sens={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\ncamera_collision={}\npedal_throttle={}\npedal_brake={}\nseat_x={}\nseat_y={}\nseat_z={}\nhead_tracking={}\nff_enabled={}\npedal_hold={}\n",
         match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
             "tickets" => "tickets",
             "off" => "off",
@@ -1744,6 +1778,8 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         f("seat_y", 0.0).clamp(-1.5, 1.5),
         f("seat_z", 0.0).clamp(-1.5, 1.5),
         b("head_tracking", false),
+        b("ff_enabled", true),
+        b("pedal_hold", false),
     );
     // what the page does not manage (keys of newer games, hand-written ones) stays as it
     // was in the file; other spellings of the keys just written go

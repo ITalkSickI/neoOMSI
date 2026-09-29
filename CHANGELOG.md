@@ -6,6 +6,208 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 
 ## 0.1.14 - 2026-09-28
 
+### More fixes
+- Esc → More → *Set the clock...*: the clock one, five, fifteen or sixty minutes on or back,
+  and on a duty *On time with the timetable* (early or late by six minutes: the clock is
+  put where the bus is on time).
+- Discord shows "Playing openOMSI" with the bus, the map and the line (Rich Presence, over
+  Discord's local connection; `discord_app_id` in the settings, `discord_status=0` turns it
+  off).
+- AI traffic no longer stands for minutes on a free road: a car crawling in a jam of its own
+  kept its claim on the junction ahead, and the cars that give way to it waited behind it
+  in a chain (one Golf stood 81 s on Spandau; none now in four minutes of 80 cars).
+- On a road the wheels stand on the road, as in OMSI: the terrain over or through the
+  carriageway (an embankment the road runs under, ground poking through the asphalt) was an
+  invisible wall under bridges and a bump that threw the bus.
+- Mod buses with a lamp test after the key (the GX7767 E500 MMC waits four seconds) start
+  with Shift+U: the starter is tried for longer; an automatic gearbox that takes D only
+  with the brake held (ZF, `(L.L.Brake) 0 >`) is put into D by the auto-start.
+- Manual gearboxes: Ctrl+Up / Ctrl+Down shift up and down (gear levers with a trigger per
+  gate, `kw_s_1`...`kw_s_10`, `kw_s_N`, `kw_s_R`, as the LiAZ MKPP), the clutch let up as
+  OMSI's clutch key lets it; with *automatic clutch* on, the clutch bites by itself when
+  pulling away, as far as the engine keeps its revs. *gear_up* / *gear_down* for buttons.
+- A situation loaded with *Continue* keeps the bus's livery.
+- Mouse steering keeps the wheel and pedals while the right button looks round, as in OMSI.
+- The arrow keys' look with a wheel is a glance: held, the head turns (at most 140 degrees);
+  let go, it comes back to the road.
+- Esc → More → *Move the bus on the map...*: click a street on the city map and the bus is
+  put there (Ctrl+click on the map does it too, now also on a duty).
+- The pause menu no longer flickers its top line while the mouse moves over it.
+- Phones: the on-screen wheel turns the bus's wheel one to one.
+- Windows and Linux: the automatic render scale draws at full size up to 4K (it drew a 4K
+  screen at 58 %, and enhanced graphics looked like low-quality textures).
+- Automatic rear doors (SD202, SD200 and the like) close again: passengers walking to the
+  door or standing at the back of the queue kept asking for it, and the script starts its
+  closing time again on every request. A request now opens a shut door; an open one is held
+  only by somebody in the doorway, as by the light barrier.
+- Walls with a height profile on their top (the stone and brick walls of UK maps) are walls
+  to the wheels, not a road: where a wall's top met the road the bus drove up onto it and
+  along it as the road fell away.
+- A spline's height profile lying well over everything the spline draws (Westcountry's
+  yellow surface marking: paint 10 cm up, height profile 50 cm) is taken at the drawn
+  height: it was an invisible wall across the road. `OMSI_CHECK_WHEELS=1` with `--offscreen`
+  lists what the wheels meet along the driving lanes (for map makers).
+- Mouse steering turns on to the full lock past the window's edge: with the cursor at the
+  edge, moving the mouse on outwards keeps turning the wheel (the width of the window is a
+  smaller part of the lock the faster the bus goes, as in OMSI, and at 30 km/h the edge was
+  a third of it); moving back gives that turn back first.
+- The free camera (F4): its keys (W A S D Q E, Space, Shift, the arrows) no longer work the
+  bus as well (W switched the wipers on), and the mouse wheel zooms there and on foot
+  (Ctrl+wheel moves the camera on).
+- Snow is matte: it no longer takes the rain's gloss and shines like plastic in the lights.
+- Modding: a mesh can be lit by up to 63 interior lamps (the extra numbers on the lines
+  after the four of `[illumination_interior]`; OMSI 2 reads the first four), PBR maps up to
+  4096 px, and 32 lights per 25 m of the world instead of 16. What openOMSI allows beyond
+  OMSI 2 is written down in docs/MODDING.md and on the site.
+- Door keys: Shift+1, Shift+2 ... are the bus's doors front to back, found from the model
+  (where each door leaf sits along the bus and which leaves each door trigger moves). The
+  LiAZ's Shift+1 opened its middle and rear doors together and its front door had no key;
+  a mod door script that mentions a closing variable while opening had its two leaves on
+  two keys (one leaf moved, the other needed its own press). The game's log lists the keys
+  of each bus ("door keys: ...").
+- The release notes list what changed since the release before (they said "Small changes
+  and fixes" for every release without a section of its own here).
+- Phones: 60 frames a second by default (the settings took the PC OMSI's limit of 30 from
+  its options.cfg), and dragging the view turns it the way the finger moves (it was the
+  other way round, left for right and up for down).
+- A bus on a lower level (a car park under a building, a road under a bridge) is no longer
+  taken for one fallen through the world and put up on the roof: it has fallen only with
+  nothing under it at all. A teleport to a place with a height lands on that level.
+- A map that uses objects or splines that are not installed says so when it loads (how
+  many, and the add-on folders they come from), and every missing object, spline and
+  texture is listed by add-on in `~/.openomsi/missing_content.txt` (written again when the
+  game ends, with the tiles loaded on the way). Holes, bare roads and white objects of such a
+  map are a missing download, not a fault of the game - now one can tell.
+- The game's log records the whole session: the system (OS, processor, memory), the command
+  line and every setting at the start; then everything said on the screen, each view, pause
+  and resume, every key action and door key, and a status line every minute (frame rate and
+  the worst frame, where the bus is, its speed, the view, the time, the traffic).
+- The bus is no longer put down inside scenery: an object no taller than a vehicle that
+  stands for a third or more where the bus is put (a mod map's static buses in its depot,
+  a sign) is taken away for the session, as the object editor takes one away (the map's
+  files are not changed).
+- Barriers (depot and car park gates on a light program) open for the player's bus off the
+  lanes too: a gate whose lane starts up to 25 m ahead, the way the bus faces, is asked for
+  (in a depot yard the bus stood beside every lane and the barrier stayed down).
+- Passengers: the queue at a front door no longer goes on round the bus's nose (it stops
+  short of the front and turns out along the kerb - people stood across the road in front
+  of the windscreen, facing the bus), and a door shut for a moment no longer sends the
+  waiting people away: they wait on 25 s after a door of the standing bus was last open
+  (they turned away at once and came back when it opened again).
+- Camera monitors: `reflexionN.bmp` is camera N's picture wherever a vehicle's material
+  names it (its light map, night map, a `[matl_item]` switched on by the script), not only
+  as the plain texture - monitors that show the camera once switched on were white.
+- "Doors are open" follows what the passengers are told is open (`PAX_Entry/Exit<n>_Open`)
+  - mods use `door_<n>` for other things, and a bus with its doors shut said they were open;
+  "Air pressure is low" is no longer said with the tanks full (the spring brake is then held
+  by the bus's own parking brake).
+- The rear doors of the Berlin buses (SD, NL, EN/GN) close on Shift+2: switching their
+  release off with the doors open shuts them at once, rather than when the passengers'
+  last request has lapsed.
+- An entry point whose marker lies under the ground (nothing under its height at all) puts
+  the bus on the ground above it, not in the void under the map; a real lower level (a car
+  park's floor) is kept.
+- Settings → Controllers → *Force feedback and vibration* (and Esc → More → Options):
+  switches the wheel's forces and a pad's rumble off altogether (a pad left plugged in
+  shook all the time).
+- Spaces on displays and signs: a font without a space character (many display fonts have
+  none) leaves the width of a narrow letter between the words; the words of a destination
+  ran into one another.
+- OMSI's held keyboard pedals: Settings → Controllers → *Keyboard pedals stay where they
+  are* (and Esc → More → Options). Tap the brake and it keeps that pressure until the
+  throttle is tapped, and the other way round.
+- Settings → *Reset all settings...*: every setting back to how it came (the language, the
+  drivers, the key bindings and the game folder stay), after a dialog that asks first. The
+  quality presets are under Performance.
+- The bus radio also plays the stations of OMSI's radio plugins (SuperRadio's `.opl` and
+  its lists under `plugins`): every stream address found there is a station, after the
+  ones of `~/.openomsi/radio.cfg`.
+- Controls → Game controllers: a button pressed on the wheel lights its line in the list for
+  a few seconds, and the status line says which button it is and what it does - press it and
+  give it an action right there.
+- Railway signals clear for the player's own train as well (driven on the rails): its
+  signals stayed at stop, as only an AI train ever asked for them.
+- Puddle splashes are a mist of water - soft, lit by the scene, widening and thinning out as
+  it sinks - instead of rings of glowing light flying off the wheels.
+- Enhanced graphics: the sky is drawn again after a third of the way it waited before, so
+  the clouds no longer drift and jump back into place when the camera flies fast.
+- Launcher: the bus list is built again only when the search, the buses or the host's list
+  change (it was rebuilt every frame, every name copied - scrolling it stuttered on phones).
+- 14 more interface languages: Українська, Беларуская, Қазақша, Polski, Čeština, Magyar,
+  Español, Português (Brasil), Italiano, Nederlands, Türkçe, 日本語, 中文 (简体), हिन्दी -
+  with English, German, French and Russian 18 in all (Settings → Language), and every text
+  of the launcher and the game menus the tables lacked now translated in all of them. The
+  tables are in the program, so they work on every system (the machine translation, which
+  runs on Macs with Apple silicon only, is not needed for them). Chinese, Japanese and Hindi
+  are drawn with the system's own fonts. OMSI's own texts (key names, descriptions) show in
+  English where OMSI has no such language.
+- Shift+U after a crash starts the bus again: a bus under power whose engine had died was
+  taken for a running one and "switched off" round and round ("Shutting down..." for good).
+  An auto-start that has gone on for 20 s is begun again by the next Shift+U.
+- The weather turning to snow (Next weather, or the weather file) no longer drops the bus
+  through the world: every tile is read again with the winter textures, and while the one
+  under the bus is away the bus is held where it stands (it fell, was put back in the sky
+  and fell again).
+- Passengers in an indoor station stand on its floor, not on its roof: walking, they took
+  any surface over them for a kerb to step up on. They now keep to the floor within a step
+  of where they are (a station's floor under its roof, a car park's level under the deck).
+- Keys the player set in `Inputs/keyboard.cfg` are theirs, also when they edited the
+  installation's own file: Z / X / C (the indicators), Shift+number (the doors), W A S D and
+  the arrows no longer take over a key bound to something else. What counts as changed is
+  told from OMSI 2's own assignment, built into the game, with Shift held as well.
+- The hazard lights go off again (X, and the phone's hazard button): pressed with them on,
+  the key let go of the indicator lever instead of their own switch.
+- Seated passengers on a high seat (on a podium, over a wheel arch) let their feet hang as a
+  sitting body does, instead of stretching the legs straight down through the seat's front
+  to the floor far below.
+- The bus no longer spawns floating on a wall's top: the place it is put down at is the face
+  its wheels stand on near the entry point's height (a road, a deck, an underground floor),
+  not the highest surface of the map's height raster there, which is a wall's top beside a
+  pavement (London) or a deck over the road.
+- The sound follows the system's output device: a Bluetooth headset or headphones connected
+  while the game runs take the sound over, and disconnected, the sound comes back on the
+  speakers (it had stayed on the speakers, or stopped for good).
+- Maps whose `[map]` list names a tile twice (Westcountry 3 names 33 tiles twice): the tile
+  numbers the map's files use count those entries, as in OMSI. Counted without them, every
+  number after the first repeat named the wrong tile: rows of objects repeated along a road
+  (fences, bollards, lamps) hung from another tile's row and stood across the road or were
+  missing (3 of 1536 rows found their start on Westcountry 3, now 165, 159 of them where the
+  map says), timetable tracks ran over the wrong tiles, and entry points were looked for on
+  the wrong tile.
+- An entry point is found on its own tile: a map joined from two (two towns you cannot drive
+  between) repeats object ids, and choosing a stop in one town put the bus on the grass of
+  the other, where the other object of that id stands.
+- Road markings laid over road markings (where lines cross, a box junction over a lane's
+  arrows) are no step for the wheels: every layer of paint is looked through, not only the
+  first.
+- Traffic of the UK car packs (WH UK AI: Westcountry, London and others) is no longer
+  invisible, only shadows and lamps driving about: a mesh written before a model's first
+  `[LOD]` belongs to that level, as in OMSI. These cars put their shadow there; as a level
+  of its own it was all a moving car had.
+- Their paint: a `[matl_transmap]` picture without an alpha channel is opaque, as Direct3D
+  reads it (the cars' paint layer has a black 24-bit `transmap_null.tga` and was invisible),
+  and a layer drawn over another mesh of the same shape keeps its blending (the baked
+  shading over the paint had been made opaque: black cars, black roofs).
+- An object's `[LOD]` level is chosen as OMSI does: the first level in the model's order
+  whose size the object reaches, else the last. The stock Sv signals list their detailed
+  level before their low one; sorted by size, the low one stood in close up and the signal
+  vanished in the distance. A model with a single `[LOD]` is drawn at any size.
+- A car that has reached a dead end goes after 25 seconds, even in view, when others are
+  waiting behind it: a fire engine at the end of a dead-end street held a queue of fourteen
+  cars for two and a half minutes, and the junctions before it jammed full (Westcountry 3,
+  38 cars stuck for over a minute in five minutes of traffic, now none).
+- No more sky showing through the road in stars and stripes at junctions: a spline made
+  only of blended layers (Westcountry's lane darkeners laid over the junctions' painted
+  ground) no longer cuts the ground away under itself; the ground is what it darkens.
+- `OMSI_DEBUG_LAMPS=1` lists every traffic light object, the crossing it belongs to and
+  those that name none (and so stay dark).
+- Esc → Destination display → *Route number*: the route (line) number on the displays, from
+  the depot file's routes and the map's timetable; the destination stays.
+- Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
+  (taken back by the game, its own centring spring came back on).
+- `OMSI_CHECK_SPLINES=1` with `--offscreen` lists the map's spline chains whose ends do not
+  meet (for map makers).
+
 ### Controllers
 - No hidden dead zone on wheels any more: gilrs's default filters took 10 % of every axis (90
   degrees either side on a wheel of 1800) and held back small movements; Windows: the

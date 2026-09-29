@@ -543,7 +543,7 @@ pub struct Frame<'a> {
     pub inside_of: Option<u32>,
 }
 
-fn data_dir() -> Option<PathBuf> {
+pub(crate) fn data_dir() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
     Some(PathBuf::from(home).join(".openomsi"))
 }

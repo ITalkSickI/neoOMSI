@@ -80,17 +80,20 @@ pub(crate) fn keyboard_cfg(root: &Path) -> PathBuf {
 /// folder's, written by the launcher) binds to something the original's does not bind to
 /// them: see `App::own_keys`.
 pub(crate) fn own_keys(root: &Path) -> std::collections::HashSet<i32> {
-    let mine = keyboard_cfg(root);
-    let original = root.join("Inputs/keyboard.cfg");
-    if mine == original {
-        return Default::default();
-    }
-    let (Ok(m), Ok(o)) = (omsi_content::KeyboardCfg::load(&mine), omsi_content::KeyboardCfg::load(&original)) else { return Default::default() };
-    let orig: std::collections::HashSet<(String, i32, i32)> = o.vehicles.iter().chain(o.game.iter()).map(|b| (b.action.to_ascii_lowercase(), b.scan_code, b.modifier)).collect();
+    own_bindings(root, 0)
+}
+
+/// The keys held with `modifier` (1: Shift) that the file in use binds otherwise than OMSI 2's
+/// own assignment ([`crate::stock_keys::STOCK_KEYS`]): the player's own. Told apart from the
+/// built-in list, not from the installation's file - a player who edited that file had
+/// every change overridden by the game's conveniences (Z / X / C, Shift+number).
+pub(crate) fn own_bindings(root: &Path, modifier: i32) -> std::collections::HashSet<i32> {
+    let Ok(m) = omsi_content::KeyboardCfg::load(&keyboard_cfg(root)) else { return Default::default() };
+    let stock: std::collections::HashSet<(String, i32, i32)> = crate::stock_keys::STOCK_KEYS.iter().map(|(a, k, md)| (a.to_ascii_lowercase(), *k, *md)).collect();
     m.vehicles
         .iter()
         .chain(m.game.iter())
-        .filter(|b| b.modifier == 0 && b.scan_code != 0 && !orig.contains(&(b.action.to_ascii_lowercase(), b.scan_code, b.modifier)))
+        .filter(|b| b.modifier == modifier && b.scan_code != 0 && !stock.contains(&(b.action.to_ascii_lowercase(), b.scan_code, b.modifier)))
         .map(|b| b.scan_code)
         .collect()
 }
@@ -256,5 +259,19 @@ pub(crate) fn attach_parent_console() {
     // redirected log file stays the output)
     unsafe {
         AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(test)]
+mod own_key_tests {
+    /// OMSI's own file as it comes has no key of the player's own.
+    #[test]
+    fn the_stock_file_has_none_of_the_players() {
+        let root = std::path::Path::new("../../../OMSI 2 Original");
+        if !root.join("Inputs/keyboard.cfg").exists() {
+            return;
+        }
+        assert!(super::own_bindings(root, 0).is_empty());
+        assert!(super::own_bindings(root, 1).is_empty());
     }
 }

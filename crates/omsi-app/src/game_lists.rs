@@ -17,8 +17,13 @@ pub(crate) enum ListKind {
     Numbers,
     /// The termini of the bus's depot file, for its destination display.
     Destinations,
+    /// The route numbers (lines) for the destination display: the depot file's and the
+    /// map timetable's.
+    RouteNumbers,
     /// The depot files (.hof) of the bus driven.
     Hofs,
+    /// The clock set by hand: steps, and on a duty the time the timetable wants.
+    Clock,
     /// Placing a vehicle: its livery, then its depot file (bus file; bus file and livery).
     PlaceLivery(String),
     PlaceHof(String, String),
@@ -28,6 +33,32 @@ pub(crate) enum ListKind {
 fn bus_def(app: &App, bus: &str) -> Option<omsi_vehicle::Vehicle> {
     let path = crate::spawn::player_bus_path(&app.args.root, bus).ok()?;
     omsi_vehicle::Vehicle::load(&path).ok()
+}
+
+/// The route numbers to choose from: the lines of the depot file's routes (their own
+/// line, or the route code without its last two digits) and of the map's timetable.
+fn route_numbers(app: &App) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(hof) = app.player.as_ref().and_then(|p| p.vehicle.host.hof.clone()) {
+        for t in &hof.info_trips {
+            let code = t.code.trim();
+            let l = if !t.line.trim().is_empty() { t.line.trim().to_string() } else if code.len() > 2 && code.chars().all(|c| c.is_ascii_digit()) { code[..code.len() - 2].trim_start_matches('0').to_string() } else { String::new() };
+            let l = l.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+            if !l.is_empty() && !out.contains(&l) {
+                out.push(l);
+            }
+        }
+    }
+    if let Some(sch) = app.schedule.as_ref() {
+        for l in &sch.data.lines {
+            let n = l.name.trim().to_string();
+            if !n.is_empty() && !out.contains(&n) {
+                out.push(n);
+            }
+        }
+    }
+    out.sort_by(|a, b| natural(a, b));
+    out
 }
 
 /// The paint schemes of a vehicle file, by name (without loading its meshes).
@@ -93,6 +124,8 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Steering with the mouse"), tr(on_off(app.mouse_drive))), "mouse".into()));
             out.push((format!("{}: {}", tr("Frame rate"), tr(on_off(s.show_fps))), "fps".into()));
             out.push((format!("{}: {}", tr("Camera collisions"), tr(on_off(s.camera_collision))), "camcoll".into()));
+            out.push((format!("{}: {}", tr("Force feedback and vibration"), tr(on_off(s.ff_enabled))), "ff".into()));
+            out.push((format!("{}: {}", tr("Keyboard pedals stay where they are"), tr(on_off(s.pedal_hold))), "pedal_hold".into()));
             out.push((format!("{} (opentrack UDP {}): {}", tr("Head tracking"), s.head_tracking_port, tr(on_off(s.head_tracking))), "headtrack".into()));
             out.push((format!("{}: x{}", tr("Throttle pedal strength"), s.pedal_throttle), "pedal_t".into()));
             out.push((format!("{}: x{}", tr("Brake pedal strength"), s.pedal_brake), "pedal_b".into()));
@@ -135,6 +168,10 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             }
         }
         ListKind::Destinations => {
+            if let Some(p) = app.player.as_ref().filter(|p| p.vehicle.host.hof.is_some()) {
+                let now = p.vehicle.var("IBIS_LinieKurs").filter(|l| *l > 0.0).map(|l| format!("{}", l as i64)).unwrap_or_else(|| "-".into());
+                out.push((format!("{}: {now}...", tr("Route number")), "routes".into()));
+            }
             if let Some(hof) = app.player.as_ref().and_then(|p| p.vehicle.host.hof.clone()) {
                 for t in hof.termini.iter() {
                     let name = t.strings.iter().find(|s| !s.trim().is_empty()).cloned().unwrap_or_else(|| t.code.to_string());
@@ -143,6 +180,30 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             }
             if out.is_empty() {
                 out.push((tr("This bus has no depot file (.hof) with destinations"), "back".into()));
+            }
+        }
+        ListKind::RouteNumbers => {
+            for l in route_numbers(app) {
+                out.push((format!("{} {l}", tr("Route")), format!("route {l}")));
+            }
+            if out.is_empty() {
+                out.push((tr("No route numbers in the depot file or the timetable"), "back".into()));
+            }
+        }
+        ListKind::Clock => {
+            let t = app.clock.time;
+            out.push((format!("{}: {:02}:{:02}:{:02}", tr("Now"), (t / 3600.0) as i64 % 24, (t / 60.0) as i64 % 60, t as i64 % 60), "back".into()));
+            if let (Some(_), Some(p)) = (app.duty.as_ref(), app.player.as_ref()) {
+                let d = p.vehicle.host.tt_delay as f64;
+                if d.abs() >= 1.0 {
+                    out.push((format!("{} ({}{}:{:02})", tr("On time with the timetable"), if d < 0.0 { "−" } else { "+" }, (d.abs() / 60.0) as i64, d.abs() as i64 % 60), format!("clock {}", -d)));
+                }
+            }
+            for m in [1i64, 5, 15, 60] {
+                out.push((format!("+{m} min"), format!("clock {}", m * 60)));
+            }
+            for m in [1i64, 5, 15, 60] {
+                out.push((format!("−{m} min"), format!("clock {}", -m * 60)));
             }
         }
         ListKind::Hofs => {
@@ -283,6 +344,14 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     s.seat[k] = ((s.seat[k] + d) * 100.0).round().clamp(-150.0, 150.0) / 100.0;
                     Some((["seat_x", "seat_y", "seat_z"][k], s.seat[k].to_string()))
                 }
+                "pedal_hold" => {
+                    s.pedal_hold = !s.pedal_hold;
+                    Some(("pedal_hold", (s.pedal_hold as u8).to_string()))
+                }
+                "ff" => {
+                    s.ff_enabled = !s.ff_enabled;
+                    Some(("ff_enabled", (s.ff_enabled as u8).to_string()))
+                }
                 "seat_reset" => {
                     s.seat = [0.0; 3];
                     for k in ["seat_x", "seat_y", "seat_z"] {
@@ -317,6 +386,16 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
             switch_driver(app, arg);
             Some(ListKind::Drivers)
         }
+        ListKind::Clock => {
+            if let Ok(secs) = arg.trim().parse::<f64>() {
+                if app.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client) {
+                    app.service_msg = Some(("In a LAN session the host sets the clock".into(), 3.0));
+                } else {
+                    app.shift_clock(secs);
+                }
+            }
+            Some(ListKind::Clock)
+        }
         ListKind::Hofs => {
             if let Some(p) = app.player.as_mut() {
                 match omsi_vehicle::Hof::load(std::path::Path::new(arg)) {
@@ -335,6 +414,22 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
             let (bus, paint, hof) = (bus.clone(), paint.clone(), arg.trim().to_string());
             app.close_game_menu();
             app.place_vehicle(&bus, Some(paint).filter(|p| !p.is_empty()), Some(hof).filter(|h| !h.is_empty()));
+            None
+        }
+        ListKind::Destinations if verb == "routes" => Some(ListKind::RouteNumbers),
+        ListKind::RouteNumbers => {
+            if let Some(p) = app.player.as_mut() {
+                let hof = p.vehicle.host.hof.clone();
+                let line = arg.trim();
+                // (the destination stays: the one on the display now, else the first)
+                let code = p.vehicle.var("IBIS_TerminusCode").unwrap_or(-1.0) as i32;
+                let named = |t: &&omsi_vehicle::hof::Terminus| t.strings.first().is_some_and(|s| !s.trim().is_empty());
+                let term = hof.as_ref().and_then(|h| h.termini.iter().filter(named).find(|t| t.code == code).or_else(|| h.termini.iter().find(named)));
+                let name = term.and_then(|t| t.strings.first().cloned()).unwrap_or_default();
+                crate::schedule::set_player_destination_directly(&mut p.vehicle, hof.as_deref(), line, &name);
+                log::info!("route number set by hand: {line} (IBIS_LinieKurs {:?})", p.vehicle.var("IBIS_LinieKurs"));
+                app.service_msg = Some((format!("Route {line}"), 3.0));
+            }
             None
         }
         ListKind::Destinations => {

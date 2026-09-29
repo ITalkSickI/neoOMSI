@@ -299,7 +299,7 @@ impl App {
             let sb_on = p.vehicle.var("bremse_halte_sw").or_else(|| p.vehicle.var("haltestellenbremse")).is_some_and(|v| v > 0.5);
             push(&mut b, Btn::StopBrake, rb(bx, h - pad - br * 3.0 - 10.0 * u, br), "back_hand", "", sb_on, true);
             // the doors: one button for each door, front to back, above the gearbox
-            let doors = crate::player::door_trigger_groups(&p.vehicle.ty.program).len().clamp(1, 4);
+            let doors = crate::player::door_keys(&p.vehicle.ty).len().clamp(1, 4);
             let dr = 23.0 * u;
             let dy = gy - 12.0 * u - dr;
             for k in 0..doors {
@@ -487,7 +487,9 @@ impl App {
                 if self.touch.fingers[k].moved {
                     // (degrees for a point dragged: a full turn is a few swipes)
                     let k = 0.28 / u;
-                    self.look_by(-(p.x - last.x) * k, -(p.y - last.y) * k);
+                    // (the view turns the way the finger moves: taken the other way round,
+                    // as grabbing the world, every direction felt inverted)
+                    self.look_by((p.x - last.x) * k, (p.y - last.y) * k);
                 }
             }
             _ => {}
@@ -999,8 +1001,9 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
 /// wheel comes back by itself when let go. (120 degrees was a lock in a flick.)
 const WHEEL_LOCK_ANGLE: f32 = 3.0 * std::f32::consts::PI;
 
-/// The wheel's turn as the bus gets it: gentle round the middle (a finger's small wobble is a
-/// small correction), the full lock still at the end of the travel.
+/// The wheel's turn as the bus gets it: one to one, the drawn wheel and the bus's wheel
+/// turn alike (a curve that was gentle round the middle made the bus turn faster and
+/// faster as the finger went on round).
 fn steer_curve(s: f32) -> f32 {
-    s.signum() * s.abs().powf(1.7)
+    s
 }

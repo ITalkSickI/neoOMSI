@@ -142,6 +142,11 @@ pub struct AiCar {
     /// Seconds this car has been standing still without a stop of its own: a red light or
     /// a queue is seconds, a jam that never clears grows without bound.
     pub stopped: f32,
+    /// The car it follows now (its id), when one is close ahead.
+    pub lead_car: Option<u64>,
+    /// Seconds it has crept along below 1 m/s (a claim of one that crawls in a jam of its
+    /// own is no car about to come either).
+    pub crawl: f32,
     /// A timetable bus: its trip's stops, the doors, the layover, the people aboard (see
     /// `bus_service`). Everything else about it is this car's.
     pub bus: Option<Box<BusService>>,
@@ -454,8 +459,15 @@ pub struct DormantCar {
 /// player (memory: a dormant car is a few dozen bytes, but each one woken is a full vehicle).
 const MAP_POPULATION_FACTOR: f32 = 8.0;
 
+fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
+    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.001 && l.length() >= 8.0)
+        .then(|| l.length() as f64 * l.density.clamp(0.05, 4.0) as f64)
+}
+
 pub struct Traffic {
     pub net: Network,
+    /// Sum of the spawn weights of every street lane, updated only as tiles add lanes.
+    street_weight: f64,
     /// Parked cars standing in or beside a lane: per lane, (distance along it, signed
     /// lateral offset of the car's centre, + = right). A car in the lane's middle is an
     /// obstacle to stop behind; one over the kerb side is passed with a swerve to the left.
@@ -1034,8 +1046,10 @@ impl Traffic {
         let light_log = omsi_cfg::env::var("OMSI_DEBUG_LIGHTS").ok();
         let light_prev = lights.iter().map(|c| vec![-100; c.lights.len()]).collect();
         let lanes = 0..net.lanes.len();
+        let street_weight = net.lanes.iter().filter_map(street_lane_weight).sum();
         let mut t = Traffic {
             net,
+            street_weight,
             parked,
             parked_waiting: Vec::new(),
             lane_tiles: lane_tiles.into_iter().collect(),
@@ -1499,6 +1513,8 @@ impl Traffic {
         }
         let far = self.spawn_radius * DESPAWN_FACTOR;
         self.advance_dormant();
+        // the cars somebody stands behind
+        let queued: std::collections::HashSet<u64> = self.cars.iter().filter(|c| c.stopped > 5.0).filter_map(|c| c.lead_car).collect();
         let mut i = 0;
         let mut off_ground = 0usize;
         let mut asleep = 0usize;
@@ -1547,7 +1563,9 @@ impl Traffic {
                 self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0
             } else if !random {
                 false
-            } else if at_end && (self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0) {
+            } else if at_end && (self.hidden(world, p, r) || (c.stopped > 8.0 && from_eye > 180.0) || c.stopped > 150.0 || (c.stopped > 25.0 && queued.contains(&c.id) && from_eye > 25.0)) {
+                // (and in view too once others wait behind it: a fire engine at the end of a
+                // dead-end street held a queue of fourteen cars for two and a half minutes)
                 // (taken at once it vanished in plain view 300 m ahead; but a car kept
                 // until nobody could see it stood for good at the end of a long straight
                 // road in view, and the queue behind it - timetable buses with their
@@ -1615,11 +1633,10 @@ impl Traffic {
         // ... and so does how much road there is around: the same number of cars looks
         // empty on a six-lane Berlin junction and crowded on a village lane, so the count
         // asked for is per a neighbourhood of about 250 lanes
-        let near = self
-            .net
-            .lanes
-            .iter()
-            .filter(|l| {
+        let near = self.net.lanes_starting_near(center, self.spawn_radius)
+            .into_iter()
+            .filter(|&i| {
+                let l = &self.net.lanes[i];
                 l.kind == LaneKind::Street
                     && l.points
                         .first()
@@ -1836,12 +1853,11 @@ impl Traffic {
         } else {
             self.spawn_radius
         };
+        let nearby = self.net.lanes_starting_near(center, radius);
         // candidate lanes of this kind near the centre
         let pick = |through: bool| -> Vec<(usize, f32)> {
-            self.net
-                .lanes
-                .iter()
-                .enumerate()
+            nearby.iter().copied()
+                .map(|i| (i, &self.net.lanes[i]))
                 .filter(|(_, l)| {
                     l.kind == kind
                         && l.length() > 8.0
@@ -2060,27 +2076,37 @@ impl Traffic {
         }
         let far = self.spawn_radius * DESPAWN_FACTOR;
         let centers: Vec<DVec3> = std::iter::once(center).chain(self.lan_centers.iter().copied()).collect();
-        let (mut total, mut near) = (0f64, 0f64);
-        let mut outside: Vec<(usize, f32)> = Vec::new();
-        for (i, l) in self.net.lanes.iter().enumerate() {
-            if l.kind != LaneKind::Street || l.no_cars || l.density <= 0.001 || l.length() < 8.0 {
-                continue;
-            }
-            let w = l.length() as f64 * l.density.clamp(0.05, 4.0) as f64;
-            total += w;
+        let mut nearby: Vec<usize> = centers.iter()
+            .flat_map(|&c| self.net.lanes_starting_near(c, self.spawn_radius))
+            .collect();
+        nearby.sort_unstable();
+        nearby.dedup();
+        let mut near = 0f64;
+        for i in nearby {
+            let l = &self.net.lanes[i];
+            let Some(w) = street_lane_weight(l) else { continue };
             let d = centers.iter().map(|c| (l.start() - *c).truncate().length()).fold(f64::MAX, f64::min);
             if d < self.spawn_radius {
                 near += w;
-            } else if d > far {
-                outside.push((i, w as f32));
             }
         }
-        if near < 50.0 || outside.is_empty() {
+        if near < 50.0 {
             return;
         }
-        let map_target = ((street_target as f64 * total / near).min(street_target as f64 * MAP_POPULATION_FACTOR as f64)) as usize;
+        let map_target = ((street_target as f64 * self.street_weight / near).min(street_target as f64 * MAP_POPULATION_FACTOR as f64)) as usize;
         let present = self.cars.iter().filter(|c| !c.is_bus() && !c.gone).count() + self.dormant.len();
         if present >= map_target {
+            return;
+        }
+        // The full outside list is only needed while replenishing the map population.
+        let outside: Vec<(usize, f32)> = self.net.lanes.iter().enumerate()
+            .filter_map(|(i, l)| {
+                let w = street_lane_weight(l)?;
+                let d = centers.iter().map(|c| (l.start() - *c).truncate().length()).fold(f64::MAX, f64::min);
+                (d > far).then_some((i, w as f32))
+            })
+            .collect();
+        if outside.is_empty() {
             return;
         }
         let mut acc = 0.0f32;
@@ -2270,6 +2296,8 @@ impl Traffic {
             trailer_renders,
             body,
             stopped: 0.0,
+            lead_car: None,
+            crawl: 0.0,
             bus: bus.map(|b| Box::new(BusService::new(b.stops, b.riders))),
             sounds: None,
             half_width,
@@ -3765,7 +3793,8 @@ impl Traffic {
                         .get(&m)
                         .map(|r| r.contains(&j))
                         .unwrap_or(false)
-                        && !(o.stopped > 4.0 && o.state.speed < 0.1);
+                        && !(o.stopped > 4.0 && o.state.speed < 0.1)
+                        && o.crawl < 8.0;
                     let theirs = dj - c.other_before - o.state.front;
                     // it waits for someone else before this meeting place (a car that gives
                     // way further on still rolls through here on its way to its line)
@@ -4235,13 +4264,13 @@ impl Traffic {
     /// with a `[speedlimit]`) while a train's route is about to enter the track its signal
     /// route covers and no other train is on it; otherwise it shows stop (and falls back to
     /// stop behind the train that passed it).
-    pub fn signal_aspects(&self, routes: &[omsi_map::ailists::SignalRoute]) -> hashbrown::HashMap<i64, f32> {
+    pub fn signal_aspects(&self, routes: &[omsi_map::ailists::SignalRoute], player_rail: Option<(usize, bool)>) -> hashbrown::HashMap<i64, f32> {
         let mut out: hashbrown::HashMap<i64, f32> = hashbrown::HashMap::new();
         if routes.is_empty() {
             return out;
         }
         // per train: the map ids it stands on and those of its next lanes
-        let trains: Vec<(i64, Vec<i64>)> = self
+        let mut trains: Vec<(i64, Vec<i64>)> = self
             .cars
             .iter()
             .filter(|c| !c.state.route.is_empty() && self.net.lanes.get(c.state.lane).map(|l| l.kind == omsi_sim::traffic::LaneKind::Rail).unwrap_or(false))
@@ -4251,6 +4280,33 @@ impl Traffic {
                 (here, ahead)
             })
             .collect();
+        // the player's own train (driven on the rails): the lanes ahead of it the way it goes,
+        // every branch at a fork (which it takes is not known yet) - its signals stayed at
+        // stop, only an AI train ever cleared them
+        if let Some((lane, along)) = player_rail.filter(|(l, _)| *l < self.net.lanes.len()) {
+            let here = self.net.lanes[lane].key.map(|k| k.id).unwrap_or(-1);
+            let mut ahead: Vec<i64> = Vec::new();
+            let mut frontier = vec![lane];
+            for _ in 0..6 {
+                let mut next = Vec::new();
+                for l in frontier {
+                    let nb: Vec<usize> = if along { self.net.lanes[l].next.clone() } else { self.net.prev.get(l).cloned().unwrap_or_default() };
+                    for n in nb {
+                        if let Some(k) = self.net.lanes.get(n).and_then(|x| x.key) {
+                            if !ahead.contains(&k.id) {
+                                ahead.push(k.id);
+                            }
+                        }
+                        next.push(n);
+                    }
+                }
+                frontier = next;
+                if frontier.len() > 32 {
+                    break;
+                }
+            }
+            trains.push((here, ahead));
+        }
         for r in routes {
             let pieces: hashbrown::HashSet<i64> = r.entries.iter().map(|e| e[0]).collect();
             let occupied = trains.iter().any(|(here, _)| pieces.contains(here));
@@ -4409,6 +4465,26 @@ impl Traffic {
             .map(|p| (p.0, p.1))
             .chain(self.others.iter().map(|(_, b)| (b.0, b.1)))
             .collect();
+        for &(pos, heading) in &askers {
+            // (off the lanes - a depot yard, a car park - a gate's lane that starts just
+            // ahead, the way the bus is facing, is asked all the same: standing a few metres
+            // beside every lane there, the bus never opened the barrier in front of it)
+            let h = heading.to_radians();
+            let fwd = glam::DVec2::new(h.sin(), h.cos());
+            for l in 0..self.net.lanes.len() {
+                let lane = &self.net.lanes[l];
+                let Some((ci, li)) = lane.traffic_light else { continue };
+                let (p0, h0) = lane.at(0.0);
+                let d = (p0 - pos).truncate();
+                let (along, across) = (d.dot(fwd), d.perp_dot(fwd).abs());
+                let turn = ((h0 as f64 - heading + 540.0).rem_euclid(360.0) - 180.0).abs();
+                if (-2.0..25.0).contains(&along) && across < 6.0 && turn < 60.0 && (p0.z - pos.z).abs() < 4.0 {
+                    if let Some(r) = self.lights.get_mut(ci).and_then(|c| c.request.get_mut(li)) {
+                        *r = true;
+                    }
+                }
+            }
+        }
         for (pos, heading) in askers {
             for (l, d) in self.lanes_ahead_of(pos, heading, 160.0) {
                 if let Some((ci, li)) = self.net.lanes[l].traffic_light {
@@ -5070,10 +5146,16 @@ impl Traffic {
                 .filter(|&j| j < self.cars.len())
                 .map(|j| self.cars[j].id);
             let car = &mut self.cars[i];
+            car.lead_car = lead_id;
             if car.state.speed.abs() < 0.1 && !car.at_stop() {
                 car.stopped += dt;
             } else {
                 car.stopped = 0.0;
+            }
+            if car.state.speed.abs() < 1.0 && !car.at_stop() {
+                car.crawl += dt;
+            } else {
+                car.crawl = 0.0;
             }
             // a random car that has stood for a minute without a light or a junction
             // holding it has given up: it leaves as soon as nobody sees it
@@ -6173,6 +6255,7 @@ impl Traffic {
         let mut added = self.net.lanes.len()..self.net.lanes.len();
         if n > 0 {
             added = self.net.extend(new, 1.5);
+            self.street_weight += self.net.lanes[added.clone()].iter().filter_map(street_lane_weight).sum::<f64>();
             log::debug!(
                 "traffic: {} lanes added ({} in all)",
                 added.len(),
@@ -6357,6 +6440,8 @@ impl Traffic {
             trailer_renders,
             body,
             stopped: 0.0,
+            lead_car: None,
+            crawl: 0.0,
             bus: scheduled.then(|| Box::new(BusService::new(Vec::new(), 0))),
             sounds: None,
             half_width,

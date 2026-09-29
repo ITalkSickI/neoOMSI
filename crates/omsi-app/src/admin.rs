@@ -232,7 +232,19 @@ pub(crate) fn teleport(app: &mut App, at: glam::DVec3, heading: f64) {
     if app.on_foot.is_some() {
         app.back_to_bus();
     }
-    let z = app.world.as_ref().and_then(|w| w.walk_height(at.x, at.y)).unwrap_or(at.z);
+    // on the level at the height asked for (a car park under a building, a road under a
+    // bridge), else the highest ground there (a place picked on the map, at no height)
+    let z = app
+        .world
+        .as_ref()
+        .and_then(|w| {
+            let near = (at.z != 0.0)
+                .then(|| crate::scene::drive_probe(&w.terrains, &w.surfaces, at.x, at.y, at.z + 1.5).below)
+                .flatten()
+                .filter(|b| (at.z - b).abs() < 3.0);
+            near.or_else(|| w.walk_height(at.x, at.y))
+        })
+        .unwrap_or(at.z);
     if let Some(p) = app.player.as_mut() {
         // (as a joining player's bus is moved off an occupied spawn: `lan::clear_spawn`)
         let origin = glam::DVec3::new(at.x, at.y, z);
@@ -478,11 +490,18 @@ pub(crate) fn server_command(lan: &mut LanSession, from: u32, text: &str, adm: &
 pub(crate) fn guard_fall(app: &mut App, dt: f32) {
     let Some(p) = app.player.as_ref() else { return };
     let at = p.vehicle.position;
-    let ground = app.world.as_ref().and_then(|w| w.walk_height(at.x, at.y));
+    // the ground under the bus (the face at or below it: on a car park's lower level the
+    // building's roof is not its ground - measured from the roof, a bus driving under it
+    // had fallen through the world and was put up there), and the highest there is
+    let (under, ground) = match app.world.as_ref() {
+        Some(w) => (crate::scene::drive_probe(&w.terrains, &w.surfaces, at.x, at.y, at.z + 1.5).below, w.walk_height(at.x, at.y)),
+        None => (None, None),
+    };
     app.safe_age += dt;
-    let fallen = match ground {
-        Some(g) => at.z < g - 8.0,
-        None => app.safe_pose.map(|s| at.z < s.0.z - 40.0).unwrap_or(false),
+    let fallen = match (under, ground) {
+        (Some(_), _) => false,
+        (None, Some(g)) => at.z < g - 8.0,
+        (None, None) => app.safe_pose.map(|s| at.z < s.0.z - 40.0).unwrap_or(false),
     };
     if fallen {
         if let Some((pos, heading)) = app.safe_pose {
@@ -493,7 +512,7 @@ pub(crate) fn guard_fall(app: &mut App, dt: f32) {
         return;
     }
     if app.safe_age >= 1.0 {
-        if let Some(g) = ground.filter(|g| (at.z - g).abs() < 2.5) {
+        if let Some(g) = under.filter(|g| (at.z - g).abs() < 2.5) {
             app.safe_age = 0.0;
             app.safe_pose = Some((glam::DVec3::new(at.x, at.y, g), p.vehicle.heading));
         }

@@ -125,6 +125,9 @@ pub struct VehicleType {
     /// that a ray (the mouse over the cockpit) can pass most meshes by without looking at a
     /// triangle. Zero for the meshes an AI type keeps no vertices of.
     pub mesh_bounds: Vec<(Vec3, f32)>,
+    /// Per mesh: the box (least, greatest corner) its vertices take in the mesh's own frame,
+    /// kept for AI types too (zero for a mesh without vertices).
+    pub mesh_boxes: Vec<(Vec3, Vec3)>,
 }
 
 /// One `.cti` item group: replaces the textures of `[CTCTexture]` slots and sets variables.
@@ -353,6 +356,14 @@ impl VehicleType {
         }
         let texchanges = omsi_model::load_texchanges(&dir, &model.texchanges);
         let (wheel_meshes, suspension_axles) = wheel_meshes(&model, &meshes);
+        let mesh_boxes: Vec<(Vec3, Vec3)> = meshes
+            .iter()
+            .map(|m| {
+                let lo = m.data.positions.iter().fold(Vec3::splat(f32::MAX), |a, p| a.min(*p));
+                let hi = m.data.positions.iter().fold(Vec3::splat(f32::MIN), |a, p| a.max(*p));
+                if lo.x <= hi.x { (lo, hi) } else { (Vec3::ZERO, Vec3::ZERO) }
+            })
+            .collect();
         let mesh_bounds = if keep_meshes {
             meshes.iter().map(|m| omsi_geometry::bounding_sphere(&m.data.positions)).collect()
         } else {
@@ -413,6 +424,7 @@ impl VehicleType {
             suspension_axles,
             missing_packs,
             mesh_bounds,
+            mesh_boxes,
         })
     }
 

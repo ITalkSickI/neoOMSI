@@ -192,3 +192,14 @@ main { margin-left: var(--drawer-w); padding-top: 64px; min-height: 100vh; displ
 .comment-head img { width: 24px; height: 24px; border-radius: 50%; }
 .comment .doc { padding: 4px 16px; overflow-wrap: anywhere; }
 .comment .doc img { max-width: 100%; }
+
+/* Buy me a coffee: a small pill in the corner, out of the way of the content */
+.bmc-fab { position: fixed; right: 20px; bottom: 20px; z-index: 30; display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px 10px 12px; border-radius: 999px; background: #ffdd00; color: #1b1b1b; font-weight: 600;
+  font-size: 14px; text-decoration: none; opacity: .92; transition: opacity .15s, transform .15s; }
+.bmc-fab:hover { opacity: 1; transform: translateY(-2px); text-decoration: none; }
+.bmc-cup { font-size: 18px; line-height: 1; }
+@media (max-width: 700px) {
+  .bmc-fab { right: 14px; bottom: 14px; padding: 10px; }
+  .bmc-text { display: none; }
+}

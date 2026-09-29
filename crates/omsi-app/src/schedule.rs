@@ -610,7 +610,7 @@ impl Schedule {
                 }
             }
         }
-        let tile_coords = world.global.tiles.iter().map(|t| (t.x, t.y)).collect();
+        let tile_coords = world.global.raw_tiles.clone();
         if omsi_cfg::env::var_os("OMSI_PROFILE").is_some() {
             let mut seen: HashSet<*const VehicleType> = HashSet::new();
             let mut bytes = 0usize;

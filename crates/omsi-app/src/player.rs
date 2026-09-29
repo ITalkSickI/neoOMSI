@@ -33,6 +33,9 @@ pub(crate) struct Player {
     pub(crate) auto_drag: Option<AutoDrag>,
     /// Running auto-start (Shift+U).
     pub(crate) startup: Option<omsi_sim::startup::StartUp>,
+    /// When the running auto-start began (one that has gone on for long is given up by the
+    /// next Shift+U).
+    pub(crate) startup_at: Option<std::time::Instant>,
     /// The ticket key was pressed this frame (sell the requested ticket).
     pub(crate) give_ticket: bool,
     /// OMSI's `change_give` / `change_take` keys: hand the passenger
@@ -156,6 +159,146 @@ pub(crate) const ACTION_ALIASES: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// A door leaf's animation variable: `door_0`, `door_2L`, `Door_3` (and the stock scripts'
+/// `doorTarget_0` names the same leaf).
+fn door_leaf_of(var: &str) -> Option<String> {
+    let v = var.to_ascii_lowercase();
+    let rest = v.strip_prefix("doortarget_").or_else(|| v.strip_prefix("door_"))?;
+    let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    let tail = &rest[digits..];
+    (digits > 0 && tail.len() <= 1 && tail.chars().all(|c| c.is_ascii_alphabetic())).then(|| format!("door_{rest}"))
+}
+
+/// The door leaves a trigger moves: the leaf variables (or their targets) it stores, itself
+/// or in its macros; failing that, the ones it reads.
+fn trigger_leaves(program: &omsi_script::Program, name: &str) -> Vec<String> {
+    fn walk(program: &omsi_script::Program, block: omsi_script::BlockId, seen: &mut hashbrown::HashSet<omsi_script::BlockId>, stored: &mut Vec<String>, read: &mut Vec<String>) {
+        if !seen.insert(block) || seen.len() > 64 {
+            return;
+        }
+        let Some(b) = program.blocks.get(block as usize) else { return };
+        for op in &b.ops {
+            match op {
+                omsi_script::Op::Store(id) | omsi_script::Op::Load(id) => {
+                    let Some(leaf) = program.var_names.get(*id as usize).and_then(|n| door_leaf_of(n)) else { continue };
+                    let list = if matches!(op, omsi_script::Op::Store(_)) { &mut *stored } else { &mut *read };
+                    if !list.contains(&leaf) {
+                        list.push(leaf);
+                    }
+                }
+                omsi_script::Op::Macro(m) => walk(program, *m, seen, stored, read),
+                _ => {}
+            }
+        }
+    }
+    let Some(b) = program.trigger(name) else { return Vec::new() };
+    let (mut stored, mut read) = (Vec::new(), Vec::new());
+    walk(program, b, &mut hashbrown::HashSet::new(), &mut stored, &mut read);
+    if stored.is_empty() { read } else { stored }
+}
+
+/// The doors of a bus front to back, found from the model: the meshes each door leaf's
+/// variable animates, and leaves standing within 1.6 m of each other along the bus are one
+/// doorway. Each doorway gets the triggers that move its leaves: the toggles
+/// (`bus_doorfront<n>`, `bus_dooraft`, a mod's own), or a mod's open and close pair
+/// (`bus_door_0` / `bus_door_0_close`, written `open|close`: the one that fits the leaf's
+/// state is fired). None when the model's doors cannot be told apart this way.
+fn doorways(ty: &omsi_sim::VehicleType) -> Option<Vec<Vec<String>>> {
+    // where each leaf is along the bus (the centre of the meshes it moves)
+    let mut at: Vec<(String, f32, u32)> = Vec::new();
+    for vm in &ty.meshes {
+        let Some(def) = ty.model.meshes.get(vm.def_index) else { continue };
+        let Some(leaf) = def.animations.iter().find_map(|a| door_leaf_of(&a.variable)) else { continue };
+        if vm.data.positions.is_empty() {
+            continue;
+        }
+        let y = vm.data.positions.iter().map(|p| vm.pivot.transform_point3(*p).y).sum::<f32>() / vm.data.positions.len() as f32;
+        match at.iter_mut().find(|e| e.0 == leaf) {
+            Some(e) => {
+                e.1 += y;
+                e.2 += 1;
+            }
+            None => at.push((leaf, y, 1)),
+        }
+    }
+    if at.is_empty() {
+        return None;
+    }
+    let mut leaves: Vec<(String, f32)> = at.into_iter().map(|(l, y, n)| (l, y / n as f32)).collect();
+    leaves.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let mut ways: Vec<Vec<(String, f32)>> = Vec::new();
+    for l in leaves {
+        match ways.last_mut() {
+            Some(w) if (w.last().unwrap().1 - l.1).abs() < 1.6 => w.push(l),
+            _ => ways.push(vec![l]),
+        }
+    }
+    let program = &ty.program;
+    // which doorways a trigger reaches (its leaves' doorways; a script's branches all count)
+    let way_of = |leaf: &String| ways.iter().position(|w| w.iter().any(|(l, _)| l == leaf));
+    let reach = |name: &str| -> Vec<usize> {
+        let mut v: Vec<usize> = trigger_leaves(program, name).iter().filter_map(way_of).collect();
+        v.sort();
+        v.dedup();
+        v
+    };
+    // the stock keys by name (`bus_doorfront<n>`, two leaves of a doorway paired), a pair
+    // split when its two triggers share no doorway: the LiAZ's `bus_doorfront0` and `1` are
+    // its middle and rear doors, and Shift+1 opened both
+    let mut groups: Vec<(Vec<String>, usize)> = Vec::new();
+    for g in door_trigger_groups(program) {
+        if g == ["bus_dooraft"] {
+            continue;
+        }
+        let parts: Vec<Vec<String>> = match (g.first(), g.get(1)) {
+            (Some(a), Some(b)) if !reach(a).is_empty() && !reach(b).is_empty() && !reach(a).iter().any(|w| reach(b).contains(w)) => vec![vec![a.clone()], vec![b.clone()]],
+            _ => vec![g.clone()],
+        };
+        for part in parts {
+            let front = part.iter().flat_map(|n| reach(n)).min().unwrap_or(usize::MAX);
+            groups.push((part, front));
+        }
+    }
+    // doorways no stock key reaches: a mod's own door triggers, all of whose leaves lie in
+    // that doorway (a toggle, or an open and close pair written `open|close`)
+    let reached: Vec<usize> = groups.iter().flat_map(|(g, _)| g.iter().flat_map(|n| reach(n))).collect();
+    let mut names: Vec<&String> = program.triggers.keys().filter(|n| {
+        let n = n.to_ascii_lowercase();
+        (n.starts_with("bus_door") || n.starts_with("bus_tuer")) && !n.ends_with("_off") && !n.ends_with("_close") && !n.starts_with("bus_doorfront") && n != "bus_dooraft"
+    }).collect();
+    names.sort();
+    for w in 0..ways.len() {
+        if reached.contains(&w) {
+            continue;
+        }
+        let mut group: Vec<String> = Vec::new();
+        for n in &names {
+            let r = reach(n);
+            if r != [w] {
+                continue;
+            }
+            let close = format!("{n}_close");
+            group.push(if program.trigger(&close).is_some() { format!("{n}|{close}") } else { (*n).clone() });
+        }
+        if !group.is_empty() {
+            groups.push((group, w));
+        }
+    }
+    groups.sort_by_key(|(_, front)| *front);
+    let mut out: Vec<Vec<String>> = groups.into_iter().map(|(g, _)| g).collect();
+    // a release switch (the SD202's `bus_dooraft`) comes last
+    if program.trigger("bus_dooraft").is_some() {
+        out.push(vec!["bus_dooraft".to_string()]);
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// The door keys of a vehicle type: its doorways from the model ([`doorways`]), else the
+/// trigger names ([`door_trigger_groups`]).
+pub(crate) fn door_keys(ty: &omsi_sim::VehicleType) -> Vec<Vec<String>> {
+    doorways(ty).unwrap_or_else(|| door_trigger_groups(&ty.program))
+}
+
 /// Every door of a bus, `Shift+1` first: the stock scripts name a door `bus_doorfront<n>`
 /// (the SD200/SD202/EN92 have two, both leaves of the one front door) and the aft one
 /// `bus_dooraft` (which is also the stop brake release); a low-floor mod with three or four
@@ -196,38 +339,25 @@ pub(crate) fn door_trigger_groups(program: &omsi_script::Program) -> Vec<Vec<Str
     out
 }
 
+/// A door trigger that is a close command of its own (the A3's and BR275's second door key:
+/// `1 (S.L.CCW_Tuerschliessen)`): a short block that itself stores into a variable named for
+/// closing. Looked for in the macros as well, any mention of such a variable took a bus's
+/// second door leaf for one - mod door scripts read `door_close_time` and the like while
+/// opening - and Shift+1 moved one leaf, Shift+2 the other.
 pub(crate) fn door_trigger_closes(program: &omsi_script::Program, name: &str) -> bool {
-    fn block_closes(
-        program: &omsi_script::Program,
-        block: omsi_script::BlockId,
-        seen: &mut hashbrown::HashSet<omsi_script::BlockId>,
-    ) -> bool {
-        if !seen.insert(block) {
-            return false;
-        }
-        let Some(b) = program.blocks.get(block as usize) else {
-            return false;
-        };
-        b.ops.iter().any(|op| match op {
-            omsi_script::Op::Store(id) | omsi_script::Op::Load(id) => {
-                let n = program
-                    .var_names
-                    .get(*id as usize)
-                    .map(String::as_str)
-                    .unwrap_or("")
-                    .to_ascii_lowercase();
-                ["close", "closing", "schliess", "schließ"]
-                    .iter()
-                    .any(|x| n.contains(x))
-            }
-            omsi_script::Op::Macro(m) => block_closes(program, *m, seen),
-            _ => false,
-        })
+    let Some(b) = program.trigger(name).and_then(|b| program.blocks.get(b as usize)) else {
+        return false;
+    };
+    if b.ops.len() > 6 || b.ops.iter().any(|op| matches!(op, omsi_script::Op::Macro(_))) {
+        return false;
     }
-    program
-        .trigger(name)
-        .map(|b| block_closes(program, b, &mut hashbrown::HashSet::new()))
-        .unwrap_or(false)
+    b.ops.iter().any(|op| match op {
+        omsi_script::Op::Store(id) => {
+            let n = program.var_names.get(*id as usize).map(|n| n.to_ascii_lowercase()).unwrap_or_default();
+            ["close", "closing", "schliess", "schließ"].iter().any(|x| n.contains(x))
+        }
+        _ => false,
+    })
 }
 
 /// The variable a door trigger toggles to say where the leaf is going (`doorTarget_0` of
@@ -263,6 +393,19 @@ pub(crate) fn door_trigger_target(program: &omsi_script::Program, name: &str) ->
 /// any is open (by its target), only the open ones (to close them), else all. Toggling
 /// every leaf of a group made a closed leaf open while an open one closed.
 pub(crate) fn door_group_to_fire(v: &omsi_sim::VehicleInstance, group: &[String]) -> Vec<String> {
+    // an open and close pair (`open|close`): whichever fits the leaf now
+    let group: Vec<String> = group
+        .iter()
+        .map(|n| match n.split_once('|') {
+            Some((open, close)) => {
+                let leaf = trigger_leaves(&v.ty.program, open);
+                let is_open = leaf.iter().any(|l| v.var(l).is_some_and(|x| x > 0.5));
+                if is_open { close.to_string() } else { open.to_string() }
+            }
+            None => n.clone(),
+        })
+        .collect();
+    let group = &group[..];
     let states: Vec<Option<bool>> = group
         .iter()
         .map(|n| door_trigger_target(&v.ty.program, n).and_then(|id| v.state.vars.get(id as usize).copied()).map(|x| x > 0.5))
@@ -312,6 +455,9 @@ impl Player {
     /// Fire a keyboard action as a script trigger, falling back to the names the stock
     /// scripts use for it. Returns whether any script block ran.
     pub(crate) fn action(&mut self, name: &str, pressed: bool) -> bool {
+        if pressed {
+            log::info!("action: {name}");
+        }
         let suffix = if pressed { "" } else { "_off" };
         // the ticket key of Inputs/keyboard.cfg (T): sell the ticket the passenger at the
         // desk asked for, on buses whose script has no ticket printer
@@ -562,12 +708,18 @@ impl Player {
     /// service. Returns what to show in the HUD.
     pub(crate) fn start_up(&mut self) -> String {
         if let Some(s) = self.startup.as_ref() {
-            return if s.shutting_down() { "Switching the vehicle off ..." } else { "Putting the vehicle into service ..." }.to_string();
+            // (one going on for long - a bus whose switches never get it there - is given up
+            // and begun again, rather than saying the same for ever)
+            if self.startup_at.is_none_or(|t| t.elapsed().as_secs_f32() < 20.0) {
+                return if s.shutting_down() { "Switching the vehicle off ..." } else { "Putting the vehicle into service ..." }.to_string();
+            }
+            log::info!("auto-start given up after 20 s: begun again");
         }
-        let shutting_down = omsi_sim::startup::power_on(&self.vehicle)
-            || omsi_sim::startup::engine_running(&self.vehicle);
         let bound = self.bound_actions();
-        self.startup = Some(omsi_sim::startup::StartUp::new(&self.vehicle, &bound));
+        let s = omsi_sim::startup::StartUp::new(&self.vehicle, &bound);
+        let shutting_down = s.shutting_down();
+        self.startup = Some(s);
+        self.startup_at = Some(std::time::Instant::now());
         if shutting_down {
             "Switching the vehicle off ...".to_string()
         } else {
@@ -761,6 +913,24 @@ impl Player {
         self.axes.lock_curvature = self.vehicle.ty.def.inv_min_turn_radius;
         self.axes.update(dt);
         let a = self.analog;
+        // The automatic clutch of the settings for a gear lever whose scripts do not read
+        // OMSI's `AutoClutch` (the LiAZ MKPP): with a gear in and the bus slow, the clutch
+        // bites as the throttle goes down, as a driver lets it up - without it every start
+        // from a stop stalled the engine unless a clutch pedal was worked.
+        if self.vehicle.host.auto_clutch > 0.5 && self.vehicle.ty.program.trigger("kw_s_1").is_some() {
+            let gear = self.vehicle.var("antrieb_getr_aktugang").unwrap_or(0.0);
+            let kmh = self.axes.speed_kmh.abs();
+            if gear.abs() > 0.5 && kmh < 12.0 {
+                let throttle = a.throttle.unwrap_or(0.0).max(self.axes.throttle);
+                // it bites as the throttle goes down and only as far as the engine keeps its
+                // revs (a clutch let go at once under full throttle stalled it all the same)
+                let n = self.vehicle.var("engine_n").unwrap_or(0.0);
+                let bite = ((throttle - 0.05) / 0.45).clamp(0.0, 1.0).min(((n - 850.0) / 700.0).clamp(0.0, 1.0));
+                let bite = bite * bite * (3.0 - 2.0 * bite);
+                let want = (1.0 - bite) * (1.0 - kmh / 12.0);
+                self.axes.clutch = self.axes.clutch.max(want);
+            }
+        }
         self.vehicle.set_controls(omsi_sim::Controls {
             throttle: a.throttle.unwrap_or(self.axes.throttle).max(self.axes.throttle),
             brake: a.brake.unwrap_or(self.axes.brake).max(self.axes.brake),
@@ -1347,17 +1517,20 @@ pub(crate) fn pick_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: V
             );
         }
     }
+    // The same broad-phase applies to every ring. A large cockpit can contain
+    // hundreds of meshes; calculating their posed transforms three times made
+    // hovering over its controls needlessly expensive.
+    let candidates: Vec<(usize, glam::Mat4)> = vehicle.ty.meshes.iter().enumerate().filter_map(|(i, vm)| {
+        if vehicle.ty.model.meshes[vm.def_index].mouse_event.is_none() || !vehicle.mesh_props[i].visible {
+            return None;
+        }
+        let xf = vehicle.mesh_local_transform(i);
+        ray_may_hit(&vehicle.ty, i, &xf, o, dir, spread * 2.2).then_some((i, xf))
+    }).collect();
     for dirs in &rings {
         let mut best: Option<(f32, usize)> = None;
-        for (i, vm) in vehicle.ty.meshes.iter().enumerate() {
-            let def = &vehicle.ty.model.meshes[vm.def_index];
-            if def.mouse_event.is_none() || !vehicle.mesh_props[i].visible {
-                continue;
-            }
-            let xf = vehicle.mesh_local_transform(i);
-            if !ray_may_hit(&vehicle.ty, i, &xf, o, dir, spread * 2.2) {
-                continue;
-            }
+        for &(i, xf) in &candidates {
+            let vm = &vehicle.ty.meshes[i];
             for d in dirs {
                 if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
                     if best.map(|(bt, _)| t < bt).unwrap_or(true) {
@@ -1394,24 +1567,26 @@ pub(crate) fn pick_trailer_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3
             );
         }
     }
+    let candidates: Vec<(usize, usize, glam::Mat4)> = vehicle.trailers.iter().enumerate().flat_map(|(ti, trailer)| {
+        let o = (origin - trailer.position).as_vec3();
+        trailer.ty.meshes.iter().enumerate().filter_map(move |(i, vm)| {
+            if trailer.ty.model.meshes[vm.def_index].mouse_event.is_none() || !trailer.mesh_props[i].visible {
+                return None;
+            }
+            let xf = trailer.mesh_local_transform(i);
+            ray_may_hit(&trailer.ty, i, &xf, o, dir, spread * 2.2).then_some((ti, i, xf))
+        })
+    }).collect();
     for dirs in &rings {
         let mut best: Option<(f32, usize, usize)> = None;
-        for (ti, trailer) in vehicle.trailers.iter().enumerate() {
+        for &(ti, i, xf) in &candidates {
+            let trailer = &vehicle.trailers[ti];
             let o = (origin - trailer.position).as_vec3();
-            for (i, vm) in trailer.ty.meshes.iter().enumerate() {
-                let def = &trailer.ty.model.meshes[vm.def_index];
-                if def.mouse_event.is_none() || !trailer.mesh_props[i].visible {
-                    continue;
-                }
-                let xf = trailer.mesh_local_transform(i);
-                if !ray_may_hit(&trailer.ty, i, &xf, o, dir, spread * 2.2) {
-                    continue;
-                }
-                for d in dirs {
-                    if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
-                        if best.map(|(bt, _, _)| t < bt).unwrap_or(true) {
-                            best = Some((t, ti, i));
-                        }
+            let vm = &trailer.ty.meshes[i];
+            for d in dirs {
+                if let Some(t) = omsi_geometry::ray_mesh(o, *d, &vm.data, &xf) {
+                    if best.map(|(bt, _, _)| t < bt).unwrap_or(true) {
+                        best = Some((t, ti, i));
                     }
                 }
             }

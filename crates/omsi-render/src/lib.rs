@@ -349,7 +349,8 @@ impl Default for Corona {
 
 const LIGHT_CELL: f32 = 25.0;
 const LIGHT_GRID_SIDE: usize = 64;
-const LIGHT_CELL_CAP: usize = 16;
+/// (32: a depot or a bus interior with many lamps lost the farthest past 16 in a cell)
+const LIGHT_CELL_CAP: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -747,8 +748,8 @@ pub struct Instance {
     /// instance without lamps of its own (a passenger standing in a lit bus).
     pub interior: f32,
     /// The `[interiorlight]` lamps that light this mesh (its `[illumination_interior]`): the
-    /// first of its run of slots in `Scene::interior_lights` times 8 plus how many (up to
-    /// four); 0 = none, `interior` stands in.
+    /// first of its run of slots in `Scene::interior_lights` times `LAMP_CODE_STRIDE` plus
+    /// how many; 0 = none, `interior` stands in.
     pub interior_lamps: u32,
     /// First entry of this instance in the per-draw storage buffers (set by `prepare`).
     base: u32,
@@ -1173,8 +1174,18 @@ impl Default for RenderOptions {
 /// Automatic render scale: a window of up to this many pixels is drawn at full size (the
 /// default 1600x900 window and a 2560x1080 screen are); a bigger one - a Retina window has
 /// four times the pixels of its size in points - gets a 3D picture of about this many
-/// pixels, scaled up. The HUD is always drawn at full size.
-pub const AUTO_SCALE_PIXELS: f32 = 2_800_000.0;
+/// pixels, scaled up. The HUD is always drawn at full size. Elsewhere (a desktop card on a
+/// 1440p or 4K screen) the picture is drawn at full size up to 4K: scaled down to 2.8
+/// million pixels, a 4K screen showed a picture of 58 % its size, and the enhanced
+/// graphics looked like textures of low quality; the frame-rate governor still steps down
+/// on a card that cannot keep up.
+pub const AUTO_SCALE_PIXELS: f32 = if cfg!(target_os = "macos") || cfg!(target_os = "android") { 2_800_000.0 } else { 8_400_000.0 };
+
+/// Interior lamps one mesh may be lit by (OMSI: four; a model may list more in its
+/// `[illumination_interior]`), and the step of the lamp code sent to the shaders (`first *
+/// stride + count`, exact in the f32 it travels in for a quarter of a million lamp slots).
+pub const MAX_LAMPS_PER_MESH: u32 = 63;
+pub const LAMP_CODE_STRIDE: u32 = 64;
 
 /// The enhanced pass's second target: 1 where the bus's own screens are (`MaterialExtra::
 /// screen`), 0 elsewhere. The glow takes no light from it and FXAA passes it through.
@@ -4831,10 +4842,10 @@ impl Renderer {
         }
     }
 
-    /// Which lamps light an instance: `count` (up to four) slots from `first` (see
+    /// Which lamps light an instance: `count` (up to `MAX_LAMPS_PER_MESH`) slots from `first` (see
     /// `Instance::interior_lamps`).
     pub fn set_interior_lamps(&self, scene: &mut Scene, instance: usize, first: u32, count: u32) {
-        let code = if count == 0 { 0 } else { first * 8 + count.min(4) };
+        let code = if count == 0 { 0 } else { first * LAMP_CODE_STRIDE + count.min(MAX_LAMPS_PER_MESH) };
         let i = &mut scene.instances[instance];
         if i.interior_lamps != code {
             i.interior_lamps = code;
@@ -5427,7 +5438,9 @@ impl Renderer {
                 let far = match p.cube_eye {
                     Some(e) if p.cube_filled => {
                         let m = cam_w - e;
-                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.03
+                        // (a third of what it was: flying the free camera fast, the clouds
+                        // drifted with the old cube for 400 m and then jumped back into place)
+                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.01
                     }
                     _ => true,
                 };

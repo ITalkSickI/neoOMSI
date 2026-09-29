@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 pub struct PagesView {
     pub new_driver: String,
     pub confirm_delete: Option<std::time::Instant>,
+    /// The "reset every setting" dialog is open.
+    pub confirm_reset: bool,
     pub kb_filter: [String; 2],
     /// (section, index) of the binding waiting for a key.
     pub capturing: Option<(usize, usize)>,
@@ -40,6 +42,9 @@ pub struct PadsView {
     /// Waiting for a button of the shown device to be pressed (to add its binding).
     pub capturing: bool,
     pub dirty: bool,
+    /// The button last pressed on the shown device and when: its line is lit, so that one
+    /// sees which it is and what it does, and can give it an action there.
+    pub last_pressed: Option<(usize, std::time::Instant)>,
 }
 
 /// The set-up assistant of a device: the player lets go of everything, then turns the wheel
@@ -288,6 +293,44 @@ pub fn settings(l: &mut Launcher, area: Rect) {
     if upd.check {
         l.update.check();
     }
+    if RESET_ASKED.with(|c| c.replace(false)) {
+        l.pages.confirm_reset = true;
+    }
+}
+
+thread_local! {
+    /// "Reset all settings" was pressed (in the columns, which do not see the launcher).
+    static RESET_ASKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The dialog that asks before every setting goes back to how it came.
+pub fn reset_dialog(l: &mut Launcher) {
+    let size = l.ui.size;
+    let full = Rect::new(0.0, 0.0, size.x, size.y);
+    l.ui.solid(full);
+    l.ui.p().rect(full, omsi_ui::Color::rgba(0, 0, 0, 0.62));
+    let w = (size.x - 48.0).min(520.0);
+    let h = 190.0;
+    let r = Rect::new((size.x - w) * 0.5, (size.y - h) * 0.5, w, h);
+    l.ui.panel(r);
+    let inner = Rect::new(r.x + 24.0, r.y + 20.0, r.w - 48.0, r.h - 40.0);
+    l.ui.icon("restart_alt", Vec2::new(inner.x + 14.0, inner.y + 14.0), 26.0, DANGER);
+    l.ui.text_in("Reset every setting?", Rect::new(inner.x + 38.0, inner.y, inner.w - 38.0, 28.0), 18.0, Weight::Bold, TEXT, Align::Left);
+    l.ui.paragraph("Graphics, sound, controllers and game settings go back to how they came. The language, the drivers, the key bindings and the game folder stay.", Vec2::new(inner.x, inner.y + 40.0), inner.w, 13.0, Weight::Regular, TEXT_DIM);
+    let by = inner.bottom() - 38.0;
+    if l.ui.button("reset-no", Rect::new(inner.right() - 250.0, by, 110.0, 38.0), "Cancel", None, ButtonKind::Normal) {
+        l.pages.confirm_reset = false;
+    }
+    if l.ui.button("reset-yes", Rect::new(inner.right() - 130.0, by, 130.0, 38.0), "Reset", Some("restart_alt"), ButtonKind::Danger) {
+        let language = l.state.settings.get("language").cloned();
+        l.state.settings = core::settings_from_text(None);
+        if let Some(lang) = language {
+            l.state.settings["language"] = lang;
+        }
+        l.state.settings_dirty = 0.3;
+        l.pages.confirm_reset = false;
+        l.state.set_status("Every setting is back to how it came.", false);
+    }
 }
 
 thread_local! {
@@ -315,6 +358,9 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         *y += ROW + 4.0;
         r
     };
+    if ui.button("s-reset", row(&mut y), "Reset all settings...", Some("restart_alt"), ButtonKind::Danger) {
+        RESET_ASKED.with(|c| c.set(true));
+    }
     sel_setting(ui, s, dirty, "s-graphics", row(&mut y), "Graphics", "graphics", &[("vanilla", "Vanilla (as OMSI 2)"), ("vanilla_plus", "Vanilla+"), ("enhanced", "Enhanced")]);
     // Vanilla draws what OMSI 2 draws: no sun shadows, ambient occlusion or detail grain
     let classic = get(s, "graphics").as_str() == Some("vanilla");
@@ -399,7 +445,10 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     y += 74.0;
     ui.heading(Rect::new(inner.x, y, inner.w, 28.0), "Interface & online", Some("forum"));
     y += 32.0;
-    sel_setting(ui, s, dirty, "s-lang", row(&mut y), "Language", "language", &[("ENG", "English"), ("DEU", "Deutsch"), ("FRA", "Français"), ("RUS", "Русский")]);
+    {
+        let langs: Vec<(&str, &str)> = core::LANGUAGES.iter().map(|l| (l.0, l.1)).collect();
+        sel_setting(ui, s, dirty, "s-lang", row(&mut y), "Language", "language", &langs);
+    }
     // (the launcher speaks the chosen language at once)
     crate::ui_language(get(s, "language").as_str().unwrap_or("ENG"));
     // (texts nobody has translated: translated on this machine, see `mt`)
@@ -530,11 +579,14 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         s["wheel_lock"] = json!(if lock < 45.0 { 0.0 } else { lock.round() });
         *dirty = 0.3;
     }
+    toggle_setting(ui, s, dirty, row(&mut y), "Force feedback and vibration", "ff_enabled");
+    toggle_setting(ui, s, dirty, row(&mut y), "Keyboard pedals stay where they are (as OMSI's option)", "pedal_hold");
     toggle_setting(ui, s, dirty, row(&mut y), "Invert force feedback", "ff_invert");
     if ui.button("s-wreset", row(&mut y), "Reset wheel settings", Some("restart_alt"), ButtonKind::Normal) {
         s["wheel_range"] = json!(900.0);
         s["wheel_lock"] = json!(0.0);
         s["ff_invert"] = json!(false);
+        s["ff_enabled"] = json!(true);
         *dirty = 0.3;
     }
     // the pedals' response: softer (below 1) or stronger (above 1) than the pedal reads
@@ -934,13 +986,14 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let mut actions: Vec<String> = vec!["<none>".into()];
     actions.extend(l.state.keybindings.get("vehicles").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|b| b.get("action").and_then(|x| x.as_str()).map(String::from)).collect::<Vec<_>>()).unwrap_or_default());
     // the game's own view actions (looking around while held, the cameras, the views)
-    for a in ["view_look_left", "view_look_right", "view_look_up", "view_look_down", "view_reset_direction", "view_interiorcam_plus", "view_interiorcam_minus", "view_toggle_viewpoint", "view_set_driver", "view_set_passenger", "view_set_outside"] {
+    for a in ["gear_up", "gear_down", "view_look_left", "view_look_right", "view_look_up", "view_look_down", "view_reset_direction", "view_interiorcam_plus", "view_interiorcam_minus", "view_toggle_viewpoint", "view_set_driver", "view_set_passenger", "view_set_outside"] {
         if !actions.iter().any(|x| x == a) {
             actions.insert(1, a.to_string());
         }
     }
     actions.dedup();
     let mut dirty = false;
+    let lit = pv.last_pressed.filter(|(_, t)| t.elapsed().as_secs_f32() < 4.0).map(|(b, _)| b);
     // (the axes, then every button of the device: the list scrolls - it stopped at the ten
     // buttons that fitted)
     let list = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 50.0);
@@ -991,6 +1044,9 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                 Some(h) => format!("Hat {} {}", h / 4 + 1, ["up", "right", "down", "left"][h % 4]),
                 None => format!("Button {}", b + 1),
             };
+            if lit == Some(b) {
+                ui.p().rounded(Rect::new(r.x - 4.0, r.y - 2.0, r.w + 8.0, r.h + 4.0), 6.0, ACCENT.alpha(0.28));
+            }
             ui.label(Rect::new(r.x, r.y, 90.0, r.h), &label);
             let mut sel = actions.iter().position(|a| a.eq_ignore_ascii_case(act)).unwrap_or(0);
             if ui.select(&format!("pad-btn-{b}"), Rect::new(r.x + 90.0, r.y, r.w - 90.0, r.h), &mut sel, &actions) {
@@ -1014,7 +1070,16 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             if pv.capturing {
                 pv.capturing = false;
             }
-            l.state.set_status(format!("{name}: button {} - choose what it does", n + 1), false);
+            pv.last_pressed = Some((n, std::time::Instant::now()));
+            let now = d.buttons.get(n).map(|b| b.0.clone()).filter(|a| !a.is_empty());
+            let label = match n.checked_sub(crate::controllers::HAT_BUTTONS) {
+                Some(h) => format!("hat {} {}", h / 4 + 1, ["up", "right", "down", "left"][h % 4]),
+                None => format!("button {}", n + 1),
+            };
+            l.state.set_status(match now {
+                Some(a) => format!("{name}: {label} - {} (lit in the list: choose another there)", action_label(&a)),
+                None => format!("{name}: {label} - nothing yet (lit in the list: choose what it does)"),
+            }, false);
         }
     }
     let add_r = Rect::new(inner.x, inner.bottom() - 40.0, 260.0, 36.0);

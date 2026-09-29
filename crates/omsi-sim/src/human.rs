@@ -1916,6 +1916,21 @@ impl Pose {
             let hip_at = pelvis_m.transform_point3(rig.hip[side]);
             let fwd = (foot_fwd[side] + pelvis_fwd).normalize_or(Vec3::Y);
             let pole = fwd + Vec3::Z * 0.25;
+            // Seated, the feet go where a sitting body puts them: the thigh along the seat,
+            // the shin hanging down. A floor further down than that (a seat on a podium or
+            // over a wheel arch) is not reached by stretching the leg straight at it - the
+            // leg ran diagonally through the seat's front - the feet hang above it instead.
+            if sit > 0.5 {
+                let flat = Vec3::new(pelvis_fwd.x, pelvis_fwd.y, 0.0).normalize_or(Vec3::Y);
+                let knee_n = hip_at + flat * rig.thigh * 0.95;
+                let hang = knee_n - Vec3::Z * rig.shin * 0.97;
+                if ankle_t[side].z < hang.z - 0.12 || (ankle_t[side] - hip_at).length() > (rig.thigh + rig.shin) * 0.99 {
+                    let blend = ((sit - 0.5) * 2.0).clamp(0.0, 1.0);
+                    let floor_z = ankle_t[side].z.max(hang.z);
+                    let target = Vec3::new(hang.x, hang.y, floor_z);
+                    ankle_t[side] = ankle_t[side] + (target - ankle_t[side]) * blend;
+                }
+            }
             let (knee_at, ankle_at, hinge) =
                 two_bone(hip_at, rig.thigh, rig.shin, ankle_t[side], pole);
             let side_v = hinge;

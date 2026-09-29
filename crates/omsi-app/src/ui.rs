@@ -511,10 +511,9 @@ impl Ui {
             // (the line under the mouse is the one lit; the keyboard's choice only while the
             // mouse is off the lines - both lit at once read as two choices)
             let over = |rect: [f32; 4]| f.cursor.0 >= rect[0] && f.cursor.0 <= rect[2] && f.cursor.1 >= rect[1] && f.cursor.1 <= rect[3];
-            let any_hovered = (0..rows.min(items.len().saturating_sub(start))).any(|k| {
-                let ry = y + title_h + row_h * k as f32;
-                over([x + 8.0 * s, ry, x + w - 12.0 * s, ry + row_h - 6.0 * s])
-            });
+            // (the whole panel: in the gaps between the lines the keyboard's choice, the top
+            // line, lit up for a moment as the mouse went down the list)
+            let any_hovered = over([x, y, x + w, y + h]);
             for (k, (id, label)) in items.iter().enumerate().skip(start).take(rows) {
                 let ry = y + title_h + row_h * (k - start) as f32;
                 let rect = [x + 8.0 * s, ry, x + w - 12.0 * s, ry + row_h - 6.0 * s];
