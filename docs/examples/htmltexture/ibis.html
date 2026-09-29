@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        html,body{margin:0;width:800px;height:480px;background:#101820;color:#ffb000;font-family:sans-serif}
+        #speed{font-size:200px;text-align:center;margin-top:30px}
+        #stop{font-size:56px;text-align:center}
+    </style>
+</head>
+<body>
+<div id="speed">0</div>
+<div id="stop"></div>
+<script>
+    window.omsi = window.omsi || {};
+    window.omsi.update = function (d) {
+        if (d.num && "velocity_kmh" in d.num) document.getElementById("speed").textContent = Math.round(d.num.velocity_kmh);
+        if (d.str && "next_stop" in d.str) document.getElementById("stop").textContent = d.str.next_stop;
+    };
+</script>
+</body>
+</html>
