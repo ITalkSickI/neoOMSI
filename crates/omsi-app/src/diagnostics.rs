@@ -43,12 +43,17 @@ pub(crate) fn standing_reasons(v: &omsi_sim::VehicleInstance) -> Vec<String> {
                 .filter_map(|i| v.var(&format!("bremse_p_Tank0{i}")).or_else(|| v.var(&format!("air_tank_{i}"))))
                 .collect();
             let low = tanks.iter().copied().fold(f32::MAX, f32::min);
+            // (with the tanks full the spring brake is held by the bus's own parking brake,
+            // whatever its script calls it, not by a want of air)
+            let full = !tanks.is_empty() && low >= 6.0e5;
             let tank = if tanks.is_empty() {
                 String::new()
             } else {
                 format!("{:.1} bar in the tanks, ", low / 1e5)
             };
-            lines.push(format!("Air pressure is low ({tank}spring brake {:.1} bar): the spring brake holds until the compressor has filled the tanks - keep the engine running", fba / 1e5));
+            if !full {
+                lines.push(format!("Air pressure is low ({tank}spring brake {:.1} bar): the spring brake holds until the compressor has filled the tanks - keep the engine running", fba / 1e5));
+            }
         }
     }
     if v.var("bremse_halte_sw").unwrap_or(0.0) > 0.5
@@ -59,7 +64,16 @@ pub(crate) fn standing_reasons(v: &omsi_sim::VehicleInstance) -> Vec<String> {
             "Stop brake / door release is on: the bus stands until it is switched off".to_string(),
         );
     }
-    if (0..4).any(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.05) {
+    // what the passengers are told is open (OMSI's `PAX_Entry<n>_Open` / `PAX_Exit<n>_Open`);
+    // the door leaves' `door_<n>` only where a bus has none of those - mods put other things
+    // in `door_<n>`, and a Hong Kong bus with its doors shut said they were open
+    let pax: Vec<f32> = (0..8).flat_map(|i| [v.var(&format!("PAX_Entry{i}_Open")), v.var(&format!("PAX_Exit{i}_Open"))]).flatten().collect();
+    let open = if pax.is_empty() {
+        (0..4).any(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.05)
+    } else {
+        pax.iter().any(|x| *x > 0.5)
+    };
+    if open {
         lines.push("Doors are open".to_string());
     }
     lines

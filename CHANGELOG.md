@@ -97,6 +97,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Camera monitors: `reflexionN.bmp` is camera N's picture wherever a vehicle's material
   names it (its light map, night map, a `[matl_item]` switched on by the script), not only
   as the plain texture - monitors that show the camera once switched on were white.
+- "Doors are open" follows what the passengers are told is open (`PAX_Entry/Exit<n>_Open`)
+  - mods use `door_<n>` for other things, and a bus with its doors shut said they were open;
+  "Air pressure is low" is no longer said with the tanks full (the spring brake is then held
+  by the bus's own parking brake).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
