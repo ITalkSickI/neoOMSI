@@ -694,7 +694,8 @@ impl Launcher {
         // finger meanwhile
         let dialog = self.update_dialog_open();
         let crash = !dialog && self.state.crash.is_some();
-        let saved = (self.browser.is_some() || dialog || crash).then(|| {
+        let reset = !dialog && !crash && self.pages.confirm_reset;
+        let saved = (self.browser.is_some() || dialog || crash || reset).then(|| {
             let i = self.ui.input.clone();
             self.ui.input.mouse = Vec2::new(-1e4, -1e4);
             self.ui.input.pressed = false;
@@ -745,6 +746,8 @@ impl Launcher {
                 self.draw_update_dialog();
             } else if crash {
                 self.draw_crash_dialog();
+            } else if reset {
+                pages::reset_dialog(self);
             } else {
                 self.draw_browser();
             }

@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 pub struct PagesView {
     pub new_driver: String,
     pub confirm_delete: Option<std::time::Instant>,
+    /// The "reset every setting" dialog is open.
+    pub confirm_reset: bool,
     pub kb_filter: [String; 2],
     /// (section, index) of the binding waiting for a key.
     pub capturing: Option<(usize, usize)>,
@@ -288,6 +290,44 @@ pub fn settings(l: &mut Launcher, area: Rect) {
     if upd.check {
         l.update.check();
     }
+    if RESET_ASKED.with(|c| c.replace(false)) {
+        l.pages.confirm_reset = true;
+    }
+}
+
+thread_local! {
+    /// "Reset all settings" was pressed (in the columns, which do not see the launcher).
+    static RESET_ASKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The dialog that asks before every setting goes back to how it came.
+pub fn reset_dialog(l: &mut Launcher) {
+    let size = l.ui.size;
+    let full = Rect::new(0.0, 0.0, size.x, size.y);
+    l.ui.solid(full);
+    l.ui.p().rect(full, omsi_ui::Color::rgba(0, 0, 0, 0.62));
+    let w = (size.x - 48.0).min(520.0);
+    let h = 190.0;
+    let r = Rect::new((size.x - w) * 0.5, (size.y - h) * 0.5, w, h);
+    l.ui.panel(r);
+    let inner = Rect::new(r.x + 24.0, r.y + 20.0, r.w - 48.0, r.h - 40.0);
+    l.ui.icon("restart_alt", Vec2::new(inner.x + 14.0, inner.y + 14.0), 26.0, DANGER);
+    l.ui.text_in("Reset every setting?", Rect::new(inner.x + 38.0, inner.y, inner.w - 38.0, 28.0), 18.0, Weight::Bold, TEXT, Align::Left);
+    l.ui.paragraph("Graphics, sound, controllers and game settings go back to how they came. The language, the drivers, the key bindings and the game folder stay.", Vec2::new(inner.x, inner.y + 40.0), inner.w, 13.0, Weight::Regular, TEXT_DIM);
+    let by = inner.bottom() - 38.0;
+    if l.ui.button("reset-no", Rect::new(inner.right() - 250.0, by, 110.0, 38.0), "Cancel", None, ButtonKind::Normal) {
+        l.pages.confirm_reset = false;
+    }
+    if l.ui.button("reset-yes", Rect::new(inner.right() - 130.0, by, 130.0, 38.0), "Reset", Some("restart_alt"), ButtonKind::Danger) {
+        let language = l.state.settings.get("language").cloned();
+        l.state.settings = core::settings_from_text(None);
+        if let Some(lang) = language {
+            l.state.settings["language"] = lang;
+        }
+        l.state.settings_dirty = 0.3;
+        l.pages.confirm_reset = false;
+        l.state.set_status("Every setting is back to how it came.", false);
+    }
 }
 
 thread_local! {
@@ -315,6 +355,9 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         *y += ROW + 4.0;
         r
     };
+    if ui.button("s-reset", row(&mut y), "Reset all settings...", Some("restart_alt"), ButtonKind::Danger) {
+        RESET_ASKED.with(|c| c.set(true));
+    }
     sel_setting(ui, s, dirty, "s-graphics", row(&mut y), "Graphics", "graphics", &[("vanilla", "Vanilla (as OMSI 2)"), ("vanilla_plus", "Vanilla+"), ("enhanced", "Enhanced")]);
     // Vanilla draws what OMSI 2 draws: no sun shadows, ambient occlusion or detail grain
     let classic = get(s, "graphics").as_str() == Some("vanilla");

@@ -116,6 +116,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - OMSI's held keyboard pedals: Settings → Controllers → *Keyboard pedals stay where they
   are* (and Esc → More → Options). Tap the brake and it keeps that pressure until the
   throttle is tapped, and the other way round.
+- Settings → *Reset all settings...*: every setting back to how it came (the language, the
+  drivers, the key bindings and the game folder stay), after a dialog that asks first. The
+  quality presets are under Performance.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
