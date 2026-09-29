@@ -360,6 +360,9 @@ impl Interp {
                     }
                     other => (self.eval(other, env)?, Val::Undef),
                 };
+                if !matches!(f, Val::Nat(_) | Val::Func(_)) {
+                    return Err(format!("not a function: {}(...)", describe_expr(callee)));
+                }
                 self.call(f, this, argv)?
             }
         })
@@ -821,5 +824,20 @@ impl Interp {
                 Val::Elem(self.dom.create(&tag))
             }
         }
+    }
+}
+
+/// Short source-like text of an expression, for error messages (`document.foo`, `a[..]`).
+fn describe_expr(e: &Expr) -> String {
+    match e {
+        Expr::Ident(n) => n.clone(),
+        Expr::Str(t) => format!("{t:?}"),
+        Expr::Num(n) => fmt_num(*n),
+        Expr::Member(o, k) => match k.as_ref() {
+            Expr::Str(t) => format!("{}.{t}", describe_expr(o)),
+            _ => format!("{}[..]", describe_expr(o)),
+        },
+        Expr::Call(c, _) => format!("{}(...)", describe_expr(c)),
+        _ => "<expr>".into(),
     }
 }

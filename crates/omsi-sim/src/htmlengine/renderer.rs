@@ -33,7 +33,7 @@ impl EngineRenderer {
             match js.run(s) {
                 Ok(()) => log::debug!("htmltexture: script {n} ran ({} steps)", js.steps),
                 Err(e) => {
-                    log::warn!("htmltexture: script error: {e}");
+                    log::warn!("htmltexture: script {n} error: {e}");
                     warned = true;
                 }
             }
