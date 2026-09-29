@@ -390,8 +390,15 @@ fn exec_op(s: &mut Stacks, op: &Op, p: &Program, state: &mut State, host: &mut d
             s.push_str(v)
         }
         Op::StrRepeat => {
-            let n = s.pop().trunc().max(0.0).min(10000.0) as usize;
-            let v = s.pop_str().repeat(n);
+            // Omsi.exe (op 0x21): the pattern repeated to fill `Round(n)` characters, cut
+            // there ("ab" 3 `$*` is "aba"); 1000 or more gives "ERROR"
+            let n = s.pop();
+            let pat = s.pop_str();
+            let v = if n >= 1000.0 {
+                "ERROR".to_string()
+            } else {
+                pat.chars().cycle().take(if pat.is_empty() { 0 } else { omsi_round(n) }).collect()
+            };
             s.push_str(v)
         }
         Op::StrLength => {
@@ -418,29 +425,29 @@ fn exec_op(s: &mut Stacks, op: &Op, p: &Program, state: &mut State, host: &mut d
             s.push_str(v)
         }
         Op::StrCutBegin => {
-            let n = s.pop().trunc().max(0.0) as usize;
+            let n = omsi_round(s.pop());
             let v: String = s.pop_str().chars().skip(n).collect();
             s.push_str(v)
         }
         Op::StrCutEnd => {
-            let n = s.pop().trunc().max(0.0) as usize;
+            let n = omsi_round(s.pop());
             let src = s.pop_str();
             let len = src.chars().count();
             let v: String = src.chars().take(len.saturating_sub(n)).collect();
             s.push_str(v)
         }
         Op::StrSetLengthL => {
-            let n = s.pop().trunc().max(0.0) as usize;
+            let n = omsi_round(s.pop());
             let v = set_length(&s.pop_str(), n, Align::Left);
             s.push_str(v)
         }
         Op::StrSetLengthR => {
-            let n = s.pop().trunc().max(0.0) as usize;
+            let n = omsi_round(s.pop());
             let v = set_length(&s.pop_str(), n, Align::Right);
             s.push_str(v)
         }
         Op::StrSetLengthC => {
-            let n = s.pop().trunc().max(0.0) as usize;
+            let n = omsi_round(s.pop());
             let v = set_length(&s.pop_str(), n, Align::Center);
             s.push_str(v)
         }
@@ -491,6 +498,13 @@ fn b2f(b: bool) -> f32 {
     } else {
         0.0
     }
+}
+
+/// Delphi's `Round` of a string function's count (ties to even, as the FPU rounds), none
+/// below 0: Omsi.exe rounds the counts of `$cutBegin`, `$cutEnd`, `$SetLength*` and `$*`.
+fn omsi_round(v: f32) -> usize {
+    let r = (v as f64).round_ties_even();
+    if r.is_finite() && r > 0.0 { r.min(1e9) as usize } else { 0 }
 }
 
 #[derive(Clone, Copy)]
