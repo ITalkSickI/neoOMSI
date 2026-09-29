@@ -800,9 +800,20 @@ impl App {
         if self.view == "foot" && self.inside_remote.is_some() {
             return;
         }
-        // on foot, only from inside the own bus
+        // on foot: the own bus's switches, doors and flaps from inside it or standing by it
+        // (a hand's reach round its body; the click still has to hit one of its meshes)
         if self.view == "foot" && self.foot_bus() != Some(crate::humans::BusId::Player) {
-            return;
+            let near = match (self.player.as_ref(), self.camera.as_ref()) {
+                (Some(p), Some(c)) => {
+                    let bb = p.vehicle.ty.def.bounding_box.unwrap_or([2.5, 12.0, 3.0, 0.0, 0.0, 1.5]);
+                    let reach = (bb[0].max(bb[1]) as f64) * 0.5 + 3.0;
+                    (c.position - p.vehicle.position).length() < reach
+                }
+                _ => false,
+            };
+            if !near {
+                return;
+            }
         }
         if let (Some(p), Some(cam), Some(s)) = (
             self.player.as_mut(),
