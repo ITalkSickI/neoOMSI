@@ -2065,11 +2065,16 @@ impl World {
     /// step (1 m) over them - a station's floor under its roof, a car park's level under the
     /// deck above - else [`World::walk_height`]'s highest one. (Asked for the highest, the
     /// people of an indoor station stood on its roof.)
+    ///
+    /// Nothing under them within 3 m: the highest face, but only up to 1.5 m over them - a
+    /// pavement whose tile came after them. Omsi.exe keeps its people at the heights of
+    /// their paths and waiting places; the highest face, a bus shelter's roof 2.5 m up, put
+    /// the people waiting under it on top of it.
     pub fn walk_height_near(&self, x: f64, y: f64, near: f64) -> Option<f64> {
         let probe = drive_probe(&self.terrains, &self.surfaces, x, y, near + 1.0);
         match probe.below {
             Some(b) if near - b < 3.0 => Some(b),
-            _ => self.walk_height(x, y),
+            _ => self.walk_height(x, y).filter(|z| *z < near + 1.5),
         }
     }
 
@@ -8339,7 +8344,12 @@ fn material_extra(
     MaterialExtra {
         env_mask,
         no_z_write: ov.iter().any(|o| o.no_z_write),
-        no_z_check: ov.iter().any(|o| o.no_z_check),
+        // `[matl_noZcheck]` leaves Omsi.exe's depth test on: its draw of the slot (0x7fd6c4)
+        // never reads the flag, which only adds a colourless stencil pass marking the panes
+        // for the raindrops (0x7c32c4 -> 0x7fc58c, ZENABLE 1, blend ZERO/ONE). Taken as "no
+        // depth test", the Sprinter's inner window glass (flagged so) was drawn over the
+        // body skin round every opening. OMSI_NOZCHECK_BIAS=1: the old reading.
+        no_z_check: ov.iter().any(|o| o.no_z_check) && omsi_cfg::env::var_os("OMSI_NOZCHECK_BIAS").is_some(),
         z_bias: ov.iter().map(|o| o.z_bias).find(|b| *b != 0).unwrap_or(0),
         specular,
         bump: bump.filter(|b| b.1.is_finite() && b.1 != 0.0),
@@ -9821,7 +9831,10 @@ impl World {
                 }
             }
         }
-        if ordered && omsi_cfg::env::var_os("OMSI_NO_MODEL_ORDER").is_none() {
+        // (opt-in for now with OMSI_MODEL_ORDER=1: drawn so, the bodies of the Sprinter,
+        // the Mercus, the Urbino 15 and the Lion's City showed the saloon through half their
+        // panels)
+        if ordered && omsi_cfg::env::var_os("OMSI_MODEL_ORDER").is_some() {
             log::debug!("{}: drawn in model order (a blended slot writes depth before an opaque one)", vt.def.path.display());
             for &i in &instances {
                 if scene.instances.get(i).is_some_and(|x| !x.blob) {
@@ -10856,7 +10869,7 @@ mod material_tests {
             Some((3, 0.1)),
             [0.2, 0.2, 0.2, 10.0],
         );
-        assert!(e.no_z_write && e.no_z_check);
+        assert!(e.no_z_write && !e.no_z_check);
         assert_eq!(e.z_bias, 16);
         assert_eq!(e.env_mask, Some(7));
         assert_eq!(e.specular, [0.2, 0.2, 0.2, 10.0]);

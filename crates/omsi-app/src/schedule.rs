@@ -1586,6 +1586,42 @@ impl Schedule {
     }
 
     /// How many due departures are still waiting to be put on the road.
+    /// Omsi.exe's station targets (0x61cb18): per bus stop, the stops the timetable's trips
+    /// go on to from there, each with the termini of the trips that do. A passenger waiting
+    /// at the stop wants one of these targets and boards a bus whose terminus is among its
+    /// termini (0x61c33c); the names compare exactly.
+    pub fn stop_targets(&self) -> HashMap<i64, Vec<HashSet<String>>> {
+        let name_of = |id: i64| {
+            self.data
+                .bus_stops
+                .iter()
+                .find(|b| b.object_id == id)
+                .map(|b| b.name.trim().to_string())
+                .unwrap_or_else(|| id.to_string())
+        };
+        let mut named: HashMap<i64, Vec<(String, HashSet<String>)>> = HashMap::new();
+        for trip in &self.data.trips {
+            let stations = trip_stations(trip);
+            let terminus = trip.terminus.trim().to_string();
+            for (k, from) in stations.iter().enumerate() {
+                let targets = named.entry(*from).or_default();
+                for to in &stations[k + 1..] {
+                    let to = name_of(*to);
+                    match targets.iter_mut().find(|t| t.0 == to) {
+                        Some(t) => {
+                            t.1.insert(terminus.clone());
+                        }
+                        None => targets.push((to, HashSet::from_iter([terminus.clone()]))),
+                    }
+                }
+            }
+        }
+        named
+            .into_iter()
+            .map(|(id, t)| (id, t.into_iter().map(|t| t.1).collect()))
+            .collect()
+    }
+
     pub fn pending(&self) -> usize {
         self.pending.len()
     }
@@ -2095,6 +2131,7 @@ impl Schedule {
             set_ai_destination(&mut car.vehicle, hof.as_deref(), &line, &terminus);
             if let Some(b) = car.bus.as_mut() {
                 b.route_open = end < slots.len();
+                b.terminus = terminus.clone();
             }
             let id = car.id;
             self.car_departure.insert(id, i);
@@ -2248,6 +2285,7 @@ impl Schedule {
             b.layover = departure > day_time
                 && b.stops.front().map(|st| st.ri == 0 && (st.s - s).abs() < 2.0).unwrap_or(false);
             b.route_open = end < slots.len();
+            b.terminus = terminus.clone();
         }
         // the bus scripts read the line/terminus for their displays
         if let Some(i) = ty.program.str_var("Linie") {
