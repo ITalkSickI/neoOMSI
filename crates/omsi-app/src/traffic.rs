@@ -4257,13 +4257,13 @@ impl Traffic {
     /// with a `[speedlimit]`) while a train's route is about to enter the track its signal
     /// route covers and no other train is on it; otherwise it shows stop (and falls back to
     /// stop behind the train that passed it).
-    pub fn signal_aspects(&self, routes: &[omsi_map::ailists::SignalRoute]) -> hashbrown::HashMap<i64, f32> {
+    pub fn signal_aspects(&self, routes: &[omsi_map::ailists::SignalRoute], player_rail: Option<(usize, bool)>) -> hashbrown::HashMap<i64, f32> {
         let mut out: hashbrown::HashMap<i64, f32> = hashbrown::HashMap::new();
         if routes.is_empty() {
             return out;
         }
         // per train: the map ids it stands on and those of its next lanes
-        let trains: Vec<(i64, Vec<i64>)> = self
+        let mut trains: Vec<(i64, Vec<i64>)> = self
             .cars
             .iter()
             .filter(|c| !c.state.route.is_empty() && self.net.lanes.get(c.state.lane).map(|l| l.kind == omsi_sim::traffic::LaneKind::Rail).unwrap_or(false))
@@ -4273,6 +4273,33 @@ impl Traffic {
                 (here, ahead)
             })
             .collect();
+        // the player's own train (driven on the rails): the lanes ahead of it the way it goes,
+        // every branch at a fork (which it takes is not known yet) - its signals stayed at
+        // stop, only an AI train ever cleared them
+        if let Some((lane, along)) = player_rail.filter(|(l, _)| *l < self.net.lanes.len()) {
+            let here = self.net.lanes[lane].key.map(|k| k.id).unwrap_or(-1);
+            let mut ahead: Vec<i64> = Vec::new();
+            let mut frontier = vec![lane];
+            for _ in 0..6 {
+                let mut next = Vec::new();
+                for l in frontier {
+                    let nb: Vec<usize> = if along { self.net.lanes[l].next.clone() } else { self.net.prev.get(l).cloned().unwrap_or_default() };
+                    for n in nb {
+                        if let Some(k) = self.net.lanes.get(n).and_then(|x| x.key) {
+                            if !ahead.contains(&k.id) {
+                                ahead.push(k.id);
+                            }
+                        }
+                        next.push(n);
+                    }
+                }
+                frontier = next;
+                if frontier.len() > 32 {
+                    break;
+                }
+            }
+            trains.push((here, ahead));
+        }
         for r in routes {
             let pieces: hashbrown::HashSet<i64> = r.entries.iter().map(|e| e[0]).collect();
             let occupied = trains.iter().any(|(here, _)| pieces.contains(here));

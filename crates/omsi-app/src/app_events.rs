@@ -393,7 +393,8 @@ impl ApplicationHandler for App {
                         t.tick(dt, self.player.as_ref().map(|p| player_outline(p)));
                         if let Some(w) = self.world.as_ref() {
                             w.set_switches(&t.switch_requests());
-                            w.set_signals(&t.signal_aspects(&w.signal_routes));
+                            let rail = self.player.as_ref().and_then(|p| p.rail.as_ref()).map(|r| (r.lane, r.along));
+                            w.set_signals(&t.signal_aspects(&w.signal_routes, rail));
                         }
                     }
                     *self.profile.entry("traffic.tick").or_default() +=

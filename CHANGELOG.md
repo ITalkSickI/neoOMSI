@@ -125,6 +125,8 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Controls → Game controllers: a button pressed on the wheel lights its line in the list for
   a few seconds, and the status line says which button it is and what it does - press it and
   give it an action right there.
+- Railway signals clear for the player's own train as well (driven on the rails): its
+  signals stayed at stop, as only an AI train ever asked for them.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
