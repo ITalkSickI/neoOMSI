@@ -382,8 +382,8 @@ struct StagedSpline {
     /// Every profile of it is blended (`[matl_alpha] 2`): a layer laid over the ground or a
     /// road, not a surface of its own (see `prepare_surfaces`).
     overlay: bool,
-    /// Only ground-bearing splines may cut the terrain. Decorative geometry such as
-    /// overhead power lines must never write a terrain mask or ground height.
+    /// It is ground (see `SPLINE_OVERHEAD`): it goes into the surface raster, cutting the
+    /// terrain where that comes up through it. Overhead wires do not.
     cuts_terrain: bool,
     /// It stands clear of the ground all along (see `SPLINE_SHADOW_CLEARANCE`): it casts a
     /// sun shadow.
@@ -395,6 +395,22 @@ struct StagedSpline {
 /// terrain does not - a caster in one plane with what it falls on paints dark patches into
 /// it (the sun shadow's bias is 6 cm). Splines are surfaces and cast nothing otherwise.
 const SPLINE_SHADOW_CLEARANCE: f32 = 0.75;
+
+/// A spline whose profiles all hang this far (m) over its line - wires, catenaries, a
+/// canopy - is no ground surface: it neither cuts the terrain nor carries anything.
+const SPLINE_OVERHEAD: f32 = 2.0;
+
+/// Does every profile of the spline hang `SPLINE_OVERHEAD` or more over its line?
+fn overhead_only(def: &omsi_scenery::sli::Spline) -> bool {
+    !def.profiles.is_empty() && def.profiles.iter().all(|p| !p.points.is_empty() && p.points.iter().all(|q| q.z >= SPLINE_OVERHEAD))
+}
+
+/// Which `parklist_p` a car park draws from: its first map string, as a number (Omsi.exe
+/// sub_79c8b8 - `StrToInt`, 0 when that fails or there is none). 0 is `parklist_p.txt`,
+/// n is `parklist_p_n.txt`.
+fn parklist_index(strings: &[String]) -> usize {
+    strings.first().and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(0)
+}
 
 /// A tile read and tessellated, its objects typed but not yet standing on the ground. Kept
 /// (by [`World::prepare_tiles`]) while a loaded tile or one on its way depends on it.
@@ -3042,12 +3058,13 @@ impl World {
                 let drivable = st.def.paths.iter().any(|pd| pd.kind == 0 || pd.kind == 1);
                 let overlay = !st.def.profiles.is_empty()
                     && st.def.profiles.iter().all(|p| st.def.textures.get(p.texture).is_some_and(|t| t.alpha == 2));
-                // A spline's visible profile is not necessarily a ground surface.
-                // Power cables, fences and overhead trim can have horizontal quads;
-                // rasterizing them used to erase terrain under their footprints.
-                // Height profiles identify authored ground-bearing surfaces, while
-                // road/footway paths also count as ground-bearing splines.
-                let cuts_terrain = !st.def.height_profiles.is_empty() || drivable;
+                // A spline's visible profile is not necessarily a ground surface: power
+                // cables and overhead trim have horizontal quads, and in the raster they cut
+                // the ground up to their own height and stood in for the surface there. Only
+                // one whose every profile hangs at least `SPLINE_OVERHEAD` over the spline's
+                // line stays out; a wall, an embankment or a waterside without paths or
+                // height profiles (Moges' `embankment.sli`) is ground all the same.
+                let cuts_terrain = !overhead_only(&st.def) || !st.def.height_profiles.is_empty() || drivable;
                 out.splines.push(StagedSpline {
                     shape,
                     ty: st,
@@ -3250,8 +3267,7 @@ impl World {
         if !ot.sco.is_car_park {
             return Some((ot, false));
         }
-        let index = captions.first().and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(0);
-        let list = self.parked_car_types(index);
+        let list = self.parked_car_types(parklist_index(captions));
         if list.is_empty() {
             return Some((ot, false));
         }
@@ -4270,8 +4286,7 @@ impl World {
                         // (a blended layer - Westcountry's lane darkeners over the painted
                         // ground of its junctions - cuts no ground away: under it the ground
                         // is what shows through, and cut away it was the sky)
-                        // Decorative splines are rendered, but cannot remove terrain or
-                        // masquerade as a road in the surface/ground raster.
+                        // (nor do wires overhead: see `SPLINE_OVERHEAD`)
                         if !sp.cuts_terrain || sp.overlay || outside(&sp.bounds) {
                             continue;
                         }
@@ -9919,9 +9934,7 @@ impl World {
                             && vt.mesh_boxes[..mesh_index].iter().any(|&(l2, h2)| (l2 - lo).abs().max_element() < 0.03 && (h2 - hi).abs().max_element() < 0.03)
                     });
                     let repair_body_depth = !layer && is_vehicle_body_material(&def.file, &m.texture, tex.is_some(), transmap.is_some(), ov.iter().any(|o| o.no_z_write), body_hint);
-                    // An opaque O3D diffuse alpha does not identify the legacy
-                    // reflection-mask case: preserve authored [matl_alpha] 2 layers.
-                    if repair_body_depth && m.diffuse[3] < 0.999 && !dirt_overlay && !transparent_layer_hint {
+                    if repair_body_depth && !dirt_overlay && !transparent_layer_hint {
                         alpha = AlphaMode::Opaque;
                     }
                     // Body-volume heuristics must never turn a named pane back into an
@@ -10383,6 +10396,29 @@ fn object_lanes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A wire strung 5.5 m over its spline is no ground; a wall standing on it, or a
+    /// catenary spline that has a track bed at the bottom, is.
+    #[test]
+    fn only_splines_all_overhead_leave_the_ground() {
+        use omsi_scenery::sli::{Spline, SplineProfile, SplineProfilePoint};
+        let prof = |zs: &[f32]| SplineProfile { texture: 0, points: zs.iter().map(|&z| SplineProfilePoint { x: z, z, ..Default::default() }).collect() };
+        let def = |ps: Vec<SplineProfile>| Spline { profiles: ps, ..Default::default() };
+        assert!(overhead_only(&def(vec![prof(&[5.5, 5.6]), prof(&[2.0, 2.0])])));
+        assert!(!overhead_only(&def(vec![prof(&[0.0, 2.4])])));
+        assert!(!overhead_only(&def(vec![prof(&[5.5, 5.6]), prof(&[-0.2, 0.0])])));
+        assert!(!overhead_only(&def(vec![])));
+    }
+
+    /// The car park's first string picks the list; anything that is no number is list 0.
+    #[test]
+    fn a_car_park_picks_its_parklist_by_its_first_string() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(parklist_index(&s(&[])), 0);
+        assert_eq!(parklist_index(&s(&["2", "x"])), 2);
+        assert_eq!(parklist_index(&s(&[" 1 "])), 1);
+        assert_eq!(parklist_index(&s(&["Taxi"])), 0);
+    }
 
     /// A `[terrainmapping]` slot (TH_Wald's Fels01: rock in slot 0, grass top in slot 1)
     /// leaves the object's own mesh and comes back in tile space, where the ground under the
