@@ -1026,7 +1026,7 @@ impl ApplicationHandler for App {
                         let cams = &p.vehicle.ty.def.cameras_reflexion;
                         let f = cam.forward();
                         let best = (0..cams.len())
-                            .map(|i| (i, (p.vehicle.camera_world_full(&cams[i]).0 - cam.position).as_vec3().normalize_or_zero().dot(f)))
+                            .map(|i| (i, (p.vehicle.camera_world_full(&crate::camera_util::reflexion_camera(&cams[i])).0 - cam.position).as_vec3().normalize_or_zero().dot(f)))
                             .max_by(|a, b| a.1.total_cmp(&b.1))
                             .map(|(i, _)| i);
                         if let Some(i) = best {

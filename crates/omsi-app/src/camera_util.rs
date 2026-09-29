@@ -282,6 +282,16 @@ fn mirror_in_view(eye: DVec3, radius: f32, view: &(Camera, f32)) -> bool {
 /// Draw the views of the vehicle's `[add_camera_reflexion]` cameras into its mirror textures.
 /// `only`: render just one mirror, the `i % n`-th of those `view` sees (round robin, as
 /// OMSI takes its turns among the mirrors in the picture; with no view, of all of them).
+/// A mirror's camera as OMSI turns it: the yaw of an `[add_camera_reflexion]` goes the other
+/// way round from a driver camera's - the picture is what the mirror reflects. Read like a
+/// driver camera, every stock mirror looked in at the bus's own side (the SD200's left mirror
+/// at 169 degrees, its right one at 201) and showed little else; OMSI's own pictures of them
+/// (the SD202's `reflexion0.bmp` placeholder) look back and a little outwards, the bus a narrow
+/// strip at the edge.
+pub(crate) fn reflexion_camera(c: &omsi_vehicle::Camera) -> omsi_vehicle::Camera {
+    omsi_vehicle::Camera { yaw: -c.yaw, ..c.clone() }
+}
+
 pub(crate) fn render_mirrors(
     renderer: &mut Renderer,
     scene: &mut Scene,
@@ -291,7 +301,7 @@ pub(crate) fn render_mirrors(
     only: Option<usize>,
     view: Option<(Camera, f32)>,
 ) {
-    let cams = p.vehicle.ty.def.cameras_reflexion.clone();
+    let cams: Vec<omsi_vehicle::Camera> = p.vehicle.ty.def.cameras_reflexion.iter().map(reflexion_camera).collect();
     if cams.is_empty() {
         return;
     }
