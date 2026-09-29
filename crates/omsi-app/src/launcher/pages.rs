@@ -531,6 +531,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         *dirty = 0.3;
     }
     toggle_setting(ui, s, dirty, row(&mut y), "Force feedback and vibration", "ff_enabled");
+    toggle_setting(ui, s, dirty, row(&mut y), "Keyboard pedals stay where they are (as OMSI's option)", "pedal_hold");
     toggle_setting(ui, s, dirty, row(&mut y), "Invert force feedback", "ff_invert");
     if ui.button("s-wreset", row(&mut y), "Reset wheel settings", Some("restart_alt"), ButtonKind::Normal) {
         s["wheel_range"] = json!(900.0);

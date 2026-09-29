@@ -57,6 +57,10 @@ pub struct KeyboardAxes {
     /// without `[autoCenter]`.
     pub old_steering: bool,
     pub lock_curvature: f32,
+    /// OMSI's held pedals: a pedal let go stays where the key left it, until the other
+    /// pedal's key is pressed (which lets it go at once) - tap the brake and it keeps that
+    /// pressure until the throttle is tapped.
+    pub pedal_hold: bool,
 }
 
 impl KeyboardAxes {
@@ -86,6 +90,7 @@ impl KeyboardAxes {
             linear: self.linear,
             old_steering: self.old_steering,
             lock_curvature: self.lock_curvature,
+            pedal_hold: self.pedal_hold,
             ..Default::default()
         };
     }
@@ -99,8 +104,20 @@ impl KeyboardAxes {
             }
         };
         let amp = if self.amplify_key { 3.0 } else { 1.0 };
-        ramp(&mut self.throttle, self.throttle_key, 1.5 * amp, 3.0);
-        ramp(&mut self.brake, self.brake_key, 1.5, 3.0);
+        if self.pedal_hold {
+            // each key moves its pedal up while held; let go, the pedal stays; the other
+            // pedal's key takes it off
+            if self.throttle_key {
+                self.brake = 0.0;
+                self.throttle = (self.throttle + 1.5 * amp * dt).min(1.0);
+            } else if self.brake_key {
+                self.throttle = 0.0;
+                self.brake = (self.brake + 1.5 * dt).min(1.0);
+            }
+        } else {
+            ramp(&mut self.throttle, self.throttle_key, 1.5 * amp, 3.0);
+            ramp(&mut self.brake, self.brake_key, 1.5, 3.0);
+        }
         // The clutch as Omsi.exe works it from a key (0x7e648f, 0x7d59c0): pressed, the
         // pedal is down at once; let go, it comes up at 0.7 a second - a foot letting the
         // clutch in, which is what makes a gear change on the keyboard smooth.
@@ -178,6 +195,24 @@ mod tests {
             a.update(0.01);
         }
         assert!((a.steering - 0.25).abs() < 0.02, "it comes back at the same pace: {}", a.steering);
+    }
+
+    #[test]
+    fn held_pedals_stay_until_the_other_key() {
+        let mut a = KeyboardAxes { pedal_hold: true, ..Default::default() };
+        a.brake_key = true;
+        for _ in 0..20 {
+            a.update(0.01);
+        }
+        a.brake_key = false;
+        for _ in 0..100 {
+            a.update(0.01);
+        }
+        assert!((a.brake - 0.3).abs() < 1e-3, "the brake stays: {}", a.brake);
+        a.throttle_key = true;
+        a.update(0.01);
+        assert_eq!(a.brake, 0.0);
+        assert!(a.throttle > 0.0);
     }
 
     #[test]

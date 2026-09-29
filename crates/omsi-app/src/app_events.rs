@@ -579,6 +579,7 @@ impl ApplicationHandler for App {
                 if let Some(p) = self.player.as_mut() {
                     p.axes.linear = self.settings.steering_linear;
                     p.axes.old_steering = self.settings.old_steering;
+                    p.axes.pedal_hold = self.settings.pedal_hold;
                     p.analog = analog;
                     if self.game_menu.is_none() {
                         for (name, down) in actions {

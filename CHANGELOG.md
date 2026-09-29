@@ -113,6 +113,9 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Spaces on displays and signs: a font without a space character (many display fonts have
   none) leaves the width of a narrow letter between the words; the words of a destination
   ran into one another.
+- OMSI's held keyboard pedals: Settings → Controllers → *Keyboard pedals stay where they
+  are* (and Esc → More → Options). Tap the brake and it keeps that pressure until the
+  throttle is tapped, and the other way round.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
