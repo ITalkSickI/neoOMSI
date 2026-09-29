@@ -577,8 +577,6 @@ _version: 2
   id: "April"
   ms: "April"
   tl: "Abril"
-"May":
-  hu: "Május"
 "June":
   ru: "Июнь"
   de: "Juni"
@@ -1704,7 +1702,7 @@ _version: 2
   id: "Gabung"
   ms: "Sertai"
   tl: "Sumali"
-"Session code OMSI-XXXX-…, or an address; empty = search on LAN":
+"Session code OMSI-XXXX-…, or an address; empty = search the LAN":
   ru: "Код сессии OMSI-XXXX-… или адрес; пусто = поиск в локальной сети"
   de: "Sitzungscode OMSI-XXXX-… oder Adresse; leer = LAN durchsuchen"
   fr: "Code de session OMSI-XXXX-… ou adresse ; vide = chercher sur le réseau local"
@@ -1729,7 +1727,7 @@ _version: 2
   id: "Kode sesi OMSI-XXXX-… atau alamat; kosongkan untuk mencari di LAN"
   ms: "Kod sesi OMSI-XXXX-… atau alamat; kosongkan untuk cari di LAN"
   tl: "Session code OMSI-XXXX-… o address; iwang blangko para maghanap sa LAN"
-"Once the game runs, the Sessions page shows the session code with a copy button; your friend(s) can paste it into the Join field. It works at home and over the internet - no VPN needed.":
+"Once the game runs, the Sessions page shows the session code with a copy button; your friend pastes it into Join. It works at home and over the internet - no VPN needed.":
   ru: "Когда игра запущена, на странице «Сессии» виден код сессии с кнопкой копирования; друг вставляет его в «Присоединиться». Работает дома и через интернет - VPN не нужен."
   de: "Sobald das Spiel läuft, zeigt die Seite Sitzungen den Code mit Kopier-Knopf; dein Freund fügt ihn bei Beitreten ein. Funktioniert zu Hause und über das Internet - ohne VPN."
   fr: "Une fois le jeu lancé, la page Sessions affiche le code avec un bouton copier ; votre ami le colle dans Rejoindre. Fonctionne à la maison et sur Internet - sans VPN."
@@ -1854,7 +1852,7 @@ _version: 2
   id: "Cuaca saat ini"
   ms: "Cuaca semasa"
   tl: "Kasalukuyang panahon"
-"clear weather":
+"clear air":
   ru: "ясно"
   de: "klare Luft"
   fr: "ciel dégagé"
@@ -3383,7 +3381,7 @@ _version: 2
   id: "Ambient occlusion"
   ms: "Oklusi ambien"
   tl: "Ambient occlusion"
-"Sunburst effect":
+"Sun shadows":
   ru: "Тени от солнца"
   de: "Sonnenschatten"
   fr: "Ombres du soleil"
@@ -3392,7 +3390,7 @@ _version: 2
   kk: "Күн көлеңкелері"
   pl: "Cienie słoneczne"
   cs: "Stíny od slunce"
-  hu: "Napsugárzás-effekt"
+  hu: "Napárnyékok"
   es: "Sombras del sol"
   pt: "Sombras do sol"
   it: "Ombre del sole"
@@ -3508,7 +3506,7 @@ _version: 2
   id: "V-sync"
   ms: "V-sync"
   tl: "V-sync"
-"Environment & memory":
+"World & memory":
   ru: "Мир и память"
   de: "Welt & Speicher"
   fr: "Monde et mémoire"
@@ -3719,7 +3717,7 @@ _version: 2
   id: "Perawatan"
   ms: "Penyelenggaraan"
   tl: "Maintenance"
-"Off (no wear)":
+"Infinite (no wear)":
   ru: "Бесконечное (без износа)"
   de: "Unbegrenzt (kein Verschleiß)"
   fr: "Infini (sans usure)"
@@ -4469,7 +4467,7 @@ _version: 2
   id: "Paling sedikit (tercepat)"
   ms: "Paling sedikit (terpantas)"
   tl: "Pinakakaunti (pinakamabilis)"
-"Object rendering distance":
+"Object distance":
   ru: "Дальность объектов"
   de: "Objektweite"
   fr: "Distance des objets"
@@ -4494,7 +4492,7 @@ _version: 2
   id: "Jarak objek"
   ms: "Jarak objek"
   tl: "Distansya ng object"
-"Mirrors/Reflections resolution":
+"Mirrors":
   ru: "Зеркала"
   de: "Spiegel"
   fr: "Rétroviseurs"
@@ -4619,7 +4617,7 @@ _version: 2
   id: "Sangat tinggi (1024)"
   ms: "Sangat tinggi (1024)"
   tl: "Napakataas (1024)"
-"Ticket selling":
+"Boarding":
   ru: "Посадка"
   de: "Einsteigen"
   fr: "Montée"
@@ -4644,7 +4642,7 @@ _version: 2
   id: "Naik bus"
   ms: "Cara menaiki bas"
   tl: "Pagsakay"
-"Simple ticket selling":
+"Pay and take the ticket":
   ru: "Оплатить и взять билет"
   de: "Bezahlen und Fahrschein nehmen"
   fr: "Payer et prendre le billet"
@@ -4669,7 +4667,7 @@ _version: 2
   id: "Bayar dan ambil tiket"
   ms: "Bayar dan ambil tiket"
   tl: "Magbayad at kunin ang tiket"
-"Realistic":
+"The driver sells the ticket":
   ru: "Билет продаёт водитель"
   de: "Der Fahrer verkauft den Fahrschein"
   fr: "Le conducteur vend le billet"
@@ -4694,7 +4692,7 @@ _version: 2
   id: "Sopir menjual tiket"
   ms: "Pemandu menjual tiket"
   tl: "Driver ang nagbebenta ng tiket"
-"No ticket selling":
+"Just walk in":
   ru: "Просто входят"
   de: "Einfach einsteigen"
   fr: "Entrer simplement"
@@ -4794,7 +4792,7 @@ _version: 2
   id: "Sapaan dan tiket"
   ms: "Sapaan dan tiket"
   tl: "Pagbati at tiket"
-"Only on ticket selling":
+"Only the ticket asked for":
   ru: "Только просьба о билете"
   de: "Nur der gewünschte Fahrschein"
   fr: "Seulement le billet demandé"
@@ -4869,7 +4867,7 @@ _version: 2
   id: "Izinkan berdiri (Ctrl+Shift+G)"
   ms: "Benarkan bangun (Ctrl+Shift+G)"
   tl: "Payagang tumayo (Ctrl+Shift+G)"
-"Passengers volume":
+"How many passengers":
   ru: "Сколько пассажиров"
   de: "Wie viele Fahrgäste"
   fr: "Nombre de passagers"
@@ -4894,7 +4892,7 @@ _version: 2
   id: "Jumlah penumpang"
   ms: "Bilangan penumpang"
   tl: "Bilang ng pasahero"
-"Controls & sounds":
+"Controls & sound":
   ru: "Управление и звук"
   de: "Steuerung & Ton"
   fr: "Commandes et son"
@@ -5369,7 +5367,7 @@ _version: 2
   id: "Maksimal 250"
   ms: "Maksimum 250"
   tl: "Hanggang 250"
-"Start at real time":
+"Start at the real time":
   ru: "Начинать в реальное время"
   de: "Zur echten Uhrzeit starten"
   fr: "Démarrer à l'heure réelle"
@@ -5969,7 +5967,7 @@ _version: 2
   id: "Baterai / kontak"
   ms: "Bateri / pencucuhan"
   tl: "Baterya / ignition"
-"D/Forward gear(Automatic gearbox)":
+"Gear D":
   ru: "Передача D"
   de: "Fahrstufe D"
   fr: "Rapport D"
@@ -5994,7 +5992,7 @@ _version: 2
   id: "Gigi D"
   ms: "Gear D"
   tl: "Gear D"
-"N/Neutral gear":
+"Gear N":
   ru: "Передача N"
   de: "Fahrstufe N"
   fr: "Rapport N"
@@ -6019,7 +6017,7 @@ _version: 2
   id: "Gigi N"
   ms: "Gear N"
   tl: "Gear N"
-"R/Reverse gear":
+"Gear R":
   ru: "Передача R"
   de: "Fahrstufe R"
   fr: "Rapport R"
@@ -6094,7 +6092,7 @@ _version: 2
   id: "Pintu depan (daun 2)"
   ms: "Pintu depan (daun 2)"
   tl: "Pintu sa harap (bahagi 2)"
-"Open rear doors":
+"Release rear doors":
   ru: "Разблокировать задние двери"
   de: "Hintere Türen freigeben"
   fr: "Libérer les portes arrière"
@@ -6144,7 +6142,7 @@ _version: 2
   id: "Jual tiket yang diminta"
   ms: "Jual tiket diminta"
   tl: "Ibenta ang hiniling na tiket"
-"Driver's camera":
+"Driver's view":
   ru: "Вид водителя"
   de: "Fahrersicht"
   fr: "Vue conducteur"
@@ -6791,7 +6789,7 @@ _version: 2
   id: "Kode sesi disalin."
   ms: "Kod sesi disalin."
   tl: "Nakopya ang session code."
-"A bus, a map, scenery objects, a whole OMSI folder - as a folder or a .zip. The original OMSI 2 folder remains untouched.":
+"A bus, a map, scenery, a whole OMSI folder - as a folder or a .zip. The original OMSI 2 folder is never written to.":
   ru: "Автобус, карта, объекты, целая папка OMSI - папкой или .zip. В папку оригинальной OMSI 2 ничего не пишется."
   de: "Ein Bus, eine Karte, Szenerie, ein ganzer OMSI-Ordner - als Ordner oder .zip. In den originalen OMSI-2-Ordner wird nie geschrieben."
   fr: "Un bus, une carte, des décors, tout un dossier OMSI - en dossier ou en .zip. Le dossier de l'OMSI 2 original n'est jamais modifié."
@@ -7463,7 +7461,7 @@ _version: 2
   id: "Tersimpan. Memuat ulang konten…"
   ms: "Disimpan. Memuat semula kandungan…"
   tl: "Na-save. Nilo-load muli ang nilalaman…"
-"OMSI 2's own lessons: each opens its situation, with its steps beside the picture (Enter moves on to the next step).":
+"OMSI 2's own lessons: each opens its situation, with its pages beside the picture (Enter turns the page).":
   ru: "Уроки самой OMSI 2: каждый открывает свою ситуацию со страницами рядом с картинкой (Enter листает)."
   de: "Die Lektionen von OMSI 2: jede öffnet ihre Situation, mit ihren Seiten neben dem Bild (Enter blättert um)."
   fr: "Les leçons d'OMSI 2 : chacune ouvre sa situation, avec ses pages à côté de l'image (Entrée tourne la page)."
@@ -7742,7 +7740,7 @@ _version: 2
   id: "Bus ini tidak memiliki lampu kabin"
   ms: "Bas ini tiada lampu salun"
   tl: "Walang cabin lights ang bus na ito"
-"Saloon light switched on - no power (battery off?)":
+"Saloon light switches on - no power (battery off?)":
   ru: "Свет в салоне включён - нет питания (батарея выключена?)"
   de: "Innenlicht an - kein Strom (Batterie aus?)"
   fr: "Éclairage allumé - pas de courant (batterie coupée ?)"
@@ -8107,7 +8105,7 @@ _version: 2
   id: "Kendaraan tidak ditemukan"
   ms: "Tiada kenderaan ditemui"
   tl: "Walang nahanap na sasakyan"
-"In a LAN session the host sets the time":
+"In a LAN session the host sets the clock":
   ru: "В сетевой игре время задаёт хост"
   de: "In einer LAN-Sitzung stellt der Host die Uhr"
   fr: "En réseau, l'hôte règle l'heure"
