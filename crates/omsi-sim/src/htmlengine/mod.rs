@@ -36,6 +36,12 @@
 //! `type`, `x`, `y` (texture pixels), `target`, `stopPropagation()` and `preventDefault()`.
 //! * `display:inline-block` (and `<button>`, which has a default look) lays boxes out in rows that
 //!   wrap; a box without a `width` is as wide as its content. Use it for key pads and lists.
+//! * `window.omsi.vehicle.route` holds line, destination sign, the stops with their planned
+//!   times, the stop the bus is at and the last stop (see [`crate::vehicle_api`]).
+//!   `window.omsi.depot` lists the depot file's `lines[]` (each with its `routes[]`), `routes[]`
+//!   and `destinations[]`; the page sets the IBIS with `omsi.setRoute(index)` (line, route and
+//!   destination of `depot.routes[index]`), `omsi.setLine(text)` (the first route of that
+//!   line) and `omsi.setDestination(index)` (only the destination sign, `depot.destinations`).
 //! * More JavaScript for such pages: `setTimeout`/`setInterval`/`clear*`, `classList`,
 //!   `createElement`/`appendChild`/`removeChild`/`remove`, `innerHTML` with markup, `getAttribute`,
 //!   `parentNode`, `Object.keys`, `Array.forEach/map/filter/indexOf/includes/pop/shift/slice`,

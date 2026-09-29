@@ -59,6 +59,9 @@ pub(crate) enum Nat {
     ClearTimer,
     ObjectKeys,
     CreateEl,
+    SetRoute,
+    SetLine,
+    SetDestination,
 }
 
 #[derive(Clone)]

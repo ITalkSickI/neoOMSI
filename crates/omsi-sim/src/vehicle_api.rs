@@ -33,8 +33,20 @@
 //! | `cabin.temperature` | cabin air, °C |
 //! | `condition.dirt`, `.crashes`, `.lastImpactKJ`, `.streetCondition` | wear and road |
 //! | `train.trailers` | coupled vehicles behind this one |
+//! | `route.active` | the bus has a timetable (a duty) |
+//! | `route.line`, `.destination` | line text and the text of the destination sign |
+//! | `route.current` | the stop the bus is at or heading for: `index`, `name`, `arrival`, `departure` (`HH:MM`), `arrivalSec`, `departureSec` (s after midnight) |
+//! | `route.terminus` | the last stop, same fields |
+//! | `route.stops[i]` | `index`, `name`, `arrival`, `departure`, `arrivalSec`, `departureSec`, `served`, `current` |
+//! | `route.nextIndex`, `.delaySec`, `.source` | next stop, delay (s), `timetable` / `ibis` / `none` |
+//! | `route.ibis` | the IBIS's own numbers: `line`, `suffix`, `routeIndex`, `terminusIndex`, `terminusCode` |
+//!
+//! `window.omsi.depot` (see [`depot`]) lists what the depot file offers: `lines[]` (each with
+//! its `routes[]`), `routes[]`, `destinations[]`. The page acts on it with
+//! `omsi.setRoute(index)`, `omsi.setLine(text)` and `omsi.setDestination(index)`.
 
 use crate::vehicle::VehicleInstance;
+use omsi_vehicle::hof::Hof;
 
 /// A value of the snapshot tree.
 #[derive(Clone, Debug, PartialEq)]
@@ -55,6 +67,17 @@ impl ApiValue {
             ApiValue::Map(m) => m.iter().find(|(k, _)| k == key).map(|(_, v)| v),
             _ => None,
         }
+    }
+
+    /// The same map with property `key` set to `value`.
+    fn with(mut self, key: &str, value: ApiValue) -> ApiValue {
+        if let ApiValue::Map(m) = &mut self {
+            match m.iter_mut().find(|(k, _)| k == key) {
+                Some(slot) => slot.1 = value,
+                None => m.push((key.to_string(), value)),
+            }
+        }
+        self
     }
 }
 
@@ -104,6 +127,193 @@ fn map(items: Vec<(&str, ApiValue)>) -> ApiValue {
 /// Most doors of a bus the snapshot lists, and the most boarding doors (`PAX_Entry0..7`).
 const MAX_DOORS: usize = 16;
 const MAX_PAX_DOORS: usize = 8;
+
+/// `HH:MM` of a time in seconds since midnight (wraps at 24 h).
+fn hhmm(sec: f64) -> String {
+    let s = if sec.is_finite() { sec.round() as i64 } else { 0 };
+    let s = s.rem_euclid(86_400);
+    format!("{:02}:{:02}", s / 3600, (s % 3600) / 60)
+}
+
+/// The name a depot file gives a stop of a route list (its first display string), else the
+/// ident without its `#` suffix.
+fn stop_name(h: &Hof, ident: &str) -> String {
+    let id = ident.split('#').next().unwrap_or("").trim();
+    h.bus_stops
+        .iter()
+        .find(|b| b.ident.trim().eq_ignore_ascii_case(id))
+        .and_then(|b| b.strings.first())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| id.to_string())
+}
+
+/// Everything [`route`] is made from.
+pub struct RouteInputs<'a> {
+    pub var: &'a dyn Fn(&str) -> Option<f32>,
+    pub text: &'a dyn Fn(&str) -> String,
+    pub hof: Option<&'a Hof>,
+    /// The timetable's line, its delay (s) and stops (name, arrival, departure in s after
+    /// midnight), and the index of the stop the bus is at or heading for.
+    pub line: &'a str,
+    pub delay_s: f32,
+    pub stops: &'a [(String, f32, f32)],
+    pub next: i32,
+}
+
+fn stop_value(k: usize, name: &str, times: Option<(f64, f64)>, served: bool, current: bool) -> ApiValue {
+    let (arr, dep) = match times {
+        Some((a, d)) => (Some(a), Some(d)),
+        None => (None, None),
+    };
+    let clock = |x: Option<f64>| x.map_or(ApiValue::Null, |x| ApiValue::Str(hhmm(x)));
+    let secs = |x: Option<f64>| x.map_or(ApiValue::Null, |x| ApiValue::Num(x.round()));
+    map(vec![
+        ("index", ApiValue::Num(k as f64)),
+        ("name", ApiValue::Str(name.trim().to_string())),
+        ("arrival", clock(arr)),
+        ("departure", clock(dep)),
+        ("arrivalSec", secs(arr)),
+        ("departureSec", secs(dep)),
+        ("served", ApiValue::Bool(served)),
+        ("current", ApiValue::Bool(current)),
+    ])
+}
+
+/// `omsi.vehicle.route`: line, destination, the stops with their planned times, the stop
+/// the bus is at and the last one. Without a timetable the stops are those of the IBIS's
+/// route (without times), when the bus has one.
+pub fn route(i: &RouteInputs) -> ApiValue {
+    let var = i.var;
+    let n = i.stops.len();
+    let active = n > 0;
+    let next = if active { i.next.clamp(0, n as i32 - 1) as usize } else { 0 };
+    let ibis_line = var("IBIS_LinieKurs");
+    let route_index = var("IBIS_RouteIndex").filter(|r| *r >= 0.0).map(|r| r.round() as usize);
+
+    let (stops, source): (Vec<ApiValue>, &str) = if active {
+        let list = i
+            .stops
+            .iter()
+            .enumerate()
+            .map(|(k, (name, arr, dep))| stop_value(k, name, Some((*arr as f64, *dep as f64)), k < next, k == next))
+            .collect();
+        (list, "timetable")
+    } else if let (Some(h), Some(r)) = (i.hof, route_index) {
+        let idents = h.info_busstop_lists.get(r).map(|l| l.as_slice()).unwrap_or(&[]);
+        let list = idents.iter().enumerate().map(|(k, id)| stop_value(k, &stop_name(h, id), None, false, false)).collect();
+        (list, "ibis")
+    } else {
+        (Vec::new(), "none")
+    };
+
+    let current = if active {
+        stops.get(next).cloned().unwrap_or(ApiValue::Null)
+    } else {
+        let name = (i.text)("act_busstop");
+        if name.trim().is_empty() {
+            ApiValue::Null
+        } else {
+            stop_value(0, &name, None, false, true).with("index", ApiValue::Null)
+        }
+    };
+    let terminus = stops.last().cloned().unwrap_or(ApiValue::Null);
+
+    let line = if !i.line.trim().is_empty() { i.line.trim().to_string() } else { (i.text)("IBIS_Complex_Line").trim().to_string() };
+    let line = if line.is_empty() {
+        ibis_line.filter(|n| *n > 0.5).map(|n| format!("{}", n.round() as i64)).unwrap_or_default()
+    } else {
+        line
+    };
+
+    map(vec![
+        ("active", ApiValue::Bool(active)),
+        ("source", ApiValue::Str(source.to_string())),
+        ("line", ApiValue::Str(line)),
+        ("destination", ApiValue::Str((i.text)("IBIS_terminus_name").trim().to_string())),
+        ("delaySec", num(i.delay_s, 0)),
+        ("nextIndex", if active { ApiValue::Num(next as f64) } else { ApiValue::Null }),
+        ("current", current),
+        ("terminus", terminus),
+        ("stops", ApiValue::List(stops)),
+        (
+            "ibis",
+            map(vec![
+                ("line", opt(ibis_line, 0)),
+                ("suffix", opt(var("IBIS_Linie_Suffix"), 0)),
+                ("routeIndex", opt(var("IBIS_RouteIndex"), 0)),
+                ("terminusIndex", opt(var("IBIS_TerminusIndex"), 0)),
+                ("terminusCode", opt(var("IBIS_TerminusCode"), 0)),
+            ]),
+        ),
+    ])
+}
+
+/// `omsi.depot`: what the bus's depot file offers a driver, for `omsi.setRoute(index)`
+/// and `omsi.setDestination(index)`.
+///
+/// * `routes[i]`: `index`, `code` (the IBIS route code), `name`, `line`, `terminusCode`,
+///   `destinationIndex` (-1: none), `destination` (the sign's text), `first`, `last`,
+///   `stops[]` (names).
+/// * `lines[]`: `line` and its `routes[]` (the same objects), in the depot file's order.
+/// * `destinations[i]`: `index`, `code`, `id`, `name`.
+pub fn depot(h: &Hof) -> ApiValue {
+    let first_string = |ti: Option<usize>| {
+        ti.and_then(|t| h.termini.get(t)).and_then(|t| t.strings.first()).map(|s| s.trim().to_string()).unwrap_or_default()
+    };
+    let mut routes: Vec<ApiValue> = Vec::new();
+    let mut lines: Vec<(String, Vec<ApiValue>)> = Vec::new();
+    for (i, t) in h.info_trips.iter().enumerate() {
+        let terminus_code = omsi_cfg::parse_i32(&t.route);
+        let ti = h.termini.iter().position(|x| x.code == terminus_code);
+        let names: Vec<String> = h.info_busstop_lists.get(i).map(|l| l.iter().map(|s| stop_name(h, s)).collect()).unwrap_or_default();
+        let line = t.line.trim().to_string();
+        let r = map(vec![
+            ("index", ApiValue::Num(i as f64)),
+            ("code", ApiValue::Num(omsi_cfg::parse_i32(&t.code) as f64)),
+            ("name", ApiValue::Str(t.name.trim().to_string())),
+            ("line", ApiValue::Str(line.clone())),
+            ("terminusCode", ApiValue::Num(terminus_code as f64)),
+            ("destinationIndex", ApiValue::Num(ti.map_or(-1.0, |x| x as f64))),
+            ("destination", ApiValue::Str(first_string(ti))),
+            ("first", ApiValue::Str(names.first().cloned().unwrap_or_default())),
+            ("last", ApiValue::Str(names.last().cloned().unwrap_or_default())),
+            ("stops", ApiValue::List(names.into_iter().map(ApiValue::Str).collect())),
+        ]);
+        match lines.iter_mut().find(|(l, _)| l.eq_ignore_ascii_case(&line)) {
+            Some((_, v)) => v.push(r.clone()),
+            None => lines.push((line, vec![r.clone()])),
+        }
+        routes.push(r);
+    }
+    let destinations: Vec<ApiValue> = h
+        .termini
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            map(vec![
+                ("index", ApiValue::Num(i as f64)),
+                ("code", ApiValue::Num(t.code as f64)),
+                ("id", ApiValue::Str(t.texture_id.clone())),
+                ("name", ApiValue::Str(t.strings.first().map(|s| s.trim().to_string()).unwrap_or_default())),
+            ])
+        })
+        .collect();
+    map(vec![
+        ("name", ApiValue::Str(h.name.clone())),
+        (
+            "lines",
+            ApiValue::List(
+                lines
+                    .into_iter()
+                    .map(|(line, rs)| map(vec![("line", ApiValue::Str(line)), ("routes", ApiValue::List(rs))]))
+                    .collect(),
+            ),
+        ),
+        ("routes", ApiValue::List(routes)),
+        ("destinations", ApiValue::List(destinations)),
+    ])
+}
 
 /// Build the snapshot.
 pub fn snapshot(i: &Inputs) -> ApiValue {
@@ -292,7 +502,7 @@ impl VehicleInstance {
     pub fn html_api_snapshot(&self) -> ApiValue {
         let var = |n: &str| self.var(n);
         let text = |n: &str| self.str_var(n);
-        snapshot(&Inputs {
+        let mut api = snapshot(&Inputs {
             var: &var,
             text: &text,
             speed_kmh: self.physics.velocity_kmh(),
@@ -307,7 +517,20 @@ impl VehicleInstance {
             last_impact_j: self.last_impact,
             dirt: self.dirt,
             trailers: self.trailers.len(),
-        })
+        });
+        let route = route(&RouteInputs {
+            var: &var,
+            text: &text,
+            hof: self.host.hof.as_deref(),
+            line: &self.host.tt_line,
+            delay_s: self.host.tt_delay,
+            stops: &self.host.tt_stops,
+            next: self.host.tt_busstop_index,
+        });
+        if let ApiValue::Map(m) = &mut api {
+            m.push(("route".to_string(), route));
+        }
+        api
     }
 }
 
@@ -407,6 +630,36 @@ mod tests {
         assert_eq!(at(&s, "brakes.parking"), &ApiValue::Bool(true));
         assert_eq!(at(&s, "info.number"), &ApiValue::Str("4711".into()));
         assert_eq!(at(&s, "info.nextStop"), &ApiValue::Str("Hauptbahnhof".into()));
+    }
+
+    #[test]
+    fn a_timetable_gives_the_route_with_its_stops() {
+        let var = |_: &str| -> Option<f32> { None };
+        let text = |n: &str| if n == "IBIS_terminus_name" { " Hauptbahnhof ".to_string() } else { String::new() };
+        let stops = vec![("Depot".to_string(), 3600.0, 3660.0), ("Markt".to_string(), 3900.0, 3930.0), ("Bahnhof".to_string(), 4500.0, 4500.0)];
+        let r = route(&RouteInputs { var: &var, text: &text, hof: None, line: " 5E ", delay_s: 61.4, stops: &stops, next: 1 });
+        assert_eq!(at(&r, "active"), &ApiValue::Bool(true));
+        assert_eq!(at(&r, "line"), &ApiValue::Str("5E".into()));
+        assert_eq!(at(&r, "destination"), &ApiValue::Str("Hauptbahnhof".into()));
+        assert_eq!(at(&r, "delaySec"), &ApiValue::Num(61.0));
+        assert_eq!(at(&r, "current.name"), &ApiValue::Str("Markt".into()));
+        assert_eq!(at(&r, "current.arrival"), &ApiValue::Str("01:05".into()));
+        assert_eq!(at(&r, "current.departureSec"), &ApiValue::Num(3930.0));
+        assert_eq!(at(&r, "terminus.name"), &ApiValue::Str("Bahnhof".into()));
+        assert_eq!(at(&r, "stops.0.served"), &ApiValue::Bool(true));
+        assert_eq!(at(&r, "stops.1.current"), &ApiValue::Bool(true));
+        assert_eq!(at(&r, "stops.2.served"), &ApiValue::Bool(false));
+    }
+
+    #[test]
+    fn without_a_timetable_the_route_is_quiet() {
+        let var = |_: &str| -> Option<f32> { None };
+        let text = |_: &str| String::new();
+        let r = route(&RouteInputs { var: &var, text: &text, hof: None, line: "", delay_s: 0.0, stops: &[], next: 0 });
+        assert_eq!(at(&r, "active"), &ApiValue::Bool(false));
+        assert_eq!(at(&r, "current"), &ApiValue::Null);
+        assert_eq!(at(&r, "terminus"), &ApiValue::Null);
+        assert_eq!(at(&r, "source"), &ApiValue::Str("none".into()));
     }
 
     #[test]

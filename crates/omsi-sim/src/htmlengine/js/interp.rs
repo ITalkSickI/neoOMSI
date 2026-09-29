@@ -34,6 +34,8 @@ pub(crate) struct Interp {
     pub(crate) now: f64,
     /// An error inside a callback of a built-in method (`forEach` ...), raised by the caller.
     pub(crate) pending_err: Option<String>,
+    /// Route, line and destination requests of the page (`omsi.setRoute(...)` ...).
+    pub(crate) requests: Vec<crate::htmltex::HtmlRequest>,
 }
 
 impl Interp {
@@ -43,6 +45,18 @@ impl Interp {
             ("setVar", Val::Nat(Nat::SetVar)),
             ("trigger", Val::Nat(Nat::Trigger)),
             ("getVar", Val::Nat(Nat::GetVar)),
+            ("setRoute", Val::Nat(Nat::SetRoute)),
+            ("setLine", Val::Nat(Nat::SetLine)),
+            ("setDestination", Val::Nat(Nat::SetDestination)),
+            (
+                "depot",
+                Val::Obj(obj_of(&[
+                    ("name", Val::Str(String::new())),
+                    ("lines", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
+                    ("routes", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
+                    ("destinations", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
+                ])),
+            ),
             ("apiVersion", Val::Num(1.0)),
             ("vehicle", Val::Obj(obj_of(&[]))),
             ("vars", Val::Obj(obj_of(&[("num", Val::Obj(obj_of(&[]))), ("str", Val::Obj(obj_of(&[])))]))),
@@ -61,6 +75,7 @@ impl Interp {
             next_timer: 0,
             now: 0.0,
             pending_err: None,
+            requests: Vec::new(),
         };
         let math = obj_of(&[
             ("round", Val::Nat(Nat::Round)),
@@ -789,6 +804,23 @@ impl Interp {
                 }
                 Val::Undef
             }
+            Nat::SetRoute | Nat::SetDestination => {
+                let v = a(0);
+                if v.is_finite() && v >= 0.0 {
+                    let i = v as usize;
+                    self.requests.push(if n == Nat::SetRoute { crate::htmltex::HtmlRequest::SetRoute(i) } else { crate::htmltex::HtmlRequest::SetDestination(i) });
+                } else {
+                    log::debug!("htmltexture: {n:?} ignored, the index is not a number");
+                }
+                Val::Undef
+            }
+            Nat::SetLine => {
+                let line = args.first().map(to_str).unwrap_or_default();
+                if !line.trim().is_empty() {
+                    self.requests.push(crate::htmltex::HtmlRequest::SetLine(line));
+                }
+                Val::Undef
+            }
             Nat::Log => {
                 log::debug!("htmltexture console: {}", args.iter().map(to_str).collect::<Vec<_>>().join(" "));
                 Val::Undef
@@ -827,7 +859,7 @@ impl Interp {
     }
 }
 
-/// Short source-like text of an expression, for error messages (`document.foo`, `a[..]`).
+/// Short source-like text of an expression, for error messages (`document.foo`, `a[...]`).
 fn describe_expr(e: &Expr) -> String {
     match e {
         Expr::Ident(n) => n.clone(),

@@ -741,6 +741,7 @@ impl Player {
     /// Advance a running auto-start, then the IBIS typing; true while the auto-start is
     /// still going.
     pub(crate) fn tick_startup(&mut self, dt: f32) -> bool {
+        self.apply_html_requests();
         self.tick_ibis(dt);
         let Some(mut s) = self.startup.take() else {
             return false;
@@ -891,6 +892,82 @@ impl Player {
             }
             None => log::info!("IBIS: nothing to type for line {line} terminus {terminus}"),
         }
+    }
+
+    /// What the bus's HTML pages asked of the IBIS (`omsi.setRoute`, `omsi.setLine`,
+    /// `omsi.setDestination`): a route is typed as a driver does (line, route, destination),
+    /// a destination alone is written to the sign.
+    pub(crate) fn apply_html_requests(&mut self) {
+        let requests = self.vehicle.take_html_requests();
+        if requests.is_empty() {
+            return;
+        }
+        let Some(hof) = self.vehicle.host.hof.clone() else {
+            log::info!("HTML page: the bus has no depot file, {requests:?} ignored");
+            return;
+        };
+        for req in requests {
+            match req {
+                omsi_sim::htmltex::HtmlRequest::SetRoute(i) => self.set_route_from_page(&hof, i),
+                omsi_sim::htmltex::HtmlRequest::SetLine(line) => {
+                    let wanted = line.trim();
+                    let digits: String = wanted.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    let found = hof
+                        .info_trips
+                        .iter()
+                        .position(|t| t.line.trim().eq_ignore_ascii_case(wanted))
+                        .or_else(|| hof.info_trips.iter().position(|t| !digits.is_empty() && t.line.trim() == digits));
+                    match found {
+                        Some(i) => self.set_route_from_page(&hof, i),
+                        None => log::info!("HTML page: depot file {} has no line '{wanted}'", hof.name),
+                    }
+                }
+                omsi_sim::htmltex::HtmlRequest::SetDestination(ti) => {
+                    let Some(term) = hof.termini.get(ti) else {
+                        log::info!("HTML page: depot file {} has no destination {ti}", hof.name);
+                        continue;
+                    };
+                    let line = {
+                        let l = self.vehicle.host.tt_line.trim().to_string();
+                        if !l.is_empty() {
+                            l
+                        } else {
+                            let c = self.vehicle.str_var("IBIS_Complex_Line").trim().to_string();
+                            if !c.is_empty() {
+                                c
+                            } else {
+                                self.vehicle.var("IBIS_LinieKurs").filter(|n| *n > 0.5).map(|n| format!("{}", n.round() as i64)).unwrap_or_default()
+                            }
+                        }
+                    };
+                    let wanted = if term.texture_id.trim().is_empty() { term.strings.first().cloned().unwrap_or_default() } else { term.texture_id.clone() };
+                    log::info!("HTML page: destination {ti} '{wanted}' on line '{line}'");
+                    if let Some((mut old, ..)) = self.ibis_typist.take() {
+                        old.abandon(&mut self.vehicle);
+                    }
+                    schedule::set_player_destination_directly(&mut self.vehicle, Some(&hof), &line, &wanted);
+                }
+            }
+        }
+    }
+
+    /// Type route `i` of the depot file (`omsi.depot.routes[i]`) into the IBIS.
+    fn set_route_from_page(&mut self, hof: &omsi_vehicle::hof::Hof, i: usize) {
+        let Some(t) = hof.info_trips.get(i) else {
+            log::info!("HTML page: depot file {} has no route {i}", hof.name);
+            return;
+        };
+        let code = omsi_cfg::parse_i32(&t.route);
+        let Some(term) = hof.termini.iter().find(|x| x.code == code) else {
+            log::info!("HTML page: route {i} ({}) leads to destination code {code}, which the depot file lacks", t.name.trim());
+            return;
+        };
+        let first = hof.info_busstop_lists.get(i).and_then(|l| l.first()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let name = first.clone().unwrap_or_default();
+        let wanted = if term.texture_id.trim().is_empty() { term.strings.first().cloned().unwrap_or_default() } else { term.texture_id.clone() };
+        let line = t.line.trim().to_string();
+        log::info!("HTML page: route {i} '{}' (line '{line}' to '{wanted}')", t.name.trim());
+        self.type_destination(&line, &wanted, first.as_deref(), (0, &name));
     }
 
     /// The driver's head follows the bus's accelerations a little late, as a body does:
@@ -1336,10 +1413,10 @@ impl Player {
         let c = def.camera_outside_center;
         let centre = self.vehicle.position
             + self
-                .vehicle
-                .body_rotation()
-                .transform_point3(Vec3::new(c[0], c[1], c[2]))
-                .as_dvec3();
+            .vehicle
+            .body_rotation()
+            .transform_point3(Vec3::new(c[0], c[1], c[2]))
+            .as_dvec3();
         let want = dist.clamp(ORBIT_MIN, ORBIT_MAX);
         let back = -cam.forward().as_dvec3().normalize_or_zero();
         if back.length_squared() < 0.5 {
@@ -1409,10 +1486,10 @@ impl Player {
                 let c = def.camera_outside_center;
                 let center = self.vehicle.position
                     + self
-                        .vehicle
-                        .body_rotation()
-                        .transform_point3(Vec3::new(c[0], c[1], c[2]))
-                        .as_dvec3();
+                    .vehicle
+                    .body_rotation()
+                    .transform_point3(Vec3::new(c[0], c[1], c[2]))
+                    .as_dvec3();
                 let mut cam = Camera {
                     position: center,
                     yaw: self.vehicle.heading as f32 - 35.0 + look.0,

@@ -11,6 +11,22 @@ pub enum PointerKind {
     Move,
 }
 
+/// Something a page asks of the vehicle beyond a variable or a trigger: the IBIS duty.
+/// The game applies it (`VehicleInstance::take_html_requests`), since only it knows the
+/// driver's IBIS keys.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HtmlRequest {
+    /// `omsi.setRoute(index)`: line, route and destination of `omsi.depot.routes[index]`.
+    SetRoute(usize),
+    /// `omsi.setLine(text)`: the first route of that line in the depot file.
+    SetLine(String),
+    /// `omsi.setDestination(index)`: the destination sign, `omsi.depot.destinations[index]`.
+    SetDestination(usize),
+}
+
+/// Most requests kept for the game between two of its frames (a page that asks in a loop).
+const MAX_REQUESTS: usize = 32;
+
 pub trait HtmlRenderer: Send {
     fn set_vars(&mut self, num: &[(String, f32)], strs: &[(String, String)]);
     fn poll_frame(&mut self) -> Option<Vec<u8>>;
@@ -26,6 +42,13 @@ pub trait HtmlRenderer: Send {
     /// [`crate::vehicle_api`]). Called before [`Self::set_vars`] whenever it changed. A
     /// backend that has no such object leaves this as it is.
     fn set_vehicle(&mut self, _api: &crate::vehicle_api::ApiValue) {}
+    /// The depot file as a page sees it (`window.omsi.depot`, see [`crate::vehicle_api::depot`]).
+    /// Called once, before the first update.
+    fn set_depot(&mut self, _depot: &crate::vehicle_api::ApiValue) {}
+    /// Route, line and destination requests the page made since the last call.
+    fn take_requests(&mut self) -> Vec<HtmlRequest> {
+        Vec::new()
+    }
 }
 
 pub type BackendFactory = fn(width: u32, height: u32, html: &str) -> Box<dyn HtmlRenderer>;
@@ -185,6 +208,8 @@ impl VehicleInstance {
         t.pointer(u, v, kind);
         let events = t.renderer.take_events();
         let triggers = t.renderer.take_triggers();
+        let requests = t.renderer.take_requests();
+        self.queue_html_requests(requests);
         for (name, value) in events {
             if !self.set_var(&name, value) {
                 log::debug!("htmltexture: the page sets {name}, which the vehicle does not have");
@@ -198,10 +223,31 @@ impl VehicleInstance {
         true
     }
 
+    /// What the pages asked of the IBIS (route, line, destination) since the last call.
+    pub fn take_html_requests(&mut self) -> Vec<HtmlRequest> {
+        std::mem::take(&mut self.host.html_requests)
+    }
+
+    fn queue_html_requests(&mut self, requests: Vec<HtmlRequest>) {
+        for r in requests {
+            if self.host.html_requests.len() < MAX_REQUESTS {
+                log::debug!("htmltexture: page asks {r:?}");
+                self.host.html_requests.push(r);
+            }
+        }
+    }
+
     pub fn update_html_textures(&mut self) {
         if self.html_textures.is_empty() {
             return;
         }
+        // the depot file, for the pages that start now
+        let depot = if self.html_textures.iter().any(|t| !t.started) {
+            self.host.hof.as_ref().map(|h| crate::vehicle_api::depot(h))
+        } else {
+            None
+        };
+        let mut requests: Vec<HtmlRequest> = Vec::new();
         let mut num = Vec::new();
         for (i, name) in self.ty.program.var_names.iter().enumerate() {
             num.push((name.clone(), self.state.vars[i]));
@@ -235,6 +281,11 @@ impl VehicleInstance {
                     ds.len(),
                     if t.started { "" } else { " (first update)" }
                 );
+                if !t.started {
+                    if let Some(d) = &depot {
+                        t.renderer.set_depot(d);
+                    }
+                }
                 if api_changed {
                     t.renderer.set_vehicle(&api);
                     t.last_api = Some(api.clone());
@@ -254,11 +305,13 @@ impl VehicleInstance {
             }
             events.extend(page_events);
             triggers.extend(t.renderer.take_triggers());
+            requests.extend(t.renderer.take_requests());
             if let Some(rgba) = t.renderer.poll_frame() {
                 log::debug!("htmltexture #{}: new frame of {} bytes", t.script_index, rgba.len());
                 frames.push((t.script_index, t.width, t.height, rgba));
             }
         }
+        self.queue_html_requests(requests);
         for (name, v) in events {
             if !self.set_var(&name, v) {
                 log::debug!("htmltexture: the page sets {name}, which the vehicle does not have");
