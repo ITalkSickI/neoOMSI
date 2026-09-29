@@ -796,11 +796,13 @@ fn place_body(
 ) -> AiBody {
     let mut body = AiBody::new(&vehicle.ty.def, kind);
     let ground = vehicle.ground.clone();
+    let contact = vehicle.contact.clone();
     body.place(
         &|d| state.way_point(net, d),
         ground
             .as_ref()
             .map(|g| g.as_ref() as &dyn Fn(f64, f64) -> Option<f64>),
+        contact.as_deref(),
         state.speed,
     );
     body.apply(vehicle);
@@ -2265,10 +2267,27 @@ impl Traffic {
             if let Some(i) = ty.program.str_var("ident") {
                 vehicle.state.str_vars[i as usize] = reg;
             }
-        } else if ty.def.registration_free {
-            // a plate of the map's registrations.txt
-            if let (Some(i), Some(reg)) = (ty.program.str_var("ident"), world.free_registration(seed.rotate_left(17))) {
-                vehicle.state.str_vars[i as usize] = reg;
+        } else {
+            // A vehicle of the random traffic with a `[number]` list takes a number of it at
+            // random and the plate beside it, else the plate its mode makes of the number
+            // (TRoadVehicleInst.virtual_11 at 0x7e7b51); a free plate is one of the map's
+            // registrations.txt.
+            let numbers = ty.def.numbers_with_plates();
+            if !numbers.is_empty() {
+                let (n, plate) = &numbers[(seed.rotate_left(29) % numbers.len() as u64) as usize];
+                if let Some(i) = ty.program.str_var("number") {
+                    vehicle.state.str_vars[i as usize] = n.clone();
+                }
+                if ty.def.registration_mode != 1 {
+                    if let Some(i) = ty.program.str_var("ident") {
+                        vehicle.state.str_vars[i as usize] = if plate.is_empty() { ty.def.plate_of_number(n) } else { plate.clone() };
+                    }
+                }
+            }
+            if ty.def.registration_mode == 1 {
+                if let (Some(i), Some(reg)) = (ty.program.str_var("ident"), world.free_registration(seed.rotate_left(17))) {
+                    vehicle.state.str_vars[i as usize] = reg;
+                }
             }
         }
         // aircraft keep the height of their flight path: a ground sampler would pull
@@ -2278,6 +2297,16 @@ impl Traffic {
         } else {
             Some(ai_ground(world))
         };
+        // and what its wheels stand on, asked as the player's are (see `AiBody::settle`); a
+        // coupled part (an articulated bus's rear, a lorry's trailer) asks it too, with the
+        // height it is at - the plain sampler gave it the deck of a bridge over its road
+        // (`OMSI_AI_WAY_ONLY=1`: on the way and the plain sampler, as before - A/B runs)
+        vehicle.contact = (kind == LaneKind::Street && omsi_cfg::env::var_os("OMSI_AI_WAY_ONLY").is_none()).then(|| {
+            std::sync::Arc::new(crate::scene::DriveGround {
+                terrains: world.terrains.clone(),
+                surfaces: world.surfaces.clone(),
+            }) as std::sync::Arc<dyn omsi_sim::rigid::Ground>
+        });
         // random paint scheme / advert
         let scheme = match scheme {
             Some(s) => s,
@@ -4885,7 +4914,9 @@ impl Traffic {
                     let stop_gap = if real - want >= comfortable {
                         want
                     } else {
-                        (real - comfortable).clamp(real.min(0.5), want)
+                        // (a gap wanted under half a metre is the floor itself: clamp
+                        // panicked with its bounds the wrong way round, #138)
+                        (real - comfortable).clamp(real.min(0.5).min(want), want)
                     };
                     keep_back = Some(st.front + (real - stop_gap).max(0.0) + 0.6);
                 }
@@ -5406,6 +5437,7 @@ impl Traffic {
                 .for_each(|(state, body, vehicle, frame, trail)| {
                     let t0 = std::time::Instant::now();
                     let ground = vehicle.ground.clone();
+                    let contact = vehicle.contact.clone();
                     let rail = body.kind == MotionKind::Rail;
                     if rail {
                         record_rail_trail(trail, state.odometer as f64, state.way_point(net, 0.0));
@@ -5419,6 +5451,7 @@ impl Traffic {
                         ground
                             .as_ref()
                             .map(|g| g.as_ref() as &dyn Fn(f64, f64) -> Option<f64>),
+                        contact.as_deref(),
                     );
                     body.apply(vehicle);
                     if rail && !vehicle.trailers.is_empty() {
