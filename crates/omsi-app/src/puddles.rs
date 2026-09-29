@@ -2,12 +2,12 @@
 //! glass-flat, reflective patches on a wet `[moisture]` road, with the raindrop ripples
 //! crossing it - is `enhanced.wgsl`'s; this file only works out *where* one sits (the same
 //! low-frequency mask, evaluated here so a wheel can be asked whether it stands in one) and
-//! spawns the droplets through the renderer's existing corona sprite pipeline (the one rain
-//! and snow already use in `rain.rs`), so a splash costs one more small, dim sprite each,
-//! not a new draw call or pipeline.
+//! spawns the spray as the renderer's smoke particles: soft, lit by the scene, blended - a
+//! mist of water that widens and thins out. (Drawn as corona sprites before, the spray was
+//! rings of glowing light flying off the wheels.)
 
 use glam::{DVec3, Vec3};
-use omsi_render::Corona;
+use omsi_render::SmokeParticle;
 
 /// The puddle mask `enhanced.wgsl` paints on a `[moisture]` road, evaluated on the CPU with
 /// the same two octaves of value noise so a splash starts exactly where the reflection does.
@@ -94,7 +94,7 @@ impl Splashes {
     /// live droplets come back as coronas for the caller to push onto `scene.coronas`,
     /// exactly as `rain::Rain::tick` pushes rain - a plain `Vec` so the spawning and ageing
     /// above stay testable without a real, GPU-backed `Scene`.
-    pub fn update(&mut self, dt: f32, wheels: &[DVec3], speed: f32, coverage_at: &dyn Fn(f64, f64) -> f32) -> Vec<Corona> {
+    pub fn update(&mut self, dt: f32, wheels: &[DVec3], speed: f32, coverage_at: &dyn Fn(f64, f64) -> f32) -> Vec<SmokeParticle> {
         if self.debt.len() != wheels.len() {
             self.debt = vec![0.0; wheels.len()];
         }
@@ -108,15 +108,16 @@ impl Splashes {
             self.wheels_in_puddle += 1;
             // a continuous spray while the wheel stays in the puddle, thicker the faster the
             // bus goes and the deeper the puddle's own mask reads
-            let rate = (8.0 + 40.0 * (speed / 12.0).min(1.0)) * cov;
+            let rate = (4.0 + 18.0 * (speed / 12.0).min(1.0)) * cov;
             self.debt[i] += rate * dt;
             while self.debt[i] >= 1.0 && self.drops.len() < MAX_DROPS {
                 self.debt[i] -= 1.0;
                 let a = self.rand() * std::f32::consts::TAU;
                 let r = self.rand() * 0.22;
-                let up = 1.1 + self.rand() * 1.5 + (speed * 0.05).min(1.3);
-                let out = 0.5 + self.rand() * 1.1;
-                let life = 0.35 + self.rand() * 0.25;
+                // a low sheet of spray thrown out to the side, not a fountain
+                let up = 0.5 + self.rand() * 0.8 + (speed * 0.03).min(0.8);
+                let out = 0.4 + self.rand() * 0.9 + (speed * 0.04).min(0.8);
+                let life = 0.5 + self.rand() * 0.4;
                 self.drops.push(Drop {
                     pos: *pos + DVec3::new((a.cos() * r) as f64, (a.sin() * r) as f64, 0.04),
                     vel: Vec3::new(a.cos() * out, a.sin() * out, up),
@@ -134,11 +135,13 @@ impl Splashes {
                 self.drops.swap_remove(i);
                 continue;
             }
-            d.vel.z -= 9.81 * dt;
+            // the mist slows in the air and sinks, widening as it thins
+            d.vel *= (1.0 - 2.5 * dt).max(0.0);
+            d.vel.z -= 3.0 * dt;
             d.pos += d.vel.as_dvec3() * dt as f64;
             let t = (d.age / d.life).clamp(0.0, 1.0);
-            let fade = 1.0 - t;
-            out.push(Corona { position: d.pos, size: 0.025 + 0.05 * fade, color: [0.78, 0.83, 0.9], brightness: 0.55 * fade, direction: Vec3::ZERO, cone_cos: -1.0, ..Default::default() });
+            let fade = (1.0 - t) * (t * 6.0).min(1.0);
+            out.push(SmokeParticle { position: d.pos, size: 0.06 + 0.3 * t, color: [0.86, 0.89, 0.92], alpha: 0.3 * fade });
             i += 1;
         }
         if omsi_cfg::env::var_os("OMSI_DEBUG_RAIN").is_some() && (self.wheels_in_puddle > 0 || !self.drops.is_empty()) {

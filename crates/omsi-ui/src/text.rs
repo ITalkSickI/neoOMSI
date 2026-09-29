@@ -101,6 +101,68 @@ pub struct Fonts {
     faces: Vec<(Weight, FontVec)>,
 }
 
+/// The system's fonts for the scripts Roboto has not (Chinese, Japanese, Korean, the
+/// Devanagari of Hindi, Arabic, Thai ...): read the first time such a character is drawn,
+/// from where each system keeps them - nothing is shipped, and nothing is read for a
+/// language Roboto covers.
+fn fallback_fonts() -> &'static [FontVec] {
+    static FALLBACK: std::sync::OnceLock<Vec<FontVec>> = std::sync::OnceLock::new();
+    FALLBACK.get_or_init(|| {
+        const PATHS: &[&str] = &[
+            // Windows
+            "C:\\Windows\\Fonts\\YuGothM.ttc",
+            "C:\\Windows\\Fonts\\msyh.ttc",
+            "C:\\Windows\\Fonts\\meiryo.ttc",
+            "C:\\Windows\\Fonts\\malgun.ttf",
+            "C:\\Windows\\Fonts\\Nirmala.ttf",
+            "C:\\Windows\\Fonts\\NirmalaUI.ttf",
+            "C:\\Windows\\Fonts\\segoeui.ttf",
+            "C:\\Windows\\Fonts\\tahoma.ttf",
+            // macOS
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+            "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+            "/System/Library/Fonts/Kohinoor.ttc",
+            "/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/System/Library/Fonts/GeezaPro.ttc",
+            // Android
+            "/system/fonts/NotoSansCJK-Regular.ttc",
+            "/system/fonts/NotoSerifCJK-Regular.ttc",
+            "/system/fonts/NotoSansDevanagari-Regular.otf",
+            "/system/fonts/NotoSansDevanagariUI-VF.ttf",
+            "/system/fonts/NotoSansDevanagari-VF.ttf",
+            "/system/fonts/NotoNaskhArabic-Regular.ttf",
+            "/system/fonts/DroidSansFallback.ttf",
+            // Linux
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+            "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ];
+        let mut out = Vec::new();
+        for p in PATHS {
+            let Ok(data) = std::fs::read(p) else { continue };
+            if let Ok(f) = FontVec::try_from_vec_and_index(data, 0) {
+                out.push(f);
+            }
+        }
+        out
+    })
+}
+
+/// The font that draws `c`: Roboto (`main`), else the first system font that has it.
+fn font_for<'a>(main: &'a FontVec, c: char) -> &'a FontVec {
+    if main.glyph_id(c).0 != 0 || (c as u32) < 0x2000 && !((c as u32) >= 0x0590 && (c as u32) < 0x1100) {
+        return main;
+    }
+    fallback_fonts().iter().find(|f| f.glyph_id(c).0 != 0).unwrap_or(main)
+}
+
 impl Default for Fonts {
     fn default() -> Self {
         Self::new()
@@ -131,16 +193,20 @@ impl Fonts {
         let translated = crate::i18n::tr(text);
         let comp = composed(&translated);
         let text = &*comp;
-        let f = self.face(weight).as_scaled(PxScale::from(px));
+        let main = self.face(weight);
         let mut w = 0.0;
-        let mut prev = None;
+        let mut prev: Option<(ab_glyph::GlyphId, *const FontVec)> = None;
         for c in text.chars().map(substitute) {
+            let font = font_for(main, c);
+            let f = font.as_scaled(PxScale::from(px));
             let id = f.glyph_id(c);
-            if let Some(p) = prev {
-                w += f.kern(p, id);
+            if let Some((p, pf)) = prev {
+                if std::ptr::eq(pf, font) {
+                    w += f.kern(p, id);
+                }
             }
             w += f.h_advance(id);
-            prev = Some(id);
+            prev = Some((id, font as *const FontVec));
         }
         w
     }
@@ -190,22 +256,27 @@ impl Fonts {
         let pad = PAD as f32;
         let asc = f.ascent();
         let h = ((asc - f.descent()).ceil() as u32 + 2 * PAD).max(1);
-        let mut glyphs = Vec::new();
+        let mut glyphs: Vec<(&FontVec, ab_glyph::Glyph)> = Vec::new();
         let mut x = pad;
-        let mut prev = None;
+        let mut prev: Option<(ab_glyph::GlyphId, *const FontVec)> = None;
         for c in text.chars().map(substitute) {
-            let id = f.glyph_id(c);
-            if let Some(p) = prev {
-                x += f.kern(p, id);
+            let gf = font_for(font, c);
+            let sf = gf.as_scaled(PxScale::from(px));
+            let id = sf.glyph_id(c);
+            if let Some((p, pf)) = prev {
+                if std::ptr::eq(pf, gf) {
+                    x += sf.kern(p, id);
+                }
             }
-            glyphs.push(id.with_scale_and_position(PxScale::from(px), ab_glyph::point(x, pad + asc)));
-            x += f.h_advance(id);
-            prev = Some(id);
+            glyphs.push((gf, id.with_scale_and_position(PxScale::from(px), ab_glyph::point(x, pad + asc))));
+            x += sf.h_advance(id);
+            prev = Some((id, gf as *const FontVec));
         }
+        let _ = &f;
         let w = (x.ceil() as u32 + PAD).max(1);
         let mut cov = vec![0f32; (w * h) as usize];
-        for g in glyphs {
-            if let Some(o) = font.outline_glyph(g) {
+        for (gf, g) in glyphs {
+            if let Some(o) = gf.outline_glyph(g) {
                 let b = o.px_bounds();
                 o.draw(|gx, gy, c| {
                     let xx = b.min.x as i32 + gx as i32;
@@ -236,6 +307,24 @@ mod tests {
         let cut = f.fit("Krankenhaus Grundorf Nord", 16.0, Weight::Regular, 100.0);
         assert!(cut.ends_with('…') && f.width(&cut, 16.0, Weight::Regular) <= 100.0, "{cut}");
         assert_eq!(f.fit("Kurz", 16.0, Weight::Regular, 100.0), "Kurz");
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+    /// Scripts Roboto lacks are drawn with a system font where the system has one.
+    #[test]
+    fn cjk_and_devanagari_come_from_the_system() {
+        if fallback_fonts().is_empty() {
+            return;
+        }
+        let f = Fonts::new();
+        for t in ["日本語", "中文", "हिन्दी"] {
+            let b = f.render(t, 20.0, Weight::Regular);
+            let ink: u64 = b.alpha.iter().map(|&a| a as u64).sum();
+            assert!(ink > 1000, "{t}: {ink}");
+        }
     }
 }
 

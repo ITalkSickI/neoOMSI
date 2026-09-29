@@ -88,11 +88,43 @@ pub(crate) struct App {
     pub(crate) paused: bool,
     /// The game menu (Escape, OMSI's `open_mainmenue`): the chosen line of it.
     pub(crate) game_menu: Option<usize>,
+    /// The first line of the game menu (or chooser) shown, when a finger has scrolled it
+    /// (in lines, fractional while dragged); `None`: the chosen line is kept in view.
+    pub(crate) menu_top: Option<f32>,
+    /// The game menu shows all its lines ("More..."), not only the everyday ones.
+    pub(crate) menu_more: bool,
+    /// Keys pressed (true) and let go since the Lua plugins' last frame.
+    pub(crate) plugin_keys: Vec<(String, bool)>,
+    /// Seconds Ctrl+Shift+Page Up/Down has been held (the clock runs faster the longer).
+    pub(crate) clock_hold: f32,
+    /// A controller button held for looking left, right, up, down (`view_look_*`).
+    pub(crate) pad_look: [bool; 4],
+    /// The arrow keys turned the head (a glance that comes back when they are let go).
+    pub(crate) arrow_glance: bool,
+    /// The next click on the city map puts the bus there (Esc → Move the bus on the map).
+    pub(crate) teleport_pick: bool,
+    /// Discord's "Playing openOMSI" status, and when it was last brought up to date.
+    pub(crate) discord: Option<crate::discord::Discord>,
+    pub(crate) discord_t: f32,
+    /// Head tracking (Settings → head tracking), started with the first frame that wants it.
+    pub(crate) headtrack: Option<crate::headtrack::HeadTracker>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).
     pub(crate) controllers: Option<crate::controllers::Controllers>,
     /// OMSI's mouse control (`toggel_mouse_ctrl`, O): the cursor's place steers (across) and
     /// works the pedals (up throttle, down brake).
     pub(crate) mouse_drive: bool,
+    /// Mouse steering: the steering it gives (fraction of the full lock) and how long (s)
+    /// it still eases in after being switched on (OMSI: a second, see app_events).
+    pub(crate) mouse_steer: (f32, f32),
+    /// Mouse steering past the window's edge: the lock the mouse added while the cursor stood
+    /// pinned at the left or right edge (-1..1 of full lock). OMSI divides the width by the
+    /// speed, and at 30 km/h the edge of the screen was a third of the lock, with nowhere
+    /// further to move.
+    pub(crate) mouse_edge: f32,
+    /// The mouse's throttle and brake (eased in with the steering).
+    pub(crate) mouse_pedals: (f32, f32),
+    /// The speed mouse steering divides by, smoothed.
+    pub(crate) mouse_kmh: f32,
     /// The tutorial being run (`--tutorial`), loaded on the first frame.
     pub(crate) tutorial: Option<crate::tutorial::Tutorial>,
     /// OMSI's pedestrian ("ego") view: the free camera walking at eye height on whatever
@@ -130,6 +162,12 @@ pub(crate) struct App {
     pub(crate) route_arrows: crate::route_arrows::RouteArrows,
     /// OMSI's global key actions from `Inputs/keyboard.cfg` ([game]).
     pub(crate) game_keys: Vec<omsi_content::KeyBinding>,
+    /// Keys (DirectInput scan codes, no modifier) the player bound on the Controls page to
+    /// something the original's keyboard.cfg does not have there: a driving preset (W A S D,
+    /// the arrows) leaves them alone - D bound to the gearbox is the gearbox, not "steer right".
+    pub(crate) own_keys: std::collections::HashSet<i32>,
+    /// The same for keys held with Shift (a Shift+number of the player's own is not a door key).
+    pub(crate) own_shift: std::collections::HashSet<i32>,
     /// Whether the game stood paused before the menu opened (closing it goes back to that).
     pub(crate) menu_prev_pause: bool,
     /// OMSI's information bar (`view_toggle_informationdisplay`, Ctrl+Y): time, speed, the
@@ -149,17 +187,27 @@ pub(crate) struct App {
     /// How far the player has turned the head (driver, passenger) or swung the outside
     /// camera around the bus, and how far that camera sits from it.
     pub(crate) look: (f32, f32),
+    /// Each view keeps its own `look` (as OMSI's cameras do): turning the outside camera
+    /// (F3) leaves the driver's head (F1) where it was. `look_view` is the view `look`
+    /// belongs to now; see `App::sync_view_look`.
+    pub(crate) view_looks: std::collections::HashMap<String, (f32, f32)>,
+    pub(crate) look_view: String,
+    /// The zoom of the views inside the bus (driver, passenger): their field of view is
+    /// the camera's times this (the mouse wheel, + and -, a pinch), per view.
+    pub(crate) view_zoom: std::collections::HashMap<String, f32>,
     pub(crate) orbit: f32,
     pub(crate) frames: u32,
     pub(crate) fps_t: Instant,
     /// Last workshop / fuel pump / wash message, and how long it still shows.
     pub(crate) service_msg: Option<(String, f32)>,
+    /// What the log has said (see applog.rs).
+    pub(crate) log_state: crate::applog::LogState,
     /// The driver's personnel file and this session's statistics.
     pub(crate) career: career::Career,
     /// How wet the roads are (0..1), built up by rain and dried by the sun.
     pub(crate) wetness: f32,
     /// The mouse cursor currently shows the hand (it is over a switch).
-    pub(crate) cursor_pointer: bool,
+    pub(crate) cursor_kind: u8,
     pub(crate) settings: settings::Settings,
     /// LAN session, and the other players' buses (drawn and heard like AI vehicles) with the
     /// chat line.
@@ -168,8 +216,11 @@ pub(crate) struct App {
     /// Frames longer than 50 ms (stutters) and the worst frame, for the exit summary.
     pub(crate) spikes: u32,
     pub(crate) worst_ms: f32,
-    /// The frame-rate governor's window: seconds and frames since it last judged.
-    pub(crate) governor: (f32, u32),
+    /// The frame-rate governor's two-second window.
+    /// Window seconds, frames, and time waiting on presentation/GPU in that window.
+    pub(crate) governor: (f32, u32, f32),
+    /// Cumulative presentation wait at the previous frame, independent of OMSI_PROFILE.
+    pub(crate) governor_wait_prev: f64,
     /// Frames the window was hidden for (they are not drawn) and whether the exit is under way.
     pub(crate) hidden_frames: u32,
     pub(crate) exiting: bool,
@@ -351,9 +402,24 @@ impl App {
         renderer: &Renderer,
         mut scene: &mut Scene,
     ) {
+        report_missing_content(&w, &mut self.service_msg);
         {
             {
-                match spawn_player(&self.args, &w, &renderer, &mut scene) {
+                // (once more when it fails: a file read while the start was still reading
+                // others; a failure is said on the screen - the game went on without a bus
+                // and the player found himself on foot, with no word why)
+                let first = spawn_player(&self.args, &w, &renderer, &mut scene);
+                let spawned = match first {
+                    Err(e) if self.args.bus.is_some() => {
+                        log::warn!("the bus could not be put down ({e:#}); trying again");
+                        spawn_player(&self.args, &w, &renderer, &mut scene).map_err(|e2| {
+                            self.service_msg = Some((format!("The bus could not be loaded: {}", format!("{e2:#}").lines().next().unwrap_or_default()), 15.0));
+                            e2
+                        })
+                    }
+                    other => other,
+                };
+                match spawned {
                     Ok(mut p) => {
                         let audio = omsi_audio::AudioEngine::new();
                         if let Some(p) = p.as_mut() {
@@ -607,6 +673,7 @@ impl App {
                     position: DVec3::new(0.0, 0.0, -1.0e6),
                     yaw: 0.0,
                     pitch: -89.0,
+                    roll: 0.0,
                     fov_deg: 60.0,
                     near: 0.5,
                     far: 10.0,
@@ -684,7 +751,8 @@ impl App {
             return;
         }
         if let Some(p) = self.player.as_mut() {
-            p.vehicle.collision = Some(w.collision.lock().clone());
+            // (OMSI's [no_collision]: no solid object stops the bus)
+            p.vehicle.collision = self.settings.collision_objects.then(|| w.collision.lock().clone());
         }
         match self.traffic.as_mut() {
             Some(t) => {
@@ -714,4 +782,51 @@ pub(crate) fn start_centers(args: &Args, cam: &Camera, world: Option<&World>) ->
         out.push(cam.position);
     }
     out
+}
+
+/// What the map needs and this installation lacks, said on the screen and written to
+/// `~/.openomsi/missing_content.txt` by add-on folder: a map short of an add-on showed
+/// holes, bare roads and white objects, and nobody could tell that from a fault of the game.
+pub(crate) fn report_missing_content(w: &World, msg: &mut Option<(String, f32)>) {
+    let (files, textures) = w.missing_content();
+    if files.is_empty() && textures.is_empty() {
+        return;
+    }
+    // the add-on a file comes with: the folder under Sceneryobjects / Splines / Vehicles
+    let addon = |f: &str| f.split('/').take(2).collect::<Vec<_>>().join("/");
+    let mut by_addon: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for (f, what) in &files {
+        by_addon.entry(addon(f)).or_default().push(format!("{what}: {f}"));
+    }
+    let mut text = format!("openOMSI: content this map uses that is not installed\nmap: {}\n\n", w.map_dir.display());
+    for (a, list) in &by_addon {
+        text.push_str(&format!("{a} ({} files)\n", list.len()));
+        for l in list {
+            text.push_str(&format!("  {l}\n"));
+        }
+    }
+    if !textures.is_empty() {
+        text.push_str(&format!("\ntextures not found ({}):\n", textures.len()));
+        for t in &textures {
+            text.push_str(&format!("  {t}\n"));
+        }
+    }
+    let Some(dir) = crate::lan::data_dir() else { return };
+    let path = dir.join("missing_content.txt");
+    let _ = std::fs::write(&path, text);
+    let objects = files.iter().filter(|(_, w)| *w != "spline").count();
+    let splines = files.len() - objects;
+    let addons: Vec<&String> = by_addon.keys().take(4).collect();
+    let more = if by_addon.len() > 4 { format!(" and {} more", by_addon.len() - 4) } else { String::new() };
+    log::warn!("missing content: {objects} objects, {splines} splines, {} textures (list: {})", textures.len(), path.display());
+    if !files.is_empty() {
+        *msg = Some((
+            format!(
+                "This map uses {objects} objects and {splines} splines that are not installed (add-ons: {}{more}). The list is in {}",
+                addons.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", "),
+                path.display()
+            ),
+            15.0,
+        ));
+    }
 }

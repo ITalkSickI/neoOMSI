@@ -252,8 +252,24 @@ fn perturb_normal(n: vec3<f32>, p: vec3<f32>, uv: vec2<f32>, tn: vec3<f32>) -> v
     return safe_normal(t * k * tn.x + b * k * tn.y + n * max(tn.z, 0.05));
 }
 
+// The enhanced pass's two targets: the picture, and the screen mask (1 on the bus's own
+// screens, carried by the coverage of what is drawn over them; see MASK_FORMAT).
+struct EnhancedOut {
+    @location(0) color: vec4<f32>,
+    @location(1) mask: vec4<f32>,
+};
+
 @fragment
-fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_enhanced(in: VsOut) -> EnhancedOut {
+    let c = shade_enhanced(in);
+    let screen = material.flags.x > 0.5;
+    var out: EnhancedOut;
+    out.color = c;
+    out.mask = vec4<f32>(select(0.0, 1.0, screen), 0.0, 0.0, select(c.a, 1.0, screen));
+    return out;
+}
+
+fn shade_enhanced(in: VsOut) -> vec4<f32> {
     if (material.emissive.w > 1.5) {
         // a pane's film of water: drops, not the sliding texture (see `rain_drops`), lit by
         // the sky they mirror
@@ -282,7 +298,7 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     }
     if (material.params.z > 0.5) {
         let tm = textureSample(t_trans, s_diffuse, in.uv);
-        tex.a = select(tm.r, tm.a, material.params.w > 0.5);
+        tex.a = select(1.0, tm.a, material.params.w > 0.5);
         if (terrain && material.params.x > 1.5) {
             let lum = dot(tex.rgb, vec3<f32>(0.333, 0.333, 0.333));
             let m = tex.a + (lum - 0.5) * 0.45;
@@ -449,8 +465,11 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         }
     }
     // rain: roads with [moisture] turn dark and smooth, everything outside a little glossier
-    let wet_road = camera.shadow.w * material.params2.z * outside;
-    let wet_any = camera.shadow.w * outside * select(0.35, 0.0, glass);
+    // (not under snow: a snowy road took the rain's gloss and the snow on it shone like
+    // plastic in every headlight)
+    let dry_snow = 1.0 - clamp(enh.weather.y, 0.0, 1.0);
+    let wet_road = camera.shadow.w * material.params2.z * outside * dry_snow;
+    let wet_any = camera.shadow.w * outside * select(0.35, 0.0, glass) * dry_snow;
     if (wet_road > 0.0) {
         albedo = albedo * mix(1.0, 0.5, wet_road);
         rough = mix(rough, 0.12, wet_road);
@@ -505,8 +524,9 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
         let ground = select(0.0, 1.0, terrain || material.params2.z > 0.0);
         let cover = snow * clamp(max(ground, smoothstep(0.78, 0.95, up) * 0.8), 0.0, 1.0) * (0.55 + 0.35 * tex.a);
         albedo = mix(albedo, vec3<f32>(0.82, 0.84, 0.88), cover);
-        rough = mix(rough, 0.65, cover);
-        f0 = mix(f0, vec3<f32>(0.03), cover);
+        // fresh snow is all but matte: it scatters the light and shows no highlight
+        rough = mix(rough, 0.95, cover);
+        f0 = mix(f0, vec3<f32>(0.02), cover);
         metal = metal * (1.0 - cover);
     }
     // specular antialiasing: where the normal turns quickly across a pixel (a low-poly

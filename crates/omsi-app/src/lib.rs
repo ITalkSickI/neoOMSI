@@ -10,12 +10,17 @@
 //! window of one process.
 
 mod admin;
+mod discord;
+mod headtrack;
+#[cfg(target_os = "macos")]
+mod mac_hid;
 #[cfg(target_os = "android")]
 mod android;
 mod platform;
 mod touch;
 mod placing;
 mod mt;
+mod updater;
 mod ambience;
 mod camera_arm;
 mod career;
@@ -50,10 +55,13 @@ mod ui;
 
 // the game itself, split by what each part does
 mod app;
+mod applog;
 mod app_events;
 mod bus_service;
 mod camera_util;
 mod controllers;
+#[cfg(windows)]
+mod dinput;
 mod cli;
 mod diagnostics;
 mod duty_start;
@@ -70,6 +78,7 @@ mod plugins;
 mod services;
 mod situation;
 mod spawn;
+mod stock_keys;
 mod startup;
 mod traffic_link;
 mod tutorial;
@@ -78,16 +87,14 @@ mod world_load;
 
 // the interface's translations (locales/app.yml; the English text is the key)
 rust_i18n::i18n!("locales");
+// (the tables are read when this crate compiles: this makes cargo compile it again when they
+// change - the macro alone left the old texts in the program)
+const _LOCALES: &str = include_str!("../locales/app.yml");
 
 /// Show the interface in `code` (the settings' ENG / DEU / FRA / RUS).
 pub(crate) fn ui_language(code: &str) {
     omsi_ui::i18n::set_lookup(|lang, text| _rust_i18n_try_translate(lang, text).map(|t| t.into_owned()));
-    omsi_ui::i18n::set_language(match code {
-        "RUS" => "ru",
-        "DEU" => "de",
-        "FRA" => "fr",
-        _ => "",
-    });
+    omsi_ui::i18n::set_language(omsi_launcher_lib::language_iso(code));
 }
 
 use anyhow::{anyhow, Context, Result};
@@ -133,6 +140,10 @@ pub fn run() -> Result<()> {
     // happened and a backtrace, not only to a terminal that may not be there
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        if omsi_render::catching() {
+            log::warn!("caught by the renderer: {info}");
+            return;
+        }
         log::error!(
             "the game stopped on an error (build {BUILD}): {info}\n{}",
             std::backtrace::Backtrace::force_capture()
@@ -299,6 +310,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         place_on_duty(&mut args);
     }
     let settings = settings::Settings::load();
+    applog::log_system(&settings);
     if args.drive_keys.eq_ignore_ascii_case("simple")
         && !settings.drive_keys.eq_ignore_ascii_case("simple")
     {
@@ -329,6 +341,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
     lan_mods::remove_stale();
     if let Some(l) = lan.as_mut() {
         lan::share_mods(&mut args, l);
+        lan::take_host_map(&mut args, l);
     }
     if let (Some(cfg), Some(l)) = (server_cfg.as_ref(), lan.as_ref()) {
         lan::open_public_gateway(l, server::info_of(cfg), cfg.web_port, cfg.tunnel);
@@ -405,7 +418,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         menu: None,
         populate_t: 0.0,
         humans_populate_t: 0.0,
-        radio: radio::Radio::load(),
+        radio: radio::Radio::load(&args_root_for_keys),
         profile: Default::default(),
         profile_prev: Default::default(),
         first_populate: true,
@@ -432,8 +445,22 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         shot: None,
         paused: false,
         game_menu: None,
+        menu_top: None,
+        menu_more: false,
+        plugin_keys: Vec::new(),
+        clock_hold: 0.0,
+        pad_look: [false; 4],
+        arrow_glance: false,
+        teleport_pick: false,
+        discord: None,
+        discord_t: 0.0,
+        headtrack: None,
         controllers: None,
         mouse_drive: false,
+        mouse_steer: (0.0, 0.0),
+        mouse_edge: 0.0,
+        mouse_pedals: (0.0, 0.0),
+        mouse_kmh: 0.0,
         tutorial: None,
         ego: false,
         on_foot: None,
@@ -452,6 +479,8 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         list_kind: None,
         route_arrows: Default::default(),
         game_keys: omsi_content::KeyboardCfg::load(&crate::startup::keyboard_cfg(&args_root_for_keys)).map(|k| k.game).unwrap_or_default(),
+        own_keys: crate::startup::own_keys(&args_root_for_keys),
+        own_shift: crate::startup::own_bindings(&args_root_for_keys, 1),
         menu_prev_pause: false,
         info_bar: false,
         pending_time: None,
@@ -461,20 +490,25 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         dragging: false,
         drag_delta: (0.0, 0.0),
         look: (0.0, 0.0),
+        view_looks: Default::default(),
+        look_view: String::new(),
+        view_zoom: Default::default(),
         orbit: ORBIT_DEFAULT,
         frames: 0,
         fps_t: Instant::now(),
         service_msg: clock_note.map(|m| (m, 10.0)),
+        log_state: Default::default(),
         plugins: None,
         career: Default::default(),
         wetness: 0.0,
-        cursor_pointer: false,
+        cursor_kind: 0,
         settings,
         lan: None,
         remotes: Default::default(),
         spikes: 0,
         worst_ms: 0.0,
-        governor: (0.0, 0),
+        governor: (0.0, 0, 0.0),
+        governor_wait_prev: 0.0,
         hidden_frames: 0,
         exiting: false,
         stand_in: None,
@@ -498,6 +532,7 @@ mod tests {
             position: DVec3::new(5000.0, 6000.0, 50.0),
             yaw: 0.0,
             pitch: 0.0,
+            roll: 0.0,
             fov_deg: 60.0,
             near: 0.5,
             far: 100.0,

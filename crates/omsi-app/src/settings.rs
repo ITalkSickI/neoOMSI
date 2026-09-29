@@ -58,6 +58,8 @@ pub struct Settings {
     pub ai_max_parked: u32,
     /// `[no_collision_vehToVeh]` off: the player's bus collides with the traffic.
     pub collision_vehicles: bool,
+    /// `[no_collision]` off: the player's bus collides with the map's solid objects.
+    pub collision_objects: bool,
     /// `[no_collision_pedastrians]` off: people are knocked down.
     pub collision_pedestrians: bool,
     /// `[driverview_moving]`: the driver's head moves with the bus (braking, bends, bumps).
@@ -129,6 +131,56 @@ pub struct Settings {
     pub shadow_casters: String,
     /// Dead zone round the centre of a set-up game controller's axes (0..0.3).
     pub ctrl_deadzone: f32,
+    /// Game controllers switched off, by name (`|` between them).
+    pub ctrl_off: String,
+    /// Keyboard steering at OMSI's steady pace (`KeyboardAxes::linear`).
+    pub steering_linear: bool,
+    /// The wheel stays where the keys left it (`KeyboardAxes::old_steering`).
+    pub old_steering: bool,
+    /// The materials' reflection maps (`RenderOptions::reflections`).
+    pub reflections: bool,
+    /// Mouse steering: how far the wheel turns for the same hand movement (1 = OMSI's: the
+    /// window's width is the full lock).
+    pub mouse_sens: f32,
+    /// The graphics interface: `auto` (Vulkan, else DirectX 12, else OpenGL), `vulkan`,
+    /// `dx12` or `gl` (see `startup::graphics_instance`).
+    pub graphics_api: String,
+    /// Force feedback pushes the other way (a Logitech G29 on some drivers).
+    pub ff_invert: bool,
+    /// Force feedback and rumble at all (off: the controller neither pushes nor shakes).
+    pub ff_enabled: bool,
+    /// OMSI's held pedals on the keyboard (see `KeyboardAxes::pedal_hold`).
+    pub pedal_hold: bool,
+    /// The steering wheel's own rotation, lock to lock (degrees; a G29 turns 900).
+    pub wheel_range: f32,
+    /// How far the wheel is turned, lock to lock, for the bus's full lock (degrees); 0 = the
+    /// whole of the wheel's rotation, as OMSI.
+    pub wheel_lock: f32,
+    /// Field of view of the views from the bus (degrees; 0 = the bus's own cameras).
+    pub fov: f32,
+    /// The outside camera is pulled in in front of what stands between it and the bus
+    /// (off: it goes through everything, as in OMSI).
+    pub camera_collision: bool,
+    /// How strongly the analog throttle and brake pedals act: the response curve's
+    /// strength (1 = linear, below 1 softer at the start, above 1 stronger).
+    pub pedal_throttle: f32,
+    pub pedal_brake: f32,
+    /// The driver's eye moved from the bus's own camera (m, bus frame: right, forward, up).
+    pub seat: [f32; 3],
+    /// Head tracking through opentrack's UDP output (TrackIR, webcams, phones), and its port.
+    pub head_tracking: bool,
+    pub head_tracking_port: u16,
+    /// Axes of the tracker turned the other way (`yaw,pitch,roll`): trackers disagree.
+    pub head_tracking_invert: String,
+    /// Discord's "Playing" status (Rich Presence) and the Discord application it shows as.
+    pub discord_status: bool,
+    pub discord_app_id: String,
+}
+
+/// A pedal as the settings shape it: `v` 0..1 through the response curve of `strength`.
+pub fn pedal_curve(v: f32, strength: f32) -> f32 {
+    let g = strength.clamp(0.25, 4.0);
+    v.clamp(0.0, 1.0).powf(1.0 / g)
 }
 
 impl Default for Settings {
@@ -145,7 +197,7 @@ impl Default for Settings {
 impl Settings {
     /// The defaults of a computer.
     fn desktop() -> Self {
-        Self { msaa: 4, anisotropy: 8, ssao: true, shadows: true, shadow_size: 2048, navigator: true, navigator_opacity: 0.85, navigator_corner: "bottom-left".into(), boarding: "auto".into(), detail_textures: true, exact_fare: true, enhanced: false, graphics: "vanilla_plus".into(), fullscreen: false, vsync: true, volume: 0.6, drive_keys: "simple".into(), post_aa: "fxaa".into(), render_scale: 0.0, language: "ENG".into(), pax_voices: "all".into(), nav_arrows: false, get_up: false, texture_compression: true, texture_memory: 0, auto_clutch: true, min_obj_size: 0.013, max_obj_dist: -1.0, max_fps: 0, chat: true, tooltips: true, name_tags: true, show_fps: false, clouds: true, pax_density: 1.0, vol_ai: 1.0, vol_scenery: 1.0, mirror_size: 256, doppler: true, driver: true, maintenance: 0, ai_unsched_factor: 1.0, ai_max_scheduled: 0, ai_max_parked: 0, collision_vehicles: true, collision_pedestrians: true, head_movement: true, time_speed: 1.0, machine_translation: false, shadow_casters: "all".into(), ctrl_deadzone: 0.0 }
+        Self { msaa: 4, anisotropy: 8, ssao: true, shadows: true, shadow_size: 2048, navigator: true, navigator_opacity: 0.85, navigator_corner: "bottom-left".into(), boarding: "auto".into(), detail_textures: true, exact_fare: true, enhanced: false, graphics: "vanilla_plus".into(), fullscreen: false, vsync: true, volume: 0.6, drive_keys: "simple".into(), post_aa: "fxaa".into(), render_scale: 0.0, language: "ENG".into(), pax_voices: "all".into(), nav_arrows: false, get_up: false, texture_compression: true, texture_memory: 0, auto_clutch: true, min_obj_size: 0.013, max_obj_dist: -1.0, max_fps: 0, chat: true, tooltips: true, name_tags: true, show_fps: false, clouds: true, pax_density: 1.0, vol_ai: 1.0, vol_scenery: 1.0, mirror_size: 256, doppler: true, driver: true, maintenance: 0, ai_unsched_factor: 1.0, ai_max_scheduled: 0, ai_max_parked: 0, collision_vehicles: true, collision_objects: true, collision_pedestrians: true, head_movement: true, time_speed: 1.0, machine_translation: false, shadow_casters: "all".into(), ctrl_deadzone: 0.0, ctrl_off: String::new(), steering_linear: false, old_steering: false, reflections: true, mouse_sens: 1.0, graphics_api: "auto".into(), ff_invert: false, ff_enabled: true, pedal_hold: false, wheel_range: 900.0, wheel_lock: 0.0, fov: 0.0, camera_collision: true, pedal_throttle: 1.0, pedal_brake: 1.0, seat: [0.0; 3], head_tracking: false, head_tracking_port: 4242, head_tracking_invert: String::new(), discord_status: true, discord_app_id: String::new() }
     }
 }
 
@@ -220,7 +272,13 @@ impl Settings {
                 "auto_clutch" | "automatic_clutch" => s.auto_clutch = b(v),
                 "min_obj_size" | "performance_minobjsize" => s.min_obj_size = v.parse::<f32>().map(|x| x.clamp(0.0, 0.2)).unwrap_or(s.min_obj_size),
                 "max_obj_dist" | "performance_maxobjdist" => s.max_obj_dist = if v.eq_ignore_ascii_case("off") { 0.0 } else if v.eq_ignore_ascii_case("auto") { -1.0 } else { v.parse::<f32>().map(|x| x.max(0.0)).unwrap_or(s.max_obj_dist) },
-                "max_fps" | "maxfps" => s.max_fps = v.parse::<f32>().map(|x| x.max(0.0) as u32).unwrap_or(s.max_fps),
+                "max_fps" | "maxfps" => {
+                    s.max_fps = v.parse::<f32>().map(|x| x.max(0.0) as u32).unwrap_or(s.max_fps);
+                    // a phone given the PC OMSI's 30 by the settings import: 60
+                    if cfg!(target_os = "android") && s.max_fps == 30 {
+                        s.max_fps = 60;
+                    }
+                }
                 "chat" => s.chat = b(v),
                 "tooltips" | "mouseover" => s.tooltips = b(v),
                 "name_tags" | "nametags" => s.name_tags = b(v),
@@ -238,11 +296,36 @@ impl Settings {
                 "ai_max_scheduled" | "aimaxcountscheduled" => s.ai_max_scheduled = v.parse().unwrap_or(s.ai_max_scheduled),
                 "ai_max_parked" | "aimaxcountparked" => s.ai_max_parked = v.parse().unwrap_or(s.ai_max_parked),
                 "collision_vehicles" => s.collision_vehicles = b(v),
+                "collision_objects" => s.collision_objects = b(v),
                 "collision_pedestrians" => s.collision_pedestrians = b(v),
                 "head_movement" | "driverview_moving" => s.head_movement = b(v),
                 "time_speed" => s.time_speed = v.trim_start_matches(['x', 'X']).parse::<f64>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(1.0, 30.0)).unwrap_or(s.time_speed),
                 "machine_translation" => s.machine_translation = b(v),
                 "ctrl_deadzone" => s.ctrl_deadzone = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 0.3)).unwrap_or(s.ctrl_deadzone),
+                "reflections" | "envmap" => s.reflections = b(v),
+                "graphics_api" => s.graphics_api = v.trim().to_ascii_lowercase(),
+                "ctrl_off" => s.ctrl_off = v.trim().to_string(),
+                "steering_linear" => s.steering_linear = b(v),
+                "old_steering" => s.old_steering = b(v),
+                "ff_invert" => s.ff_invert = b(v),
+                "ff_enabled" => s.ff_enabled = b(v),
+                "pedal_hold" => s.pedal_hold = b(v),
+                "wheel_range" => s.wheel_range = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(90.0, 2880.0)).unwrap_or(s.wheel_range),
+                "wheel_lock" => s.wheel_lock = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| if x < 45.0 { 0.0 } else { x.min(2880.0) }).unwrap_or(s.wheel_lock),
+                "camera_collision" => s.camera_collision = b(v),
+                "head_tracking" => s.head_tracking = b(v),
+                "head_tracking_invert" => s.head_tracking_invert = v.to_ascii_lowercase(),
+                "discord_status" => s.discord_status = b(v),
+                "discord_app_id" => s.discord_app_id = v.trim().to_string(),
+                "head_tracking_port" => s.head_tracking_port = v.parse::<u16>().ok().filter(|p| *p > 0).unwrap_or(s.head_tracking_port),
+                "pedal_throttle" => s.pedal_throttle = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 4.0)).unwrap_or(s.pedal_throttle),
+                "pedal_brake" => s.pedal_brake = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 4.0)).unwrap_or(s.pedal_brake),
+                "seat_x" | "seat_y" | "seat_z" => {
+                    let k = (k.as_bytes()[5] - b'x') as usize;
+                    s.seat[k] = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(-1.5, 1.5)).unwrap_or(0.0);
+                }
+                "fov" => s.fov = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| if x < 20.0 { 0.0 } else { x.min(120.0) }).unwrap_or(s.fov),
+                "mouse_sens" => s.mouse_sens = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 2.0)).unwrap_or(s.mouse_sens),
                 "shadow_casters" => s.shadow_casters = if v.eq_ignore_ascii_case("omsi") { "omsi".into() } else { "all".into() },
                 "post_aa" => s.post_aa = if matches!(v.to_ascii_lowercase().as_str(), "off" | "0" | "none" | "false") { "off".into() } else { "fxaa".into() },
                 "drive_keys" => s.drive_keys = match v.to_ascii_lowercase().as_str() { "wasd" | "arrows" | "omsi" | "simple" => v.to_ascii_lowercase(), _ => s.drive_keys },
@@ -300,7 +383,7 @@ impl Settings {
     }
 
     pub fn render_options(&self) -> omsi_render::RenderOptions {
-        omsi_render::RenderOptions { msaa: self.msaa, anisotropy: self.anisotropy, shadow_size: self.shadow_size, ssao: self.ssao, render_scale: self.render_scale, compress_textures: self.texture_compression, fxaa: self.post_aa != "off", min_obj_size: self.min_obj_size, max_obj_dist: self.object_distance(), omsi_shadow_casters: self.shadow_casters == "omsi" }
+        omsi_render::RenderOptions { msaa: self.msaa, anisotropy: self.anisotropy, shadow_size: self.shadow_size, ssao: self.ssao, render_scale: self.render_scale, compress_textures: self.texture_compression, fxaa: self.post_aa != "off", min_obj_size: self.min_obj_size, max_obj_dist: self.object_distance(), omsi_shadow_casters: self.shadow_casters == "omsi", reflections: self.reflections }
     }
 }
 
@@ -369,4 +452,47 @@ impl Settings {
     pub fn wear_lifespan(&self) -> f32 {
         [1.5e6, 0.01, 0.1, 1.0, 10.0][self.maintenance.min(4) as usize]
     }
+}
+
+/// The player's own turn of a bus's mirrors (degrees yaw, pitch per `[add_camera_reflexion]`),
+/// kept per `.bus` file in `~/.openomsi/mirrors.cfg` as `<bus file>|<mirror>=<yaw>,<pitch>`.
+pub fn mirror_offsets(bus: &std::path::Path) -> Vec<[f32; 2]> {
+    let key = bus.to_string_lossy().to_ascii_lowercase();
+    let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return Vec::new() };
+    let text = std::fs::read_to_string(p).unwrap_or_default();
+    let mut out: Vec<[f32; 2]> = Vec::new();
+    for line in text.lines() {
+        let Some((k, v)) = line.rsplit_once('=') else { continue };
+        let Some((file, i)) = k.rsplit_once('|') else { continue };
+        let (Ok(i), Some((y, p))) = (i.trim().parse::<usize>(), v.split_once(',')) else { continue };
+        if file.trim().to_ascii_lowercase() != key || i > 64 {
+            continue;
+        }
+        if out.len() <= i {
+            out.resize(i + 1, [0.0; 2]);
+        }
+        out[i] = [y.trim().parse().unwrap_or(0.0), p.trim().parse().unwrap_or(0.0)];
+    }
+    out
+}
+
+/// Keep a bus's mirror turns (see [`mirror_offsets`]).
+pub fn save_mirror_offsets(bus: &std::path::Path, offsets: &[[f32; 2]]) {
+    let key = bus.to_string_lossy().to_ascii_lowercase();
+    let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return };
+    let text = std::fs::read_to_string(&p).unwrap_or_default();
+    let mut lines: Vec<String> = text
+        .lines()
+        .filter(|l| l.rsplit_once('=').and_then(|(k, _)| k.rsplit_once('|')).is_none_or(|(f, _)| f.trim().to_ascii_lowercase() != key))
+        .map(str::to_string)
+        .collect();
+    for (i, o) in offsets.iter().enumerate() {
+        if o[0].abs() > 0.01 || o[1].abs() > 0.01 {
+            lines.push(format!("{}|{i}={:.1},{:.1}", bus.to_string_lossy(), o[0], o[1]));
+        }
+    }
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(&p, lines.join("\n") + "\n");
 }

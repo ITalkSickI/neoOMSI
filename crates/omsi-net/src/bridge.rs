@@ -271,10 +271,34 @@ fn relay_loop(host: bool, session: u64, local: Vec<SocketAddr>, sh: &Arc<Mutex<S
         .build();
     let (mine, theirs) = if host { (topic(session), format!("{}-c", topic(session))) } else { (format!("{}-c", topic(session)), topic(session)) };
     let mut last_post: Option<(Instant, String)> = None;
-    let mut since = "5m".to_string();
+    // (the host reposts every quarter of an hour: a joining game reads the last half hour)
+    let mut since = "30m".to_string();
+    // ntfy.sh answers too many requests from one address with 429 for a while - and counts
+    // the messages of a day: the host asked every second and posted every 30 s, and after an
+    // hour or two of hosting the relay shut it out: nobody could join any more. It asks every
+    // few seconds now (a joining game more often, for the minute and a half it looks), posts
+    // only what changed or every 15 minutes, and waits longer after each refusal.
+    let mut backoff = Duration::ZERO;
+    let mut last_poll: Option<Instant> = None;
     let mut seen: std::collections::HashSet<String> = Default::default();
     let started = Instant::now();
+    let mut renewed = Instant::now();
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+        // the router's forwarding, asked again before its lease runs out
+        if host && renewed.elapsed() > RENEW_EVERY {
+            renewed = Instant::now();
+            let port = sh.lock().unwrap_or_else(|e| e.into_inner()).mapping.as_ref().map(|m| m.port);
+            if let Some(port) = port {
+                match upnp_forward(port) {
+                    Some((fwd, mapping)) => {
+                        let mut g = sh.lock().unwrap_or_else(|e| e.into_inner());
+                        g.forwarded = Some(fwd);
+                        g.mapping = Some(mapping);
+                    }
+                    None => log::info!("LAN bridge: the router did not renew the forwarding of port {port}"),
+                }
+            }
+        }
         // a client stops once it is in (it asks again after a lost connection by being
         // started anew); a host keeps its door open for the whole session
         if !host && started.elapsed() > Duration::from_secs(90) {
@@ -296,21 +320,43 @@ fn relay_loop(host: bool, session: u64, local: Vec<SocketAddr>, sh: &Arc<Mutex<S
         );
         let due = match &last_post {
             None => true,
-            Some((t, prev)) => *prev != text || t.elapsed() > Duration::from_secs(if host { 30 } else { 4 }),
+            Some((t, prev)) => *prev != text || t.elapsed() > Duration::from_secs(if host { 900 } else { 10 }),
         };
         // (a client posts once it knows its public address, or after 3 s without it)
         let ready = host || public.is_some() || started.elapsed() > Duration::from_secs(3);
-        if due && ready && !addrs.is_empty() {
+        let waiting = last_poll.is_some_and(|t| t.elapsed() < backoff);
+        if due && ready && !addrs.is_empty() && !waiting {
             match agent.post(&format!("{RELAY}/{mine}")).set("Cache", "yes").send_string(&signed(session, &text)) {
                 Ok(_) => last_post = Some((Instant::now(), text.clone())),
                 Err(e) => {
                     sh.lock().unwrap_or_else(|e| e.into_inner()).note = format!("relay unreachable ({e})");
-                    last_post = Some((Instant::now(), text.clone()));
+                    // (tried again soon, not after the full quarter of an hour)
+                    last_post = Some((Instant::now() - Duration::from_secs(if host { 840 } else { 5 }), text.clone()));
+                    backoff = refused(backoff);
+                    last_poll = Some(Instant::now());
                 }
             }
         }
         // the other side's posts
-        if let Ok(resp) = agent.get(&format!("{RELAY}/{theirs}/json?poll=1&since={since}")).call() {
+        let every = Duration::from_secs(if host { 6 } else { 2 }).max(backoff);
+        let poll_due = last_poll.is_none_or(|t| t.elapsed() >= every);
+        let polled = if poll_due {
+            last_poll = Some(Instant::now());
+            match agent.get(&format!("{RELAY}/{theirs}/json?poll=1&since={since}")).call() {
+                Ok(r) => {
+                    backoff = Duration::ZERO;
+                    Some(r)
+                }
+                Err(e) => {
+                    backoff = refused(backoff);
+                    log::debug!("LAN bridge: relay: {e} (next try in {:.0} s)", backoff.as_secs_f32());
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(resp) = polled {
             let body = resp.into_string().unwrap_or_default();
             for line in body.lines() {
                 let Some(msg) = json_field(line, "message") else { continue };
@@ -346,6 +392,11 @@ fn relay_loop(host: bool, session: u64, local: Vec<SocketAddr>, sh: &Arc<Mutex<S
             std::thread::sleep(Duration::from_millis(100));
         }
     }
+}
+
+/// The wait after the relay refused or failed: 10 s, doubled each time up to 5 minutes.
+fn refused(was: Duration) -> Duration {
+    (was * 2).clamp(Duration::from_secs(10), Duration::from_secs(300))
 }
 
 /// Host: tell joining games of `session` the WebSocket address its session is also reached
@@ -400,6 +451,13 @@ fn json_field(line: &str, key: &str) -> Option<String> {
     None
 }
 
+/// How long the router keeps a forwarding we asked for (s). It is asked again well before
+/// that for as long as the session runs: the forwarding used to be asked once for two hours,
+/// and after two hours of hosting nobody could reach the game any more.
+const LEASE: u32 = 3600;
+/// How often the forwarding is asked again.
+const RENEW_EVERY: Duration = Duration::from_secs(20 * 60);
+
 /// Ask the router (UPnP IGD) to forward UDP `port` to this computer; the address it is
 /// reachable at from the internet then.
 fn upnp_forward(port: u16) -> Option<(SocketAddr, Mapping)> {
@@ -452,13 +510,13 @@ fn upnp_forward(port: u16) -> Option<(SocketAddr, Mapping)> {
     };
     soap(
         "AddPortMapping",
-        &format!("<NewRemoteHost></NewRemoteHost><NewExternalPort>{port}</NewExternalPort><NewProtocol>UDP</NewProtocol><NewInternalPort>{port}</NewInternalPort><NewInternalClient>{me}</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>openOMSI</NewPortMappingDescription><NewLeaseDuration>7200</NewLeaseDuration>"),
+        &format!("<NewRemoteHost></NewRemoteHost><NewExternalPort>{port}</NewExternalPort><NewProtocol>UDP</NewProtocol><NewInternalPort>{port}</NewInternalPort><NewInternalClient>{me}</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>openOMSI</NewPortMappingDescription><NewLeaseDuration>{LEASE}</NewLeaseDuration>"),
     )?;
     // the same port over TCP: the host's mods go to the joining players that way (with the
     // UDP port alone forwarded they timed out and were never fetched)
     let _ = soap(
         "AddPortMapping",
-        &format!("<NewRemoteHost></NewRemoteHost><NewExternalPort>{port}</NewExternalPort><NewProtocol>TCP</NewProtocol><NewInternalPort>{port}</NewInternalPort><NewInternalClient>{me}</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>openOMSI mods</NewPortMappingDescription><NewLeaseDuration>7200</NewLeaseDuration>"),
+        &format!("<NewRemoteHost></NewRemoteHost><NewExternalPort>{port}</NewExternalPort><NewProtocol>TCP</NewProtocol><NewInternalPort>{port}</NewInternalPort><NewInternalClient>{me}</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>openOMSI mods</NewPortMappingDescription><NewLeaseDuration>{LEASE}</NewLeaseDuration>"),
     );
     let mapping = Mapping { url: url.clone(), service: service.clone(), port };
     let ext = soap("GetExternalIPAddress", "")?;
@@ -519,6 +577,19 @@ mod tests {
 #[cfg(test)]
 mod relay_tests {
     use super::*;
+
+    #[test]
+    fn a_refusing_relay_is_asked_less_and_less_often() {
+        let mut b = Duration::ZERO;
+        let mut waits = Vec::new();
+        for _ in 0..7 {
+            b = super::refused(b);
+            waits.push(b.as_secs());
+        }
+        assert_eq!(waits, vec![10, 20, 40, 80, 160, 300, 300]);
+        // and the forwarding is asked again well within its lease
+        assert!(super::RENEW_EVERY.as_secs() * 2 < super::LEASE as u64);
+    }
 
     #[test]
     fn relay_posts_are_signed_by_the_session() {

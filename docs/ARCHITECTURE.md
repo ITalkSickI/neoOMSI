@@ -147,7 +147,10 @@ budget.
    Traffic lights (crossing phase programs, lamp objects), CTC paint schemes, scheduled AI
    buses driving timetable tracks with stops (`omsi-app::schedule`, `--schedule --time`).
    Simple collisions: oriented obstacle boxes from placed objects ([boundingbox] or mesh
-   extents) stop the player vehicle and feed coll_* sysvars. **(done)**
+   extents) stop the player vehicle and feed coll_* sysvars. **(done)** As in Omsi.exe
+   (0x7af0a4) only `[fixed]` and `[crashmode_pole]` objects are solid (a collision mesh if
+   they have one, else their `[boundingbox]`), and none with `collision_objects=0` (OMSI's
+   `no_collision`).
    Passengers, first pass: skinned `.hum` models posed procedurally from the `[links]`
    joints (stand / walk / sit), waiting at `[busstop]` objects, boarding the player's bus
    through the open entry door into `[passpos]` seats, leaving at later stops
@@ -927,3 +930,123 @@ variables, position, on-screen messages, events, timers, watches, `omsi.data` sa
 `*.save.lua`), hot reload on save, a 1 s budget per call and switch-off after 10 errors.
 Driven with the DLL plugins from `Plugins::frame`; the game's side (dt, vehicle name,
 position, message) is `PluginIo`'s new default methods. Tests: `crates/omsi-plugin/tests/lua.rs`.
+
+### 0.1.8 (Sept 28 2026): controls, controllers, multiplayer that lasts, phones, more builds
+
+* **Keys** (`launcher/pages.rs`): the Controls page shows which `drive_keys` layout is in use;
+  a changed binding switches it to `omsi` (Custom controls), since a ready-made layout's keys
+  win (`input_script.rs`). Space is no longer reserved by the W A S D layout: it is OMSI's
+  `view_reset_all_directions`. `App::view_looks` keeps a look direction per view
+  (`sync_view_look` on every change of view); `App::view_zoom` narrows the field of view of
+  the driver's and passenger views (the wheel, = / -, a pinch).
+* **Mouse control** (0x6f4284..0x6f447b, `Panel1MouseMove` 0x82c5f8): the cursor is the
+  panel's client position; steering = (2x/w - 1) / max(1, km/h / 10) x
+  `[inv_min_turnradius]` into `inv_lenkradius` (+0x73c, read by the integrator 0x7e27c0);
+  throttle max(0, 1 - 2y/h), brake max(0, 2y/h - 1) (`throttle` +0x5dc, `bremspedal` +0x5e0),
+  all three eased for a second after switching on. `mouse_sens` scales ours.
+* **Game controllers** (`controllers.rs`, `dinput.rs`): `Devices` joins gilrs (gamepads; every
+  device on macOS and Linux) and on Windows DirectInput 8 (`DI8DEVCLASS_GAMECTRL`, a data
+  format of 8 axes, 4 POVs, 128 buttons, axes -10000..10000, the device list read on a thread
+  every 3 s). Button numbers come from the system's code (HID usage - 1, evdev BTN_JOYSTICK /
+  TRIGGER_HAPPY, the WGI index); they used to be the rank among buttons pressed so far. Force
+  feedback on a DirectInput wheel is one constant force set each frame: centring
+  -x (0.25 + 0.5 min(1, v/50)), drag -dx/dt 0.05 (1 + 2 max(0, 1 - v/20)), the scripts'
+  `FF_Vib_Amp`/`FF_Vib_Period` as a sine, scaled by the device's `[FFScale]`; the wheel's own
+  autocentre is switched off (as OMSI does). The set-up assistant (`launcher/pages.rs`,
+  `wizard_result`) records rest, left lock and each pedal and picks the axis that moved most.
+* **Multiplayer** (`omsi-net::bridge`, `lan.rs`): UPnP forwardings are asked for an hour and
+  renewed every 20 minutes (they were asked once for 7200 s); the ntfy.sh rendezvous is polled
+  every 6 s (host) / 2 s (joining), posts only on change or every 15 minutes, and backs off
+  10 s .. 5 min after a refusal (the old once-a-second poll ran into the relay's limits within
+  an hour or two); a cloudflared that exits is restarted and its new address posted.
+* **Depot files by date** (`omsi-map::ailists::ailists_with_chrono`, `depot_hof_on`): the
+  launcher's HOF follows the chrono scenarios of the chosen date, as the game's AI already did.
+* **Installations** (`omsi-cfg::install_search::root_guesses`, `content_folder_of`): a given
+  path is trimmed of quotes, a file means its folder, the folders above and an OMSI folder
+  inside are tried; a program unpacked into the OMSI 2 folder uses `<OMSI>/openOMSI` as its
+  content folder, and a folder with `Omsi.exe` counts as the game even if an older build
+  marked it as a content folder.
+* **Phones**: launcher scale at least the system's (`ui_scale`), settings stacked in one column
+  below 900 points, scroll areas pass what they cannot use on to the page; the game menu has
+  its own scroll offset (`App::menu_top`) that a finger drags, a tap picks.
+* **Sound** (`omsi-audio`): `mixer::distance_gain` = min(1, ref / d), DirectSound 3D's
+  inverse distance with `[3d]`'s reference as the minimum distance (was (ref/d)^1.6);
+  `SoundSet::outside_gain` / `lowpass_of` muffle only foreign vehicles' sets (`exterior`),
+  never the player bus's own entries; `ambience::Footfall::own_bus` dulls steps on the other
+  side of the player bus's body from the listener.
+* **Keys** (`startup::own_keys`): bindings of the content folder's `keyboard.cfg` that the
+  original's does not have are the player's; the presets and their extras skip those keys.
+* **Materials**: `material_alpha` takes a slot's alpha mode from its first plain `[matl]`,
+  not from a `[matl_change]` record ahead of it (script-texture masks of LED matrices).
+* **Spline-attached objects**: `MapIndex` places a `[splineAttachement]` row's first object on
+  its spline for `object_positions`, and the placed first instance replaces it; entry points
+  use the `global.cfg` record's height where it differs from their object's by over 1.5 m at
+  the same place (`spawn::recorded_entry_pos`).
+* **Builds**: `release.yml` builds Windows x64/ARM64 (MSVC, ARM64 on the x64 runner), macOS
+  arm64/x86_64 (both on the Apple silicon runner; the machine translation is Apple silicon
+  only), Linux x64/ARM64 (`ubuntu-22.04-arm`), Android, and packs the server for Linux and
+  Windows (`scripts/server/start.cmd`).
+
+### 0.1.7 (Sept 28 2026): the bus as its `.bus` file makes it, sharp screens, trees, steering, updates
+
+Reverse engineered from Omsi.exe and put in place of our own guesses:
+
+* **Driving physics** (`omsi-sim::rigid`, OMSI's integrator is sub_7e2574; ODE there only
+  knocks over crash objects). Across the tyres OMSI has no slip angle: in its holding state
+  (`+0x1d8`) the bus follows its steering geometry outright, and only when the bend asks more
+  than mu x the load on all tyres, or a wheel spins or locks, does each axle slide with at
+  most mu x its load, until the side speed at every tyre is under 0.1 m/s again. Ours had a
+  tyre of 12 x load per radian: every bus turned at 70 % of what its steering asked, 0.8 s
+  late, drifting 2-3° - the same for every file. Now a constraint per tyre with those limits.
+  Every axle steers at atan((long - `[rot_pnt_long]`) x curvature), curvature = steering x
+  `[inv_min_turnradius]` (0x7e3060; a tag axle behind the line steers the other way), with no
+  rate limit of the physics' own (the inputs have theirs). Springs: travel measured at
+  (maxwidth + minwidth) / 4, force and damper speed at maxwidth / 2 (0x7e47b3..0x7e4c8d),
+  spring + damper capped at `achse_maxforce`, the tyre at least 15x the spring (94 % of the
+  file's rate reaches the body; the fixed 900 kN/m tyre left 79 %). Pitch and roll damped by
+  sin(x)/x a step, x = 1.5 sqrt(sum springs / mass) dt (0x7e4f55); no yaw damping.
+  `cargo run --release -p omsi-sim --example handling -- <file.bus>...` prints yaw response,
+  side slip, roll, roll frequency and settling per file.
+* **Mouse steering** (0x6f4284): the window's full width is the full lock, divided by
+  max(1, km/h / 10); a one-second ease-in after switching on; the mouse owns the wheel (a
+  steering key's leftover no longer takes over when the cursor passes the middle). The speed
+  in that divisor is smoothed over 0.4 s and the wheel eases towards its target in 60 ms: the
+  raw speed made the wheel creep on by itself and come back in steps.
+* **Keyboard steering and pedals** (sub_7e614c / sub_7d5124): OMSI's curvature grows by
+  0.00005 per ms a key is held (`steering_linear`), `old_steering` leaves it where it is when
+  the key is let go; the clutch key presses the pedal at once and it comes up at 0.7/s.
+* **Graphics device.** The instance asks Vulkan, then DirectX 12 (Windows), then OpenGL
+  (`graphics_api`, `OMSI_BACKEND`); a card below wgpu's default limits gets its own limits
+  (the shadow map and any texture larger than the card takes are scaled down to fit). A GPU
+  validation error is logged and the game goes on (wgpu's default handler ended it), and the
+  launcher says when a game ended on a lost device and offers DirectX 12. The Windows
+  download carries `dxcompiler.dll` and `dxil.dll` for DirectX 12's shader compiler.
+* **Mirrors**: `[add_camera_reflexion]` cameras sit in the body's own matrix (pitch and roll
+  included, `Camera::roll`); `dist` puts the eye behind the point; the 8th value of
+  `[add_camera_reflexion_2]` is the radius of the sphere OMSI tests against the view frustum
+  before it redraws a mirror (0x6f611f, 0x7f41ac) - mirrors out of view are not redrawn, the
+  visible ones take turns (with at least 0.3 m, or a mirror half in view stood frozen).
+* **Screens**: text and script texture slots are `MaterialExtra::screen`; the enhanced pass
+  writes a screen mask (`MASK_FORMAT`, second colour target) that the glow's first level
+  and FXAA read - FXAA had halved the contrast of the IBIS's letters.
+* **Trees** (`[tree]` objects, OMSI's RefreshTrees 0x77e6b0 / 0x774444): the map's strings
+  are texture, height and the width/height ratio; the billboard is height x ratio wide. We
+  divided by the ratio: a slim fir (0.4) was six times too wide.
+* **Tiles**: objects and spline attachments have pitch, bank (and a tilt flag) only from
+  tile version 12, strings from version 4 (0x792ee7, 0x794892).
+* **Touch wheel**: turns with the finger round its centre (120° of rim = full lock); the old
+  drag across ran off the screen at about 0.4 of the lock to the left.
+* **Updates** (`updater.rs`, `launcher/update.rs`): the GitHub API's latest release, the
+  platform's asset by `release.yml`'s names, SHA-256 from the asset's `digest`. A computer
+  unpacks into `.openomsi-update` beside the program and swaps each top-level item (old one
+  renamed `*.old-update`, all undone on a failure; `.openomsi-files` lists what an update
+  installed, so files a release drops go too; nothing else in the folder is touched), then
+  starts the program file again and ends; the next start deletes `*.old-update`. Android: a
+  PackageInstaller session (`OmsiActivity.installApk`), the status PendingIntent comes back
+  to the activity (cancel → error in the launcher, success → the system starts the new app);
+  "Install unknown apps" is asked for first. `openOMSI/env.txt` gives a phone `OMSI_*`
+  switches. The JNI calls now go to the real NativeActivity (`AndroidApp::activity_as_ptr`):
+  ndk_context's context is the Application - the buttons' vibration never reached Java.
+  Checked: desktop end to end on macOS (update, not now, auto, damaged file, read-only
+  folder), Android end to end on the emulator (permission, cancel, update and restart),
+  Windows `cargo check`.

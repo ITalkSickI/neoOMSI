@@ -489,6 +489,7 @@ impl App {
             let _ = f;
         }
         self.view = "driver".into();
+        self.sync_view_look();
         self.look = (0.0, 0.0);
         if let (Some(cam), Some(p)) = (self.camera.as_ref(), self.player.as_ref()) {
             self.camera = Some(p.camera("driver", cam));
@@ -534,6 +535,7 @@ impl App {
             h.avatar_remove(AVATAR_KEY);
         }
         self.view = if f.view_before == "outside" || f.view_before == "driver" { f.view_before } else { "driver".into() };
+        self.sync_view_look();
         self.look = (0.0, 0.0);
         // (the walking keys' help goes with the walking: it stood over the cab view)
         if self.service_msg.as_ref().is_some_and(|m| m.0.starts_with("On foot")) {

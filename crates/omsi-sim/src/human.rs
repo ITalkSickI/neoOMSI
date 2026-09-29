@@ -148,6 +148,11 @@ pub struct Rig {
     pub wrist: [Vec3; 2],
     pub waist: Vec3,
     pub neck: Vec3,
+    /// What the head turns about: at the neck's height, under the middle of the head. The
+    /// `[links]` neck point lies at the back of the neck (13 cm behind the middle of the
+    /// head of aXYZ man02), and the head turned about it swung off the collar - a broken
+    /// neck whenever the passenger looked to the side.
+    pub head_pivot: Vec3,
     /// Between the hip joints.
     pub pelvis: Vec3,
     pub thigh: f32,
@@ -187,9 +192,16 @@ impl Rig {
         // the right shin's vertices (the foot is part of it)
         let mut shin: Vec<Vec3> = Vec::new();
         let mut top = f32::MIN;
+        let (mut head_sum, mut head_n) = (Vec3::ZERO, 0u32);
         for m in meshes {
             for p in &m.data.positions {
                 top = top.max(p.z);
+            }
+            for (i, inf) in m.skin.iter().enumerate() {
+                if (0..inf.n as usize).any(|k| inf.slot[k] as usize == HEAD && inf.weight[k] > 0.5) {
+                    head_sum += m.data.positions[i];
+                    head_n += 1;
+                }
             }
             for (i, inf) in m.skin.iter().enumerate() {
                 if (0..inf.n as usize)
@@ -268,6 +280,25 @@ impl Rig {
             wrist: [mirror(wrist), wrist],
             waist: j.waist,
             neck: j.neck,
+            head_pivot: if head_n > 20 {
+                // the middle of the neck itself at the linked height: the vertices of the
+                // mesh there (the neck's cross-section, under the head, not the collar)
+                let c = head_sum / head_n as f32;
+                let (mut sum, mut n) = (Vec3::ZERO, 0u32);
+                for m in meshes {
+                    for p in &m.data.positions {
+                        if (p.z - j.neck.z).abs() < 0.03 && Vec2::new(p.x - c.x, p.y - c.y).length() < 0.09 {
+                            sum += *p;
+                            n += 1;
+                        }
+                    }
+                }
+                let at = if n >= 8 { sum / n as f32 } else { Vec3::new(c.x, j.neck.y + (c.y - j.neck.y) * 0.75, j.neck.z) };
+                // (never further than 12 cm from the linked point)
+                Vec3::new(j.neck.x, j.neck.y + (at.y - j.neck.y).clamp(-0.12, 0.12), j.neck.z)
+            } else {
+                j.neck
+            },
             pelvis: Vec3::new(0.0, hip.y, hip.z),
             thigh: (knee - hip).length().max(0.2),
             shin: (ankle - knee).length().max(0.2),
@@ -440,7 +471,7 @@ impl HumanType {
             extra_dirs.push(d);
         }
         // the sub-folders of the human's folder and of its texture folder, last
-        for base in [dir.to_path_buf(), dir.join("texture")] {
+        for base in [dir.to_path_buf(), omsi_cfg::resolve_path(dir, "texture")] {
             for (n, is_dir) in omsi_cfg::vfs::list_dir(&base).unwrap_or_default() {
                 if is_dir && !n.to_string_lossy().eq_ignore_ascii_case("model") {
                     let d = base.join(n);
@@ -466,14 +497,14 @@ impl HumanType {
         let human_dir = self.model_dir.parent().unwrap_or(&self.model_dir);
         let hum_dir = self.def.path.parent().unwrap_or(human_dir);
         let mut dirs = vec![
-            self.model_dir.join("texture"),
+            omsi_cfg::resolve_path(&self.model_dir, "texture"),
             self.model_dir.clone(),
-            human_dir.join("texture"),
+            omsi_cfg::resolve_path(human_dir, "texture"),
             human_dir.to_path_buf(),
-            hum_dir.join("texture"),
+            omsi_cfg::resolve_path(hum_dir, "texture"),
             hum_dir.to_path_buf(),
-            self.model_dir.join("../texture"),
-            root.join("Texture"),
+            omsi_cfg::resolve_path(&self.model_dir, "..\\texture"),
+            omsi_cfg::resolve_path(root, "Texture"),
         ];
         dirs.dedup();
         dirs.extend(self.extra_dirs.iter().cloned());
@@ -1859,7 +1890,7 @@ impl Pose {
         let head_world =
             yaw_quat(self.head.x.clamp(-72.0, 72.0)) * Quat::from_rotation_x(d(head_pitch));
         let head_rel = limit_quat(trunk_rot.inverse() * head_world, d(80.0));
-        let head_m = trunk_m * about(rig.neck, head_rel);
+        let head_m = trunk_m * about(rig.head_pivot, head_rel);
 
         // --- legs ---
         let mut out_bones = [Affine3A::IDENTITY; SLOTS];
@@ -1885,6 +1916,21 @@ impl Pose {
             let hip_at = pelvis_m.transform_point3(rig.hip[side]);
             let fwd = (foot_fwd[side] + pelvis_fwd).normalize_or(Vec3::Y);
             let pole = fwd + Vec3::Z * 0.25;
+            // Seated, the feet go where a sitting body puts them: the thigh along the seat,
+            // the shin hanging down. A floor further down than that (a seat on a podium or
+            // over a wheel arch) is not reached by stretching the leg straight at it - the
+            // leg ran diagonally through the seat's front - the feet hang above it instead.
+            if sit > 0.5 {
+                let flat = Vec3::new(pelvis_fwd.x, pelvis_fwd.y, 0.0).normalize_or(Vec3::Y);
+                let knee_n = hip_at + flat * rig.thigh * 0.95;
+                let hang = knee_n - Vec3::Z * rig.shin * 0.97;
+                if ankle_t[side].z < hang.z - 0.12 || (ankle_t[side] - hip_at).length() > (rig.thigh + rig.shin) * 0.99 {
+                    let blend = ((sit - 0.5) * 2.0).clamp(0.0, 1.0);
+                    let floor_z = ankle_t[side].z.max(hang.z);
+                    let target = Vec3::new(hang.x, hang.y, floor_z);
+                    ankle_t[side] = ankle_t[side] + (target - ankle_t[side]) * blend;
+                }
+            }
             let (knee_at, ankle_at, hinge) =
                 two_bone(hip_at, rig.thigh, rig.shin, ankle_t[side], pole);
             let side_v = hinge;

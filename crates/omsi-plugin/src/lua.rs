@@ -239,6 +239,52 @@ impl LuaPlugin {
             })?,
         )?;
 
+        // what the game is doing: a table of numbers, text and flags
+        let with3 = with.clone();
+        omsi.set(
+            "info",
+            lua.create_function(move |lua, ()| {
+                let t = lua.create_table()?;
+                let mut pairs = Vec::new();
+                with3(&mut |io: &mut dyn PluginIo| pairs = io.info());
+                for (k, v) in pairs {
+                    match v {
+                        crate::InfoValue::Num(n) => t.set(k, n)?,
+                        crate::InfoValue::Text(s) => t.set(k, s)?,
+                        crate::InfoValue::Bool(b) => t.set(k, b)?,
+                    }
+                }
+                Ok(t)
+            })?,
+        )?;
+        func!("command", String, |io, c| bool => io.command(&c));
+        let with4 = with.clone();
+        omsi.set(
+            "vars",
+            lua.create_function(move |lua, kind: Option<String>| {
+                let mut names = (Vec::new(), Vec::new());
+                with4(&mut |io: &mut dyn PluginIo| names = io.var_names());
+                let list = if kind.as_deref() == Some("str") { names.1 } else { names.0 };
+                lua.create_sequence_from(list)
+            })?,
+        )?;
+        let with5 = with.clone();
+        omsi.set(
+            "_keys",
+            lua.create_function(move |lua, ()| {
+                let mut keys = Vec::new();
+                with5(&mut |io: &mut dyn PluginIo| keys = io.keys());
+                let t = lua.create_table()?;
+                for (i, (k, down)) in keys.into_iter().enumerate() {
+                    let e = lua.create_table()?;
+                    e.set(1, k)?;
+                    e.set(2, down)?;
+                    t.set(i + 1, e)?;
+                }
+                Ok(t)
+            })?,
+        )?;
+
         // saved data, only the plugin's own file
         let data_path = self.data_path.clone();
         omsi.set("_read_data", lua.create_function(move |_, ()| Ok(std::fs::read_to_string(&data_path).ok()))?)?;

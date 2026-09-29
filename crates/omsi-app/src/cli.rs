@@ -242,6 +242,7 @@ pub(crate) fn parse_cam(s: &str) -> Result<Camera> {
         position: DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64),
         yaw: v[3],
         pitch: v[4],
+        roll: 0.0,
         fov_deg: 60.0,
         near: 0.5,
         far: 6000.0,

@@ -32,6 +32,50 @@ fn config_path() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".openomsi").join("radio.cfg"))
 }
 
+/// The stream addresses an OMSI radio plugin keeps in its text files under `plugins`
+/// (SuperRadio's `.opl` and its lists; whatever the layout, a line with an http(s) address is
+/// a station, named by the text before the address or else by its host): "openOMSI does not
+/// load the stations I defined in the .opl".
+fn plugin_stations(dir: &std::path::Path) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut files = Vec::new();
+    let mut walk = vec![(dir.to_path_buf(), 0)];
+    while let Some((d, depth)) = walk.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() && depth < 2 {
+                walk.push((p, depth + 1));
+            } else if p.extension().and_then(|x| x.to_str()).is_some_and(|x| matches!(x.to_ascii_lowercase().as_str(), "opl" | "cfg" | "ini" | "txt" | "m3u" | "pls")) {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    for f in files {
+        let Ok(bytes) = std::fs::read(&f) else { continue };
+        if bytes.len() > 1 << 20 {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        for line in text.lines() {
+            let Some(at) = line.find("http://").or_else(|| line.find("https://")) else { continue };
+            let url: String = line[at..].chars().take_while(|c| !c.is_whitespace() && !matches!(c, '"' | '\'' | ';' | ',' | '|')).collect();
+            let before = line[..at].trim().trim_end_matches(['=', ':', '|', ',', ';', '"', '\'', '\t']).trim();
+            let before = before.trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '.' | ')' | '-' | ' '));
+            let name = if before.is_empty() || before.len() > 60 {
+                url.split('/').nth(2).unwrap_or(&url).to_string()
+            } else {
+                before.to_string()
+            };
+            if url.len() > 12 && !out.iter().any(|(_, u): &(String, String)| u == &url) {
+                out.push((name, url));
+            }
+        }
+    }
+    out
+}
+
 pub struct Radio {
     stations: Vec<(String, String)>,
     volume: f32,
@@ -49,7 +93,7 @@ struct Playing {
 }
 
 impl Radio {
-    pub fn load() -> Radio {
+    pub fn load(omsi_root: &std::path::Path) -> Radio {
         let mut stations = Vec::new();
         let mut volume = 0.7f32;
         let path = config_path();
@@ -86,6 +130,16 @@ impl Radio {
                     let _ = std::fs::write(p, text);
                 }
             }
+        }
+        // the stations of OMSI's radio plugins (SuperRadio and the like), after the own ones
+        let own = stations.len();
+        for (name, url) in plugin_stations(&omsi_root.join("plugins")) {
+            if !stations.iter().any(|(_, u)| u.eq_ignore_ascii_case(&url)) {
+                stations.push((name, url));
+            }
+        }
+        if stations.len() > own {
+            log::info!("radio: {} stations of the OMSI radio plugins added", stations.len() - own);
         }
         if !stations.is_empty() {
             log::info!("radio: {} stations", stations.len());

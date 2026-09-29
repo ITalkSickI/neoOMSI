@@ -94,6 +94,9 @@ struct EnhancedUniform {
 struct HdrTargets {
     msaa_view: Option<wgpu::TextureView>,
     view: wgpu::TextureView,
+    /// The screen mask (`MASK_FORMAT`), multisampled and resolved like the picture.
+    mask_msaa: Option<wgpu::TextureView>,
+    mask: wgpu::TextureView,
     /// Glow levels at 1/2, 1/4, ... of the size, and the upsampled sums per level.
     down: Vec<wgpu::TextureView>,
     up: Vec<wgpu::TextureView>,
@@ -346,7 +349,8 @@ impl Default for Corona {
 
 const LIGHT_CELL: f32 = 25.0;
 const LIGHT_GRID_SIDE: usize = 64;
-const LIGHT_CELL_CAP: usize = 16;
+/// (32: a depot or a bus interior with many lamps lost the farthest past 16 in a cell)
+const LIGHT_CELL_CAP: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -363,6 +367,8 @@ struct MaterialUniform {
     /// The PBR maps beside the diffuse texture (`Scene::pbr_maps`): x has a normal map,
     /// y an occlusion, z a roughness, w a metalness channel.
     pbr: [f32; 4],
+    /// x: a screen (`MaterialExtra::screen`); y, z, w unused.
+    flags: [f32; 4],
 }
 
 /// The maps of a PBR set found beside a diffuse texture (`foo_n.png` and the rest, see
@@ -383,6 +389,7 @@ pub enum AlphaMode {
     Blend,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Camera {
     /// World position (f64: maps span millions of metres).
     pub position: DVec3,
@@ -390,6 +397,9 @@ pub struct Camera {
     pub yaw: f32,
     /// Degrees, positive = looking up.
     pub pitch: f32,
+    /// Degrees about the view direction (0 = the horizon level; see [`Camera::up`]). A
+    /// camera fixed to a vehicle - a mirror's - leans with its body.
+    pub roll: f32,
     pub fov_deg: f32,
     pub near: f32,
     pub far: f32,
@@ -403,12 +413,28 @@ impl Camera {
     }
     pub fn right(&self) -> Vec3 {
         let f = self.forward();
-        Vec3::new(f.y, -f.x, 0.0).normalize_or_zero()
+        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or_zero();
+        if self.roll == 0.0 {
+            return r0;
+        }
+        f.cross(self.up()).normalize_or(r0)
+    }
+    /// The picture's up: world up for a level camera, turned about the view direction by
+    /// `roll` (positive: the top leans to the right).
+    pub fn up(&self) -> Vec3 {
+        let f = self.forward();
+        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or_zero();
+        if self.roll == 0.0 || r0 == Vec3::ZERO {
+            return Vec3::Z;
+        }
+        let u0 = r0.cross(f);
+        let (s, c) = self.roll.to_radians().sin_cos();
+        (u0 * c + r0 * s).normalize_or(Vec3::Z)
     }
     /// View-projection relative to a render origin (the camera itself when `origin` is its
     /// position), so that GPU maths stays in small numbers.
     pub fn view_proj(&self, aspect: f32, origin: DVec3) -> Mat4 {
-        let view = Mat4::look_to_rh((self.position - origin).as_vec3(), self.forward(), Vec3::Z);
+        let view = Mat4::look_to_rh((self.position - origin).as_vec3(), self.forward(), self.up());
         // Reversed Z (near and far swapped): the depth buffer then spends its float
         // precision where the scene is far away instead of where it is close, which is what
         // stops distant roads, kerbs and painted ground from flickering against each other
@@ -586,7 +612,7 @@ impl GpuTexture {
 struct BindKey {
     textures: [(usize, u64); 7],
     clamp: bool,
-    uniform: [u32; 32],
+    uniform: [u32; 36],
 }
 
 /// Bytes of a texture of `format` with `levels` mip levels.
@@ -670,6 +696,11 @@ pub struct MaterialExtra {
     /// by itself, as a lit matrix does, instead of taking only the light that reaches it
     /// under the bus's front overhang, where it was hardly readable by day.
     pub display: bool,
+    /// A screen the bus draws itself - a `[useTextTexture]` or `[useScriptTexture]` slot:
+    /// the IBIS, the matrix displays, the dashboard's LCDs. The enhanced picture's glow
+    /// and FXAA leave it alone (see `MASK_FORMAT`): FXAA took half the contrast out of
+    /// their letters and they read as blurred.
+    pub screen: bool,
     /// The film of water on a window (`[alphascale] Rain_Window_…`): drawn as drops that sit,
     /// gather and run down the glass instead of the texture sliding down as a whole.
     pub rain_film: bool,
@@ -717,8 +748,8 @@ pub struct Instance {
     /// instance without lamps of its own (a passenger standing in a lit bus).
     pub interior: f32,
     /// The `[interiorlight]` lamps that light this mesh (its `[illumination_interior]`): the
-    /// first of its run of slots in `Scene::interior_lights` times 8 plus how many (up to
-    /// four); 0 = none, `interior` stands in.
+    /// first of its run of slots in `Scene::interior_lights` times `LAMP_CODE_STRIDE` plus
+    /// how many; 0 = none, `interior` stands in.
     pub interior_lamps: u32,
     /// First entry of this instance in the per-draw storage buffers (set by `prepare`).
     base: u32,
@@ -1117,6 +1148,9 @@ pub struct RenderOptions {
     /// Only the meshes the models mark `[shadow]` cast sun shadows, as in OMSI 2 (else every
     /// solid mesh does).
     pub omsi_shadow_casters: bool,
+    /// The materials' reflection maps (`[matl_envmap]`: the shine of paint, chrome and
+    /// glass). Off, nothing mirrors the sky photo - some players find it too strong.
+    pub reflections: bool,
 }
 
 impl Default for RenderOptions {
@@ -1132,6 +1166,7 @@ impl Default for RenderOptions {
             min_obj_size: 0.013,
             max_obj_dist: 0.0,
             omsi_shadow_casters: false,
+            reflections: true,
         }
     }
 }
@@ -1139,8 +1174,41 @@ impl Default for RenderOptions {
 /// Automatic render scale: a window of up to this many pixels is drawn at full size (the
 /// default 1600x900 window and a 2560x1080 screen are); a bigger one - a Retina window has
 /// four times the pixels of its size in points - gets a 3D picture of about this many
-/// pixels, scaled up. The HUD is always drawn at full size.
-pub const AUTO_SCALE_PIXELS: f32 = 2_800_000.0;
+/// pixels, scaled up. The HUD is always drawn at full size. Elsewhere (a desktop card on a
+/// 1440p or 4K screen) the picture is drawn at full size up to 4K: scaled down to 2.8
+/// million pixels, a 4K screen showed a picture of 58 % its size, and the enhanced
+/// graphics looked like textures of low quality; the frame-rate governor still steps down
+/// on a card that cannot keep up.
+pub const AUTO_SCALE_PIXELS: f32 = if cfg!(target_os = "macos") || cfg!(target_os = "android") { 2_800_000.0 } else { 8_400_000.0 };
+
+/// Interior lamps one mesh may be lit by (OMSI: four; a model may list more in its
+/// `[illumination_interior]`), and the step of the lamp code sent to the shaders (`first *
+/// stride + count`, exact in the f32 it travels in for a quarter of a million lamp slots).
+pub const MAX_LAMPS_PER_MESH: u32 = 63;
+pub const LAMP_CODE_STRIDE: u32 = 64;
+
+/// The enhanced pass's second target: 1 where the bus's own screens are (`MaterialExtra::
+/// screen`), 0 elsewhere. The glow takes no light from it and FXAA passes it through.
+const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
+const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// The colour targets of a pipeline drawing into `format`: in the enhanced pass (the only
+/// one drawing into `HDR_FORMAT` with these pipelines) with the screen mask beside it,
+/// written by the scene's own shader only (`mask`), coverage-blended where the colour is.
+fn color_targets(format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>, write: wgpu::ColorWrites, mask: bool) -> Vec<Option<wgpu::ColorTargetState>> {
+    let mut v = vec![Some(wgpu::ColorTargetState { format, blend, write_mask: write })];
+    if format == HDR_FORMAT {
+        v.push(Some(wgpu::ColorTargetState {
+            format: MASK_FORMAT,
+            blend: blend.map(|_| wgpu::BlendState {
+                color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::SrcAlpha, dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha, operation: wgpu::BlendOperation::Add },
+                alpha: wgpu::BlendComponent::REPLACE,
+            }),
+            write_mask: if mask { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() },
+        }));
+    }
+    v
+}
 /// Half size of the area around the camera covered by the near shadow cascade (m).
 pub const SHADOW_RANGE: f32 = 140.0;
 /// Half size of the far cascade (m): coarser, but reaches the whole visible street.
@@ -1176,18 +1244,13 @@ impl Renderer {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: surface, force_fallback_adapter: false, ..Default::default() })
             .await
-            .map_err(|e| anyhow!("no compatible Metal/Vulkan graphics adapter (on Windows, install the GPU vendor driver with Vulkan support): {e}"))?;
+            .map_err(|e| anyhow!("no graphics adapter that can draw the game was found (Metal, Vulkan, DirectX 12 or OpenGL 3.3 or later); updating the graphics driver often helps: {e}"))?;
         let info = adapter.get_info();
         // What the textures may take on this adapter (wgpu does not tell a card's memory):
         // a discrete card is taken for one of 2-4 GB, whose rest the pictures (the render
         // targets, the shadow maps) and the driver need; an integrated one shares the
         // system's memory, Apple's generously
-        let pascal_3gb = cfg!(windows)
-            && info.backend == wgpu::Backend::Vulkan
-            && info.vendor == 0x10de
-            && info.name.to_ascii_lowercase().contains("gtx 1060 3gb");
         let guess_mb: u64 = match info.device_type {
-            wgpu::DeviceType::DiscreteGpu if pascal_3gb => 500,
             wgpu::DeviceType::DiscreteGpu => 1600,
             wgpu::DeviceType::IntegratedGpu if info.backend == wgpu::Backend::Metal => 3000,
             wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::VirtualGpu => 1000,
@@ -1204,30 +1267,11 @@ impl Renderer {
             && info.backend == wgpu::Backend::Vulkan
             && info.vendor == 0x8086
             && omsi_cfg::env::var_os("OMSI_INTEL_FULL_GPU").is_none();
-        // Pascal-era NVIDIA Vulkan adapters (notably GTX 1060) can lose the
-        // device during session startup. Start with the same conservative profile
-        // used for legacy Intel drivers. This is a diagnostic mitigation, not a
-        // claim that all Pascal device-loss cases are driver defects.
-        // OMSI_GPU_SAFE_MODE=1 also enables this profile for any adapter;
-        // OMSI_GPU_FULL_MODE=1 disables automatic Pascal fallback for comparison.
-        let pascal_vulkan_safe = cfg!(windows)
-            && info.backend == wgpu::Backend::Vulkan
-            && info.vendor == 0x10de
-            && info.name.to_ascii_lowercase().contains("gtx 1060")
-            && omsi_cfg::env::var_os("OMSI_GPU_FULL_MODE").is_none();
-        let gpu_safe = intel_vulkan_safe
-            || pascal_vulkan_safe
-            || omsi_cfg::env::var_os("OMSI_GPU_SAFE_MODE").is_some();
-        if gpu_safe {
+        let options = if intel_vulkan_safe {
             log::warn!(
-                "conservative GPU profile enabled for {} ({:?}, driver: {}): 1x MSAA, 1x anisotropy, SSAO and runtime texture compression off",
-                info.name, info.backend, info.driver
+                "Intel Vulkan adapter detected ({}): using the stable driver profile (1x MSAA, 1x anisotropy, SSAO and runtime texture compression off); set OMSI_INTEL_FULL_GPU=1 after updating the Intel driver to retry the requested settings",
+                info.name
             );
-        }
-        let options = if gpu_safe {
-            if intel_vulkan_safe {
-                log::warn!("Intel Vulkan adapter detected ({}): using the stable driver profile; set OMSI_INTEL_FULL_GPU=1 to retry full settings", info.name);
-            }
             RenderOptions {
                 msaa: 1,
                 anisotropy: 1,
@@ -1240,9 +1284,9 @@ impl Renderer {
         };
         let shadow_size = options
             .shadow_size
-            .clamp(512, if gpu_safe { 2048 } else { 8192 });
+            .clamp(512, if intel_vulkan_safe { 2048 } else { 8192 });
         let mut limits = wgpu::Limits::default().using_resolution(adapter.limits());
-        if gpu_safe {
+        if intel_vulkan_safe {
             // Do not request every large limit the Intel driver advertises. In particular,
             // asking for its maximum storage-buffer and buffer sizes makes 31.0.101.2141
             // crash in vkCreateDevice instead of returning a VkResult. The WebGPU defaults
@@ -1253,6 +1297,21 @@ impl Renderer {
                 adapter.limits().max_storage_buffer_binding_size;
             limits.max_buffer_size = adapter.limits().max_buffer_size;
         }
+        // an older or smaller graphics chip (an OpenGL one, a GT 530) does not reach the
+        // WebGPU defaults: asked for them anyway, the device was never opened
+        if !limits.check_limits(&adapter.limits()) {
+            log::warn!("{}: below the standard limits; using what it has", info.name);
+            limits = adapter.limits();
+        }
+        // OMSI_GPU_LIMITS=default|downlevel: the WebGPU defaults (or the downlevel ones) and
+        // nothing more, whatever this machine could do - to find what a stricter driver refuses
+        match omsi_cfg::env::var("OMSI_GPU_LIMITS").as_deref() {
+            Ok("default") => limits = wgpu::Limits::default(),
+            Ok("downlevel") => limits = wgpu::Limits::downlevel_defaults(),
+            _ => {}
+        }
+        // the shadow atlas is two maps wide: no wider than the card draws
+        let shadow_size = shadow_size.min(limits.max_texture_dimension_2d / 2).max(256);
         let format = format
             .or_else(|| {
                 surface.map(|s| {
@@ -1307,14 +1366,10 @@ impl Renderer {
         if omsi_cfg::env::var_os("OMSI_NO_BC").is_none() {
             required_features |= adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
         }
-        if gpu_safe {
-            // Intel's legacy driver needs no optional features. On Pascal, keeping the
-            // adapter's BC support avoids expanding DXT content to RGBA on a 3 GB card.
-            required_features = if pascal_vulkan_safe && omsi_cfg::env::var_os("OMSI_NO_BC").is_none() {
-                adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC
-            } else {
-                wgpu::Features::empty()
-            };
+        if intel_vulkan_safe {
+            // Keep vkCreateDevice entirely free of optional extensions. Compressed source
+            // textures are decoded to RGBA by upload_texture on this device.
+            required_features = wgpu::Features::empty();
         }
         log::info!("opening graphics device: {} ({:?}, vendor {:#06x}, device {:#06x}), features {:?}, max buffer {} MB, max storage binding {} MB", info.name, info.backend, info.vendor, info.device, required_features, limits.max_buffer_size / 1_000_000, limits.max_storage_buffer_binding_size as u64 / 1_000_000);
         let (device, queue) = adapter
@@ -1410,8 +1465,11 @@ impl Renderer {
     ) -> Renderer {
         let (msaa, shadow_size) = (options.msaa, options.shadow_size);
         // A GPU error while multisampling is on is logged and switches multisampling off
-        // at the next frame (`render_inner`); without multisampling every error stays
-        // fatal as with wgpu's own handler, but it reaches the log first.
+        // at the next frame (`render_inner`). Otherwise it is logged and the game goes on:
+        // wgpu's own handler ends the process, and one call a driver refused (a limit of
+        // that card, a bigger map than the last) closed the game a few seconds into the
+        // drive - a wrong picture for a frame is better than no game. The first errors and
+        // then every thousandth reach the log.
         let gpu_error = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let device_lost: Arc<std::sync::Mutex<Option<String>>> = Default::default();
         {
@@ -1427,13 +1485,13 @@ impl Renderer {
         }
         {
             let flag = gpu_error.clone();
+            let count = Arc::new(std::sync::atomic::AtomicU64::new(0));
             device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
-                if msaa <= 1 {
-                    log::error!("wgpu error: {}", gpu_error_text(&e));
-                    panic!("wgpu error: {e}");
-                }
-                if !flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                    log::error!("GPU error with {msaa}x MSAA: {}", gpu_error_text(&e));
+                let n = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if msaa > 1 && !flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    log::error!("GPU error with {msaa}x MSAA (drawing without it from now on): {}", gpu_error_text(&e));
+                } else if n < 20 || n % 1000 == 0 {
+                    log::error!("GPU error #{} (the game goes on): {}", n + 1, gpu_error_text(&e));
                 }
             }));
         }
@@ -1883,11 +1941,7 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some(fs),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
+                    targets: &color_targets(format, blend, wgpu::ColorWrites::ALL, true),
                     // only the alpha-tested pipelines keep their `discard` (see ALPHA_TEST
                     // in shader.wgsl): early depth testing for everything else
                     compilation_options: wgpu::PipelineCompilationOptions {
@@ -2221,11 +2275,7 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &corona_shader,
                     entry_point: Some(fs),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: f,
-                        blend: Some(blend),
-                        write_mask: wgpu::ColorWrites::COLOR,
-                    })],
+                    targets: &color_targets(f, Some(blend), wgpu::ColorWrites::COLOR, false),
                     compilation_options: Default::default(),
                 }),
                 multiview_mask: None,
@@ -2363,11 +2413,7 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &sky_shader,
                     entry_point: Some(fs),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: f,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::COLOR,
-                    })],
+                    targets: &color_targets(f, None, wgpu::ColorWrites::COLOR, false),
                     compilation_options: Default::default(),
                 }),
                 multiview_mask: None,
@@ -3598,42 +3644,19 @@ impl Renderer {
         }
     }
 
-    /// Copy the vertex data `update_mesh` collected into the meshes: one staging buffer,
-    /// one copy per mesh, recorded at the start of `encoder` (submitted before any pass).
-    fn flush_pending_meshes(&self, scene: &Scene, encoder: &mut wgpu::CommandEncoder) {
+    /// Copy the vertex data `update_mesh` collected into the meshes. Written through the
+    /// queue, mesh by mesh (the writes land before the frame's commands run): one staging
+    /// buffer for the whole frame outgrew the device's buffer limit on big maps, its
+    /// creation failed validation and mapping it panicked (Windows, Vulkan).
+    fn flush_pending_meshes(&self, scene: &Scene, _encoder: &mut wgpu::CommandEncoder) {
         let pending = std::mem::take(&mut *self.pending_meshes.borrow_mut());
-        if pending.is_empty() {
-            return;
-        }
-        let total: u64 = pending.iter().map(|(_, b)| (b.len() as u64).div_ceil(4) * 4).sum();
-        if total == 0 {
-            return;
-        }
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("mesh uploads"),
-            size: total,
-            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::MAP_WRITE,
-            mapped_at_creation: true,
-        });
-        let mut offsets = Vec::with_capacity(pending.len());
-        {
-            let mut all = vec![0u8; total as usize];
-            let mut at = 0usize;
-            for (_, b) in &pending {
-                all[at..at + b.len()].copy_from_slice(b);
-                offsets.push(at as u64);
-                at += b.len().div_ceil(4) * 4;
-            }
-            staging.slice(..).get_mapped_range_mut().copy_from_slice(&all);
-        }
-        staging.unmap();
-        for ((id, b), off) in pending.iter().zip(offsets) {
+        for (id, b) in &pending {
             let Some(m) = scene.meshes.get(*id) else { continue };
             let len = (b.len() as u64) / 4 * 4;
             if len == 0 || m.vertex_buf.size() < len {
                 continue;
             }
-            encoder.copy_buffer_to_buffer(&staging, off, &m.vertex_buf, 0, len);
+            self.queue.write_buffer(&m.vertex_buf, 0, &b[..len as usize]);
         }
     }
 
@@ -3710,6 +3733,9 @@ impl Renderer {
     }
 
     fn upload_texture_data(&self, data: &omsi_texture::TextureData) -> GpuTexture {
+        if let Some(small) = fit_texture(data, self.device.limits().max_texture_dimension_2d) {
+            return self.upload_texture_data(&small);
+        }
         if let Some(t) = prepare_texture(&self.device, &self.queue, data) {
             return t.0;
         }
@@ -4255,6 +4281,8 @@ impl Renderer {
         moisture: f32,
         extra: MaterialExtra,
     ) -> MaterialId {
+        // (the reflection maps switched off: as a material without one)
+        let envmap = envmap.filter(|_| self.options.reflections);
         // the mask and the bump map only ever change the reflection
         let env_mask = extra.env_mask.filter(|_| envmap.is_some());
         let bump = extra.bump.filter(|_| envmap.is_some());
@@ -4309,6 +4337,7 @@ impl Renderer {
                 if extra.no_z_check { 1.0 } else { 0.0 },
             ],
             pbr: texture.and_then(|t| scene.pbr_maps.get(&t)).map(|m| m.flags).unwrap_or([0.0; 4]),
+            flags: [if extra.screen { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0],
         };
         let slot = |t: Option<TextureId>| {
             t.and_then(|t| scene.textures.get(t).map(|g| (t, g.gen)))
@@ -4813,10 +4842,10 @@ impl Renderer {
         }
     }
 
-    /// Which lamps light an instance: `count` (up to four) slots from `first` (see
+    /// Which lamps light an instance: `count` (up to `MAX_LAMPS_PER_MESH`) slots from `first` (see
     /// `Instance::interior_lamps`).
     pub fn set_interior_lamps(&self, scene: &mut Scene, instance: usize, first: u32, count: u32) {
-        let code = if count == 0 { 0 } else { first * 8 + count.min(4) };
+        let code = if count == 0 { 0 } else { first * LAMP_CODE_STRIDE + count.min(MAX_LAMPS_PER_MESH) };
         let i = &mut scene.instances[instance];
         if i.interior_lamps != code {
             i.interior_lamps = code;
@@ -5168,6 +5197,8 @@ impl Renderer {
         let msaa_view =
             (self.options.msaa > 1).then(|| target("hdr msaa", w, h, fmt, self.options.msaa));
         let view = target("hdr", w, h, fmt, 1);
+        let mask_msaa = (self.options.msaa > 1).then(|| target("screen mask msaa", w, h, MASK_FORMAT, self.options.msaa));
+        let mask = target("screen mask", w, h, MASK_FORMAT, 1);
         // the glow: halving until the smallest level is a few dozen pixels across
         let levels = GLOW_LEVELS
             .min((w.min(h).max(16) as f32).log2() as usize - 3)
@@ -5208,8 +5239,10 @@ impl Renderer {
             })
         };
         let none = &self.white_texture.view;
+        // (the first level of the glow reads the screen mask as its `t_base`: no light from
+        // the screens)
         let down_bg: Vec<wgpu::BindGroup> = (0..levels)
-            .map(|i| bg(if i == 0 { &view } else { &down[i - 1] }, none, none))
+            .map(|i| bg(if i == 0 { &view } else { &down[i - 1] }, if i == 0 { &mask } else { none }, none))
             .collect();
         let up_bg: Vec<wgpu::BindGroup> = (0..levels)
             .map(|i| {
@@ -5229,12 +5262,15 @@ impl Renderer {
             bg(&view, &up[0], &self.adapt_views[0]),
             bg(&view, &up[0], &self.adapt_views[1]),
         ];
-        let fxaa_bg = bg(&ldr, none, none);
+        // (FXAA reads the screen mask as its `t_base` and leaves the screens as they are)
+        let fxaa_bg = bg(&ldr, &mask, none);
         self.hdr_targets.insert(
             (w, h),
             HdrTargets {
                 msaa_view,
                 view,
+                mask_msaa,
+                mask,
                 down,
                 up,
                 ldr,
@@ -5402,7 +5438,9 @@ impl Renderer {
                 let far = match p.cube_eye {
                     Some(e) if p.cube_filled => {
                         let m = cam_w - e;
-                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.03
+                        // (a third of what it was: flying the free camera fast, the clouds
+                        // drifted with the old cube for 400 m and then jumped back into place)
+                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.01
                     }
                     _ => true,
                 };
@@ -6771,7 +6809,7 @@ impl Renderer {
         }
         stage(self, "shadow items", "mirror.shadow items");
         // frustum culling by bounding sphere in view space
-        let view = Mat4::look_to_rh(cam_rel, camera.forward(), Vec3::Z);
+        let view = Mat4::look_to_rh(cam_rel, camera.forward(), camera.up());
         let tan_y = (camera.fov_deg.to_radians() * 0.5).tan();
         let tan_x = tan_y * aspect;
         let cos_y = 1.0 / (1.0 + tan_y * tan_y).sqrt();
@@ -7589,11 +7627,17 @@ impl Renderer {
                     }
                 };
             let pp = if enhanced { &self.hdr_pass } else { &self.pass };
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("main"),
-                // drawn with MSAA samples and resolved into the real target at the end
-                // (without multisampling straight into the target)
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            // the enhanced pass's screen mask beside the picture (see `MASK_FORMAT`)
+            let mask_attachment = hdr.map(|h| wgpu::RenderPassColorAttachment {
+                view: h.mask_msaa.as_ref().unwrap_or(&h.mask),
+                depth_slice: None,
+                resolve_target: h.mask_msaa.as_ref().map(|_| &h.mask),
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: if h.mask_msaa.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
+                },
+            });
+            let main_attachment = Some(wgpu::RenderPassColorAttachment {
                     view: draw_view,
                     depth_slice: None,
                     resolve_target: resolve_view,
@@ -7610,7 +7654,14 @@ impl Renderer {
                             wgpu::StoreOp::Discard
                         },
                     },
-                })],
+                });
+            let colors = [main_attachment, mask_attachment];
+            let colors = if colors[1].is_some() { &colors[..] } else { &colors[..1] };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("main"),
+                // drawn with MSAA samples and resolved into the real target at the end
+                // (without multisampling straight into the target)
+                color_attachments: colors,
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {
@@ -8060,6 +8111,9 @@ pub fn prepare_texture(
     queue: &wgpu::Queue,
     data: &omsi_texture::TextureData,
 ) -> Option<PreparedTexture> {
+    if let Some(small) = fit_texture(data, device.limits().max_texture_dimension_2d) {
+        return prepare_texture(device, queue, &small);
+    }
     use omsi_texture::PixelFormat;
     let format = match data.format {
         PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -8829,11 +8883,12 @@ fn record_bundles(
     format: wgpu::TextureFormat,
     samples: u32,
 ) -> Vec<wgpu::RenderBundle> {
+    let color_formats = [Some(format), Some(MASK_FORMAT)];
     let record = |chunk: &[Batch]| -> wgpu::RenderBundle {
         let mut bundle =
             device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
                 label: Some("main pass part"),
-                color_formats: &[Some(format)],
+                color_formats: &color_formats[..if format == HDR_FORMAT { 2 } else { 1 }],
                 depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                     format: DEPTH_FORMAT,
                     depth_read_only: false,
@@ -8848,9 +8903,27 @@ fn record_bundles(
             label: Some("main pass part"),
         })
     };
+    // a bundle wgpu refuses (a buffer it names could not be made: the card ran out of
+    // memory) panics in `finish`: that part of the picture is left out for the frame and
+    // the game goes on - it ended the game on Windows right after an "Out of memory"
+    let record = |chunk: &[Batch]| -> Option<wgpu::RenderBundle> {
+        CATCHING.with(|c| c.set(true));
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| record(chunk)));
+        CATCHING.with(|c| c.set(false));
+        match r {
+            Ok(b) => Some(b),
+            Err(_) => {
+                static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    log::error!("a part of the picture could not be recorded (the graphics card is out of memory?); left out");
+                }
+                None
+            }
+        }
+    };
     let parts = (batches.len() / 250).clamp(1, 4);
     if parts == 1 {
-        return vec![record(batches)];
+        return record(batches).into_iter().collect();
     }
     let chunks: Vec<&[Batch]> = batches.chunks(batches.len().div_ceil(parts)).collect();
     let record = &record;
@@ -8859,12 +8932,8 @@ fn record_bundles(
             .iter()
             .map(|c| scope.spawn(move || record(c)))
             .collect();
-        let mut bundles = vec![record(chunks[0])];
-        bundles.extend(
-            helpers
-                .into_iter()
-                .map(|h| h.join().expect("bundle thread")),
-        );
+        let mut bundles: Vec<wgpu::RenderBundle> = record(chunks[0]).into_iter().collect();
+        bundles.extend(helpers.into_iter().filter_map(|h| h.join().ok().flatten()));
         bundles
     })
 }
@@ -8948,7 +9017,11 @@ impl<'w> SurfaceState<'w> {
             } else {
                 wgpu::PresentMode::AutoNoVsync
             },
-            desired_maximum_frame_latency: 2,
+            // (with V-sync two frames waiting for the screen put every steering movement and
+            // key two frames - 33 ms at 60 Hz, more on a laptop's graphics chip that is behind
+            // anyway - on the screen late: the "input delay" players felt. One is enough to
+            // keep the chip busy there.)
+            desired_maximum_frame_latency: if vsync { 1 } else { 2 },
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
@@ -9491,4 +9564,73 @@ mod tests {
         assert_eq!(Renderer::clamp_slot_alpha(0.35, AlphaMode::Test), 0.35);
         assert_eq!(Renderer::clamp_slot_alpha(0.85, AlphaMode::Blend), 0.85);
     }
+}
+
+/// A texture bigger than the graphics chip takes (`max` texels a side - 16384 on most, 2048
+/// or 4096 on older ones) made to fit: its smaller levels when it has them, else the picture
+/// halved until it fits. None when it fits as it is. A too big texture used to be a device
+/// error, and the material that used it one too.
+pub fn fit_texture(data: &omsi_texture::TextureData, max: u32) -> Option<omsi_texture::TextureData> {
+    use omsi_texture::PixelFormat;
+    let (w, h) = (data.width.max(1), data.height.max(1));
+    if w <= max && h <= max {
+        return None;
+    }
+    let mut k = 0u32;
+    while (w >> k).max(1) > max || (h >> k).max(1) > max {
+        k += 1;
+    }
+    if (k as usize) < data.levels.len() {
+        return Some(omsi_texture::TextureData { width: (w >> k).max(1), height: (h >> k).max(1), levels: data.levels[k as usize..].to_vec(), ..data.clone() });
+    }
+    // one level only: decode it and halve it
+    let mut rgba = match (data.format, data.levels.first()) {
+        (PixelFormat::Rgba8, Some(l)) => l.clone(),
+        (f, Some(l)) => omsi_texture::bc::decode(l, w, h, match f {
+            PixelFormat::Bc1 => omsi_texture::bc::Bc::Bc1 { punch: true },
+            PixelFormat::Bc2 => omsi_texture::bc::Bc::Bc2,
+            _ => omsi_texture::bc::Bc::Bc3,
+        }),
+        _ => return None,
+    };
+    let (mut cw, mut ch) = (w, h);
+    for _ in 0..k {
+        let (nw, nh) = ((cw / 2).max(1), (ch / 2).max(1));
+        let mut next = vec![0u8; (nw * nh * 4) as usize];
+        for y in 0..nh {
+            for x in 0..nw {
+                for c in 0..4 {
+                    let at = |xx: u32, yy: u32| rgba[((yy.min(ch - 1) * cw + xx.min(cw - 1)) * 4 + c) as usize] as u32;
+                    let v = at(2 * x, 2 * y) + at(2 * x + 1, 2 * y) + at(2 * x, 2 * y + 1) + at(2 * x + 1, 2 * y + 1);
+                    next[((y * nw + x) * 4 + c) as usize] = (v / 4) as u8;
+                }
+            }
+        }
+        rgba = next;
+        (cw, ch) = (nw, nh);
+    }
+    Some(omsi_texture::TextureData { width: cw, height: ch, format: PixelFormat::Rgba8, levels: vec![rgba], has_alpha: data.has_alpha, gpu_mips: true })
+}
+
+#[cfg(test)]
+mod fit_tests {
+    #[test]
+    fn a_big_picture_is_halved_until_it_fits() {
+        let data = omsi_texture::TextureData { width: 8, height: 4, format: omsi_texture::PixelFormat::Rgba8, levels: vec![vec![200; 8 * 4 * 4]], has_alpha: false, gpu_mips: true };
+        let small = super::fit_texture(&data, 2).unwrap();
+        assert_eq!((small.width, small.height), (2, 1));
+        assert_eq!(small.levels[0].len(), 2 * 4);
+        assert!(super::fit_texture(&data, 8).is_none());
+    }
+}
+
+thread_local! {
+    /// A panic on this thread now is caught and handled (see [`catching`]).
+    static CATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether a panic on this thread is being caught by the renderer (the game's panic hook
+/// does not report it as the end of the game).
+pub fn catching() -> bool {
+    CATCHING.with(|c| c.get())
 }

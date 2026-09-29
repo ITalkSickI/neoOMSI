@@ -32,17 +32,34 @@ pub struct Atlas {
     frame: u64,
     /// Bumped whenever the atlas was cleared.
     pub generation: u64,
+    /// A frame needed more room than there is: the atlas was cleared in the middle of it
+    /// (what that frame had already drawn lost its pictures), so it grows at the next.
+    overflowed: bool,
 }
+
+/// The biggest the atlas grows to (texels a side; every graphics chip takes it).
+const MAX_SIZE: u32 = 4096;
 
 impl Atlas {
     pub fn new(size: u32) -> Atlas {
-        Atlas { size, rgba: vec![0; (size * size * 4) as usize], entries: HashMap::new(), shelf_y: 0, shelf_h: 0, cursor_x: 0, dirty: Some([0, 0, size, size]), frame: 0, generation: 0 }
+        Atlas { size, rgba: vec![0; (size * size * 4) as usize], entries: HashMap::new(), shelf_y: 0, shelf_h: 0, cursor_x: 0, dirty: Some([0, 0, size, size]), frame: 0, generation: 0, overflowed: false }
     }
 
     /// Start of a frame: an atlas more than nine tenths full is cleared now, before
     /// anything of this frame was taken from it.
     pub fn begin_frame(&mut self) {
         self.frame += 1;
+        // A screen of many pixels a point (a phone at 3x) draws every word and icon three
+        // times as big: its frame did not fit, and whatever was drawn before the atlas ran
+        // full lost its picture - the icons were missing on such phones. Twice the size then.
+        if self.overflowed && self.size < MAX_SIZE {
+            self.overflowed = false;
+            self.size *= 2;
+            self.rgba = vec![0; (self.size * self.size * 4) as usize];
+            self.clear();
+            return;
+        }
+        self.overflowed = false;
         if self.shelf_y + self.shelf_h > self.size * 9 / 10 {
             self.clear();
         }
@@ -91,6 +108,7 @@ impl Atlas {
         let at = match self.alloc(w, h) {
             Some(a) => a,
             None => {
+                self.overflowed = true;
                 self.clear();
                 match self.alloc(w, h) {
                     Some(a) => a,
@@ -146,6 +164,18 @@ impl Atlas {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_frame_that_does_not_fit_makes_it_grow() {
+        let mut a = Atlas::new(64);
+        a.begin_frame();
+        for i in 0..40 {
+            a.put(Key::Icon(format!("i{i}"), 20), 20, 20, &[255; 400], 0.0);
+        }
+        a.begin_frame();
+        assert_eq!(a.size, 128);
+        assert_eq!(a.rgba.len(), 128 * 128 * 4);
+    }
 
     #[test]
     fn packs_reuses_and_clears() {

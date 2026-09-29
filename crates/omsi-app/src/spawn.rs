@@ -94,6 +94,11 @@ pub(crate) fn spawn_player(
         vt.program.blocks.len(),
         vt.program.var_names.len()
     );
+    let doors = crate::player::door_keys(&vt);
+    if !doors.is_empty() {
+        let keys: Vec<String> = doors.iter().enumerate().map(|(i, g)| format!("Shift+{} = {}", i + 1, g.join(" + "))).collect();
+        log::info!("door keys: {}", keys.join(", "));
+    }
     let mut host = omsi_sim::VehicleHost::new(start_clock(args));
     // the maintenance condition of the options (AI vehicles never wear)
     host.wear_lifespan = crate::settings::Settings::load().wear_lifespan();
@@ -126,16 +131,34 @@ pub(crate) fn spawn_player(
         .get(args.entry)
         .or(world.global.entry_points.first())
     {
-        let found = world.object_positions.lock().get(&ep.object_id).copied();
+        let found = world.entry_point_place(ep);
         match found {
             Some((pos, rot)) => {
                 vehicle.position = pos;
+                // the height the map's editor recorded for the entry point (global.cfg), when
+                // it is at the same place but on another level: an entry point under a bridge
+                // whose object came out on the deck put the bus on the bridge
+                if let Some(rec) = recorded_entry_pos(ep, pos) {
+                    let off = ((rec.x - pos.x).powi(2) + (rec.y - pos.y).powi(2)).sqrt();
+                    if off < 3.0 && (rec.z - pos.z).abs() > 1.5 {
+                        log::info!("entry point {}: the object stands at height {:.1}, the map recorded {:.1}: the recorded one", ep.index, pos.z, rec.z);
+                        vehicle.position.z = rec.z;
+                    }
+                }
+                let pos = vehicle.position;
                 // on the road surface there, not at the marker's own height: a marker
                 // placed on the terrain a little under (or over) the road left one axle in
                 // the asphalt and the bus stood tilted from the start; a surface metres away
                 // (a bridge over the place, a lower level) is not this one
-                if let Some(g) = world.ground_height(pos.x, pos.y).filter(|g| (g - pos.z).abs() < 2.5) {
+                if let Some(g) = world.stand_height(pos.x, pos.y, pos.z) {
                     vehicle.position.z = g;
+                } else if crate::scene::drive_probe(&world.terrains, &world.surfaces, pos.x, pos.y, pos.z + 1.5).below.is_none() {
+                    // nothing under the place at all (the marker came out under the ground):
+                    // on the ground above, not in the void under the map
+                    if let Some(g) = world.walk_height(pos.x, pos.y) {
+                        log::info!("entry point {}: nothing under its height {:.1}; put on the ground at {:.1}", ep.index, pos.z, g);
+                        vehicle.position.z = g;
+                    }
                 }
                 vehicle.heading = rot[0];
                 log::info!(
@@ -172,11 +195,9 @@ pub(crate) fn spawn_player(
             .collect();
         if v.len() >= 3 {
             // x,y,heading[,z]: a height given is the road's (the ground may lie below it)
-            let ground = world.ground_height(v[0], v[1]);
-            let z = match (v.get(3), ground) {
-                (Some(&road), Some(g)) => road.max(g),
-                (Some(&road), None) => road,
-                (None, g) => g.unwrap_or(0.0),
+            let z = match v.get(3) {
+                Some(&road) => world.stand_height(v[0], v[1], road).map_or(road, |g| road.max(g)),
+                None => world.ground_height(v[0], v[1]).unwrap_or(0.0),
             };
             vehicle.position = DVec3::new(v[0], v[1], z);
             vehicle.heading = v[2];
@@ -189,6 +210,7 @@ pub(crate) fn spawn_player(
         if n > 0 {
             log::info!("spawn: {n} parked vehicle(s) cleared from the place of the bus");
         }
+        world.clear_props_under(renderer, scene, &omsi_sim::collision::Obb::from_box(bb, vehicle.position, vehicle.heading));
     }
     let render = world.add_vehicle(renderer, scene, &vt, scheme);
     // coupled rear sections / trailers
@@ -273,16 +295,19 @@ pub(crate) fn spawn_player(
         terrains,
         surfaces,
     }));
-    vehicle.collision = Some(world.collision.lock().clone());
+    vehicle.collision = crate::settings::Settings::load().collision_objects.then(|| world.collision.lock().clone());
     // a rail vehicle rides the track (its position comes from the rails, not the tyres)
     let rail_bound = crate::rail_drive::is_rail(&vt.def);
     if rail_bound {
         log::info!("rail: {} is bound to the rails", vt.def.path.display());
     }
     if args.physics != "simple" && !rail_bound {
-        if let Some(z) = world.ground_height(vehicle.position.x, vehicle.position.y) {
+        // (on what the wheels stand on near the height found above: the texel height of
+        // `ground_height` undid that, and put the bus on a wall's top or a deck over it)
+        if let Some(z) = world.stand_height(vehicle.position.x, vehicle.position.y, vehicle.position.z) {
             vehicle.position.z = z;
         }
+        log::info!("spawn: the bus stands at height {:.2}", vehicle.position.z);
         vehicle.enable_rigid_body();
         let rb = vehicle.rigid.as_ref().unwrap();
         log::info!(
@@ -336,6 +361,7 @@ pub(crate) fn spawn_player(
         auto_drag: None,
         pressed_trailer_mesh: None,
         startup: None,
+        startup_at: None,
         give_ticket: false,
         give_change: false,
         cam_before_special: None,
@@ -344,6 +370,9 @@ pub(crate) fn spawn_player(
         rail_bound,
         rail: None,
         head: Vec3::ZERO,
+        seat: Vec3::ZERO,
+        mirror_offsets: crate::settings::mirror_offsets(&vt.def.path),
+        mirrors_dirty: false,
         take_change: false,
         toggled_up: Default::default(),
         side_lights_by_l: false,
@@ -563,4 +592,13 @@ pub(crate) fn paint_scheme(vt: &omsi_sim::VehicleType, paint: Option<&str>) -> O
         );
     }
     found
+}
+
+/// Where the map's `global.cfg` recorded an entry point (x, height, y within its tile), in
+/// world coordinates, taken in the tile of its object at `object` (Grundorf's records agree
+/// with their objects that way to a few decimetres).
+pub(crate) fn recorded_entry_pos(ep: &omsi_map::global::EntryPoint, object: DVec3) -> Option<DVec3> {
+    let s = omsi_map::tile_size();
+    let (tx, ty) = ((object.x / s).floor(), (object.y / s).floor());
+    ep.pos.iter().all(|v| v.is_finite()).then(|| DVec3::new(tx * s + ep.pos[0], ty * s + ep.pos[1], ep.pos[2]))
 }

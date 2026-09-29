@@ -320,6 +320,24 @@ impl<'a> CfgReader<'a> {
         parse_i32(self.line())
     }
 
+    /// `n` integers, then any further whole-number lines that follow at once (a blank line,
+    /// a keyword or anything else ends the list): OMSI's fixed-length lists read as always,
+    /// and a file may give more (openOMSI: `[illumination_interior]` with more than four
+    /// lamps).
+    pub fn i32_list(&mut self, n: usize) -> Vec<i32> {
+        let mut v: Vec<i32> = (0..n).map(|_| self.i32()).collect();
+        while self.pos < self.file.lines.len() {
+            let l = self.file.lines[self.pos].trim();
+            let whole = !l.is_empty() && l.strip_prefix('-').unwrap_or(l).chars().all(|c| c.is_ascii_digit());
+            if !whole || keyword_with(self.file.lines[self.pos].as_str(), self.rule).is_some() {
+                break;
+            }
+            v.push(parse_i32(l));
+            self.pos += 1;
+        }
+        v
+    }
+
     pub fn i64(&mut self) -> i64 {
         parse_i64(self.line())
     }
@@ -831,7 +849,11 @@ pub const ORIGINAL_ESSENTIALS: &[&str] = &[
 /// The essentials (see [`ORIGINAL_ESSENTIALS`]) that `root` lacks; empty for a complete
 /// original installation. openOMSI's content folder never counts as one.
 pub fn missing_original_essentials(root: &Path) -> Vec<String> {
-    if root.join(CONTENT_MARKER).exists() || root.join(LEGACY_CONTENT_MARKER).exists() {
+    // (a folder with Omsi.exe in it is the game's, even marked: openOMSI unpacked into the OMSI
+    // folder made it its content folder once - see `content_folder_of` - and every start after
+    // that said the game was not there)
+    let marked = root.join(CONTENT_MARKER).exists() || root.join(LEGACY_CONTENT_MARKER).exists();
+    if marked && resolve_existing(root, &["Omsi.exe"]).is_none() {
         return vec![format!("{} (this is the openOMSI content folder, not the original game)", root.display())];
     }
     ORIGINAL_ESSENTIALS
@@ -869,6 +891,17 @@ pub fn migrate_legacy_data_dir() {
         if old.exists() && !new.exists() {
             let _ = std::fs::rename(&old, &new);
         }
+    }
+}
+
+/// openOMSI's content folder for a program in `dir`: that folder - unless it is the original
+/// OMSI 2 folder itself (openOMSI unpacked into it), which openOMSI never writes to: then the
+/// `openOMSI` folder inside it.
+pub fn content_folder_of(dir: &Path) -> PathBuf {
+    if resolve_existing(dir, &["Omsi.exe"]).is_some() && resolve_existing(dir, &["maps"]).is_some() {
+        dir.join("openOMSI")
+    } else {
+        dir.to_path_buf()
     }
 }
 

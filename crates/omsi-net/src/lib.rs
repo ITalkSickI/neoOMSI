@@ -900,8 +900,8 @@ impl Pose {
     }
 
     fn encode_info(&self) -> String {
-        format!(
-            "INFO|{}|{}|{}|{}|{}|{}|{:.2}|{:.2}|{:.2}|{:08X}|{}|{}|{}",
+        let head = format!(
+            "INFO|{}|{}|{}|{}|{}|{}|{:.2}|{:.2}|{:.2}|{:08X}|{}|",
             self.id,
             clean_text(&self.name, MAX_NAME),
             vehicle_path(&self.bus).unwrap_or_default(),
@@ -913,9 +913,13 @@ impl Pose {
             finite_or(self.box_offset, 0.0).clamp(-40.0, 40.0),
             self.table,
             clean_text(&self.tour, MAX_FIELD),
-            encode_texts(&self.texts),
-            human_path(&self.figure).unwrap_or_default()
-        )
+        );
+        let figure = human_path(&self.figure).unwrap_or_default();
+        // the display texts get what room is left in one datagram (long vehicle and figure
+        // paths and a destination in another alphabet made an INFO too long to be taken in:
+        // the others never learnt which bus the player drove)
+        let room = MAX_DATAGRAM.saturating_sub(head.len() + figure.len() + 1);
+        format!("{head}{}|{figure}", encode_texts(&self.texts, room))
     }
 
     /// The info fields of an `INFO` message (checked and cleaned), or None.
@@ -1025,7 +1029,7 @@ const MAX_TEXT_LEN: usize = 32;
 
 /// Display texts as one `INFO` field: each as hex of its UTF-8, comma separated (a text may
 /// hold anything, the field no `|`).
-fn encode_texts(texts: &[String]) -> String {
+fn encode_texts(texts: &[String], room: usize) -> String {
     texts
         .iter()
         .take(MAX_TEXTS)
@@ -1036,7 +1040,7 @@ fn encode_texts(texts: &[String]) -> String {
         .scan(0usize, |used, h| {
             // (the whole INFO stays well inside a datagram)
             *used += h.len() + 1;
-            (*used <= 720).then_some(h)
+            (*used <= room.min(720)).then_some(h)
         })
         .collect::<Vec<_>>()
         .join(",")

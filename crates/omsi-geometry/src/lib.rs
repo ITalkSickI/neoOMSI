@@ -269,14 +269,23 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
     let n = ((curve.length / step).ceil() as usize).max(1);
     let sign = if mirror { -1.0 } else { 1.0 };
     let curve = &curve.with_sli(def);
-    for hp in &def.height_profiles {
+    // the ordinary profiles first (material 0), then the wall tops (material 1)
+    let ridge = |hp: &&omsi_scenery::sli::HeightProfile| is_wall_top(hp.x0, hp.x1, hp.z0, hp.z1);
+    let (flat, tops): (Vec<_>, Vec<_>) = def.height_profiles.iter().partition(|hp| !ridge(hp));
+    let mut flat_end = 0u32;
+    for (pass, list) in [flat, tops].into_iter().enumerate() {
+    for hp in list {
         if (hp.x1 - hp.x0).abs() < 1e-3 {
             continue;
         }
         let base = mesh.positions.len() as u32;
+        let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
+            Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
+            _ => (hp.z0, hp.z1),
+        };
         for i in 0..=n {
             let s = curve.length * i as f64 / n as f64;
-            for (x, z) in [(hp.x0, hp.z0), (hp.x1, hp.z1)] {
+            for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
                 mesh.positions.push((curve.offset_point(s, x as f64 * sign, z as f64) - origin).as_vec3());
                 mesh.normals.push(Vec3::Z);
                 mesh.uvs.push(Vec2::ZERO);
@@ -288,8 +297,49 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
             mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
         }
     }
-    mesh.ranges.push((0, mesh.indices.len() as u32, 0));
+    if pass == 0 {
+        flat_end = mesh.indices.len() as u32;
+    }
+    }
+    mesh.ranges.push((0, flat_end, 0));
+    if mesh.indices.len() as u32 > flat_end {
+        mesh.ranges.push((flat_end, mesh.indices.len() as u32 - flat_end, 1));
+    }
     mesh
+}
+
+/// How far a height profile may lie over everything the spline draws across it before it
+/// counts as a slip of its maker and is brought down to the drawn surface.
+const PHANTOM_LIFT: f32 = 0.25;
+
+/// The highest point the spline's drawn profiles reach between `xa` and `xb` (none: nothing
+/// is drawn there - an invisible footway, which keeps its height profile as it is).
+/// Westcountry's yellow surface marking draws its paint 10 cm up and says 50 cm in its
+/// `[heightprofile]`: every wheel met it as a 40 cm wall across the carriageway.
+fn drawn_height(def: &Spline, xa: f32, xb: f32) -> Option<f32> {
+    let mut best: Option<f32> = None;
+    for p in &def.profiles {
+        for w in p.points.windows(2) {
+            let (a, b) = (&w[0], &w[1]);
+            let (lo, hi) = (a.x.min(b.x), a.x.max(b.x));
+            if hi < xa - 0.05 || lo > xb + 0.05 {
+                continue;
+            }
+            // (a vertical face, a kerb's edge, counts with its top)
+            let z = a.z.max(b.z);
+            best = Some(best.map_or(z, |m: f32| m.max(z)));
+        }
+    }
+    best
+}
+
+/// A height profile that is the top of a wall: a strip narrower than a wheel could stand on
+/// (under 0.6 m), 0.3 m and more over the spline. UK maps give their stone and brick walls
+/// one (Westcountry's `cb_wall03`: 30 cm wide, 1.6 m up); taken as road, a wheel rolled
+/// onto the wall where its top met the road and rode along it as the road fell away.
+pub fn is_wall_top(x0: f32, x1: f32, z0: f32, z1: f32) -> bool {
+    let w = (x1 - x0).abs();
+    w >= 1e-3 && w < 0.6 && z0.min(z1) >= 0.3
 }
 
 /// Recompute smooth vertex normals from triangles.
@@ -699,6 +749,9 @@ impl Probe {
 #[derive(Debug, Clone, Default)]
 pub struct DriveGrid {
     pub tris: Vec<[Vec3; 3]>,
+    /// Per triangle: a wall top ([`is_wall_top`]), never stood on - a wall where it stands
+    /// over the ground (see [`DriveGrid::probe_walls`]).
+    pub ridge: Vec<bool>,
     cells: usize,
     cell: f32,
     /// Per cell, the range of `items` that lists its triangles (`cells² + 1` offsets).
@@ -712,18 +765,24 @@ impl DriveGrid {
 
     /// Bytes the grid holds on the heap.
     pub fn heap_bytes(&self) -> usize {
-        self.tris.capacity() * std::mem::size_of::<[Vec3; 3]>() + self.start.capacity() * 4 + self.items.capacity() * 4
+        self.tris.capacity() * std::mem::size_of::<[Vec3; 3]>() + self.ridge.capacity() + self.start.capacity() * 4 + self.items.capacity() * 4
     }
 
     /// Add a triangle; walls (faces steeper than about 70°) are left out, they are nothing
     /// to stand on.
     pub fn push(&mut self, p: [Vec3; 3]) {
+        self.push_kind(p, false);
+    }
+
+    /// Add a triangle, a wall top or not.
+    pub fn push_kind(&mut self, p: [Vec3; 3], ridge: bool) {
         let nrm = (p[1] - p[0]).cross(p[2] - p[0]);
         let len = nrm.length();
         if len < 1e-6 || nrm.z.abs() / len < 0.3 {
             return;
         }
         self.tris.push(p);
+        self.ridge.push(ridge);
     }
 
     /// Bucket the triangles of a tile `tile` metres wide; those entirely outside are dropped.
@@ -733,7 +792,9 @@ impl DriveGrid {
         self.cell = tile / n as f32;
         let mut ranges: Vec<(usize, usize, usize, usize)> = Vec::with_capacity(self.tris.len());
         let mut keep = Vec::with_capacity(self.tris.len());
-        for t in &self.tris {
+        let mut keep_ridge = Vec::with_capacity(self.tris.len());
+        self.ridge.resize(self.tris.len(), false);
+        for (t, r) in self.tris.iter().zip(self.ridge.iter()) {
             let (lo_x, hi_x) = (t[0].x.min(t[1].x).min(t[2].x), t[0].x.max(t[1].x).max(t[2].x));
             let (lo_y, hi_y) = (t[0].y.min(t[1].y).min(t[2].y), t[0].y.max(t[1].y).max(t[2].y));
             if hi_x < 0.0 || hi_y < 0.0 || lo_x > tile || lo_y > tile {
@@ -742,8 +803,10 @@ impl DriveGrid {
             let c = |v: f32| ((v / self.cell).floor().max(0.0) as usize).min(n - 1);
             ranges.push((c(lo_x), c(hi_x), c(lo_y), c(hi_y)));
             keep.push(*t);
+            keep_ridge.push(*r);
         }
         self.tris = keep;
+        self.ridge = keep_ridge;
         let mut count = vec![0u32; n * n + 1];
         for &(x0, x1, y0, y1) in &ranges {
             for y in y0..=y1 {
@@ -774,6 +837,15 @@ impl DriveGrid {
     /// The faces over tile-local (x, y): the highest one not above `z_top` and the lowest one
     /// above it.
     pub fn probe(&self, x: f32, y: f32, z_top: f32) -> Probe {
+        self.probe_kind(x, y, z_top, false)
+    }
+
+    /// The wall tops over tile-local (x, y) alone, as [`DriveGrid::probe`] gives the rest.
+    pub fn probe_walls(&self, x: f32, y: f32, z_top: f32) -> Probe {
+        self.probe_kind(x, y, z_top, true)
+    }
+
+    fn probe_kind(&self, x: f32, y: f32, z_top: f32, ridges: bool) -> Probe {
         let mut out = Probe::default();
         if self.cells == 0 || x < 0.0 || y < 0.0 {
             return out;
@@ -784,6 +856,9 @@ impl DriveGrid {
         }
         let k = cy * self.cells + cx;
         for &i in &self.items[self.start[k] as usize..self.start[k + 1] as usize] {
+            if self.ridge.get(i as usize).copied().unwrap_or(false) != ridges {
+                continue;
+            }
             let [a, b, c] = self.tris[i as usize];
             let d = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
             if d.abs() < 1e-9 {
@@ -983,6 +1058,17 @@ impl TileSurface {
                 p[k] = (if ident { v } else { transform.transform_point3(v) }) + off;
             }
             self.drive.push(p);
+        }
+    }
+
+    /// Add a spline's height profiles ([`build_height_profile_mesh`]): its wall tops (the
+    /// range of material 1) go in as walls.
+    pub fn add_height_profiles(&mut self, mesh: &MeshData, origin: DVec3, tx: i32, ty: i32) {
+        let off = (origin - DVec3::new(tx as f64 * tile_size(), ty as f64 * tile_size(), 0.0)).as_vec3();
+        let ridge_from = mesh.ranges.iter().find(|r| r.2 == 1).map(|r| r.0 as usize).unwrap_or(usize::MAX);
+        for (j, tri) in mesh.indices.chunks_exact(3).enumerate() {
+            let p = [0, 1, 2].map(|k| mesh.positions[tri[k] as usize] + off);
+            self.drive.push_kind(p, j * 3 >= ridge_from);
         }
     }
 

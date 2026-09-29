@@ -80,6 +80,22 @@ fn nllb(lang: &str) -> Option<&'static str> {
         "cs" => "ces_Latn",
         "es" => "spa_Latn",
         "it" => "ita_Latn",
+        "be" => "bel_Cyrl",
+        "kk" => "kaz_Cyrl",
+        "hu" => "hun_Latn",
+        "pt" => "por_Latn",
+        "nl" => "nld_Latn",
+        "tr" => "tur_Latn",
+        "zh-tw" | "zh-hk" => "zho_Hant",
+        "ko" => "kor_Hang",
+        "th" => "tha_Thai",
+        "vi" => "vie_Latn",
+        "id" => "ind_Latn",
+        "ms" => "zsm_Latn",
+        "tl" => "tgl_Latn",
+        "ja" => "jpn_Jpan",
+        "zh" | "zh-cn" => "zho_Hans",
+        "hi" => "hin_Deva",
         _ => return None,
     })
 }
@@ -172,13 +188,13 @@ fn lookup(lang: &str, text: &str) -> Option<String> {
 }
 
 /// NLLB's output made fit for a label.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn clean(s: &str) -> String {
     s.replace("<unk>", "").trim().to_string()
 }
 
 fn worker() {
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
         let mut translator: Option<ct2rs::Translator<ct2rs::tokenizers::auto::Tokenizer>> = None;
         let mut idle_since = Instant::now();

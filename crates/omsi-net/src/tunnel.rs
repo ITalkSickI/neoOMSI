@@ -57,7 +57,8 @@ fn release_asset() -> Option<(&'static str, &'static str)> {
         ("linux", "x86_64") => ("cloudflared-linux-amd64", "77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2"),
         ("linux", "aarch64") => ("cloudflared-linux-arm64", "aaeb2d7d0da3614634c7e03ab13487a1522c2e79165ed2929cfe23d5e95b326d"),
         ("linux", "arm") => ("cloudflared-linux-arm", "967dc371a3fedbf09e881c13ee7ba317155ebc336cbd4afb756b46fc6785e5af"),
-        ("windows", "x86_64") => ("cloudflared-windows-amd64.exe", "f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2"),
+        // (Windows on ARM runs the x64 build)
+        ("windows", "x86_64") | ("windows", "aarch64") => ("cloudflared-windows-amd64.exe", "f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2"),
         ("windows", "x86") => ("cloudflared-windows-386.exe", "9b95ddc2eba67b86ed3dc4cc2a15881960563031b52ce564376af41fb91ad402"),
         _ => return None,
     })
@@ -220,6 +221,12 @@ impl Tunnel {
             let _ = std::fs::write(p, child.id().to_string());
         }
         Some(Tunnel { child, url })
+    }
+
+    /// Whether cloudflared still runs (it ends when Cloudflare drops a quick tunnel, or the
+    /// network went away for long).
+    pub fn alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
     }
 
     /// Wait up to `wait` for the address.

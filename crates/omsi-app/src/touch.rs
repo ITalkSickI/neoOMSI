@@ -77,7 +77,8 @@ struct Button {
 enum Role {
     /// A button: where it was in the list when the finger came down, and which.
     Button(usize, Btn),
-    /// The wheel: where the finger took it, and the wheel's turn then.
+    /// The wheel: the finger's angle round the wheel's centre when it last moved (rad,
+    /// screen y down: clockwise positive), and its distance from the centre then.
     Wheel(f32, f32),
     Throttle,
     Brake,
@@ -87,8 +88,10 @@ enum Role {
     Cockpit,
     /// Looking round (or, not moved far, a tap on the picture).
     Look,
-    /// The mouse, while a menu or the city map has the screen.
+    /// The mouse, while the city map has the screen.
     Mouse,
+    /// The game menu's (or the chooser's) list: a drag scrolls it, a tap picks a line.
+    Menu,
 }
 
 struct Touched {
@@ -296,7 +299,7 @@ impl App {
             let sb_on = p.vehicle.var("bremse_halte_sw").or_else(|| p.vehicle.var("haltestellenbremse")).is_some_and(|v| v > 0.5);
             push(&mut b, Btn::StopBrake, rb(bx, h - pad - br * 3.0 - 10.0 * u, br), "back_hand", "", sb_on, true);
             // the doors: one button for each door, front to back, above the gearbox
-            let doors = crate::player::door_trigger_groups(&p.vehicle.ty.program).len().clamp(1, 4);
+            let doors = crate::player::door_keys(&p.vehicle.ty).len().clamp(1, 4);
             let dr = 23.0 * u;
             let dy = gy - 12.0 * u - dr;
             for k in 0..doors {
@@ -367,6 +370,8 @@ impl App {
         let t = &self.touch;
         let role = if let Some(k) = t.button_at(p) {
             Role::Button(k, t.buttons[k].btn)
+        } else if self.game_menu.is_some() || self.chooser.is_some() {
+            Role::Menu
         } else if menu_mode {
             Role::Mouse
         } else if t.stick_r > 0.0 && p.distance(t.stick_c) <= t.stick_r * 1.3 {
@@ -376,7 +381,10 @@ impl App {
         } else if self.player.is_some() && t.stick_r == 0.0 && !t.hidden && t.brake_r.pad(6.0 * t.u, 6.0 * t.u).contains(p) {
             Role::Brake
         } else if self.player.is_some() && t.stick_r == 0.0 && !t.hidden && !t.tilt && p.distance(t.wheel_c) <= t.wheel_r * 1.15 {
-            Role::Wheel(p.x, t.steer)
+            {
+                let d = p - t.wheel_c;
+                Role::Wheel(d.y.atan2(d.x), d.length())
+            }
         } else {
             // the cockpit's switch under the finger, else the camera's
             self.on_cursor(p.x, p.y);
@@ -397,6 +405,10 @@ impl App {
                 self.on_cursor(p.x, p.y);
                 self.left_button(event_loop, true);
             }
+            // (the line under the finger lights up; it is picked when the finger comes up
+            // without having moved - a finger that came down to scroll used to pick the
+            // line it landed on)
+            Role::Menu => self.on_cursor(p.x, p.y),
             Role::Wheel(..) => self.touch.steering = true,
             _ => {}
         }
@@ -422,10 +434,26 @@ impl App {
         }
         let role = self.touch.fingers[k].role;
         match role {
-            Role::Wheel(x0, s0) => {
-                // the full lock is a drag of about one and a half wheel diameters, and
-                // `steer_curve` keeps the middle fine: small moves make small corrections
-                self.touch.steer = (s0 + (p.x - x0) / (self.touch.wheel_r * 3.0)).clamp(-1.0, 1.0);
+            Role::Wheel(a0, _) => {
+                // The wheel turns as far round as the finger goes round its centre - the
+                // drawn rim stays under the finger, and the full lock is 120 degrees of it
+                // (`touch_paint`). It used to follow the finger's way across instead, a drag
+                // of one and a half diameters for the full lock: from its place in the corner
+                // the finger ran off the screen at about half a lock to the left, the system
+                // took the touch away and the wheel sprang back to the middle.
+                // (close to the centre the angle means nothing: only followed)
+                let d = p - self.touch.wheel_c;
+                let a = d.y.atan2(d.x);
+                if d.length() > self.touch.wheel_r * 0.2 {
+                    let mut da = a - a0;
+                    if da > std::f32::consts::PI {
+                        da -= std::f32::consts::TAU;
+                    } else if da < -std::f32::consts::PI {
+                        da += std::f32::consts::TAU;
+                    }
+                    self.touch.steer = (self.touch.steer + da / WHEEL_LOCK_ANGLE).clamp(-1.0, 1.0);
+                }
+                self.touch.fingers[k].role = Role::Wheel(a, d.length());
             }
             Role::Throttle | Role::Brake => self.touch_pedals(p),
             Role::Stick => {
@@ -438,12 +466,18 @@ impl App {
                     return self.touch_pinch();
                 }
                 self.on_cursor(p.x, p.y);
-                // (a menu's list scrolls with a drag)
-                if role == Role::Mouse && self.game_menu.is_some() {
-                    let d = (p.y - last.y) / (36.0 * u);
-                    if d.abs() > 0.0 {
-                        self.menu_wheel(d);
-                    }
+            }
+            // the list follows the finger, line for line
+            Role::Menu => {
+                if self.touch.fingers[k].moved {
+                    // (no line lit under a finger that scrolls)
+                    self.on_cursor(-1e4, -1e4);
+                    let (start, row_h) = self.ui.as_ref().map(|u| (u.menu_start as f32, u.menu_row_h.max(1.0))).unwrap_or((0.0, 1.0));
+                    let top = self.menu_top.unwrap_or(start) - (p.y - last.y) / row_h;
+                    let (n, rows) = (self.menu_len() as f32, self.ui.as_ref().map(|u| u.menu_rows).unwrap_or(0) as f32);
+                    self.menu_top = Some(top.clamp(0.0, (n - rows).max(0.0)));
+                } else {
+                    self.on_cursor(p.x, p.y);
                 }
             }
             Role::Look => {
@@ -453,7 +487,9 @@ impl App {
                 if self.touch.fingers[k].moved {
                     // (degrees for a point dragged: a full turn is a few swipes)
                     let k = 0.28 / u;
-                    self.look_by(-(p.x - last.x) * k, -(p.y - last.y) * k);
+                    // (the view turns the way the finger moves: taken the other way round,
+                    // as grabbing the world, every direction felt inverted)
+                    self.look_by((p.x - last.x) * k, (p.y - last.y) * k);
                 }
             }
             _ => {}
@@ -499,6 +535,16 @@ impl App {
             Role::Cockpit | Role::Mouse => {
                 self.on_cursor(p.x, p.y);
                 self.left_button(event_loop, false);
+            }
+            Role::Menu => {
+                if !f.moved && !cancelled {
+                    self.on_cursor(p.x, p.y);
+                    self.left_button(event_loop, true);
+                    self.left_button(event_loop, false);
+                } else {
+                    // (the fraction of a line left over is rounded, as the menu shows it)
+                    self.menu_top = self.menu_top.map(f32::round);
+                }
             }
             Role::Look => {
                 // a tap on the picture: a click there (a switch the finger missed by a hair
@@ -606,7 +652,6 @@ impl App {
                     _ => "driver",
                 }
                 .into();
-                self.look = (0.0, 0.0);
                 let v = match self.view.as_str() {
                     "driver" => "Driver's view",
                     "outside" => "Outside view",
@@ -721,7 +766,7 @@ impl App {
                 t.steer = s;
             }
         } else if !t.steering {
-            let back = 2.2 * dt;
+            let back = (1.2 + 1.5 * t.steer.abs()) * dt;
             t.steer = if t.steer.abs() <= back { 0.0 } else { t.steer - back * t.steer.signum() };
         }
         if let Some((_, left)) = t.note.as_mut() {
@@ -768,8 +813,8 @@ impl App {
                 let (rim_in, hub) = (r - 12.0 * u, 16.0 * u);
                 let part = Color::rgba(230, 230, 230, if t.steering { 0.95 } else { 0.8 });
                 pt.circle(c, rim_in, PANEL_BG);
-                // the spokes turn with the wheel (the full lock shown as 120 deg)
-                let a0 = t.steer * 2.1;
+                // the spokes turn with the wheel (one and a half turns to the lock)
+                let a0 = t.steer * WHEEL_LOCK_ANGLE;
                 let half = 3.5 * u;
                 for k in 0..3 {
                     let a = a0 + FRAC_PI_2 + k as f32 * TAU / 3.0 + PI;
@@ -951,8 +996,14 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
     }
 }
 
-/// The wheel's turn as the bus gets it: gentle round the middle (a finger's small wobble is a
-/// small correction), the full lock still at the end of the travel.
+/// How far the wheel turns at the full lock (rad): one and a half turns, as a bus's wheel
+/// and the phone bus games have it - the finger goes round and round to the lock, and the
+/// wheel comes back by itself when let go. (120 degrees was a lock in a flick.)
+const WHEEL_LOCK_ANGLE: f32 = 3.0 * std::f32::consts::PI;
+
+/// The wheel's turn as the bus gets it: one to one, the drawn wheel and the bus's wheel
+/// turn alike (a curve that was gentle round the middle made the bus turn faster and
+/// faster as the finger went on round).
 fn steer_curve(s: f32) -> f32 {
-    s.signum() * s.abs().powf(1.7)
+    s
 }

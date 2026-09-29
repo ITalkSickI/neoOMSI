@@ -4,6 +4,7 @@ const REPO = "turbo-devv/openOMSI";
 const DOCS = [
   { file: "USER_GUIDE", title: "User guide", icon: "sports_esports" },
   { file: "ANDROID", title: "Android & mobile", icon: "smartphone" },
+  { file: "MODDING", title: "Modding beyond OMSI 2", icon: "handyman" },
   { file: "PBR", title: "PBR materials", icon: "texture" },
   { file: "BUILDING", title: "Building", icon: "build" },
   { file: "FORMATS", title: "Content formats", icon: "description" },
@@ -118,14 +119,124 @@ async function doc(name, anchor) {
   else window.scrollTo(0, 0);
 }
 
+
+// --- Releases and issues, read from the GitHub API (60 requests an hour per visitor
+// without a token: every list is fetched once per visit and kept)
+const cache = {};
+async function gh(path) {
+  if (cache[path]) return cache[path];
+  const r = await fetch(`https://api.github.com/repos/${REPO}/${path}`, { headers: { Accept: "application/vnd.github+json" } });
+  if (!r.ok) throw new Error(r.status === 403 ? "GitHub's hourly request limit is reached - try again later." : `GitHub answered ${r.status}.`);
+  return (cache[path] = await r.json());
+}
+function esc(t) {
+  return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function md(text) {
+  // the author's markdown, with anything active taken out of it (scripts, frames, event
+  // handlers, javascript: links)
+  const t = document.createElement("template");
+  t.innerHTML = marked.parse(text || "");
+  t.content.querySelectorAll("script, style, iframe, object, embed, form, link, meta").forEach(e => e.remove());
+  t.content.querySelectorAll("*").forEach(e => [...e.attributes].forEach(a => {
+    if (/^on/i.test(a.name) || (/^(href|src)$/i.test(a.name) && /^\s*(javascript|data):/i.test(a.value) && !/^data:image\//i.test(a.value))) e.removeAttribute(a.name);
+  }));
+  return t.innerHTML;
+}
+function ago(date) {
+  const s = (Date.now() - new Date(date)) / 1000;
+  for (const [n, u] of [[31536000, "year"], [2592000, "month"], [86400, "day"], [3600, "hour"], [60, "minute"]]) {
+    if (s >= n) { const k = Math.floor(s / n); return `${k} ${u}${k > 1 ? "s" : ""} ago`; }
+  }
+  return "just now";
+}
+function labelChips(labels) {
+  return (labels || []).map(l => `<span class="label" style="--lc:#${esc(l.color)}">${esc(l.name)}</span>`).join("");
+}
+
+async function releases() {
+  view.innerHTML = `<div class="content"><h1>Releases</h1>
+    <p class="lead">Every version, newest first. The newest one is also on the <a href="#/download">Download</a> page.</p>
+    <div id="rel-list"><div class="loading">Loading…</div></div></div>`;
+  document.title = "Releases · openOMSI";
+  const box = document.getElementById("rel-list");
+  let list;
+  try { list = await gh("releases?per_page=30"); } catch (e) { box.innerHTML = `<p>${esc(e.message)} <a href="https://github.com/${REPO}/releases">Releases on GitHub</a></p>`; return; }
+  if (!list.length) { box.innerHTML = "<p>No release has been published yet.</p>"; return; }
+  box.innerHTML = list.map((r, i) => {
+    const assets = (r.assets || []).map(a => `<a class="asset" href="${esc(a.browser_download_url)}"><span class="material-icons">download</span>${esc(a.name)} <small>${(a.size / 1048576).toFixed(0)} MB</small></a>`).join("");
+    return `<details class="card elevation-1 release"${i === 0 ? " open" : ""}>
+      <summary><span class="rel-tag">${esc(r.tag_name.replace(/^v/, ""))}</span>
+        ${i === 0 ? '<span class="label" style="--lc:#2da44e">Latest</span>' : ""}${r.prerelease ? '<span class="label" style="--lc:#bf8700">Pre-release</span>' : ""}
+        <span class="rel-name">${esc(r.name && r.name !== r.tag_name ? r.name : "")}</span>
+        <span class="spacer"></span><span class="muted">${new Date(r.published_at).toLocaleDateString()}</span></summary>
+      <div class="doc rel-body">${md(r.body) || "<p class='muted'>No notes.</p>"}</div>
+      ${assets ? `<div class="assets">${assets}</div>` : ""}
+    </details>`;
+  }).join("");
+}
+
+let issueState = "open", issueQuery = "";
+async function issues(number) {
+  if (number) return issue(number);
+  view.innerHTML = `<div class="content"><h1>Issues</h1>
+    <p class="lead">Bugs and wishes. To report one, you need a GitHub account:
+      <a class="btn btn-contained" href="https://github.com/${REPO}/issues/new"><span class="material-icons">add</span>New issue</a></p>
+    <div class="issue-bar">
+      <div class="tabs"><button data-s="open">Open</button><button data-s="closed">Closed</button><button data-s="all">All</button></div>
+      <input id="iq" type="search" placeholder="Filter by title or label" value="${esc(issueQuery)}">
+    </div>
+    <div id="issue-list"><div class="loading">Loading…</div></div></div>`;
+  document.title = "Issues · openOMSI";
+  view.querySelectorAll(".tabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.s === issueState);
+    b.onclick = () => { issueState = b.dataset.s; issues(); };
+  });
+  const box = document.getElementById("issue-list");
+  let list;
+  try { list = await gh(`issues?state=${issueState}&per_page=100&sort=updated`); } catch (e) { box.innerHTML = `<p>${esc(e.message)} <a href="https://github.com/${REPO}/issues">Issues on GitHub</a></p>`; return; }
+  // (the issues list also carries pull requests)
+  list = list.filter(i => !i.pull_request);
+  const draw = () => {
+    const q = issueQuery.trim().toLowerCase();
+    const shown = list.filter(i => !q || i.title.toLowerCase().includes(q) || (i.labels || []).some(l => l.name.toLowerCase().includes(q)) || String(i.number) === q.replace("#", ""));
+    box.innerHTML = shown.length ? `<div class="card elevation-1 issue-list">${shown.map(i => `
+      <a class="issue-row" href="#/issues/${i.number}">
+        <span class="material-icons ${i.state === "open" ? "st-open" : "st-closed"}">${i.state === "open" ? "radio_button_unchecked" : "check_circle"}</span>
+        <span class="issue-main"><span class="issue-title">${esc(i.title)}</span> ${labelChips(i.labels)}
+          <span class="muted">#${i.number} · ${esc(i.user?.login)} · updated ${ago(i.updated_at)}</span></span>
+        ${i.comments ? `<span class="muted cm"><span class="material-icons">chat_bubble_outline</span>${i.comments}</span>` : ""}
+      </a>`).join("")}</div>` : `<p class="muted">Nothing here.</p>`;
+  };
+  document.getElementById("iq").oninput = e => { issueQuery = e.target.value; draw(); };
+  draw();
+}
+
+async function issue(n) {
+  view.innerHTML = `<div class="content"><p><a href="#/issues"><span class="material-icons" style="font-size:18px;vertical-align:-3px">arrow_back</span> All issues</a></p><div id="issue-box"><div class="loading">Loading…</div></div></div>`;
+  const box = document.getElementById("issue-box");
+  let i, comments;
+  try { [i, comments] = await Promise.all([gh(`issues/${n}`), gh(`issues/${n}/comments?per_page=100`)]); }
+  catch (e) { box.innerHTML = `<p>${esc(e.message)}</p>`; return; }
+  document.title = `#${i.number} ${i.title} · openOMSI`;
+  const post = (who, when, body) => `<div class="card elevation-1 comment"><div class="comment-head"><img src="${esc(who?.avatar_url)}&s=48" alt=""><b>${esc(who?.login)}</b><span class="muted">${ago(when)}</span></div><div class="doc">${md(body) || "<p class='muted'>No description.</p>"}</div></div>`;
+  box.innerHTML = `<h1>${esc(i.title)} <span class="muted">#${i.number}</span></h1>
+    <p><span class="label" style="--lc:${i.state === "open" ? "#2da44e" : "#8250df"}">${i.state === "open" ? "Open" : "Closed"}</span> ${labelChips(i.labels)}</p>
+    ${post(i.user, i.created_at, i.body)}${comments.map(c => post(c.user, c.created_at, c.body)).join("")}
+    <p><a class="btn btn-outlined" href="${esc(i.html_url)}"><span class="material-icons">reply</span>Comment on GitHub</a></p>`;
+  window.scrollTo(0, 0);
+}
+
 function route() {
   const hash = location.hash.replace(/^#/, "") || "/";
   const [path, anchor] = hash.split("#");
-  document.querySelectorAll(".drawer a[data-route]").forEach(a => a.classList.toggle("active", a.dataset.route === path));
+  document.querySelectorAll(".drawer a[data-route]").forEach(a => a.classList.toggle("active", a.dataset.route === path || (a.dataset.route === "/issues" && path.startsWith("/issues/"))));
   toggleDrawer(false);
   document.title = "openOMSI";
   if (path.startsWith("/docs/")) return doc(path.slice(6), anchor);
   if (path === "/download") return download();
+  if (path === "/releases") return releases();
+  if (path.startsWith("/issues")) return issues(path.split("/")[2]);
   window.scrollTo(0, 0);
   return home();
 }

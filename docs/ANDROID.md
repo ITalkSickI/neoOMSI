@@ -1,7 +1,7 @@
 # openOMSI on Android
 
 openOMSI runs on Android phones and tablets (arm64, Android 8.0 or newer, a GPU with
-Vulkan 1.1). It is the same game as on the computer: the same renderer, simulation, scripts,
+Vulkan 1.1; on a phone without Vulkan openOMSI tries OpenGL ES 3). It is the same game as on the computer: the same renderer, simulation, scripts,
 maps, buses and mods. Only the way it is worked is new:
 
 - **one app, one window**: the launcher and the game share a window. Start is pressed in the
@@ -16,7 +16,7 @@ maps, buses and mods. Only the way it is worked is new:
 
 | Where | What |
 |---|---|
-| bottom left | the steering wheel: drag across (it comes back when let go), or tilt the phone (panel → Tilt steering) |
+| bottom left | the steering wheel: take the rim and turn it round - it follows the finger, 120° of rim is the full lock (it comes back when let go) - or tilt the phone (panel → Tilt steering) |
 | bottom right | the brake and the accelerator: the higher up the pedal, the harder |
 | above the pedals | the gearbox (R N D of an automatic, − N + of a manual), a button for each door, front to back |
 | beside the pedals | the parking brake, the stop brake / door release |
@@ -28,8 +28,12 @@ maps, buses and mods. Only the way it is worked is new:
 Everything else is in the cab itself, as in OMSI: a tap works the switch under the finger (the
 IBIS, the ticket printer, the light switches), a finger dragged from a switch turns it (knobs,
 the ignition key, the sun blind), a drag elsewhere looks round, two fingers zoom. On foot and
-with the free camera a stick at the bottom left walks (pushed to the edge: runs). While the
-game menu, a list or the city map is open, the fingers are the mouse. The back key is Escape.
+with the free camera a stick at the bottom left walks (pushed to the edge: runs). The game
+menu and its lists scroll with the finger and a tap picks a line (a finger put down to scroll
+no longer picks the line it lands on); on the city map the fingers are the mouse. The back key
+is Escape. The launcher is laid out for the phone: the text at least at the system's own
+size, the settings in one column, and a finger on a list that has reached its end scrolls
+the page on.
 A game controller connected by Bluetooth works as on the computer.
 
 The buttons fire the actions of `Inputs/keyboard.cfg` (or the keys that stand for them, e.g.
@@ -91,3 +95,17 @@ Every push to main builds the APK in GitHub Actions (`android` job of
 `openOMSI-<version>-android-arm64.apk`. Set the repository secret `ANDROID_KEYSTORE_B64`
 (`base64 < android/debug.keystore`) so that every release is signed with the same key and
 installs over the previous one.
+
+## Updates
+
+The launcher looks for a newer GitHub release when it starts (Settings → Updates) and offers
+it; **Update now** downloads the APK and hands it to Android's package installer. The first
+time Android asks to allow openOMSI to install apps. Then Android asks "Do you want to update
+this app?": **Update** replaces openOMSI and starts it again, **Cancel** comes back to the
+launcher as "not updated". The APK must be signed with the same key as the installed app
+(release builds are).
+
+`openOMSI/env.txt` on the shared storage takes the `OMSI_*` switches a computer takes from its
+environment (one `NAME=value` a line), for example `OMSI_UPDATE_URL=file:///sdcard/…/release.json`
+to try an update from a local release description.
+

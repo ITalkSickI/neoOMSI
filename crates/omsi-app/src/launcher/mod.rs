@@ -17,6 +17,7 @@ mod state;
 mod theme;
 mod timetable;
 mod ui;
+mod update;
 
 use glam::Vec2;
 use omsi_launcher_lib as core;
@@ -134,6 +135,8 @@ pub struct Launcher {
     page_scroll: f32,
     page_max: f32,
     ime: bool,
+    /// Updates from the GitHub releases (see `crate::updater`, `update.rs`).
+    pub update: crate::updater::Updater,
 }
 
 /// Run the launcher window until it is closed.
@@ -196,12 +199,21 @@ impl Launcher {
         page_scroll: 0.0,
         page_max: 0.0,
         ime: false,
+        update: Default::default(),
     };
+    // after an update: the files it set aside go, and the launcher says what happened
+    #[cfg(not(target_os = "android"))]
+    crate::updater::cleanup_after_update();
+    if let Some(v) = crate::updater::just_updated() {
+        log::info!("update: this start follows the update to {v}");
+        app.update.updated = Some((v, Instant::now()));
+    }
     // no original installation found anywhere: the launcher still opens, on Setup, and says
     // what it needs (only starting a session needs the game)
     if omsi_cfg::missing_original_essentials(std::path::Path::new(&app.state.config.root)).len() > 0 {
         app.page = Page::Setup;
-        app.state.set_status("The original OMSI 2 was not found automatically. Choose its folder (the one with Omsi.exe, maps and Vehicles) and press Save.", true);
+        let why = state::root_problem(&app.state.config.root);
+        app.state.set_status(why, true);
     }
     if let Ok(p) = omsi_cfg::env::var("OMSI_LAUNCHER_PAGE") {
         if let Some((pg, _, _)) = PAGES.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(p.split(':').next().unwrap_or(""))) {
@@ -464,6 +476,7 @@ impl ApplicationHandler for Launcher {
             self.last = Instant::now();
             self.run_script();
             self.state.update(dt);
+            self.update_tick(event_loop);
             self.check_exit(event_loop);
         } else if let Some(w) = self.window.as_ref() {
             w.request_redraw();
@@ -481,9 +494,10 @@ impl Launcher {
         let s = w.inner_size();
         let (lw, lh) = (s.width as f32 / dpi, s.height as f32 / dpi);
         if mobile::mobile() {
-            // a phone held across: the text at about its own size (the pages scroll where
-            // the screen is lower than they are), a tablet a little larger
-            return dpi * (lh / 440.0).clamp(0.75, 1.3);
+            // a phone held across: the text at least at the system's own size - smaller, it
+            // was hard to read and the buttons hard to hit (the pages scroll where the screen
+            // is lower than they are, and lay themselves out for its width), a tablet larger
+            return dpi * (lh / 400.0).clamp(1.0, 1.35);
         }
         // (the height counts a little less: on a wide, low screen - 2560 x 1080 - the text
         // stayed the size of a 1440 x 880 window's, tiny across the width; the pages scroll or
@@ -503,6 +517,7 @@ impl Launcher {
 
         self.run_script();
         self.state.update(dt);
+        self.update_tick(event_loop);
         // the preview shows the chosen bus in the chosen light
         let c = &self.state.choice;
         let look = showroom::Look { root: std::path::PathBuf::from(&self.state.config.root), map: c.map.clone(), bus: c.bus.clone(), paint: c.paint.clone(), weather: c.weather.clone(), time: c.time, date: c.date.clone() };
@@ -688,8 +703,12 @@ impl Launcher {
     fn draw_ui(&mut self) {
         let size = self.ui.size;
         let mobile = mobile::mobile();
-        // the storage browser lies over the page: the page sees no finger meanwhile
-        let saved = self.browser.is_some().then(|| {
+        // the storage browser (or the update dialog) lies over the page: the page sees no
+        // finger meanwhile
+        let dialog = self.update_dialog_open();
+        let crash = !dialog && self.state.crash.is_some();
+        let reset = !dialog && !crash && self.pages.confirm_reset;
+        let saved = (self.browser.is_some() || dialog || crash || reset).then(|| {
             let i = self.ui.input.clone();
             self.ui.input.mouse = Vec2::new(-1e4, -1e4);
             self.ui.input.pressed = false;
@@ -733,9 +752,18 @@ impl Launcher {
             self.rail();
         }
         self.status_bar();
+        self.draw_updated_notice();
         if let Some(i) = saved {
             self.ui.input = i;
-            self.draw_browser();
+            if dialog {
+                self.draw_update_dialog();
+            } else if crash {
+                self.draw_crash_dialog();
+            } else if reset {
+                pages::reset_dialog(self);
+            } else {
+                self.draw_browser();
+            }
         }
     }
 
@@ -862,7 +890,10 @@ impl Launcher {
     pub fn page_title(&mut self, r: Rect, title: &str, sub: &str) -> Rect {
         self.ui.text(title, Vec2::new(r.x, r.y + 22.0), 22.0, Weight::Bold, TEXT, Align::Left);
         if !sub.is_empty() {
-            self.ui.text(sub, Vec2::new(r.x, r.y + 44.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
+            // (a narrow window: the line stops short of the tabs some pages put top right,
+            // it ran under them on a phone)
+            let w = if r.w < 1100.0 { r.w - 340.0 } else { r.w };
+            self.ui.text_in(sub, Rect::new(r.x, r.y + 34.0, w, 20.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
         }
         Rect::new(r.x, r.y + 64.0, r.w, (r.h - 64.0).max(0.0))
     }

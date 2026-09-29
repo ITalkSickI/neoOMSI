@@ -7,7 +7,10 @@ openomsi --root /path/to/OMSI2 --server /opt/openomsi-server/server.cfg
 ```
 
 (`scripts/build-server.sh` builds it on a Linux machine into `dist/server`, and `start.sh`
-there starts it; every release also has a ready `openOMSI-<version>-server-linux-x64.zip`.) The server is the game binary hosting a session with no window, no sound and no
+there starts it; every release also has ready `openOMSI-<version>-server-linux-x64.zip` and
+`-server-linux-arm64.zip`, and for Windows (10/11 and Windows Server 2016 or later)
+`-server-windows-x64.zip` and `-server-windows-arm64.zip`, started with
+`start.cmd C:\path\to\OMSI2`.) The server is the game binary hosting a session with no window, no sound and no
 graphics card: the renderer runs on wgpu's no-op device, so the world, the AI traffic, the
 timetable buses and the people are simulated exactly as a hosting player's game does, and
 nothing is drawn. `server.cfg` is written with commented defaults on the first start (name,

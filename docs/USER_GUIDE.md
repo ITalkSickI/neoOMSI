@@ -63,12 +63,44 @@ second (starter), **Shift+D** (drive), **.** (parking brake off), then throttle.
 whole start-up by itself (main switch, ignition, starter, gearbox to neutral); `--autostart`
 is the same thing for an offscreen run.
 
+**Updates.** When the launcher starts it asks
+[github.com/turbo-devv/openOMSI](https://github.com/turbo-devv/openOMSI) for the latest release
+and, when there is a newer one, offers it: **Update now** downloads it (checked against the
+SHA-256 GitHub lists), puts the new program in place of the old one and starts the launcher
+again - on Windows `openomsi.exe` and `openomsi-launcher.exe`, on macOS the `openOMSI.app`
+you started, on Linux the program files; mods, content and settings stay. On Android the
+system's installer asks "Do you want to update this app?"; Update replaces openOMSI and starts
+it again, Cancel leaves it as it was. Settings → Updates: look for updates at the start (on
+by default), install without asking (off by default), Check now. A folder openOMSI cannot
+write to (Program Files, an app opened straight from Downloads on macOS) is reported with
+what to do. `OMSI_NO_UPDATE=1` switches the check off; `OMSI_UPDATE_URL` points it at another
+release description (GitHub's format; `file://` works, for testing).
+
+**O** switches mouse steering on and off, as in OMSI (Omsi.exe's own formula): the cursor's
+place across the whole window is the steering from full left to full right lock
+(`[inv_min_turnradius]` of the bus), from the middle up to the top edge is the throttle and
+down to the bottom edge the brake. Above 10 km/h the same hand movement turns the wheels less
+and less (at 50 km/h a fifth as far), so the wheel feels heavier the faster the bus goes; for
+the first second after switching it on the wheel and the pedals ease towards the cursor.
+Settings → Controls & sound → *Mouse steering* makes it more or less sensitive (100 % = OMSI).
+Mouse steering works in the driver's, the passenger and the outside view; the wheel follows
+the cursor smoothly (a short easing, no steps).
+
+Two switches there change the steering keys (both off by default): *Steering linearity* turns
+the wheel at OMSI's own steady pace (the curvature grows by the same amount every millisecond
+the key is held, whatever the bus), and *Old Steering* is OMSI's wheel that stays where you
+leave it - turn it back yourself. The clutch key works as in OMSI: the pedal goes down at once
+and comes up slowly (0.7 per second) when the key is released.
+
 Left-click a cockpit switch to operate it, hold the button and move the mouse to turn a knob,
 or roll the mouse wheel over it (that is the `<event>_drag` OMSI fires); the name of the switch
 under the cursor is shown in the HUD.
 Right-drag the mouse to look around in any view (the head turns inside, the camera swings
-around the bus outside), I/J/K/L does the same from the keyboard, the wheel zooms, Home
-recentres. F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
+around the bus outside), I/J/K/L does the same from the keyboard; each view keeps its own
+direction (turning the outside camera leaves the driver's head where it was), **Space** looks
+ahead again in every view (OMSI's `view_reset_all_directions`), Home recentres the view shown.
+The mouse wheel (and **=** / **-**, a pinch on a phone) zooms: outside the camera comes closer,
+inside the bus the view narrows, as in OMSI. F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
 sign and roller blind keys as in OMSI, Alt+S quick save, F9 write the run into the personnel
 file, WASD+QE in the free camera, left click on cockpit elements, **V** the chat line in a
 LAN session. Esc opens the game menu: drive the next placed vehicle, place any vehicle of
@@ -101,13 +133,31 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   the session summaries the game writes to `~/.openomsi/sessions`.
 * **Settings** - everything in `settings.cfg` below, saved as it changes; keys the page
   does not manage are kept as they are.
-* **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red.
+* **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red. The
+  keys are the game's with *Driving keys: Custom controls* (Settings); with a ready-made
+  layout (W A S D, arrows) those keys drive and win over the list - the page says so, and
+  changing a key switches to Custom controls by itself. *Game controllers*: wheels, pedals,
+  joysticks and button boxes as in OMSI's `gamectrler.cfg` - a connected device not set up
+  yet has **Set up**, and **Set up step by step** finds its axes (turn the wheel left, press
+  each pedal); every button of the device is listed (press one to jump to it). On Windows the
+  devices are read through DirectInput, as OMSI does, so every wheel Windows lists works
+  (a wheel's force feedback: the centring that grows with the speed, the heavy steering of a
+  bus standing still and the scripts' shaking, `FF_Vib_Amp`); a wheel nobody has set up
+  steers with its X axis. A wheel that a community controller mapping also makes a gamepad (a
+  Logitech G29) is listed once, and *Use this device* switches any device off
+  (it is then neither read nor listed as steering).
 * **Sessions** - every game started from the launcher, with its log, a **Stop** that lets
   it save its run (SIGTERM, up to 8 s, and only a stuck game is killed) and, for a LAN
   session, the code to copy, who is playing and the chat.
 * **Mods** - installing mods and archives (see *Mods and the content folder*); a folder or
   .zip dropped on the window is installed.
-* **Setup** - where the original installation and the game binary are.
+* **Timetable** - a map's lines, their tours and trips. Changes stay while you move between
+  lines and are saved together (*Save all*); **New line** makes a line, **Repeat** turns a tour
+  into a whole day of them (every *n* minutes up to a last departure).
+* **Setup** - where the original installation and the game binary are. The OMSI 2 folder may
+  be given as a path with quotes, as `Omsi.exe` itself or as a folder inside it; unpacked into
+  the OMSI 2 folder itself, openOMSI keeps its own content in an `openOMSI` folder there and
+  never writes to the game's.
 
 ```bash
 scripts/build-macos.sh   # or build-windows.cmd / build-linux.sh: the game opens the launcher
@@ -135,13 +185,23 @@ and `drive_keys`, plus `render_scale` (`auto` or a fraction: the picture is draw
 and upscaled), `post_aa` (`fxaa`, the enhanced renderer's, or `off`), `view_distance` (m,
 how far the tiles are kept loaded), `texture_memory` (MB - OMSI's `texmemlimit` is read
 under that name too; an eighth of the machine's memory when unset), `texture_compression`
-(BC1-BC3 on the GPU, on by default) and `language` (`ENG`, `DEU`, `FRA`: the language the
-HUD names cockpit switches in). The file also carries a `version`; older files that say
+(BC1-BC3 on the GPU, on by default), `reflections` (the materials' reflection maps,
+`[matl_envmap]` - off, paint, chrome and glass mirror nothing), `mouse_sens` (mouse steering,
+1 = OMSI's), `steering_linear` and `old_steering` (the two steering switches above),
+`ff_invert` (force feedback the other way round), `wheel_range` (the wheel's own rotation,
+lock to lock, 900° by default) and `wheel_lock` (how far it is turned for the bus's full
+lock; 0 = the whole wheel, as OMSI), `fov` (degrees for the views from the bus; 0 = the bus's
+own cameras), `collision_objects` (walls, poles and bridges stop the bus; off is OMSI's `no_collision`
+option and is taken from OMSI's options when openOMSI starts the first time), `graphics_api`
+(`auto`, `vulkan`, `dx12` on Windows, `gl`: which graphics interface the game asks first -
+with `auto` Vulkan, then DirectX 12, then OpenGL), `ctrl_off` (game controllers switched off
+on the Controllers page, by name, separated by `|`) and `language` (`ENG`, `DEU`, `FRA`: the language the HUD names cockpit switches
+in). The file also carries a `version`; older files that say
 `boarding=pay` because that was the launcher's old default are read as `auto`.
 
 `drive_keys` is a control preset: `simple` (W/S/A/D and the arrow keys drive; the default),
-`wasd`, `arrows`, or `omsi` - only the original layout of `Inputs/keyboard.cfg` (Shift +
-numpad), nothing added. **T** sells the ticket a passenger asks for on a bus without a
+`wasd`, `arrows`, or `omsi` ("Custom controls") - only the layout of `Inputs/keyboard.cfg`
+(OMSI's Shift + numpad, or what the Controls page made of it), nothing added. **T** sells the ticket a passenger asks for on a bus without a
 ticket printer (the original's `ticket_give` key).
 
 `boarding` is how passengers board: `auto` (default) - they walk to the standing place the
@@ -284,6 +344,13 @@ Environment variables, all off unless set. The useful ones:
 | `OMSI_DEBUG_CONES`, `OMSI_NO_LIGHT_MAP`, `OMSI_DEBUG_LIGHT_GRID` | the lamps' fog cones and halos, the tiles' night light maps left out, lights a full grid cell leaves out |
 | `OMSI_PARKED_PULL_OUT=p` | the chance per population pass (about 2 s) that a parked car drives off (0.035 by default), with a log of why one does not |
 | `OMSI_NO_BRIDGE=1` | a LAN host leaves the internet alone (no UPnP port forward, no address posting) - for tests |
+| `OMSI_NO_LAN_MODS=1` | a LAN host serves no mods and a joining game fetches none |
+| `OMSI_BACKEND=vulkan\|dx12\|gl` | the graphics interface to ask first (the log lists every adapter each one offers) |
+| `OMSI_GPU_LIMITS=default\|downlevel` | pretend the graphics card can only do this much (tests of old cards) |
+| `OMSI_RENDER_OCCLUDED=1` | draw even while the window is hidden (tests) |
+| `OMSI_CHECK_OBSTACLES=1` | offscreen: drive every lane as a bus and list the objects that would stop it |
+| `OMSI_DEBUG_REPEATERS=1` | list the spline object rows whose start the map and the spline chain disagree about |
+| `OMSI_TRACE_STEER=file.csv` | write mouse steering, frame by frame (cursor, target, wheel, speed) |
 
 `OMSI_MUTE`, `OMSI_LAN_AUDIO` and `OMSI_LAN_SAY` are the LAN tests' switches; the rest are
 listed where they are read (`grep -r OMSI_ crates`).
@@ -301,7 +368,12 @@ code carries up to three addresses of the host, a VPN's first: Hamachi (25.x.x.x
 VPN (26.x.x.x), ZeroTier, Tailscale (100.64.0.0/10), then the LAN's - never the loopback,
 a 169.254 address or a bridge of virtual machines. The joining game says hello to all of
 them at once and takes the one that answers; with no answer within 10 s it gives up and
-says why that may be (not the same network, a firewall). The launcher's Sessions page and
+says why that may be (not the same network, a firewall). A host that is busy (a dedicated
+server loading its map, a game loading a heavy part of one) answers from a thread of its own
+while it loads, and the joining game waits up to 8 s for it before it loads anything. The
+joining game plays on the host's map whatever map was chosen before joining, when that map is
+installed (or comes with the host's mods, below); one that is not is said in the HUD. The
+launcher's Sessions page and
 the HUD list the same addresses with the network they belong to, for joining by hand.
 `--lan-join` takes that code, an `ip`, `ip:port`, a host name, a bare port (a host on this
 machine) or `auto` (find a host on the local network by broadcast). Over the internet both
@@ -318,6 +390,15 @@ drawn and heard where they stand, and are obstacles for the AI traffic like your
 as long as that bus type is installed locally, otherwise your own type stands in for it.
 **V** opens the chat line (Enter sends, Esc drops it); joining and leaving are announced
 there. The host checks everything it takes in and limits how much a player may send.
+
+**The host's mods.** What the host's session uses that is not in the OMSI 2 folder itself
+(its map, bus, objects, splines, AI vehicles and people from the content folder or archives,
+also a content folder inside the OMSI 2 folder) is listed with a SHA-256 per file and served
+over TCP on the session's port; a joining game fetches what it lacks before it loads the map
+and keeps the downloads for the next time (`~/.openomsi/lan-store`). Listing a big add-on map
+takes the host a while after it starts (Novi Sad, 27 000 files: 20 s on a fast computer); a joining game waits
+for it. Maps installed straight into the OMSI 2 folder are not passed on: both players need
+them.
 
 **One world.** The host simulates the AI traffic, the timetable buses, the people on the
 pavements and at the stops, the riders of the timetable buses and the traffic lights for

@@ -6,7 +6,7 @@ use glam::Vec3;
 use hashbrown::HashMap;
 use parking_lot::Mutex;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub struct Clip {
@@ -108,8 +108,12 @@ struct Shared {
     listener: Mutex<Listener>,
     /// The echo of an underpass, fed from the mix.
     reverb: Mutex<Reverb>,
-    sample_rate: u32,
-    channels: usize,
+    /// The master limiter's gain now (1 = none).
+    limiter: Mutex<f32>,
+    /// The output device's rate and channels: those of the device played on now (the stream
+    /// is opened again on another device when the system's output changes).
+    sample_rate: AtomicU32,
+    channels: AtomicUsize,
     /// `OMSI_MUTE`: everything is mixed as usual (voices play and end), nothing is heard -
     /// for test runs on a machine somebody is working at.
     muted: bool,
@@ -131,9 +135,10 @@ impl Shared {
                 }
             }
         }
-        let ch = self.channels;
+        let ch = self.channels.load(Ordering::Relaxed).max(1);
         let frames = out.len() / ch;
-        let dev_rate = self.sample_rate as f64;
+        let rate = self.sample_rate.load(Ordering::Relaxed).max(1);
+        let dev_rate = rate as f64;
         // More voices than OMSI's `[sound_maxcount]` (200 by default): the quietest are not
         // mixed this block but keep their place in time (a crowd of AI engines and scenery
         // loops used to be mixed in full however many there were).
@@ -158,9 +163,7 @@ impl Shared {
             if let Some(p) = v.params.position {
                 let d = p - listener.position;
                 let dist = d.length().max(0.1);
-                // full within the range, then falling a little faster than 1/d - a plain
-                // 1/d kept an aircraft's engine audible for kilometres
-                spatial_gain = (v.params.range / dist).min(1.0).powf(1.6);
+                spatial_gain = distance_gain(v.params.range, dist);
                 let side = d.normalize_or_zero().dot(listener.right);
                 let pan = side.clamp(-1.0, 1.0);
                 left = ((1.0 - pan) * 0.5).sqrt() * 1.2;
@@ -268,7 +271,23 @@ impl Shared {
         voices.retain(|v| !v.finished);
         drop(voices);
         if listener.reverb_mix > 0.001 && listener.reverb_time > 0.05 {
-            self.reverb.lock().process(out, ch, self.sample_rate, listener.reverb_time.min(3.0), listener.reverb_mix.min(1.0));
+            self.reverb.lock().process(out, ch, rate, listener.reverb_time.min(3.0), listener.reverb_mix.min(1.0));
+        }
+        // The master limiter: a busy street sums past full scale, and cut off hard there the
+        // sound crackled and squeaked. Loud moments are turned down (at once) and back up
+        // (over half a second), and what still peaks is rounded off, not cut.
+        {
+            let mut g = self.limiter.lock();
+            let frames = (out.len() / ch.max(1)).max(1);
+            let release = (-1.0 / (0.5 * rate as f32)).exp();
+            for f in 0..frames {
+                let peak = (0..ch).map(|c| out[f * ch + c].abs()).fold(0.0f32, f32::max);
+                let want = if peak * *g > 0.9 { 0.9 / peak } else { 1.0 };
+                *g = if want < *g { want } else { want + (*g - want) * release };
+                for c in 0..ch {
+                    out[f * ch + c] = soft_clip(out[f * ch + c] * *g);
+                }
+            }
         }
         for s in out.iter_mut() {
             *s = if self.muted { 0.0 } else { s.clamp(-1.0, 1.0) };
@@ -304,7 +323,7 @@ pub const MAX_VOICES: usize = 200;
 
 /// How loud voice `v` reaches the listener (its gain and distance), to rank voices by.
 fn heard_gain(v: &Voice, listener: &Listener) -> f32 {
-    let spatial = v.params.position.map(|p| (v.params.range / (p - listener.position).length().max(0.1)).min(1.0).powf(1.6)).unwrap_or(1.0);
+    let spatial = v.params.position.map(|p| distance_gain(v.params.range, (p - listener.position).length())).unwrap_or(1.0);
     v.params.gain * spatial
 }
 
@@ -330,7 +349,15 @@ fn skip_clip(v: &mut Voice, frames: usize, dev_rate: f64) {
 
 /// Owns the output stream. Dropping it stops playback.
 pub struct AudioEngine {
-    _stream: Option<cpal::Stream>,
+    /// The stream on the device played on now (see `follow_device`).
+    stream: std::cell::RefCell<Option<cpal::Stream>>,
+    /// The name of that device.
+    device: std::cell::RefCell<String>,
+    /// Set when the stream fails (its device went away) or the system's default output
+    /// changed (a watcher thread looks every two seconds).
+    reopen: Arc<AtomicBool>,
+    /// When the stream was last opened (at most one new stream a second).
+    opened: std::cell::Cell<std::time::Instant>,
     shared: Arc<Shared>,
     next_id: AtomicU64,
     /// Clips by file; `None` for a file that is missing or unreadable (not tried again). With
@@ -362,79 +389,126 @@ pub fn read_clip(path: &Path) -> Option<Arc<Clip>> {
     }
 }
 
+/// Every two seconds, the name of the system's default output device: when it is not the
+/// one played on (`first`, then the last one seen), `reopen` is set. Ends with the engine.
+fn watch_default_device(first: String, reopen: std::sync::Weak<AtomicBool>) {
+    let _ = std::thread::Builder::new().name("audio device".into()).spawn(move || {
+        let mut current = first;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let Some(flag) = reopen.upgrade() else { return };
+            let name = cpal::default_host().default_output_device().and_then(|d| d.name().ok()).unwrap_or_default();
+            if name != current {
+                current = name;
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+    });
+}
+
 impl AudioEngine {
     /// Open the default output device. Returns a silent engine if none is available.
     pub fn new() -> AudioEngine {
-        let host = cpal::default_host();
-        let device = host.default_output_device();
-        let (stream, rate, channels, enabled) = match device {
-            Some(dev) => match dev.default_output_config() {
-                Ok(cfg) => {
-                    let rate = cfg.sample_rate().0;
-                    let channels = cfg.channels() as usize;
-                    let shared = Arc::new(Shared {
-                        voices: Mutex::new(Vec::new()),
-                        updates: Mutex::new(Vec::new()),
-                        listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()),
-                        sample_rate: rate,
-                        channels,
-                        muted: muted(),
-                    });
-                    let s2 = shared.clone();
-                    let stream = dev.build_output_stream(
-                        &cfg.config(),
-                        move |data: &mut [f32], _| s2.render(data),
-                        |e| log::warn!("audio stream error: {e}"),
-                        None,
-                    );
-                    match stream {
-                        Ok(s) => {
-                            if let Err(e) = s.play() {
-                                log::warn!("audio: cannot start stream: {e}");
-                            }
-                            return AudioEngine {
-                                _stream: Some(s),
-                                shared,
-                                next_id: AtomicU64::new(1),
-                                clips: Default::default(),
-                                last_trim: Mutex::new(std::time::Instant::now()),
-                                loading: Default::default(),
-                                enabled: true,
-                            };
-                        }
-                        Err(e) => {
-                            log::warn!("audio: cannot open stream: {e}");
-                            (None, 48000, 2, false)
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!("audio: no output config: {e}");
-                    (None, 48000, 2, false)
-                }
-            },
-            None => {
-                log::warn!("audio: no output device");
-                (None, 48000, 2, false)
-            }
-        };
-        AudioEngine {
-            _stream: stream,
-            shared: Arc::new(Shared {
-                voices: Mutex::new(Vec::new()),
-                updates: Mutex::new(Vec::new()),
-                listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()),
-                sample_rate: rate,
-                channels,
-                muted: muted(),
-            }),
+        let shared = Arc::new(Shared {
+            voices: Mutex::new(Vec::new()),
+            updates: Mutex::new(Vec::new()),
+            listener: Mutex::new(Listener::default()),
+            reverb: Mutex::new(Reverb::default()),
+            limiter: Mutex::new(1.0),
+            sample_rate: AtomicU32::new(48_000),
+            channels: AtomicUsize::new(2),
+            muted: muted(),
+        });
+        let reopen = Arc::new(AtomicBool::new(false));
+        let engine = AudioEngine {
+            stream: std::cell::RefCell::new(None),
+            device: std::cell::RefCell::new(String::new()),
+            reopen: reopen.clone(),
+            opened: std::cell::Cell::new(std::time::Instant::now()),
+            shared,
             next_id: AtomicU64::new(1),
             clips: Default::default(),
             last_trim: Mutex::new(std::time::Instant::now()),
             loading: Default::default(),
-            enabled,
+            enabled: false,
+        };
+        let enabled = engine.open_default();
+        let engine = AudioEngine { enabled, ..engine };
+        if enabled {
+            watch_default_device(engine.device.borrow().clone(), Arc::downgrade(&reopen));
+        }
+        engine
+    }
+
+    /// Play on the system's default output device from now on. Returns whether a stream
+    /// is playing.
+    fn open_default(&self) -> bool {
+        // (the old stream first: some drivers give a device to one stream at a time)
+        self.stream.borrow_mut().take();
+        let host = cpal::default_host();
+        let Some(dev) = host.default_output_device() else {
+            log::warn!("audio: no output device");
+            return false;
+        };
+        let name = dev.name().unwrap_or_default();
+        let cfg = match dev.default_output_config() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("audio: no output config on {name}: {e}");
+                return false;
+            }
+        };
+        self.shared.sample_rate.store(cfg.sample_rate().0, Ordering::Relaxed);
+        self.shared.channels.store(cfg.channels().max(1) as usize, Ordering::Relaxed);
+        let s2 = self.shared.clone();
+        let lost = self.reopen.clone();
+        let stream = dev.build_output_stream(
+            &cfg.config(),
+            move |data: &mut [f32], _| s2.render(data),
+            move |e| {
+                // (a lost device only: a driver's hiccups are not worth a new stream)
+                if matches!(e, cpal::StreamError::DeviceNotAvailable) {
+                    lost.store(true, Ordering::Relaxed);
+                }
+                log::warn!("audio stream error: {e}");
+            },
+            None,
+        );
+        match stream {
+            Ok(s) => {
+                if let Err(e) = s.play() {
+                    log::warn!("audio: cannot start stream: {e}");
+                }
+                log::info!("audio: playing on {name} ({} Hz, {} channels)", cfg.sample_rate().0, cfg.channels());
+                *self.stream.borrow_mut() = Some(s);
+                *self.device.borrow_mut() = name;
+                true
+            }
+            Err(e) => {
+                log::warn!("audio: cannot open stream on {name}: {e}");
+                false
+            }
+        }
+    }
+
+    /// Follow the system's output: when its default device changed (headphones plugged in,
+    /// a Bluetooth headset connected) or the one played on went away, the stream is opened
+    /// again on the default device - the sound had stayed on the speakers, or stopped for
+    /// good when the headset was disconnected. Cheap; called every frame.
+    pub fn follow_device(&self) {
+        if !self.enabled || self.opened.get().elapsed().as_secs_f32() < 1.0 || !self.reopen.swap(false, Ordering::Relaxed) {
+            return;
+        }
+        self.opened.set(std::time::Instant::now());
+        let before = self.device.borrow().clone();
+        if self.open_default() {
+            let now = self.device.borrow().clone();
+            if now != before {
+                log::info!("audio: output moved from {before} to {now}");
+            }
+        } else {
+            // (no device right now: tried again when the watcher sees one)
+            self.device.borrow_mut().clear();
         }
     }
 
@@ -601,11 +675,7 @@ impl AudioEngine {
         let spatial = v
             .params
             .position
-            .map(|p| {
-                (v.params.range / (p - listener.position).length().max(0.1))
-                    .min(1.0)
-                    .powf(1.6)
-            })
+            .map(|p| distance_gain(v.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
         Some((v.params, v.params.gain * spatial))
     }
@@ -643,7 +713,7 @@ mod tests {
 
     fn shared() -> Shared {
         Shared { voices: Mutex::new(Vec::new()), updates: Mutex::new(Vec::new()), listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()), sample_rate: 48_000, channels: 1, muted: false }
+                        reverb: Mutex::new(Reverb::default()), limiter: Mutex::new(1.0), sample_rate: AtomicU32::new(48_000), channels: AtomicUsize::new(1), muted: false }
     }
 
     fn voice(clip: Arc<Clip>, gain: f32) -> Voice {
@@ -681,6 +751,23 @@ mod tests {
         s.render(&mut out);
         assert_eq!(s.voices.lock()[0].params.gain, 0.0);
         assert!(s.updates.lock().is_empty());
+    }
+
+    /// The stream opened again (as when the system's output device changed) keeps playing;
+    /// on a machine without an output device there is nothing to follow.
+    #[test]
+    fn follows_the_output_device() {
+        let e = AudioEngine::new();
+        if !e.enabled {
+            return;
+        }
+        let before = e.device.borrow().clone();
+        e.reopen.store(true, Ordering::Relaxed);
+        e.opened.set(std::time::Instant::now() - std::time::Duration::from_secs(2));
+        e.follow_device();
+        assert!(e.stream.borrow().is_some());
+        assert_eq!(*e.device.borrow(), before);
+        assert!(!e.reopen.load(Ordering::Relaxed));
     }
 
     #[test]
@@ -745,5 +832,44 @@ impl Reverb {
                 out[f * ch + c] = x + y * mix;
             }
         }
+    }
+}
+
+/// How loud a sound `dist` metres away arrives, with `range` its `[3d]` reference distance:
+/// OMSI hands it to DirectSound 3D as the minimum distance with the default roll-off, so it
+/// is full up to that distance and then falls as 1/d (6 dB per doubling). Ours fell as
+/// (range/d)^1.6: at ten times the distance a sound was 4 % instead of 10 % - nearly
+/// everything was too quiet, a blinker relay half a metre from the head included.
+pub fn distance_gain(range: f32, dist: f32) -> f32 {
+    (range.max(0.01) / dist.max(0.01)).min(1.0)
+}
+
+#[cfg(test)]
+mod distance_tests {
+    #[test]
+    fn inverse_distance_beyond_the_reference() {
+        assert_eq!(super::distance_gain(2.0, 1.0), 1.0);
+        assert!((super::distance_gain(2.0, 4.0) - 0.5).abs() < 1e-6);
+        assert!((super::distance_gain(1.0, 10.0) - 0.1).abs() < 1e-6);
+    }
+}
+
+/// Past 0.9 a sample is bent smoothly towards 1 instead of being cut off there.
+fn soft_clip(x: f32) -> f32 {
+    let a = x.abs();
+    if a <= 0.9 {
+        x
+    } else {
+        x.signum() * (0.9 + 0.1 * ((a - 0.9) / 0.1).tanh())
+    }
+}
+
+#[cfg(test)]
+mod limiter_tests {
+    #[test]
+    fn soft_clip_is_smooth_and_bounded() {
+        assert_eq!(super::soft_clip(0.5), 0.5);
+        assert!(super::soft_clip(3.0) <= 1.0 && super::soft_clip(-3.0) >= -1.0);
+        assert!(super::soft_clip(0.95) > 0.9 && super::soft_clip(0.95) < 0.95);
     }
 }
