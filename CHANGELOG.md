@@ -196,6 +196,11 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   waiting behind it: a fire engine at the end of a dead-end street held a queue of fourteen
   cars for two and a half minutes, and the junctions before it jammed full (Westcountry 3,
   38 cars stuck for over a minute in five minutes of traffic, now none).
+- No more sky showing through the road in stars and stripes at junctions: a spline made
+  only of blended layers (Westcountry's lane darkeners laid over the junctions' painted
+  ground) no longer cuts the ground away under itself; the ground is what it darkens.
+- `OMSI_DEBUG_LAMPS=1` lists every traffic light object, the crossing it belongs to and
+  those that name none (and so stay dark).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

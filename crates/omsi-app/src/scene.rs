@@ -377,6 +377,9 @@ struct StagedSpline {
     bounds: [f64; 4],
     /// It carries a road or a footway (a railway embankment or a bridge deck does not).
     drivable: bool,
+    /// Every profile of it is blended (`[matl_alpha] 2`): a layer laid over the ground or a
+    /// road, not a surface of its own (see `prepare_surfaces`).
+    overlay: bool,
 }
 
 /// A tile read and tessellated, its objects typed but not yet standing on the ground. Kept
@@ -2940,11 +2943,14 @@ impl World {
                     ..Default::default()
                 };
                 let drivable = st.def.paths.iter().any(|pd| pd.kind == 0 || pd.kind == 1);
+                let overlay = !st.def.profiles.is_empty()
+                    && st.def.profiles.iter().all(|p| st.def.textures.get(p.texture).is_some_and(|t| t.alpha == 2));
                 out.splines.push(StagedSpline {
                     shape,
                     ty: st,
                     bounds,
                     drivable,
+                    overlay,
                 });
                 meshes.push(Arc::new(mesh));
             }
@@ -3930,6 +3936,12 @@ impl World {
             let lamp = if ot.sco.is_traffic_light {
                 let named = o.extra.first().map(|s| s.trim()).filter(|s| !s.is_empty());
                 let index = named.map(|s| omsi_cfg::parse_f64(s) as usize).unwrap_or(0);
+                if omsi_cfg::env::var_os("OMSI_DEBUG_LAMPS").is_some() {
+                    match o.lamp_parent {
+                        None => log::info!("traffic light {} (id {}) names no crossing ([varparent]); extra {:?}", ot.sco.path.display(), o.id, o.extra),
+                        Some(p) => log::info!("traffic light {} (id {}) at ({:.0}, {:.0}): crossing {p}, light {:?}", ot.sco.path.display(), o.id, pos.x, pos.y, o.extra),
+                    }
+                }
                 o.lamp_parent.map(|p| (p, index, named.is_none()))
             } else {
                 None
@@ -4148,7 +4160,10 @@ impl World {
                 // on: only splines that carry a road or footway path count as drivable
                 for q in &order {
                     for sp in &q.splines {
-                        if outside(&sp.bounds) {
+                        // (a blended layer - Westcountry's lane darkeners over the painted
+                        // ground of its junctions - cuts no ground away: under it the ground
+                        // is what shows through, and cut away it was the sky)
+                        if outside(&sp.bounds) || sp.overlay {
                             continue;
                         }
                         report(&sp.shape, &Mat4::IDENTITY, q.origin, &sp.bounds, &|| {
