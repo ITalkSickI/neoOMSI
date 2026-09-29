@@ -95,6 +95,8 @@ const EXIT_REACH: f64 = 0.6;
 /// gives up on it coming to serve them: the driver's own door buttons take a moment, and
 /// the timetable buses' door scripts open a beat after they roll to a stop.
 const DOOR_GRACE: f64 = 4.0;
+/// How long after a door of a standing bus was last open the people at it wait on (s).
+const DOOR_SHUT_PATIENCE: f64 = 25.0;
 
 fn debug_pax() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -1789,6 +1791,8 @@ pub struct Humans {
     door_busy: HashMap<(BusId, bool, usize), f32>,
     /// Timetable buses at a stop: id → (stop, time the visit began).
     ai_visits: HashMap<u64, (i64, f64)>,
+    /// When each bus last had a door open (the passengers' clock).
+    last_door_open: HashMap<BusId, f64>,
     /// Timetable buses whose people aboard have been seated (`seed_ai_riders`).
     ai_seeded: HashSet<u64>,
     /// Timetable buses to keep at their stop for a few seconds more (for the traffic).
@@ -2015,6 +2019,7 @@ impl Humans {
             served_stop_since: 0.0,
             door_busy: HashMap::new(),
             ai_visits: HashMap::new(),
+            last_door_open: HashMap::new(),
             ai_seeded: HashSet::new(),
             holds: Vec::new(),
             ai_requests: Vec::new(),
@@ -3504,7 +3509,10 @@ impl Humans {
             BusId::Player => (self.served_stop == bn.stop).then_some(self.served_stop_since),
             BusId::Ai(id) => self.ai_visits.get(&id).map(|v| v.1),
         };
-        since.map(|t| self.time - t < DOOR_GRACE).unwrap_or(false)
+        // (a door shut for a moment - by mistake, or to let the heat in - is no reason to
+        // leave: the people turned away at once and came back when it opened again)
+        let recently = self.last_door_open.get(&bn.id).is_some_and(|t| self.time - t < DOOR_SHUT_PATIENCE) && bn.speed.abs() < 0.5;
+        recently || since.map(|t| self.time - t < DOOR_GRACE).unwrap_or(false)
     }
 
     /// The buses passengers deal with this frame.
@@ -4536,6 +4544,11 @@ impl Humans {
             self.make_gallery(world, renderer, scene);
         }
         let mut buses = self.gather_buses(world, bus, traffic);
+        for b in &buses {
+            if b.entry_open.iter().chain(b.exit_open.iter()).any(|o| *o) {
+                self.last_door_open.insert(b.id, self.time);
+            }
+        }
         // how the floor of each bus accelerates: braking and pulling away, and round bends
         if dt > 1e-4 {
             let mut motion = HashMap::new();
@@ -5502,7 +5515,23 @@ impl Humans {
                 // towards it (staring at the wall), and the one at the front came to the
                 // door along the side, through the folded leaf
                 let q_dir = (side * 0.55 + bn.fwd_at(door.inside) * (door.queue_dir as f64 * 0.83)).normalize_or_zero();
-                let place = |k: usize| base + q_dir * (QUEUE_GAP * k as f64);
+                // (a queue running forwards stops short of the bus's front and turns out from
+                // it: at a door just behind the windscreen the line went on round the nose,
+                // and the people stood across the road in front of the bus, facing it)
+                let q_len = if door.queue_dir > 0.0 {
+                    let room = bn.centre.y + bn.half.y - door.outside.y as f64 - 0.8;
+                    (room.max(0.0) / q_dir.dot(bn.fwd_at(door.inside)).max(0.1)).max(0.0)
+                } else {
+                    f64::INFINITY
+                };
+                let place = |k: usize| {
+                    let d = QUEUE_GAP * k as f64;
+                    if d <= q_len {
+                        base + q_dir * d
+                    } else {
+                        base + q_dir * q_len + side * (d - q_len)
+                    }
+                };
                 let spot_pos = place(slot);
                 let d = (spot_pos - pos2).length();
                 // facing the door at the front, else the one ahead in the line

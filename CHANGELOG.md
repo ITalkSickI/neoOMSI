@@ -89,6 +89,11 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Barriers (depot and car park gates on a light program) open for the player's bus off the
   lanes too: a gate whose lane starts up to 25 m ahead, the way the bus faces, is asked for
   (in a depot yard the bus stood beside every lane and the barrier stayed down).
+- Passengers: the queue at a front door no longer goes on round the bus's nose (it stops
+  short of the front and turns out along the kerb - people stood across the road in front
+  of the windscreen, facing the bus), and a door shut for a moment no longer sends the
+  waiting people away: they wait on 25 s after a door of the standing bus was last open
+  (they turned away at once and came back when it opened again).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
