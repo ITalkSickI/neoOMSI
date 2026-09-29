@@ -325,7 +325,7 @@ impl App {
                 // Shift + 1..9: open or close that physical door, front to back (see
                 // `door_trigger_groups`); plain digits are left alone (some buses put
                 // gears or numbered presets on them, `kw_s_1`/`automatic_1`).
-                if self.view != "free" && shift_held_now(&self.keys) {
+                if self.view != "free" && shift_held_now(&self.keys) && !keys::dik_code(code).is_some_and(|s| self.own_shift.contains(&s)) {
                     if let Some(n) = digit_of(code) {
                         if let Some(p) = self.player.as_mut() {
                             let groups = crate::player::door_keys(&p.vehicle.ty);

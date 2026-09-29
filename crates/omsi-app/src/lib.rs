@@ -78,6 +78,7 @@ mod plugins;
 mod services;
 mod situation;
 mod spawn;
+mod stock_keys;
 mod startup;
 mod traffic_link;
 mod tutorial;
@@ -479,6 +480,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         route_arrows: Default::default(),
         game_keys: omsi_content::KeyboardCfg::load(&crate::startup::keyboard_cfg(&args_root_for_keys)).map(|k| k.game).unwrap_or_default(),
         own_keys: crate::startup::own_keys(&args_root_for_keys),
+        own_shift: crate::startup::own_bindings(&args_root_for_keys, 1),
         menu_prev_pause: false,
         info_bar: false,
         pending_time: None,

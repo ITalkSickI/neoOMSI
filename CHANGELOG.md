@@ -151,6 +151,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Passengers in an indoor station stand on its floor, not on its roof: walking, they took
   any surface over them for a kerb to step up on. They now keep to the floor within a step
   of where they are (a station's floor under its roof, a car park's level under the deck).
+- Keys the player set in `Inputs/keyboard.cfg` are theirs, also when they edited the
+  installation's own file: Z / X / C (the indicators), Shift+number (the doors), W A S D and
+  the arrows no longer take over a key bound to something else. What counts as changed is
+  told from OMSI 2's own assignment, built into the game, with Shift held as well.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

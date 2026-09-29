@@ -166,6 +166,8 @@ pub(crate) struct App {
     /// something the original's keyboard.cfg does not have there: a driving preset (W A S D,
     /// the arrows) leaves them alone - D bound to the gearbox is the gearbox, not "steer right".
     pub(crate) own_keys: std::collections::HashSet<i32>,
+    /// The same for keys held with Shift (a Shift+number of the player's own is not a door key).
+    pub(crate) own_shift: std::collections::HashSet<i32>,
     /// Whether the game stood paused before the menu opened (closing it goes back to that).
     pub(crate) menu_prev_pause: bool,
     /// OMSI's information bar (`view_toggle_informationdisplay`, Ctrl+Y): time, speed, the
