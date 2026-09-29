@@ -9831,10 +9831,10 @@ impl World {
                 }
             }
         }
-        // (opt-in for now with OMSI_MODEL_ORDER=1: drawn so, the bodies of the Sprinter,
-        // the Mercus, the Urbino 15 and the Lion's City showed the saloon through half their
-        // panels)
-        if ordered && omsi_cfg::env::var_os("OMSI_MODEL_ORDER").is_some() {
+        // (the Sprinter's, the Mercus's, the Urbino 15's saloon showed through half their
+        // panels drawn so while `[matl_noZcheck]` still took their inner glass out of the
+        // depth test; OMSI_NO_MODEL_ORDER=1 draws opaque parts first again)
+        if ordered && omsi_cfg::env::var_os("OMSI_NO_MODEL_ORDER").is_none() {
             log::debug!("{}: drawn in model order (a blended slot writes depth before an opaque one)", vt.def.path.display());
             for &i in &instances {
                 if scene.instances.get(i).is_some_and(|x| !x.blob) {
