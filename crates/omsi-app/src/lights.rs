@@ -398,12 +398,8 @@ pub fn collect(
         );
     }
     // nearest lights first: the grid cells hold a limited number
-    scene.lights.sort_by(|a, b| {
-        (a.position - camera_pos)
-            .length_squared()
-            .partial_cmp(&(b.position - camera_pos).length_squared())
-            .unwrap()
-    });
+    // (total_cmp: a light at a NaN position must not end the game)
+    scene.lights.sort_by(|a, b| (a.position - camera_pos).length_squared().total_cmp(&(b.position - camera_pos).length_squared()));
 }
 
 /// The particles of a particle set as the renderer draws them: smoke blended over the scene,

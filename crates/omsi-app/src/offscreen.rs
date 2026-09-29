@@ -1579,12 +1579,7 @@ pub(crate) fn run_offscreen(
                     );
                 }
             }
-            if let Some((id, pos, _, name)) = world.bus_stops.lock().iter().min_by(|a, b| {
-                (a.1 - p.vehicle.position)
-                    .length()
-                    .partial_cmp(&(b.1 - p.vehicle.position).length())
-                    .unwrap()
-            }) {
+            if let Some((id, pos, _, name)) = world.bus_stops.lock().iter().min_by(|a, b| (a.1 - p.vehicle.position).length().total_cmp(&(b.1 - p.vehicle.position).length())) {
                 log::info!(
                     "nearest bus stop {id} '{name}' at ({:.1}, {:.1}) is {:.1} m away",
                     pos.x,
@@ -2207,12 +2202,7 @@ pub(crate) fn run_offscreen(
         );
         {
             let mut near: Vec<&omsi_render::PointLight> = scene.lights.iter().collect();
-            near.sort_by(|a, b| {
-                (a.position - camera.position)
-                    .length()
-                    .partial_cmp(&(b.position - camera.position).length())
-                    .unwrap()
-            });
+            near.sort_by(|a, b| (a.position - camera.position).length().total_cmp(&(b.position - camera.position).length()));
             for l in near.iter().take(4) {
                 log::info!(
                     "  light {:.0} m away: colour {:?} radius {:.1} intensity {:.2}",
