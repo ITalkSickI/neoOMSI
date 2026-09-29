@@ -181,6 +181,8 @@ fn weather_outside_n(world: vec3<f32>, n: vec3<f32>, terrain: bool, surface: f32
 // hidden surface removal as well - for everything it draws, and the heavy shading then
 // ran for every covered layer of the city, not once per pixel.
 override ALPHA_TEST: bool = true;
+// Multisampled cutout pipelines can turn filtered alpha directly into sample coverage.
+override ALPHA_TO_COVERAGE: bool = false;
 @group(0) @binding(5) var t_shadow: texture_depth_2d;
 @group(0) @binding(6) var s_shadow: sampler_comparison;
 @group(0) @binding(7) var t_shadow_far: texture_depth_2d;
@@ -988,8 +990,20 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         }
     }
     let mode = material.params.x;
-    if (ALPHA_TEST && mode > 0.5 && mode < 1.5 && tex.a < 0.5) {
-        discard;
+    // Mip-filtered alpha is the fraction of the pixel covered by leaves or fence wires.
+    // Tighten the transition around the cutout edge before MSAA turns it into sample
+    // coverage. The depth prepass leaves these draws out so its binary cutoff cannot hide
+    // the scene behind samples that the colour pass leaves open.
+    if (ALPHA_TEST && mode > 0.5 && mode < 1.5) {
+        if (ALPHA_TO_COVERAGE) {
+            let aa = max(fwidth(tex.a) * 0.5, 1.0 / 255.0);
+            if (tex.a < 0.5 - aa) {
+                discard;
+            }
+            tex.a = smoothstep(0.5 - aa, 0.5 + aa, tex.a);
+        } else if (tex.a < 0.5) {
+            discard;
+        }
     }
     let n = safe_normal(in.normal);
     let ndl = max(dot(n, camera.sun_dir.xyz), 0.0);
