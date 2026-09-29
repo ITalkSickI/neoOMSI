@@ -22,6 +22,10 @@ pub trait HtmlRenderer: Send {
     /// The pointer is at (`x`, `y`) in texture pixels. A backend that cannot be operated
     /// leaves this as it is.
     fn pointer(&mut self, _x: f32, _y: f32, _kind: PointerKind) {}
+    /// The normalised state of the vehicle (`window.omsi.vehicle`, see
+    /// [`crate::vehicle_api`]). Called before [`Self::set_vars`] whenever it changed. A
+    /// backend that has no such object leaves this as it is.
+    fn set_vehicle(&mut self, _api: &crate::vehicle_api::ApiValue) {}
 }
 
 pub type BackendFactory = fn(width: u32, height: u32, html: &str) -> Box<dyn HtmlRenderer>;
@@ -140,6 +144,8 @@ pub struct HtmlTexture {
     renderer: Box<dyn HtmlRenderer>,
     last_num: HashMap<String, f32>,
     last_str: HashMap<String, String>,
+    /// The vehicle snapshot the page has seen.
+    last_api: Option<crate::vehicle_api::ApiValue>,
     started: bool,
 }
 
@@ -154,6 +160,7 @@ impl HtmlTexture {
             renderer: make_renderer(w, h, html),
             last_num: HashMap::new(),
             last_str: HashMap::new(),
+            last_api: None,
             started: false,
         }
     }
@@ -203,10 +210,13 @@ impl VehicleInstance {
         for (i, name) in self.ty.program.str_var_names.iter().enumerate() {
             strs.push((name.clone(), self.state.str_vars[i].clone()));
         }
+        // one snapshot of the vehicle for all pages
+        let api = self.html_api_snapshot();
         let mut events = Vec::new();
         let mut triggers = Vec::new();
         let mut frames = Vec::new();
         for t in self.html_textures.iter_mut() {
+            let api_changed = t.last_api.as_ref() != Some(&api);
             let dn: Vec<(String, f32)> = num
                 .iter()
                 .filter(|(n, v)| t.last_num.get(n) != Some(v))
@@ -217,7 +227,7 @@ impl VehicleInstance {
                 .filter(|(n, v)| t.last_str.get(n) != Some(v))
                 .cloned()
                 .collect();
-            if !t.started || !dn.is_empty() || !ds.is_empty() {
+            if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed {
                 log::debug!(
                     "htmltexture #{}: {} numeric and {} string variable(s) to the page{}",
                     t.script_index,
@@ -225,6 +235,10 @@ impl VehicleInstance {
                     ds.len(),
                     if t.started { "" } else { " (first update)" }
                 );
+                if api_changed {
+                    t.renderer.set_vehicle(&api);
+                    t.last_api = Some(api.clone());
+                }
                 t.renderer.set_vars(&dn, &ds);
                 for (n, v) in dn {
                     t.last_num.insert(n, v);
