@@ -5961,6 +5961,9 @@ impl World {
                         all_instances.push(inst);
                     }
                     let mut lod_instances = Vec::new();
+                    // (the meshes' own instances: a script poses them one by one, the ground
+                    // drawn in the [terrainmapping] slots after them keeps the object's place)
+                    let mesh_instances = all_instances.len();
                     let lod_drawn = has_lower && !surface && lamp.is_none() && ot.program.is_none();
                     for &(level, _, ground_id) in &ground_meshes {
                         // the first level without lower ones is drawn at any size
@@ -6127,6 +6130,9 @@ impl World {
                             || !script_texts.is_empty()
                         {
                             let arrivals = inst.wants_arrivals();
+                            // (a scripted object with [terrainmapping] slots had more instances
+                            // than its script has meshes: "index out of bounds", #111)
+                            all_instances.truncate(mesh_instances);
                             self.scripted.lock().push(ScriptedObject {
                                 ty: ot.clone(),
                                 pos,
@@ -7694,11 +7700,11 @@ impl World {
                 };
                 renderer.set_material(scene, *inst, *slot, if x > 0.5 { *item } else { *base });
             }
-            for (i, inst) in o.instances.iter().enumerate() {
-                renderer.set_transform(scene, *inst, o.pos, o.xf * o.inst.mesh_transforms[i]);
+            for ((inst, xf), &visible) in o.instances.iter().zip(&o.inst.mesh_transforms).zip(&o.inst.mesh_visible) {
+                renderer.set_transform(scene, *inst, o.pos, o.xf * *xf);
                 let p = &mut scene.instances[*inst];
-                if p.visible != o.inst.mesh_visible[i] {
-                    renderer.set_params(scene, *inst, &[], o.inst.mesh_visible[i], &[]);
+                if p.visible != visible {
+                    renderer.set_params(scene, *inst, &[], visible, &[]);
                 }
             }
             updated += 1;
@@ -8902,7 +8908,7 @@ impl VehiclePrefetch {
                 continue;
             }
             if let Some(d) = vt.mesh_data(i) {
-                let m = omsi_render::prepare_mesh(&self.gpu.0, &d);
+                let m = omsi_render::prepare_mesh(&self.gpu.0, &self.gpu.1, &d);
                 self.ready.lock().meshes.entry(key).or_insert(m);
             }
         }

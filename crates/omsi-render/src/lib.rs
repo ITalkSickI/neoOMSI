@@ -8,7 +8,6 @@ use glam::{DVec3, Mat4, Vec3};
 use omsi_geometry::MeshData;
 use std::collections::HashMap;
 use std::sync::Arc;
-use wgpu::util::DeviceExt;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -2496,16 +2495,8 @@ impl Renderer {
                 si.extend_from_slice(&[a, b, a + 1, a + 1, b, b + 1]);
             }
         }
-        let sky_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("sky vb"),
-            contents: bytemuck::cast_slice(&sv),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let sky_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("sky ib"),
-            contents: bytemuck::cast_slice(&si),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let sky_vb = buffer_init(&device, &queue, Some("sky vb"), bytemuck::cast_slice(&sv), wgpu::BufferUsages::VERTEX);
+        let sky_ib = buffer_init(&device, &queue, Some("sky ib"), bytemuck::cast_slice(&si), wgpu::BufferUsages::INDEX);
         let sky_mesh = (sky_vb, sky_ib, si.len() as u32);
         // HUD overlay quads
         let overlay_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -3121,16 +3112,12 @@ impl Renderer {
                     };
                     [0u32, 3].map(|first| {
                         let rough = m as f32 / (PROBE_MIPS - 1) as f32;
-                        let buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("probe pass"),
-                            contents: bytemuck::cast_slice(&[
+                        let buf = buffer_init(&device, &queue, Some("probe pass"), bytemuck::cast_slice(&[
                                 first as f32,
                                 rough,
                                 PROBE_SIZE as f32,
                                 m as f32,
-                            ]),
-                            usage: wgpu::BufferUsages::UNIFORM,
-                        });
+                            ]), wgpu::BufferUsages::UNIFORM);
                         device.create_bind_group(&wgpu::BindGroupDescriptor {
                             label: Some("probe"),
                             layout: &probe_layout,
@@ -3218,11 +3205,7 @@ impl Renderer {
             let cube_bind_groups: Vec<wgpu::BindGroup> = (0..6 * SKY_CUBE_ROUNDS)
                 .map(|k| {
                     let (f, round) = (k / SKY_CUBE_ROUNDS, k % SKY_CUBE_ROUNDS);
-                    let buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("sky cube face"),
-                        contents: bytemuck::cast_slice(&[f as f32, round as f32, SKY_CUBE_SIZE as f32, 0.0]),
-                        usage: wgpu::BufferUsages::UNIFORM,
-                    });
+                    let buf = buffer_init(&device, &queue, Some("sky cube face"), bytemuck::cast_slice(&[f as f32, round as f32, SKY_CUBE_SIZE as f32, 0.0]), wgpu::BufferUsages::UNIFORM);
                     device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("sky cube"),
                         layout: &probe_layout,
@@ -3700,7 +3683,7 @@ impl Renderer {
     }
 
     pub fn add_mesh(&self, scene: &mut Scene, data: &MeshData) -> MeshId {
-        scene.meshes.push(make_mesh(&self.device, data));
+        scene.meshes.push(make_mesh(&self.device, &self.queue, data));
         scene.meshes.len() - 1
     }
 
@@ -4398,13 +4381,7 @@ impl Renderer {
         let (bind_group, buf) = match scene.bind_groups.get(&key) {
             Some((bg, b)) => (bg.clone(), b.clone()),
             None => {
-                let buf = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: None,
-                        contents: bytemuck::bytes_of(&uniform),
-                        usage: wgpu::BufferUsages::UNIFORM,
-                    });
+                let buf = buffer_init(&self.device, &self.queue, None, bytemuck::bytes_of(&uniform), wgpu::BufferUsages::UNIFORM);
                 let bind_group = self.material_bind_group(
                     &scene.textures,
                     MaterialMaps {
@@ -5979,13 +5956,7 @@ impl Renderer {
                 }
             }
             None => {
-                scene.grid_buf = Some(self.device.create_buffer_init(
-                    &wgpu::util::BufferInitDescriptor {
-                        label: Some("light grid"),
-                        contents: gbytes,
-                        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                    },
-                ));
+                scene.grid_buf = Some(buffer_init(&self.device, &self.queue, Some("light grid"), gbytes, wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST));
                 rebuilt = true;
             }
         }
@@ -6500,13 +6471,7 @@ impl Renderer {
                     }
                     continue;
                 }
-                let buf = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("overlay rect"),
-                        contents: bytemuck::cast_slice(&ndc),
-                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    });
+                let buf = buffer_init(&self.device, &self.queue, Some("overlay rect"), bytemuck::cast_slice(&ndc), wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
                 let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("overlay"),
                     layout: &self.overlay_layout,
@@ -8127,8 +8092,29 @@ impl Renderer {
     }
 }
 
+/// A buffer holding `contents` - what `create_buffer_init` makes, but written through the
+/// queue instead of mapped at its creation. When the device refuses the memory (an
+/// integrated chip that shares a small heap: "Out of Memory"), the buffer is invalid, and
+/// mapping it ended the game - "Error in Buffer::get_mapped_range: Validation Error"
+/// (#107, #109) - where writing to it is an error that is logged and the game goes on from.
+fn buffer_init(device: &wgpu::Device, queue: &wgpu::Queue, label: Option<&str>, contents: &[u8], usage: wgpu::BufferUsages) -> wgpu::Buffer {
+    let align = wgpu::COPY_BUFFER_ALIGNMENT as usize;
+    let size = contents.len().next_multiple_of(align).max(align);
+    let buf = device.create_buffer(&wgpu::BufferDescriptor { label, size: size as u64, usage: usage | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    if !contents.is_empty() {
+        if contents.len() == size {
+            queue.write_buffer(&buf, 0, contents);
+        } else {
+            let mut padded = contents.to_vec();
+            padded.resize(size, 0);
+            queue.write_buffer(&buf, 0, &padded);
+        }
+    }
+    buf
+}
+
 /// The GPU buffers of a mesh.
-fn make_mesh(device: &wgpu::Device, data: &MeshData) -> GpuMesh {
+fn make_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshData) -> GpuMesh {
     let verts: Vec<Vertex> = data
         .positions
         .iter()
@@ -8140,16 +8126,8 @@ fn make_mesh(device: &wgpu::Device, data: &MeshData) -> GpuMesh {
             uv: uv.to_array(),
         })
         .collect();
-    let vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: None,
-        contents: bytemuck::cast_slice(&verts),
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-    });
-    let index_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: None,
-        contents: bytemuck::cast_slice(&data.indices),
-        usage: wgpu::BufferUsages::INDEX,
-    });
+    let vertex_buf = buffer_init(device, queue, None, bytemuck::cast_slice(&verts), wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST);
+    let index_buf = buffer_init(device, queue, None, bytemuck::cast_slice(&data.indices), wgpu::BufferUsages::INDEX);
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
     for p in &data.positions {
         lo = lo.min(*p);
@@ -8175,8 +8153,8 @@ fn make_mesh(device: &wgpu::Device, data: &MeshData) -> GpuMesh {
 pub struct PreparedMesh(GpuMesh);
 
 /// Make a mesh's GPU buffers on any thread (the device takes calls from all of them).
-pub fn prepare_mesh(device: &wgpu::Device, data: &MeshData) -> PreparedMesh {
-    PreparedMesh(make_mesh(device, data))
+pub fn prepare_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshData) -> PreparedMesh {
+    PreparedMesh(make_mesh(device, queue, data))
 }
 
 /// A texture on the GPU, made on a worker thread; [`Renderer::add_prepared_texture`] puts it
