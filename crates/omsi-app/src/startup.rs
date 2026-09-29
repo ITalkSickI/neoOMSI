@@ -68,12 +68,13 @@ pub(crate) fn fatal_dialog(title: &str, text: &str) {
 /// installation (Vehicles, maps, Sceneryobjects ...). Mods live here; it is searched before
 /// the original installation.
 /// The `Inputs/keyboard.cfg` the game follows: the content folder's once the launcher has
-/// saved key bindings there, else the original installation's (never written).
+/// saved key bindings there, else the original installation's (never written) - or, where
+/// that has none, its `keyboard_reset.cfg`, the standard keys OMSI falls back to as well.
 pub(crate) fn keyboard_cfg(root: &Path) -> PathBuf {
     if let Some(own) = content_dir().map(|c| c.join("Inputs/keyboard.cfg")).filter(|p| p.exists()) {
         return own;
     }
-    root.join("Inputs/keyboard.cfg")
+    omsi_cfg::original_keyboard_cfg(root)
 }
 
 /// The keys (scan codes without a modifier) the player's own `keyboard.cfg` (the content
