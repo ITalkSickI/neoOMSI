@@ -3,10 +3,25 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+/// What the pointer (a finger, the mouse) does on the page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerKind {
+    Down,
+    Up,
+    Move,
+}
+
 pub trait HtmlRenderer: Send {
     fn set_vars(&mut self, num: &[(String, f32)], strs: &[(String, String)]);
     fn poll_frame(&mut self) -> Option<Vec<u8>>;
     fn take_events(&mut self) -> Vec<(String, f32)>;
+    /// Triggers the page pressed (`omsi.trigger(name)`) since the last call.
+    fn take_triggers(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+    /// The pointer is at (`x`, `y`) in texture pixels. A backend that cannot be operated
+    /// leaves this as it is.
+    fn pointer(&mut self, _x: f32, _y: f32, _kind: PointerKind) {}
 }
 
 pub type BackendFactory = fn(width: u32, height: u32, html: &str) -> Box<dyn HtmlRenderer>;
@@ -144,7 +159,38 @@ impl HtmlTexture {
     }
 }
 
+impl HtmlTexture {
+    /// The pointer at (`u`, `v`), both 0..1 across the texture (`v` down from the top).
+    pub fn pointer(&mut self, u: f32, v: f32, kind: PointerKind) {
+        self.renderer.pointer(u * self.width as f32, v * self.height as f32, kind);
+    }
+}
+
 impl VehicleInstance {
+    /// Pass a press, release or move on an `[htmltexture]` (given by its script texture
+    /// index) to its page. `u`/`v` are 0..1 across the texture, `v` down from the top.
+    /// False when the vehicle has no such page. What the page does with it
+    /// (`omsi.setVar`, `omsi.trigger`) is applied to the vehicle at once.
+    pub fn html_pointer(&mut self, script_index: usize, u: f32, v: f32, kind: PointerKind) -> bool {
+        let Some(t) = self.html_textures.iter_mut().find(|t| t.script_index == script_index) else {
+            return false;
+        };
+        t.pointer(u, v, kind);
+        let events = t.renderer.take_events();
+        let triggers = t.renderer.take_triggers();
+        for (name, value) in events {
+            if !self.set_var(&name, value) {
+                log::debug!("htmltexture: the page sets {name}, which the vehicle does not have");
+            }
+        }
+        for name in triggers {
+            if !self.trigger(&name) {
+                log::debug!("htmltexture: the page presses {name}, which the vehicle does not have");
+            }
+        }
+        true
+    }
+
     pub fn update_html_textures(&mut self) {
         if self.html_textures.is_empty() {
             return;
@@ -158,6 +204,7 @@ impl VehicleInstance {
             strs.push((name.clone(), self.state.str_vars[i].clone()));
         }
         let mut events = Vec::new();
+        let mut triggers = Vec::new();
         let mut frames = Vec::new();
         for t in self.html_textures.iter_mut() {
             let dn: Vec<(String, f32)> = num
@@ -192,6 +239,7 @@ impl VehicleInstance {
                 log::debug!("htmltexture #{}: the page sets {:?}", t.script_index, page_events);
             }
             events.extend(page_events);
+            triggers.extend(t.renderer.take_triggers());
             if let Some(rgba) = t.renderer.poll_frame() {
                 log::debug!("htmltexture #{}: new frame of {} bytes", t.script_index, rgba.len());
                 frames.push((t.script_index, t.width, t.height, rgba));
@@ -200,6 +248,11 @@ impl VehicleInstance {
         for (name, v) in events {
             if !self.set_var(&name, v) {
                 log::debug!("htmltexture: the page sets {name}, which the vehicle does not have");
+            }
+        }
+        for name in triggers {
+            if !self.trigger(&name) {
+                log::debug!("htmltexture: the page presses {name}, which the vehicle does not have");
             }
         }
         for (index, w, h, rgba) in frames {
