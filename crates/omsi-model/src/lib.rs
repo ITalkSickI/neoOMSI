@@ -60,6 +60,9 @@ pub struct MaterialDef {
     pub index: i32,
     /// 0 = opaque, 1 = alpha test, 2 = alpha blend (OMSI `[matl_alpha]` modes).
     pub alpha: i32,
+    /// This block has a `[matl_alpha]` of its own. A later `[matl]` of the same slot only
+    /// changes the slot's mode when it has one (see `material_alpha` in omsi-app).
+    pub alpha_set: bool,
     pub no_z_write: bool,
     pub no_z_check: bool,
     pub z_bias: i32,
@@ -811,6 +814,7 @@ impl Model {
                 let v = r.i32();
                 if let Some(m) = self.cur_matl() {
                     m.alpha = v;
+                    m.alpha_set = true;
                 }
             }
             "matl_nozwrite" => {
@@ -1031,5 +1035,21 @@ mod tests {
         let m = Model::parse(&CfgFile::from_str("model.cfg", text));
         let files: Vec<&str> = m.meshes.iter().map(|m| m.file.as_str()).collect();
         assert_eq!(files, vec!["a.o3d", "c.o3d"]);
+    }
+
+    /// `[matl_alpha]` is marked as given where a block has one: a `[matl]` without it
+    /// leaves the flag off, and a second block of the same material that has it turns it on
+    /// for the one definition both blocks make.
+    #[test]
+    fn repeated_matl_marks_its_own_alpha() {
+        let text = "[mesh]\nb.o3d\n[matl]\nchain.dds\n0\n[matl_envmap]\nenv.dds\n0.03\n\n[matl]\nother.dds\n0\n";
+        let m = Model::parse(&CfgFile::from_str("x.sco", text));
+        assert!(m.meshes[0].materials.iter().all(|d| !d.alpha_set));
+        let text = format!("{text}\n[matl]\nchain.dds\n0\n[matl_alpha]\n1\n");
+        let m = Model::parse(&CfgFile::from_str("x.sco", &text));
+        let d = &m.meshes[0].materials;
+        assert_eq!(d.len(), 2);
+        let chain = d.iter().find(|d| d.texture == "chain.dds").unwrap();
+        assert!(chain.envmap.is_some() && chain.alpha_set && chain.alpha == 1);
     }
 }
