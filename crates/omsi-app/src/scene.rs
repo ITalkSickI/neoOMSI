@@ -7550,7 +7550,8 @@ fn sync_materials(
 /// `range` (1 for a saloon lamp, 0.4 for a door lamp, 2 for the LiAZ's saloon rows - a door
 /// lamp 0.4 m across could not reach the step 2 m below it, so it is no distance), each
 /// lighting only the meshes that list it in
-/// their `[illumination_interior]` - up to four per mesh, as OMSI switches those lights on
+/// their `[illumination_interior]` - OMSI's four per mesh, or as many as a model lists
+/// (up to `omsi_render::MAX_LAMPS_PER_MESH`), as OMSI switches those lights on
 /// for just that mesh. Every set of lamps some mesh names gets a run of slots of its own
 /// (the LiAZ 5292 has 32 lamps; only the first eight were drawn, and its saloon stayed dark).
 fn sync_interior_lamps(
@@ -7573,7 +7574,7 @@ fn sync_interior_lamps(
             let Some(vm) = ty.meshes.get(i) else { continue };
             let mut set: Vec<usize> = Vec::new();
             for &k in &ty.model.meshes[vm.def_index].illumination_interior {
-                if k >= 0 && (k as usize) < n && !set.contains(&(k as usize)) && set.len() < 4 {
+                if k >= 0 && (k as usize) < n && !set.contains(&(k as usize)) && set.len() < omsi_render::MAX_LAMPS_PER_MESH as usize {
                     set.push(k as usize);
                 }
             }

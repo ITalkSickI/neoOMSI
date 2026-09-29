@@ -267,7 +267,7 @@ struct PointLight {
 @group(0) @binding(3) var<storage, read> lights: array<PointLight>;
 // per cell CELL_CAP light indices, 0xffffffff = empty
 @group(0) @binding(4) var<storage, read> grid: array<u32>;
-const CELL_CAP: u32 = 16u;
+const CELL_CAP: u32 = 32u;
 
 @group(1) @binding(0) var t_diffuse: texture_2d<f32>;
 @group(1) @binding(1) var s_diffuse: sampler;
@@ -707,7 +707,7 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
 // [interiorlight]: the light of a vehicle's saloon lamps on a mesh that names them in its
 // [illumination_interior], 1 = a lamp's full light on a seat under it. `code` is the
 // instance's lamp code (lib.rs `Instance::interior_lamps`): the first of its lamp slots in
-// `lights` times 8 plus how many; below 1 it is a plain brightness (a passenger standing in
+// `lights` times 64 plus how many; below 1 it is a plain brightness (a passenger standing in
 // a lit bus). Each lamp is OMSI's Direct3D point light: attenuation
 // 1 / (d² / core²) with `core` the lamp's [interiorlight] range, no cut-off short of 100 m,
 // times N·L; the sum saturates, as Direct3D's vertex colour does.
@@ -716,8 +716,9 @@ fn interior_lamps(p: vec3<f32>, n: vec3<f32>, code: f32) -> vec3<f32> {
         return vec3<f32>(1.0, 0.96, 0.84) * clamp(code, 0.0, 1.0);
     }
     let c = u32(code + 0.5);
-    let first = c >> 3u;
-    let count = c & 7u;
+    // (LAMP_CODE_STRIDE: 64 - up to 63 lamps a mesh)
+    let first = c >> 6u;
+    let count = c & 63u;
     var sum = vec3<f32>(0.0);
     for (var i = 0u; i < count; i = i + 1u) {
         let l = lights[first + i];

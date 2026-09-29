@@ -320,6 +320,24 @@ impl<'a> CfgReader<'a> {
         parse_i32(self.line())
     }
 
+    /// `n` integers, then any further whole-number lines that follow at once (a blank line,
+    /// a keyword or anything else ends the list): OMSI's fixed-length lists read as always,
+    /// and a file may give more (openOMSI: `[illumination_interior]` with more than four
+    /// lamps).
+    pub fn i32_list(&mut self, n: usize) -> Vec<i32> {
+        let mut v: Vec<i32> = (0..n).map(|_| self.i32()).collect();
+        while self.pos < self.file.lines.len() {
+            let l = self.file.lines[self.pos].trim();
+            let whole = !l.is_empty() && l.strip_prefix('-').unwrap_or(l).chars().all(|c| c.is_ascii_digit());
+            if !whole || keyword_with(self.file.lines[self.pos].as_str(), self.rule).is_some() {
+                break;
+            }
+            v.push(parse_i32(l));
+            self.pos += 1;
+        }
+        v
+    }
+
     pub fn i64(&mut self) -> i64 {
         parse_i64(self.line())
     }

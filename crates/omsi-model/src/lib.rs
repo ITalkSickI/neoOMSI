@@ -591,8 +591,10 @@ impl Model {
                     m.illumination = v;
                 }
             }
+            // (OMSI's four lamps, and openOMSI takes as many more as the lines that follow
+            // give)
             "illumination_interior" => {
-                let v: Vec<i32> = (0..4).map(|_| r.i32()).collect();
+                let v: Vec<i32> = r.i32_list(4);
                 if let Some(m) = self.cur_mesh() {
                     m.illumination_interior = v;
                 }

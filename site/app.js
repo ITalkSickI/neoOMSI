@@ -4,6 +4,7 @@ const REPO = "turbo-devv/openOMSI";
 const DOCS = [
   { file: "USER_GUIDE", title: "User guide", icon: "sports_esports" },
   { file: "ANDROID", title: "Android & mobile", icon: "smartphone" },
+  { file: "MODDING", title: "Modding beyond OMSI 2", icon: "handyman" },
   { file: "PBR", title: "PBR materials", icon: "texture" },
   { file: "BUILDING", title: "Building", icon: "build" },
   { file: "FORMATS", title: "Content formats", icon: "description" },

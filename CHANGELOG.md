@@ -55,6 +55,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   bus as well (W switched the wipers on), and the mouse wheel zooms there and on foot
   (Ctrl+wheel moves the camera on).
 - Snow is matte: it no longer takes the rain's gloss and shines like plastic in the lights.
+- Modding: a mesh can be lit by up to 63 interior lamps (the extra numbers on the lines
+  after the four of `[illumination_interior]`; OMSI 2 reads the first four), PBR maps up to
+  4096 px, and 32 lights per 25 m of the world instead of 16. What openOMSI allows beyond
+  OMSI 2 is written down in docs/MODDING.md and on the site.
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause
