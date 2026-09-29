@@ -3861,6 +3861,7 @@ impl World {
                         program.clone(),
                         &ot.mesh_defs(),
                         self.script_clock(),
+                        &o.extra,
                     );
                     self.scripted.lock().push(ScriptedObject {
                         ty: ot.clone(),
@@ -5757,6 +5758,8 @@ impl World {
                             ground_meshes.push((level, mi, ground_id));
                         }
                     }
+                    // (the script's string variables after its {init}, for [matl_freetex])
+                    let mut freetex_vars: Option<omsi_sim::scenery::SceneryInstance> = None;
                     for (mi, (mesh_id, mats)) in mesh_list.iter().enumerate() {
                         let inst = if surface || ot.mesh_shadow.get(mi).copied().unwrap_or(false) {
                             let i = instance!(renderer.add_surface_instance(
@@ -5780,12 +5783,21 @@ impl World {
                         // Scenery signs use [matl_freetex] with a string from the map
                         // object's [object] / [splineAttachement] record. The type's
                         // material is shared, so make a material for this placement only.
+                        // (the map's strings are the object's string variables, and its
+                        // {init} may make the file name of them: read after it has run)
                         if let Some((_, o3d_mats, overrides)) = ot.meshes.get(mi) {
                             for override_ in overrides.iter().filter(|o| !o.item && o.freetex.is_some()) {
                                 let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, override_) else { continue };
                                 let Some((_, var)) = &override_.freetex else { continue };
-                                let Some(index) = ot.program.as_ref().and_then(|p| p.str_var(var)) else { continue };
-                                let Some(name) = strings.get(index as usize).map(|s| s.trim()).filter(|s| !s.is_empty()) else { continue };
+                                let Some(program) = ot.program.as_ref() else { continue };
+                                let started = freetex_vars.get_or_insert_with(|| {
+                                    omsi_sim::scenery::SceneryInstance::new(program.clone(), &ot.mesh_defs(), self.script_clock(), &strings)
+                                });
+                                let name = started.str_var(var).trim().to_string();
+                                if name.is_empty() {
+                                    continue;
+                                }
+                                let name = name.as_str();
                                 let dirs = texture_dirs(&self.root, &ot.model_dir);
                                 let Some((tex, path)) = gpu.texture(renderer, scene, name, &dirs, images) else { continue };
                                 let Some(base) = mats.get(slot).and_then(|id| scene.materials.get(*id)) else {
@@ -6095,6 +6107,7 @@ impl World {
                                 p.clone(),
                                 &ot.mesh_defs(),
                                 self.script_clock(),
+                                &strings,
                             )))
                         });
                         let lit = vec![0.0; coronas.len()];
@@ -6123,6 +6136,7 @@ impl World {
                             program.clone(),
                             &ot.mesh_defs(),
                             self.script_clock(),
+                            &strings,
                         );
                         if inst.is_dynamic()
                             || !object_variants.is_empty()

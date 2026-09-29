@@ -9074,8 +9074,10 @@ impl Drop for SurfaceState<'_> {
         // image with it: letting the surface go (or configuring it again) then tears the
         // swapchain down under that image - "Trying to destroy a SwapchainAcquireSemaphore
         // that is still in use by a SurfaceTexture" (Vulkan) ended the game instead of the
-        // session ending in order. The window goes with the process anyway.
-        if self.lost.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
+        // session ending in order. The window goes with the process anyway. So on a panic:
+        // the frame being drawn is let go of while unwinding, and the same message then
+        // took the place of the panic that ended the game in its report (#112: a sort).
+        if !std::thread::panicking() && self.lost.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
             // SAFETY: dropped only here, once
             unsafe { std::mem::ManuallyDrop::drop(&mut self.surface) };
         }
