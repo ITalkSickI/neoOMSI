@@ -246,7 +246,13 @@ fn light_map_at(p: vec3<f32>) -> vec3<f32> {
 fn light_map_mapped(m: vec4<f32>) -> bool {
     return m.y > 0.3 && m.y < 0.45;
 }
-@group(0) @binding(1) var<storage, read> models: array<mat4x4<f32>>;
+// (the model matrices as their columns, four vec4 each: some phone GPUs (Mali, Adreno) read an
+// array of matrices from a storage buffer wrongly, and every mesh came out flat and far away)
+@group(0) @binding(1) var<storage, read> models: array<vec4<f32>>;
+fn model_matrix(e: u32) -> mat4x4<f32> {
+    let k = e * 4u;
+    return mat4x4<f32>(models[k], models[k + 1u], models[k + 2u], models[k + 3u]);
+}
 // x: alpha multiplier, y: visible (0/1), zw: uv offset
 @group(0) @binding(2) var<storage, read> inst_params: array<vec4<f32>>;
 // the frame's draw list: the per-draw entry of each drawn instance. Draws of the same mesh
@@ -261,7 +267,7 @@ struct PointLight {
 @group(0) @binding(3) var<storage, read> lights: array<PointLight>;
 // per cell CELL_CAP light indices, 0xffffffff = empty
 @group(0) @binding(4) var<storage, read> grid: array<u32>;
-const CELL_CAP: u32 = 16u;
+const CELL_CAP: u32 = 32u;
 
 @group(1) @binding(0) var t_diffuse: texture_2d<f32>;
 @group(1) @binding(1) var s_diffuse: sampler;
@@ -283,6 +289,8 @@ struct MaterialParams {
     // the PBR set beside the diffuse texture: x normal map, y occlusion, z roughness,
     // w metalness (1 = the map has it; see t_pbr_normal / t_pbr_orm)
     pbr: vec4<f32>,
+    // x: one of the bus's own screens (the enhanced glow and FXAA leave it alone)
+    flags: vec4<f32>,
 };
 @group(1) @binding(2) var<uniform> material: MaterialParams;
 @group(1) @binding(3) var t_trans: texture_2d<f32>;
@@ -337,7 +345,7 @@ struct VsOut {
 @vertex
 fn vs_main(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     // Road surfaces (splines, crossings, markings, a vehicle's shadow blob) are pulled
@@ -376,7 +384,7 @@ fn vs_main(in: VsIn) -> VsOut {
 @vertex
 fn vs_shadow(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     out.clip = camera.light_view_proj * wp;
@@ -395,7 +403,7 @@ fn vs_shadow(in: VsIn) -> VsOut {
 @vertex
 fn vs_shadow_close(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     out.clip = camera.light_view_proj_close * wp;
@@ -414,7 +422,7 @@ fn vs_shadow_close(in: VsIn) -> VsOut {
 @vertex
 fn vs_shadow_far(in: VsIn) -> VsOut {
     let e = draw_list[in.inst];
-    let m = models[e];
+    let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
     out.clip = camera.light_view_proj_far * wp;
@@ -450,7 +458,7 @@ fn fs_shadow_test(in: VsOut) {
     var a = select(textureSample(t_diffuse, s_diffuse, duv).a, 1.0, material.params.x > 1.5 && material.params.z < 0.5);
     if (material.params.z > 0.5) {
         let tm = textureSample(t_trans, s_diffuse, in.uv);
-        a = select(tm.r, tm.a, material.params.w > 0.5);
+        a = select(1.0, tm.a, material.params.w > 0.5);
     }
     if (a < 0.5) {
         discard;
@@ -470,7 +478,7 @@ fn fs_transmap_depth(in: VsOut) {
         discard;
     }
     let tm = textureSample(t_trans, s_diffuse, in.uv);
-    let a = select(tm.r, tm.a, material.params.w > 0.5) * in.params.x;
+    let a = select(1.0, tm.a, material.params.w > 0.5) * in.params.x;
     // Only what the colour pass will cover completely may hide what lies behind it: a
     // texel that is merely more opaque than not (the dimmer and anti-aliased dots of a
     // display's text layer, whose transmap is its script texture) wrote depth here, the
@@ -699,7 +707,7 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
 // [interiorlight]: the light of a vehicle's saloon lamps on a mesh that names them in its
 // [illumination_interior], 1 = a lamp's full light on a seat under it. `code` is the
 // instance's lamp code (lib.rs `Instance::interior_lamps`): the first of its lamp slots in
-// `lights` times 8 plus how many; below 1 it is a plain brightness (a passenger standing in
+// `lights` times 64 plus how many; below 1 it is a plain brightness (a passenger standing in
 // a lit bus). Each lamp is OMSI's Direct3D point light: attenuation
 // 1 / (d² / core²) with `core` the lamp's [interiorlight] range, no cut-off short of 100 m,
 // times N·L; the sum saturates, as Direct3D's vertex colour does.
@@ -708,8 +716,9 @@ fn interior_lamps(p: vec3<f32>, n: vec3<f32>, code: f32) -> vec3<f32> {
         return vec3<f32>(1.0, 0.96, 0.84) * clamp(code, 0.0, 1.0);
     }
     let c = u32(code + 0.5);
-    let first = c >> 3u;
-    let count = c & 7u;
+    // (LAMP_CODE_STRIDE: 64 - up to 63 lamps a mesh)
+    let first = c >> 6u;
+    let count = c & 63u;
     var sum = vec3<f32>(0.0);
     for (var i = 0u; i < count; i = i + 1u) {
         let l = lights[first + i];
@@ -948,10 +957,12 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         tex = vec4<f32>(clamp(tex.rgb * det.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), tex.a);
     }
     if (material.params.z > 0.5) {
-        // [matl_transmap]: alpha comes from a separate map (its alpha, or luminance if opaque);
+        // [matl_transmap]: alpha comes from a separate map, its alpha channel (a map without one
+        // is opaque, as D3D samples it: the WH UK AI cars' paint layer has a black 24-bit
+        // `transmap_null.tga`, read as luminance the paint was invisible);
         // for terrain the map is the per-tile surface mask in tile space
         let tm = textureSample(t_trans, s_diffuse, in.uv);
-        tex.a = select(tm.r, tm.a, material.params.w > 0.5);
+        tex.a = select(1.0, tm.a, material.params.w > 0.5);
         if (material.extra.x > 0.5 && material.params.x > 1.5) {
             // A painted ground layer. The brush mask is coarse (0.6-3 m per texel) and
             // binary; the loader smooths it into a soft ramp around a smooth curve

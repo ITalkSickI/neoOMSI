@@ -59,7 +59,7 @@ pub struct PbrImages {
 
 /// Largest side a PBR map is kept at on the GPU (they are uncompressed: a normal map
 /// does not survive DXT1).
-const MAX_SIDE: u32 = 2048;
+const MAX_SIDE: u32 = 4096;
 
 /// The PBR files beside `diffuse` (none: an empty set).
 pub fn find(diffuse: &Path) -> PbrFiles {

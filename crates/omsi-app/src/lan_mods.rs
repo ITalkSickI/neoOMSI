@@ -125,6 +125,14 @@ fn sha256_of(data: &[u8]) -> String {
 // -------------------------------------------------------------------------------------
 // the host
 
+/// Is content root `r` the OMSI 2 installation itself (its files are taken to be there on
+/// every machine)? A content root inside it is not: openOMSI unpacked
+/// into the OMSI 2 folder keeps what it installs in `<OMSI 2>/openOMSI`, and those mods
+/// were never passed on.
+fn is_original(r: &Path, original: &Path) -> bool {
+    r == original
+}
+
 /// The files the host's session uses that are not stock content, with where each is read
 /// from (a folder or a mounted archive).
 fn collect(args: &Args) -> (Manifest, Vec<PathBuf>) {
@@ -157,7 +165,7 @@ fn collect(args: &Args) -> (Manifest, Vec<PathBuf>) {
         let comps = omsi_cfg::windows_components(rel);
         let mut seen: HashSet<String> = HashSet::new();
         for r in roots {
-            if r == original || r.starts_with(original) {
+            if is_original(&r, original) {
                 continue;
             }
             let dir = comps.iter().fold(r.clone(), |p, c| p.join(c));
@@ -181,7 +189,7 @@ fn collect(args: &Args) -> (Manifest, Vec<PathBuf>) {
                         continue;
                     }
                     if let Some((root, path)) = omsi_cfg::find_in_roots(&child) {
-                        if root == original || root.starts_with(original) {
+                        if is_original(&root, original) {
                             continue;
                         }
                         let lower = name.to_lowercase();
@@ -290,7 +298,7 @@ fn collect(args: &Args) -> (Manifest, Vec<PathBuf>) {
                         continue;
                     }
                     let Some((root, _)) = omsi_cfg::find_in_roots(&c) else { continue };
-                    if root == original || root.starts_with(&original) {
+                    if is_original(&root, &original) {
                         break;
                     }
                     let folder = if is_ref { owner_folder(&c) } else { c.rsplit_once('/').map(|(d, _)| d.to_string()) };
@@ -308,7 +316,7 @@ fn collect(args: &Args) -> (Manifest, Vec<PathBuf>) {
     // the mod fonts those text textures use (OMSI reads the `.oft` files of `Fonts` itself,
     // not its sub-folders): each `.oft` with a `[newfont]` of a name in use, and its bitmaps
     for r in omsi_cfg::content_roots() {
-        if r == original || r.starts_with(&original) {
+        if is_original(&r, &original) {
             continue;
         }
         let Some(dir) = omsi_cfg::find_in_roots("Fonts").filter(|(root, _)| *root == r).map(|(_, p)| p).or_else(|| Some(r.join("Fonts"))) else { continue };
@@ -336,7 +344,7 @@ fn collect(args: &Args) -> (Manifest, Vec<PathBuf>) {
             for f in std::iter::once(n.clone()).chain(bitmaps) {
                 let rel = format!("Fonts/{f}");
                 if let Some((root, path)) = omsi_cfg::find_in_roots(&rel) {
-                    if root != original && !root.starts_with(&original) {
+                    if !is_original(&root, &original) {
                         files.insert(rel.to_lowercase(), (rel, path));
                     }
                 }
@@ -628,13 +636,17 @@ fn save_hash_cache(c: &HashCache) {
 /// A connection to the host's mods, greeted.
 fn open(host: SocketAddr, session: u64) -> Result<(TcpStream, BufReader<TcpStream>), String> {
     let stream = TcpStream::connect_timeout(&host, Duration::from_secs(6)).map_err(|e| format!("cannot reach the host's mods on TCP {host}: {e}"))?;
-    // (a stalled transfer ends the attempt instead of holding the game's start for ever)
-    stream.set_read_timeout(Some(Duration::from_secs(25))).ok();
+    // the host greets once its list is made, which takes a while on a big map (it waits
+    // up to ten minutes for it): after 25 s a join gave up on a big add-on map, and the
+    // player was left without the host's map
+    stream.set_read_timeout(Some(Duration::from_secs(600))).ok();
     stream.set_nodelay(true).ok();
     let mut out = stream.try_clone().map_err(|e| e.to_string())?;
     let mut input = BufReader::with_capacity(1 << 20, stream);
     writeln!(out, "{MAGIC} {}", omsi_net::session_hex(session)).map_err(|e| e.to_string())?;
     read_reply(&mut input)?;
+    // (then a stalled transfer ends the attempt instead of holding the game's start for ever)
+    input.get_ref().set_read_timeout(Some(Duration::from_secs(25))).ok();
     Ok((out, input))
 }
 
@@ -746,13 +758,19 @@ pub fn fetch(args: &mut Args, host: SocketAddr, session: u64, progress: &mut dyn
     if total > MAX_TOTAL {
         return Err(format!("the host's mods are {:.1} GB, more than a session takes ({:.0} GB)", total as f64 / 1e9, MAX_TOTAL as f64 / 1e9));
     }
-    if let Some(free) = free_space(&dir) {
+    *SANDBOX.lock().unwrap_or_else(|e| e.into_inner()) = Some(dir.clone());
+    log::info!("LAN mods: {} files of the host's are here already, {} to fetch ({:.1} MB)", report.had, todo.len(), total as f64 / 1e6);
+    if !todo.is_empty() {
+        let some: Vec<&str> = todo.iter().take(6).map(|k| manifest.entries[*k].path.as_str()).collect();
+        log::info!("LAN mods: to fetch, e.g. {}", some.join(", "));
+    }
+    // (nothing to fetch needs no room: a nearly full disk turned away a join that had
+    // everything already)
+    if let Some(free) = free_space(&dir).filter(|_| total > 0) {
         if free < total + KEEP_FREE {
             return Err(format!("{:.1} GB are needed for the host's mods, {:.1} GB are free", (total + KEEP_FREE) as f64 / 1e9, free as f64 / 1e9));
         }
     }
-    *SANDBOX.lock().unwrap_or_else(|e| e.into_inner()) = Some(dir.clone());
-    log::info!("LAN mods: {} files of the host's are here already, {} to fetch ({:.1} MB)", report.had, todo.len(), total as f64 / 1e6);
     // every request at once (one after the other took a round trip per file: through a
     // tunnel a few hundred kB/s), the answers read as they come; a broken connection is
     // opened again and goes on with what is left (what came is in the store)

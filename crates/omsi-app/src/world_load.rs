@@ -99,11 +99,7 @@ pub(crate) fn spawn_point(args: &Args, world: Option<&World>) -> Option<DVec3> {
         .or(world.global.entry_points.first())?;
     // the entry points of tiles that are not loaded come from the map index
     world.index();
-    world
-        .object_positions
-        .lock()
-        .get(&ep.object_id)
-        .map(|p| p.0)
+    world.entry_point_place(ep).map(|p| p.0)
 }
 
 pub(crate) fn load_world(args: &Args, renderer: &Renderer, scene: &mut Scene) -> Result<(World, Camera)> {

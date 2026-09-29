@@ -229,6 +229,8 @@ pub struct Frame<'a> {
     pub paused: bool,
     /// The game menu is open, with this line chosen (labels from `GAME_MENU`).
     pub menu: Option<(usize, &'a [(&'a str, &'a str)])>,
+    /// The first line shown when a finger scrolled the menu (`App::menu_top`).
+    pub menu_top: Option<f32>,
     /// The timetable window: its title and per stop (name, time, 0 served / 1 next / 2 ahead).
     pub timetable: Option<(String, Vec<(String, String, u8)>)>,
     /// The information bar along the top.
@@ -247,13 +249,17 @@ pub struct Ui {
     /// The first line of the menu shown (a long menu scrolls: `menu_rects[k]` is line
     /// `menu_start + k`).
     pub menu_start: usize,
+    /// How many lines the menu shows at once, and how high one is (physical pixels): a
+    /// finger's drag is turned into lines with it.
+    pub menu_rows: usize,
+    pub menu_row_h: f32,
     /// Pictures shown in the interface (a tutorial page's), by file.
     images: hashbrown::HashMap<std::path::PathBuf, Option<(TextureId, u32, u32)>>,
 }
 
 impl Ui {
     pub fn new() -> Option<Ui> {
-        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_start: 0, images: Default::default() })
+        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default() })
     }
 
     /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
@@ -374,6 +380,9 @@ impl Ui {
             scene.overlays.push((plate, [x, y, x + w, y + h]));
             let t = self.text.label(r, scene, &clip_to(&self.text, title, px as f32 * 1.1, w - 20.0 * s), (px as f32 * 1.1) as u32, [255, 255, 255, 0]);
             scene.overlays.push((t.tex, [x + 10.0 * s, y + 6.0 * s, x + 10.0 * s + t.w as f32, y + 6.0 * s + t.h as f32]));
+            // (the names start after the widest time: "12:03-05" of a stop with a wait)
+            let time_w = rows.iter().map(|r| self.text.width(&r.1, px as f32)).fold(0.0f32, f32::max).max(40.0 * s);
+            let name_x = x + 10.0 * s + time_w + 12.0 * s;
             for (k, (name, time, state)) in rows.iter().skip(first).take(shown).enumerate() {
                 let ry = y + lh * (k as f32 + 1.3);
                 if *state == 1 {
@@ -387,8 +396,8 @@ impl Ui {
                 };
                 let tl = self.text.label(r, scene, time, px, color);
                 scene.overlays.push((tl.tex, [x + 10.0 * s, ry, x + 10.0 * s + tl.w as f32, ry + tl.h as f32]));
-                let nl = self.text.label(r, scene, &clip_to(&self.text, name, px as f32, w - 80.0 * s), px, color);
-                scene.overlays.push((nl.tex, [x + 64.0 * s, ry, x + 64.0 * s + nl.w as f32, ry + nl.h as f32]));
+                let nl = self.text.label(r, scene, &clip_to(&self.text, name, px as f32, x + w - name_x - 10.0 * s), px, color);
+                scene.overlays.push((nl.tex, [name_x, ry, name_x + nl.w as f32, ry + nl.h as f32]));
             }
         }
         // --- a tutorial page, on the right
@@ -468,15 +477,22 @@ impl Ui {
             let room = f.height * 0.92 - title_h - 16.0 * s;
             let row_h = (44.0 * s).min(room / items.len().max(1) as f32).max(34.0 * s);
             let rows = ((room / row_h).floor() as usize).clamp(1, items.len().max(1));
-            let start = if items.len() > rows { sel.saturating_sub(rows / 2).min(items.len() - rows) } else { 0 };
+            let start = match (items.len() > rows, f.menu_top) {
+                (false, _) => 0,
+                (true, Some(top)) => (top.max(0.0).round() as usize).min(items.len() - rows),
+                (true, None) => sel.saturating_sub(rows / 2).min(items.len() - rows),
+            };
             self.menu_start = start;
+            self.menu_rows = rows;
+            self.menu_row_h = row_h;
             let px = ((17.0 * s).min(row_h * 0.45)) as u32;
             let h = title_h + row_h * rows as f32 + 16.0 * s;
             let x = (f.width - w) * 0.5;
             let y = (f.height - h) * 0.5;
             let panel = self.text.plate(r, scene, 3);
             scene.overlays.push((panel, [x, y, x + w, y + h]));
-            let t = self.text.label(r, scene, if f.paused { "Paused" } else { "Menu" }, (22.0 * s) as u32, [255, 255, 255, 0]);
+            let title = if items.first().is_some_and(|i| i.0 == "less") { "More" } else if f.paused { "Paused" } else { "Menu" };
+            let t = self.text.label(r, scene, title, (22.0 * s) as u32, [255, 255, 255, 0]);
             scene.overlays.push((t.tex, [x + 20.0 * s, y + 16.0 * s, x + 20.0 * s + t.w as f32, y + 16.0 * s + t.h as f32]));
             // the scroll bar: where the lines shown lie in the whole menu
             if items.len() > rows {
@@ -492,15 +508,27 @@ impl Ui {
                 let l = self.text.label(r, scene, &more, (12.0 * s) as u32, [150, 150, 150, 0]);
                 scene.overlays.push((l.tex, [x + w - 16.0 * s - l.w as f32, y + 22.0 * s, x + w - 16.0 * s, y + 22.0 * s + l.h as f32]));
             }
-            for (k, (_, label)) in items.iter().enumerate().skip(start).take(rows) {
+            // (the line under the mouse is the one lit; the keyboard's choice only while the
+            // mouse is off the lines - both lit at once read as two choices)
+            let over = |rect: [f32; 4]| f.cursor.0 >= rect[0] && f.cursor.0 <= rect[2] && f.cursor.1 >= rect[1] && f.cursor.1 <= rect[3];
+            // (the whole panel: in the gaps between the lines the keyboard's choice, the top
+            // line, lit up for a moment as the mouse went down the list)
+            let any_hovered = over([x, y, x + w, y + h]);
+            for (k, (id, label)) in items.iter().enumerate().skip(start).take(rows) {
                 let ry = y + title_h + row_h * (k - start) as f32;
                 let rect = [x + 8.0 * s, ry, x + w - 12.0 * s, ry + row_h - 6.0 * s];
-                let hovered = f.cursor.0 >= rect[0] && f.cursor.0 <= rect[2] && f.cursor.1 >= rect[1] && f.cursor.1 <= rect[3];
-                if k == sel || hovered {
-                    let hl = self.text.plate(r, scene, if k == sel { 4 } else { 5 });
+                let hovered = over(rect);
+                let lit = hovered || (k == sel && !any_hovered);
+                // a thin line above "More..." / "End the session": the everyday lines apart
+                if matches!(*id, "more" | "quit") && k > start {
+                    let sep = self.text.plate(r, scene, 5);
+                    scene.overlays.push((sep, [x + 16.0 * s, ry - 3.5 * s, x + w - 20.0 * s, ry - 2.5 * s]));
+                }
+                if lit {
+                    let hl = self.text.plate(r, scene, 4);
                     scene.overlays.push((hl, rect));
                 }
-                let color = if k == sel { [20, 20, 20, 0] } else { [235, 235, 235, 0] };
+                let color = if lit { [20, 20, 20, 0] } else if *id == "quit" { [240, 150, 140, 0] } else { [235, 235, 235, 0] };
                 let l = self.text.label(r, scene, label, px, color);
                 let ly = ry + (row_h - 6.0 * s - l.h as f32) * 0.5;
                 scene.overlays.push((l.tex, [x + 20.0 * s, ly, x + 20.0 * s + l.w as f32, ly + l.h as f32]));

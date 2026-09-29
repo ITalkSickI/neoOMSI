@@ -316,6 +316,9 @@ pub struct Network {
     /// Lanes by 50 m grid cell (every cell a lane's points touch), so that a nearest-lane
     /// query looks at a handful of lanes instead of all 17 000 of Spandau.
     pub grid: HashMap<(i32, i32), Vec<usize>>,
+    /// Lanes by the cell containing their start. Population only needs lane starts near
+    /// a viewer; the geometry grid above can contain the same long lane in many cells.
+    pub start_grid: HashMap<(i32, i32), Vec<usize>>,
     /// Per street lane: where the other street and rail lanes of its junction object cross
     /// it or run into its end (`conflicts` with the places).
     pub crossings: Vec<Vec<Crossing>>,
@@ -446,7 +449,7 @@ impl Network {
             (Some(x), Some(y)) => x.tile == y.tile && x.id == y.id && x.path != y.path,
             _ => false,
         };
-        if same && (lb.start() - la.start()).truncate().length() < 8.0 && wrap_deg(lb.start_heading() - la.start_heading()).abs() < 45.0 {
+        if same && (lb.start() - la.start()).truncate().length() < 8.0 && (lb.start().z - la.start().z).abs() < 1.0 && wrap_deg(lb.start_heading() - la.start_heading()).abs() < 45.0 {
             return true;
         }
         // (a lane of another spline beside it counts as well: mod maps lay a bus lane or a
@@ -465,7 +468,11 @@ impl Network {
             let (p, h) = la.at(s);
             let Some((sb, d)) = lb.nearest_point(p) else { continue };
             let inside = sb > 0.5 && sb < lb.length() - 0.5;
-            if inside && d > 0.8 && d < 5.5 && wrap_deg(lb.at(sb).1 - h).abs() < 30.0 {
+            // (on the same level: a track or road under a bridge lies a few metres off in 3D
+            // too, and a train "changed lanes" down onto the line under its viaduct)
+            let (q, hb) = lb.at(sb);
+            let level = (q.z - p.z).abs() < 1.0;
+            if inside && level && d > 0.8 && d < 5.5 && wrap_deg(hb - h).abs() < 30.0 {
                 along += step;
             }
         }
@@ -886,7 +893,9 @@ impl Network {
     /// Sort the lanes into the grid (called by `link`; call again after adding lanes).
     pub fn build_grid(&mut self) {
         self.grid.clear();
+        self.start_grid.clear();
         for (i, l) in self.lanes.iter().enumerate() {
+            self.start_grid.entry(Self::grid_cell(l.start())).or_default().push(i);
             let mut cells: Vec<(i32, i32)> = Vec::new();
             for w in l.points.windows(2) {
                 // every cell along the segment, sampled finer than a cell
@@ -906,6 +915,30 @@ impl Network {
                 self.grid.entry(c).or_default().push(i);
             }
         }
+    }
+
+    /// Lane indices whose starts lie in cells intersecting a circle around `p`.
+    /// Callers still apply their own exact distance and lane-kind tests. Sorting keeps
+    /// their traversal (and seeded traffic selection) in map order.
+    pub fn lanes_starting_near(&self, p: DVec3, radius: f64) -> Vec<usize> {
+        let min_x = ((p.x - radius) / GRID_CELL).floor() as i32;
+        let max_x = ((p.x + radius) / GRID_CELL).floor() as i32;
+        let min_y = ((p.y - radius) / GRID_CELL).floor() as i32;
+        let max_y = ((p.y + radius) / GRID_CELL).floor() as i32;
+        let cells = (max_x as i64 - min_x as i64 + 1) * (max_y as i64 - min_y as i64 + 1);
+        if self.start_grid.is_empty() || cells > self.start_grid.len() as i64 * 2 {
+            return (0..self.lanes.len()).collect();
+        }
+        let mut out = Vec::new();
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                if let Some(lanes) = self.start_grid.get(&(x, y)) {
+                    out.extend_from_slice(lanes);
+                }
+            }
+        }
+        out.sort_unstable();
+        out
     }
 
     /// The nearest lane of `kind` to `p`: (lane, distance along it, distance to it). With
@@ -1027,6 +1060,7 @@ impl Network {
             if let Some(k) = self.lanes[i].key {
                 self.by_key.entry(k).or_default().push(i);
             }
+            self.start_grid.entry(Self::grid_cell(self.lanes[i].start())).or_default().push(i);
             for c in Self::lane_cells(&self.lanes[i]) {
                 self.grid.entry(c).or_default().push(i);
             }
@@ -1104,8 +1138,57 @@ impl Network {
         // meeting places and footpath crossings inside the new junction objects, and how far
         // every lane now leads (a dead end may go on into the new tiles)
         self.conflicts_from(first);
-        self.update_reach();
+        self.update_reach_from(first);
         first..end
+    }
+
+    /// Appending lanes can only change the reach of those lanes and their predecessors.
+    /// An outgoing edge into the rest of the network uses its already settled reach. This
+    /// avoids rewalking every loaded tile whenever the streamer adds a small batch.
+    fn update_reach_from(&mut self, first: usize) {
+        if self.reach.len() != first {
+            self.update_reach();
+            return;
+        }
+        let mut affected: hashbrown::HashSet<usize> = (first..self.lanes.len()).collect();
+        let mut pending: Vec<usize> = affected.iter().copied().collect();
+        while let Some(i) = pending.pop() {
+            // The vector-based full pass is cheaper once much of the network leads
+            // into this tile (for example a strongly connected city grid).
+            if affected.len() > self.lanes.len() / 4 {
+                self.update_reach();
+                return;
+            }
+            for &p in &self.prev[i] {
+                if affected.insert(p) {
+                    pending.push(p);
+                }
+            }
+        }
+        self.reach.resize(self.lanes.len(), REACH_MAX);
+        let counts = |i: usize, j: usize| !self.lanes[j].no_cars || self.lanes[i].no_cars;
+        let mut waiting: HashMap<usize, usize> = affected.iter().map(|&i| {
+            (i, self.lanes[i].next.iter().filter(|&&j| affected.contains(&j) && counts(i, j)).count())
+        }).collect();
+        let mut ready: Vec<usize> = waiting.iter().filter_map(|(&i, &n)| (n == 0).then_some(i)).collect();
+        for &i in &affected {
+            self.reach[i] = REACH_MAX;
+        }
+        while let Some(i) = ready.pop() {
+            let l = &self.lanes[i];
+            let best = l.next.iter().filter(|&&j| counts(i, j)).map(|&j| self.reach[j]).fold(0.0f32, f32::max);
+            self.reach[i] = (l.length() + best).min(REACH_MAX);
+            for &p in &self.prev[i] {
+                if counts(p, i) {
+                    if let Some(n) = waiting.get_mut(&p) {
+                        *n = n.saturating_sub(1);
+                        if *n == 0 {
+                            ready.push(p);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Like [`nearest_lane`](Self::nearest_lane), but only among the lanes in the grid cells
@@ -1224,6 +1307,36 @@ mod extend_tests {
         assert_eq!(grown.crossings.len(), 4);
         assert_eq!(grown.find(LaneKey { tile: (0, 1), id: 3, path: 0 }, None), Some(2));
         assert_eq!(grown.nearest_lane(DVec3::new(0.5, 350.0, 0.0), LaneKind::Street).map(|n| n.0), Some(3));
+    }
+
+    #[test]
+    fn start_grid_tracks_added_lanes_in_map_order() {
+        let first = vec![straight(0.0, 0.0, 100.0, 1, (0, 0)), straight(300.0, 0.0, 100.0, 2, (1, 0))];
+        let mut net = Network { lanes: first, ..Default::default() };
+        net.link(1.5);
+        let near = |net: &Network| net.lanes_starting_near(DVec3::ZERO, 60.0).into_iter()
+            .filter(|&i| net.lanes[i].start().truncate().length() < 60.0).collect::<Vec<_>>();
+        assert_eq!(near(&net), vec![0]);
+        net.extend(vec![straight(25.0, 0.0, 100.0, 3, (0, 1))], 1.5);
+        assert_eq!(near(&net), vec![0, 2]);
+    }
+
+    #[test]
+    fn added_lanes_only_change_reach_of_their_predecessors() {
+        let old = vec![
+            straight(0.0, 0.0, 100.0, 1, (0, 0)),
+            straight(0.0, 100.0, 200.0, 2, (0, 0)),
+            straight(500.0, 0.0, 100.0, 3, (2, 0)),
+        ];
+        let extra = vec![straight(0.0, 200.0, 300.0, 4, (0, 1))];
+        let mut grown = Network { lanes: old.clone(), ..Default::default() };
+        grown.link(1.5);
+        let distant_reach = grown.reach[2];
+        grown.extend(extra.clone(), 1.5);
+        let mut whole = Network { lanes: old.into_iter().chain(extra).collect(), ..Default::default() };
+        whole.link(1.5);
+        assert_eq!(grown.reach, whole.reach);
+        assert_eq!(grown.reach[2], distant_reach);
     }
 }
 

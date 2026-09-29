@@ -31,7 +31,7 @@ pub(crate) fn run_offscreen(
     crate::lights::load_smoke_texture(&mut renderer, &args.root);
     crate::lights::set_corona_root(&args.root);
     let mut scene = renderer.new_scene();
-    let (world, mut camera) = load_world(args, &renderer, &mut scene)?;
+    let (world, mut camera) = lan::answering_while(&mut lan_off, args.bus.as_deref(), || load_world(args, &renderer, &mut scene))?;
     let lan_seed = lan_off.as_ref().map(lan::population_seed);
     let mut traffic = if args.traffic > 0 || args.schedule || crate::rail_drive::args_rail(args) {
         let mut t = traffic::Traffic::new(&args.root, &world, args.traffic)?;
@@ -52,13 +52,15 @@ pub(crate) fn run_offscreen(
         None
     };
     if let Some(s) = schedule.as_mut() {
-        s.precache(
-            &world,
-            &renderer,
-            &mut scene,
-            traffic.as_mut(),
-            parse_time(&args.time),
-        );
+        lan::answering_while(&mut lan_off, args.bus.as_deref(), || {
+            s.precache(
+                &world,
+                &renderer,
+                &mut scene,
+                traffic.as_mut(),
+                parse_time(&args.time),
+            )
+        });
         if let (Some(t), true) = (traffic.as_mut(), omsi_cfg::env::var_os("OMSI_CHECK_TRIPS").is_some()) {
             s.check_routes(&world, t);
         }
@@ -343,6 +345,7 @@ pub(crate) fn run_offscreen(
                         position: camera.position,
                         yaw: camera.yaw,
                         pitch: camera.pitch,
+                        roll: camera.roll,
                         fov_deg: camera.fov_deg,
                         near: camera.near,
                         far: camera.far,
@@ -440,7 +443,7 @@ pub(crate) fn run_offscreen(
             t.player_priority = player.as_ref().and_then(|p| p.vehicle.var("TrafficPriority")).is_some_and(|v| v > 0.5);
                         t.tick(dt, player.as_ref().map(|p| player_outline(p)));
             world.set_switches(&t.switch_requests());
-            world.set_signals(&t.signal_aspects(&world.signal_routes));
+            world.set_signals(&t.signal_aspects(&world.signal_routes, None));
             if let Some(p) = player.as_mut() {
                 p.vehicle.dynamic_boxes = t.boxes(p.vehicle.position, 80.0);
             }
@@ -602,6 +605,21 @@ pub(crate) fn run_offscreen(
                     last_reasons = why;
                 }
                 lay_down_poles(&world, &renderer, &mut scene, &mut player.vehicle);
+                // the worst the bus did on the way (a bus on end, flying, through the ground)
+                {
+                    let v = &player.vehicle;
+                    let g = world.ground_height(v.position.x, v.position.y).map(|g| v.position.z - g).unwrap_or(0.0);
+                    let mut e = DRIVE_EXTREMES.lock();
+                    if v.pitch.abs() > e.0.abs() {
+                        e.0 = v.pitch;
+                        e.4 = (v.position, t_s);
+                    }
+                    if v.bank.abs() > e.1.abs() {
+                        e.1 = v.bank;
+                    }
+                    e.2 = e.2.max(g);
+                    e.3 = e.3.min(g);
+                }
                 if physics_log > 0.0
                     && (t_s / physics_log).floor() != ((t_s + dt) / physics_log).floor()
                 {
@@ -646,6 +664,7 @@ pub(crate) fn run_offscreen(
                     position: camera.position,
                     yaw: camera.yaw,
                     pitch: camera.pitch,
+                    roll: camera.roll,
                     fov_deg: camera.fov_deg,
                     near: camera.near,
                     far: camera.far,
@@ -718,11 +737,13 @@ pub(crate) fn run_offscreen(
             if std::mem::take(&mut h.stop_request) {
                 if let Some(p) = player.as_mut() {
                     p.vehicle.trigger("door_haltewunsch");
+                    p.vehicle.trigger("door_haltewunsch_off");
                 }
             }
             if std::mem::take(&mut h.door_request) {
                 if let Some(p) = player.as_mut() {
                     let ok = p.vehicle.trigger("door_aussenoeffner");
+                    p.vehicle.trigger("door_aussenoeffner_off");
                     if omsi_cfg::env::var_os("OMSI_DEBUG_HUMANS").is_some() {
                         log::info!("outside door opener at t={t_s:.1}: script has the trigger: {ok}, door_freigabe {:?}", p.vehicle.var("door_freigabe"));
                     }
@@ -801,6 +822,7 @@ pub(crate) fn run_offscreen(
                     position: camera.position,
                     yaw: camera.yaw,
                     pitch: camera.pitch,
+                    roll: camera.roll,
                     fov_deg: camera.fov_deg,
                     near: camera.near,
                     far: camera.far,
@@ -1055,6 +1077,10 @@ pub(crate) fn run_offscreen(
                         probe(0.0, 0.0, -1.0)
                     );
                 }
+            }
+            {
+                let e = DRIVE_EXTREMES.lock();
+                log::info!("drive extremes: pitch {:.1} (at ({:.1}, {:.1}, {:.1}), {:.1} s) bank {:.1}, origin {:+.2}..{:+.2} m over the ground", e.0, e.4 .0.x, e.4 .0.y, e.4 .0.z, e.4 .1, e.1, e.3, e.2);
             }
             if let Ok(list) = omsi_cfg::env::var("OMSI_DEBUG_VARS") {
                 for v in list.split(',').map(str::trim).filter(|v| !v.is_empty()) {
@@ -1572,7 +1598,7 @@ pub(crate) fn run_offscreen(
     if omsi_cfg::env::var_os("OMSI_CHECK_ENTRIES").is_some() {
         let mut bare = 0;
         for ep in &world.global.entry_points {
-            let Some((pos, rot)) = world.object_positions.lock().get(&ep.object_id).copied() else {
+            let Some((pos, rot)) = world.entry_point_place(ep) else {
                 log::info!(
                     "entry {:3} \"{}\": object {} not loaded",
                     ep.index,
@@ -1584,7 +1610,8 @@ pub(crate) fn run_offscreen(
             };
             let q = ep.quat;
             let qyaw = (2.0 * q[1].atan2(q[3])).to_degrees();
-            log::info!("entry {:3} \"{}\": object heading {:.1}, record quaternion yaw {:.1} (q {:?}), record pos {:?}", ep.index, ep.name, rot[0], qyaw, q, ep.pos);
+            let rec = crate::spawn::recorded_entry_pos(ep, pos);
+            log::info!("entry {:3} \"{}\": object heading {:.1}, record quaternion yaw {:.1} (q {:?}), object at ({:.1}, {:.1}, {:.1}), recorded at {:?}", ep.index, ep.name, rot[0], qyaw, q, pos.x, pos.y, pos.z, rec.map(|r| (r.x, r.y, r.z)));
             let road = world.ground_height(pos.x, pos.y);
             let walk = world.walk_height(pos.x, pos.y);
             let terrain = world.ground_terrain(pos.x, pos.y);
@@ -1603,6 +1630,8 @@ pub(crate) fn run_offscreen(
     if omsi_cfg::env::var_os("OMSI_CHECK_OBSTACLES").is_some() {
         if let Some(t) = traffic.as_ref() {
             let boxes = world.collision.lock().clone();
+            // (parked cars stand beside the lanes by design; the traffic steers round them)
+            let parked: std::collections::HashSet<i64> = world.tile_state.lock().values().flat_map(|st| st.parked_boxes.iter().map(|b| b.id).collect::<Vec<_>>()).collect();
             let mut hits: std::collections::BTreeMap<i64, (omsi_sim::collision::Obb, usize, DVec3)> = Default::default();
             let mut probes = 0usize;
             for l in t
@@ -1627,7 +1656,7 @@ pub(crate) fn run_offscreen(
                     let up = right.cross(fwd);
                     let solid = omsi_sim::collision::Box3 { center: p + up * 1.775, axes: [right, fwd, up], half: DVec3::new(1.2, 1.0, 1.425) };
                     for b in boxes.obstacles_near_solid(&probe, Some(&solid)) {
-                        if b.overlaps(&probe) {
+                        if b.overlaps(&probe) && !parked.contains(&b.id) {
                             hits.entry(b.id).or_insert((b, 0, p)).1 += 1;
                         }
                     }
@@ -1652,6 +1681,55 @@ pub(crate) fn run_offscreen(
                     "  obstacle key {id} at ({:.1}, {:.1}) z {:.1}..{:.1} half {:.1}x{:.1} hdg {:.0}: {n} lane points, first at ({:.1}, {:.1}, {:.1})",
                     b.center.x, b.center.y, b.z0, b.z1, b.half.x, b.half.y, b.heading.to_degrees(), p.x, p.y, p.z
                 );
+            }
+        }
+    }
+    // OMSI_CHECK_WHEELS: probe the ground along the wheel tracks of every driving lane as a
+    // tyre does - a face a little over the road there is an invisible wall to the wheels, a
+    // ground far off the lane's height a hump or a hole
+    if omsi_cfg::env::var_os("OMSI_CHECK_WHEELS").is_some() {
+        if let Some(t) = traffic.as_ref() {
+            let (mut points, mut walls, mut steps) = (0usize, Vec::new(), Vec::new());
+            for l in t.net.lanes.iter().filter(|l| l.kind == omsi_sim::traffic::LaneKind::Street && !l.invisible) {
+                let len = l.length();
+                let mut s = 1.0f32;
+                while s < len - 1.0 {
+                    let (p, hdg) = l.at(s);
+                    s += 2.0;
+                    let h = (hdg as f64).to_radians();
+                    let right = DVec3::new(h.cos(), -h.sin(), 0.0);
+                    for side in [-1.0, 1.0] {
+                        let w = p + right * side;
+                        points += 1;
+                        // (from the ground under the wheel, as the tyre probes: 0.8 of a
+                        // half-metre radius over it)
+                        let g = crate::scene::drive_probe(&world.terrains, &world.surfaces, w.x, w.y, p.z + 0.4);
+                        let g = match g.below {
+                            Some(b) => crate::scene::drive_probe(&world.terrains, &world.surfaces, w.x, w.y, b + 0.4),
+                            None => g,
+                        };
+                        let on_lane = g.below.is_some_and(|b| (b - p.z).abs() <= 0.3);
+                        if let (true, Some(a)) = (on_lane, g.above.filter(|a| *a < p.z + 2.0)) {
+                            walls.push((w, a - p.z));
+                        } else if let Some(b) = g.below.filter(|b| (b - p.z).abs() > 0.3) {
+                            steps.push((w, b - p.z));
+                        } else if g.below.is_none() {
+                            steps.push((w, f64::NAN));
+                        }
+                    }
+                }
+            }
+            log::info!("wheel check: {points} wheel points, {} under a face (a wall to the tyre), {} off the lane's height by more than 30 cm", walls.len(), steps.len());
+            let mut hist = [0usize; 17];
+            for (_, d) in &walls {
+                hist[((d * 10.0) as usize).min(16)] += 1;
+            }
+            log::info!("  wall faces by height over the lane (0.1 m steps from 0): {hist:?}");
+            for (w, d) in walls.iter().take(40) {
+                log::info!("  wall at ({:.1}, {:.1}, {:.1}): face {d:+.2} m over the lane", w.x, w.y, w.z);
+            }
+            for (w, d) in steps.iter().take(40) {
+                log::info!("  ground at ({:.1}, {:.1}, {:.1}): {d:+.2} m off the lane", w.x, w.y, w.z);
             }
         }
     }
@@ -1888,6 +1966,27 @@ pub(crate) fn run_offscreen(
             }
             runs.sort_by(|a, b| b.1.total_cmp(&a.1));
             log::info!("road check: {naked} of {checked} points along the driving lanes have no road surface under them ({:.1}%)", naked as f32 / checked.max(1) as f32 * 100.0);
+            // OMSI_CHECK_SPLINES: chained splines whose ends do not meet in height
+            if omsi_cfg::env::var_os("OMSI_CHECK_SPLINES").is_some() {
+                let ends = crate::scene::SPLINE_ENDS.lock();
+                let mut bad: Vec<(f64, String)> = Vec::new();
+                for (id, (a, b, prev, next, file)) in ends.iter() {
+                    for (me, other) in [(*b, *next), (*a, *prev)] {
+                        let Some((oa, ob, ..)) = ends.get(&other) else { continue };
+                        // the other's end that lies at this one (a chain may run either way)
+                        let there = if (oa.truncate() - me.truncate()).length() <= (ob.truncate() - me.truncate()).length() { *oa } else { *ob };
+                        let (d2, dz) = ((there.truncate() - me.truncate()).length(), (there.z - me.z).abs());
+                        if d2 < 1.0 && dz > 0.1 && id < &other {
+                            bad.push((dz, format!("spline {id} ({file}) and {other}: {dz:.2} m apart in height at ({:.0}, {:.0}, {:.2})", me.x, me.y, me.z)));
+                        }
+                    }
+                }
+                bad.sort_by(|x, y| y.0.total_cmp(&x.0));
+                log::info!("spline check: {} of {} chained ends differ in height by over 10 cm", bad.len(), ends.len());
+                for (_, l) in bad.iter().take(15) {
+                    log::info!("  {l}");
+                }
+            }
             log::info!(
                 "  {} stretches longer than 15 m (a hole rather than a raster edge)",
                 runs.len()
@@ -2075,7 +2174,7 @@ pub(crate) fn run_offscreen(
                 let mut sp = puddles::Splashes::new();
                 for _ in 0..30 {
                     scene
-                        .coronas
+                        .smoke
                         .extend(sp.update(1.0 / 30.0, &wheels, speed, &|x, y| {
                             puddles::puddle_coverage(x, y, world.wet_road_at(x, y, wetness))
                         }));
@@ -2248,6 +2347,7 @@ pub(crate) fn run_offscreen(
                             position: eye,
                             yaw: *h as f32,
                             pitch: -(2.6f64 / back).atan().to_degrees() as f32,
+                            roll: 0.0,
                             fov_deg: 20.0,
                             near: 0.3,
                             far: 400.0,
@@ -2259,6 +2359,7 @@ pub(crate) fn run_offscreen(
                         position: DVec3::new(p.x, p.y, p.z + 40.0),
                         yaw: 0.0,
                         pitch: -90.0,
+                        roll: 0.0,
                         fov_deg: 40.0,
                         near: 39.5,
                         far: 41.5,
@@ -2322,7 +2423,7 @@ pub(crate) fn run_offscreen(
         for k in 0..n {
             let t = Instant::now();
             if let Some(p) = player_ref.as_ref() {
-                render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, Some(k));
+                render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, Some(k), None);
             }
             renderer.render(&mut scene, &view, w, h, &camera, &lighting);
             let drawn = t.elapsed().as_secs_f64();
@@ -2387,7 +2488,7 @@ pub(crate) fn run_offscreen(
     world.finish_texture_upgrades(&renderer, &mut scene);
     let t0 = Instant::now();
     if let Some(p) = player_ref.as_ref() {
-        render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, None);
+        render_mirrors(&mut renderer, &mut scene, &world, p, &lighting, None, None);
     }
     let pixels = renderer.render_to_image(&mut scene, w, h, &camera, &lighting)?;
     log::info!(
@@ -2418,6 +2519,10 @@ fn tyre_lows(v: &omsi_sim::VehicleInstance, world: &World) -> Vec<(DVec3, f64)> 
     }
     out
 }
+
+/// The worst pitch and bank of the drive, the origin's highest and lowest over the ground,
+/// and where and when the worst pitch was.
+static DRIVE_EXTREMES: parking_lot::Mutex<(f32, f32, f64, f64, (DVec3, f32))> = parking_lot::Mutex::new((0.0, 0.0, f64::MIN, f64::MAX, (DVec3::ZERO, 0.0)));
 
 /// `OMSI_CAM_VEHICLE=x,y,z,yaw,pitch[,fov]`: a camera in the bus's own frame (x right,
 /// y forward, z up; yaw relative to the bus) for close-ups of displays and switches - the

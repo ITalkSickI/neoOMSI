@@ -222,8 +222,12 @@ impl Showroom {
         let root = look.root.clone();
         let map_cfg = omsi_cfg::resolve_path(&root, &look.map);
         let date = start_clock(&args).date_code();
+        let t0 = std::time::Instant::now();
         let world = match scene::World::open(&root, &map_cfg, date) {
-            Ok(w) => Arc::new(w),
+            Ok(w) => {
+                log::info!("showroom: {} opened in {:.2} s", map_cfg.display(), t0.elapsed().as_secs_f64());
+                Arc::new(w)
+            }
             Err(e) => {
                 self.error = Some(format!("{e:#}"));
                 self.wanted = None;
@@ -264,6 +268,7 @@ impl Showroom {
     }
 
     fn place(&mut self, renderer: &Renderer, r: Ready) -> Shown {
+        let t0 = std::time::Instant::now();
         let mut scene = renderer.new_scene();
         let args = args_for(&r.look);
         let weather = load_weather(&args);
@@ -293,7 +298,7 @@ impl Showroom {
             length = total;
         }
         let lighting = lighting_for(&args, &weather);
-        log::info!("showroom: {} ({} meshes, {:.1} m long)", r.look.bus, render.instances.len(), length);
+        log::info!("showroom: {} ({} meshes, {:.1} m long) placed in {:.2} s", r.look.bus, render.instances.len(), length, t0.elapsed().as_secs_f64());
         Shown { look: r.look, scene, world: Some(world), vehicle: Some(vehicle), render: Some(render), trailers, centre, length, weather, lighting }
     }
 
@@ -348,7 +353,7 @@ impl Showroom {
         // side by as much
         let side = (focus - 0.5) * 2.0 * half_v * aspect;
         let look_yaw = yaw - side.atan().to_degrees();
-        let cam = Camera { position: pos, yaw: look_yaw, pitch: -pitch, fov_deg: fov, near: 0.2, far: 6000.0 };
+        let cam = Camera { position: pos, yaw: look_yaw, pitch: -pitch, roll: 0.0, fov_deg: fov, near: 0.2, far: 6000.0 };
         s.scene.overlays.clear();
         let _ = &s.weather;
         renderer.render(&mut s.scene, target, w, h, &cam, &s.lighting);

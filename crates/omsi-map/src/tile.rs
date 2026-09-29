@@ -283,9 +283,11 @@ impl Tile {
                     } else {
                         r.f64s::<3>()
                     };
-                    let rot = r.f64s::<3>();
-                    let flag = r.i32();
-                    let extra = read_extra(&mut r);
+                    // (Omsi.exe 0x792ee7: pitch and bank only from tile version 12 on, the
+                    // strings from version 4 on - an older tile's string count read as a
+                    // bank tilted the object and lost its strings)
+                    let rot = if t.version >= 12 || t.version == 0 { r.f64s::<3>() } else { [r.f64(), 0.0, 0.0] };
+                    let (flag, extra) = if t.version >= 4 || t.version == 0 { (r.i32(), read_extra(&mut r)) } else { (0, Vec::new()) };
                     let o = MapObject {
                         file: file_name,
                         id,
@@ -392,12 +394,14 @@ impl Tile {
                     let id = r.i64();
                     let spline_index = r.i32();
                     let offset = r.f64s::<3>();
-                    let rot = r.f64s::<3>();
+                    // (as for objects: pitch, bank and the tilt flag from version 12 on,
+                    // strings from version 4 on - Omsi.exe 0x794892..0x794bd7)
+                    let modern = t.version >= 12 || t.version == 0;
+                    let rot = if modern { r.f64s::<3>() } else { [r.f64(), 0.0, 0.0] };
                     let interval = r.f64();
                     let range = r.f64();
-                    let tilt = r.i32() != 0;
-                    let count = r.i32().max(0) as usize;
-                    let mut strings = read_extra(&mut r);
+                    let tilt = if modern { r.i32() != 0 } else { false };
+                    let (count, mut strings) = if t.version >= 4 || t.version == 0 { (r.i32().max(0) as usize, read_extra(&mut r)) } else { (0, Vec::new()) };
                     strings.truncate(count);
                     t.spline_attachments.push(SplineAttachment {
                         file: file_name,
@@ -629,6 +633,18 @@ Object Nr. 3\n[splineAttachement_repeater]\n0\n12\n5\nSceneryobjects\\lamp.sco\n
         );
         let s = &t.splines[1];
         assert_eq!((s.delta_h, s.cant_start, s.align_length), (None, 2.0, 30.0));
+    }
+
+    /// Before tile version 12 an object has only its heading; the next line is already the
+    /// count of its strings (Omsi.exe 0x792ee7).
+    #[test]
+    fn old_tile_objects_have_only_a_heading() {
+        let t = tile("[version]\n11\n\n[object]\n0\nSceneryobjects\\x.sco\n12\n10\n20\n0.5\n90\n2\nfirst\nsecond\n\n[object]\n0\nSceneryobjects\\y.sco\n13\n1\n2\n0\n45\n0\n");
+        assert_eq!(t.objects.len(), 2);
+        let o = &t.objects[0];
+        assert_eq!((o.pos, o.rot, o.flag), ([10.0, 20.0, 0.5], [90.0, 0.0, 0.0], 2));
+        assert_eq!(o.extra, vec!["first".to_string(), "second".to_string()]);
+        assert_eq!((t.objects[1].rot, t.objects[1].flag), ([45.0, 0.0, 0.0], 0));
     }
 
     #[test]

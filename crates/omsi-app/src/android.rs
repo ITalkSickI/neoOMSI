@@ -34,6 +34,9 @@ fn android_main(app: AndroidApp) {
         }
     }));
     log::info!("openOMSI {VERSION} for Android, build {BUILD}");
+    // the Java activity (OmsiActivity) for the calls into it: ndk_context's context is the
+    // Application, which has none of the activity's methods
+    ACTIVITY.store(app.activity_as_ptr(), Ordering::Relaxed);
     // the app's own folder is the home of settings.cfg, launcher.json, the profiles
     if let Some(home) = app.internal_data_path() {
         std::env::set_var("HOME", &home);
@@ -49,6 +52,19 @@ fn android_main(app: AndroidApp) {
     };
     std::env::set_var("OMSI_CONTENT", &content);
     let _ = std::fs::write(content.join("README.txt"), README);
+    // `openOMSI/env.txt`: the OMSI_* switches a computer takes from its environment, one
+    // `NAME=value` a line (a phone has no environment to set; for looking into problems)
+    if let Ok(t) = std::fs::read_to_string(content.join("env.txt")) {
+        for line in t.lines() {
+            if let Some((k, v)) = line.trim().split_once('=') {
+                let k = k.trim();
+                if k.starts_with("OMSI_") && !k.contains(char::is_whitespace) {
+                    log::info!("env.txt: {k}");
+                    std::env::set_var(k, v.trim());
+                }
+            }
+        }
+    }
     log::info!("home {:?}, content {}", std::env::var_os("HOME"), content.display());
     omsi_cfg::migrate_legacy_data_dir();
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1) % 1_000_000_000;
@@ -321,13 +337,26 @@ fn tilt_thread() {
 // --- the Java side ---------------------------------------------------------------------
 
 /// Call a `void name(int)` method of the activity (OmsiActivity.java).
+/// The NativeActivity (`OmsiActivity`) instance, set in `android_main`.
+static ACTIVITY: std::sync::atomic::AtomicPtr<std::ffi::c_void> = std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+/// The activity as a JNI object (the context ndk_context gives when it was not set).
+fn activity_ptr() -> *mut std::ffi::c_void {
+    let a = ACTIVITY.load(Ordering::Relaxed);
+    if a.is_null() {
+        ndk_context::android_context().context()
+    } else {
+        a
+    }
+}
+
 fn call_activity_int(name: &str, arg: i32) -> Option<()> {
     let ctx = ndk_context::android_context();
-    // SAFETY: the VM and the activity ndk_context was given by android-activity; they
-    // live as long as the program
+    // SAFETY: the VM ndk_context was given and the activity android-activity holds live as
+    // long as the program
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.ok()?;
     let mut env = vm.attach_current_thread().ok()?;
-    let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
+    let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr().cast()) };
     let r = env.call_method(&activity, name, "(I)V", &[jni::objects::JValue::Int(arg)]);
     if r.is_err() {
         let _ = env.exception_clear();
@@ -345,4 +374,56 @@ pub(crate) fn vibrate(ms: u32) {
     if call_activity_int("vibrate", ms as i32).is_none() {
         OFF.store(true, Ordering::Relaxed);
     }
+}
+
+/// Run `f` with the Java environment and the activity (None when Java is out of reach or
+/// the call threw).
+fn with_activity<R>(f: impl FnOnce(&mut jni::JNIEnv, &jni::objects::JObject) -> jni::errors::Result<R>) -> Option<R> {
+    let ctx = ndk_context::android_context();
+    // SAFETY: as in `call_activity_int`
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.ok()?;
+    let mut env = vm.attach_current_thread().ok()?;
+    let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr().cast()) };
+    let r = f(&mut env, &activity);
+    if let Err(e) = &r {
+        log::warn!("Java call failed: {e}");
+        let _ = env.exception_describe();
+        let _ = env.exception_clear();
+    }
+    std::mem::forget(activity);
+    r.ok()
+}
+
+/// Hand the downloaded APK to the system's package installer (`OmsiActivity.installApk`):
+/// the system asks the player, `install_status` tells what they answered.
+pub(crate) fn install_apk(path: &std::path::Path) -> anyhow::Result<()> {
+    let p = path.to_string_lossy().to_string();
+    with_activity(|env, activity| {
+        let s = env.new_string(&p)?;
+        env.call_method(activity, "installApk", "(Ljava/lang/String;)V", &[(&s).into()])?;
+        Ok(())
+    })
+    .ok_or_else(|| anyhow::anyhow!("the system's package installer could not be reached"))
+}
+
+/// The package installer's answer so far: 0 nothing yet, 1 asking the player, 2 installed,
+/// 3 cancelled, 4 failed (with the system's message), 5 waiting for "Install unknown apps",
+/// 6 that permission refused.
+pub(crate) fn install_status() -> Option<(i32, String)> {
+    with_activity(|env, activity| {
+        let code = env.call_method(activity, "getInstallStatus", "()I", &[])?.i()?;
+        let msg = env.call_method(activity, "getInstallMessage", "()Ljava/lang/String;", &[])?.l()?;
+        let msg: String = if msg.is_null() { String::new() } else { env.get_string(&jni::objects::JString::from(msg))?.into() };
+        Ok((code, msg))
+    })
+}
+
+/// A web page in the phone's browser.
+pub(crate) fn open_url(url: &str) {
+    let u = url.to_string();
+    let _ = with_activity(|env, activity| {
+        let s = env.new_string(&u)?;
+        env.call_method(activity, "openUrl", "(Ljava/lang/String;)V", &[(&s).into()])?;
+        Ok(())
+    });
 }

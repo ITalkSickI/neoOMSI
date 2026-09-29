@@ -27,11 +27,14 @@ launcher's side bar, in its log and in `openomsi --version` (baked in by
 Every push to `main` runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
 1. works out the version with `scripts/version.sh`;
-2. builds Windows x64 (MSVC), macOS (Apple silicon) and Linux x64 in parallel, and packs the
-   dedicated server from the Linux build;
-3. creates the release `v<version>` (tag on that commit) with four archives:
-   `openOMSI-<version>-windows-x64.zip`, `-macos-arm64.zip`, `-linux-x64.zip`,
-   `-server-linux-x64.zip`, and release notes generated from the commits.
+2. builds Windows x64 and ARM64 (MSVC), macOS for Apple silicon and Intel, Linux x64 and
+   ARM64 and Android in parallel, and packs the dedicated server from the Linux and Windows
+   builds;
+3. creates the release `v<version>` (tag on that commit) with the archives
+   `openOMSI-<version>-windows-x64.zip`, `-windows-arm64.zip`, `-macos-arm64.zip`,
+   `-macos-x64.zip`, `-linux-x64.zip`, `-linux-arm64.zip`, `-android-arm64.apk`,
+   `-server-linux-x64.zip`, `-server-linux-arm64.zip`, `-server-windows-x64.zip`,
+   `-server-windows-arm64.zip`, and release notes generated from the commits.
 
 Pull requests run the same builds without publishing anything. Build output never goes
 into the repository (`target/` and `dist/` are ignored).

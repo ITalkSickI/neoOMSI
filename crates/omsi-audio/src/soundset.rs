@@ -189,17 +189,14 @@ impl SoundSet {
     }
 
     /// How muffled an entry should sound, once the listener sits in *some* cabin (`muffled`):
-    /// a foreign vehicle's sound set (`exterior`, an AI bus or another player's) is always
-    /// muffled then - every one of its sounds is on the far side of the player's own
-    /// bodywork and glass, whatever its own `[viewpoint]` says. For the player's own bus, a
-    /// sound not specifically authored as an interior recording (no `[viewpoint] 2`-only
-    /// entry) is coming through that bodywork too - an entry with no `[viewpoint]` at all
-    /// (heard both in and out) or one that includes the exterior bit is muffled (cut above
-    /// ~450 Hz, roughly what a closed window and body panel leave of an outside sound); a
-    /// dedicated cabin sound (`[viewpoint] 2` alone, e.g. the engine's interior loop) is left
-    /// alone.
-    fn lowpass_of(muffled: bool, exterior: bool, viewpoint: i32) -> f32 {
-        if muffled && (exterior || viewpoint == 0 || viewpoint & 1 != 0) {
+    /// a foreign vehicle's sound set (`exterior`, an AI bus or another player's) is muffled
+    /// then - its sounds are on the far side of the player's own bodywork and glass. The
+    /// player's own bus is not: OMSI plays its entries as the `[viewpoint]` lets them through
+    /// and leaves the rest to the scripts' volume curves (`Snd_OutsideVol` and the like). We
+    /// muffled every entry of it not tagged as a cabin sound alone - a blinker relay tagged
+    /// for inside and out was cut to a quarter below 450 Hz, heard only with a door open.
+    fn lowpass_of(muffled: bool, exterior: bool) -> f32 {
+        if muffled && exterior {
             // doors or the driver's window open let the outside in unfiltered
             match outside_open() {
                 Some(o) => 450.0 * (1.0 + 30.0 * o.clamp(0.0, 0.5)),
@@ -214,8 +211,8 @@ impl SoundSet {
     /// `Snd_OutsideVol` (0 with everything shut, up to 0.5 with doors or the driver's window
     /// open: "when doors are open, you can hear outside sounds louder"); a shut bus keeps a
     /// quarter, an open one all of it. Without the variable the level stays as it was.
-    fn outside_gain(muffled: bool, exterior: bool, viewpoint: i32) -> f32 {
-        if muffled && (exterior || viewpoint == 0 || viewpoint & 1 != 0) {
+    fn outside_gain(muffled: bool, exterior: bool) -> f32 {
+        if muffled && exterior {
             match outside_open() {
                 Some(o) => (0.25 + 1.5 * o.clamp(0.0, 0.5)).min(1.0),
                 None => 1.0,
@@ -274,12 +271,12 @@ impl SoundSet {
                 .pos
                 .map(|p| object_to_world.transform_point3(Vec3::from_array(p)));
             let params = VoiceParams {
-                gain: vol * master * Self::outside_gain(muffled, exterior, s.def.viewpoint),
+                gain: vol * master * Self::outside_gain(muffled, exterior),
                 pitch: 1.0,
                 looping: false,
                 position,
                 range: if s.def.range > 0.0 { s.def.range } else { 5.0 },
-                lowpass_hz: Self::lowpass_of(muffled, exterior, s.def.viewpoint),
+                lowpass_hz: Self::lowpass_of(muffled, exterior),
             };
             if let Some(id) = s.voice.take() {
                 engine.stop(id);
@@ -424,12 +421,12 @@ impl SoundSet {
             let (pitch, fast_enough) = Self::pitch_of(&s.def, var, &clip);
             let audible = vol.map(|v| v > 0.001).unwrap_or(false) && fast_enough;
             let params = |looping: bool| VoiceParams {
-                gain: vol.unwrap_or(0.0) * master * Self::outside_gain(muffled, exterior, s.def.viewpoint),
+                gain: vol.unwrap_or(0.0) * master * Self::outside_gain(muffled, exterior),
                 pitch: pitch.max(0.001),
                 looping,
                 position: world_pos(s.def.pos),
                 range: range_of(s.def.range),
-                lowpass_hz: Self::lowpass_of(muffled, exterior, s.def.viewpoint),
+                lowpass_hz: Self::lowpass_of(muffled, exterior),
             };
             if !triggered && !s.def.no_loop {
                 let params = params(true);
@@ -577,14 +574,15 @@ mod tests {
     #[test]
     fn open_doors_let_the_outside_in() {
         set_outside_open(None);
-        assert_eq!(SoundSet::outside_gain(true, true, 0), 1.0, "no variable: as before");
+        assert_eq!(SoundSet::outside_gain(true, true), 1.0, "no variable: as before");
         set_outside_open(Some(0.0));
-        assert_eq!(SoundSet::outside_gain(true, true, 0), 0.25, "shut: a quarter");
-        assert_eq!(SoundSet::outside_gain(true, false, 2), 1.0, "a cab sound is not an outside one");
-        assert_eq!(SoundSet::outside_gain(false, true, 0), 1.0, "standing outside");
+        assert_eq!(SoundSet::outside_gain(true, true), 0.25, "shut: a quarter");
+        assert_eq!(SoundSet::outside_gain(true, false), 1.0, "the own bus's sounds are its own");
+        assert_eq!(SoundSet::lowpass_of(true, false), 0.0);
+        assert_eq!(SoundSet::outside_gain(false, true), 1.0, "standing outside");
         set_outside_open(Some(0.5));
-        assert_eq!(SoundSet::outside_gain(true, true, 1), 1.0, "doors open: all of it");
-        assert!(SoundSet::lowpass_of(true, true, 1) > 5000.0);
+        assert_eq!(SoundSet::outside_gain(true, true), 1.0, "doors open: all of it");
+        assert!(SoundSet::lowpass_of(true, true) > 5000.0);
         set_outside_open(None);
     }
 }

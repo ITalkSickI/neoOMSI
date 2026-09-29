@@ -151,79 +151,276 @@ pub struct Analog {
     pub clutch: Option<f32>,
 }
 
-pub struct Controllers {
+/// A device connected now: its name, its axes (DirectInput slot, -1..1), whether the system
+/// knows it as a gamepad (a known layout of sticks and triggers), and whether it can push
+/// back (force feedback).
+#[derive(Debug, Clone)]
+pub(crate) struct Connected {
+    pub name: String,
+    pub axes: Vec<(usize, f32)>,
+    pub gamepad: bool,
+    pub ff: bool,
+    /// How many buttons it has (0: the system does not say).
+    pub buttons: usize,
+}
+
+/// The first button number of the hat switches' directions (4 hats x up, right, down, left).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const HAT_BUTTONS: usize = 128;
+
+/// The devices of every kind: gilrs (gamepads everywhere; on macOS and Linux every device),
+/// and on Windows DirectInput for everything a gamepad is not (`crate::dinput`) - many wheels
+/// never show up in the system's newer interface that gilrs uses there.
+pub(crate) struct Devices {
     gilrs: Option<Gilrs>,
+    #[cfg(windows)]
+    di: Option<crate::dinput::DirectInput>,
+    /// macOS: every axis element of every wheel and joystick, as last read (see `mac_hid`)
+    #[cfg(target_os = "macos")]
+    hid: Option<crate::mac_hid::MacHid>,
+    #[cfg(target_os = "macos")]
+    hid_axes: Vec<(String, Vec<(u32, f32)>)>,
+}
+
+impl Devices {
+    /// `hwnd`: the window (Windows: the devices belong to it); `ff`: take them for force
+    /// feedback (the game, not the launcher).
+    pub fn new(hwnd: Option<isize>, ff: bool) -> Devices {
+        // without gilrs's default filters: its dead zone took 10 % of every axis - on a
+        // wheel of 1800 degrees, 90 degrees either side of the middle did nothing - and its
+        // jitter filter held back small movements; the settings' dead zone is the only one
+        let gilrs = gilrs::GilrsBuilder::new().with_default_filters(false).build().map_err(|e| log::info!("game controllers: {e}")).ok();
+        #[cfg(windows)]
+        let di = hwnd.and_then(|h| crate::dinput::DirectInput::new(h, ff));
+        #[cfg(not(windows))]
+        let _ = (hwnd, ff);
+        Devices {
+            gilrs,
+            #[cfg(windows)]
+            di,
+            #[cfg(target_os = "macos")]
+            hid: crate::mac_hid::MacHid::new(),
+            #[cfg(target_os = "macos")]
+            hid_axes: Vec::new(),
+        }
+    }
+
+    /// macOS: the HID device of this name has the axes of a wheel or pedals (a slider, a
+    /// dial, or the simulation page's steering, accelerator, brake, clutch).
+    #[cfg(target_os = "macos")]
+    pub(crate) fn hid_wheel(&self, name: &str) -> bool {
+        self.hid_axes.iter().any(|(n, axes)| names_match(n, name) && axes.iter().any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2))
+    }
+
+    fn direct_input(&self) -> bool {
+        #[cfg(windows)]
+        return self.di.is_some();
+        #[cfg(not(windows))]
+        false
+    }
+
+    /// Read the devices; the buttons pressed (true) and let go since the last call:
+    /// (device, button number from 0, as DirectInput and `gamectrler.cfg` count them).
+    pub fn poll(&mut self) -> Vec<(String, usize, bool)> {
+        let mut out = Vec::new();
+        let di = self.direct_input();
+        if let Some(g) = self.gilrs.as_mut() {
+            while let Some(ev) = g.next_event() {
+                let pad = g.gamepad(ev.id);
+                match ev.event {
+                    EventType::Connected => log::info!("game controller connected: {}", pad.name()),
+                    // (on Windows DirectInput tells the buttons of every device)
+                    EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code) if !di => {
+                        out.push((pad.name().to_string(), button_number(&pad, code), matches!(ev.event, EventType::ButtonPressed(..))));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        #[cfg(windows)]
+        if let Some(d) = self.di.as_mut() {
+            d.poll();
+            out.append(&mut d.events);
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(h) = self.hid.as_mut() {
+            self.hid_axes = h.read();
+        }
+        out
+    }
+
+    /// The devices connected, with their axes as last read.
+    pub fn connected(&self) -> Vec<Connected> {
+        let mut v = Vec::new();
+        // (Windows: an Xbox-type pad is gilrs's - the system's own layout -, everything else
+        // DirectInput's; a wheel that a community mapping makes a "gamepad" in gilrs was
+        // listed twice, "Logitech G29" beside "G29 Driving Force Racing Wheel")
+        let xinput_pads = self.gilrs.as_ref().is_some_and(|g| g.gamepads().any(|(_, p)| p.mapping_source() == gilrs::MappingSource::Driver));
+        #[cfg(windows)]
+        if let Some(d) = self.di.as_ref() {
+            v.extend(
+                d.devices
+                    .iter()
+                    .filter(|d| !(xinput_pads && xinput_name(&d.name)))
+                    .map(|d| Connected { name: d.name.clone(), axes: d.axes(), gamepad: false, ff: d.has_ff(), buttons: d.buttons.min(128) }),
+            );
+        }
+        let _ = xinput_pads;
+        if let Some(g) = self.gilrs.as_ref() {
+            for (_, pad) in g.gamepads() {
+                #[allow(unused_mut)]
+                let mut gamepad = pad.mapping_source() != gilrs::MappingSource::None;
+                // (macOS: a device with sliders or the simulation page's axes is a wheel or
+                // pedals, whatever SDL's list calls it - the HORI Truck Control System was
+                // taken as a gamepad: its left stick steered, with a gamepad's dead zone)
+                #[cfg(target_os = "macos")]
+                if self.hid_wheel(pad.name()) {
+                    gamepad = false;
+                }
+                if self.direct_input() && pad.mapping_source() != gilrs::MappingSource::Driver {
+                    continue;
+                }
+                if v.iter().any(|c: &Connected| names_match(&c.name, pad.name())) {
+                    continue;
+                }
+                #[allow(unused_mut)]
+                let mut axes: Vec<(u32, f32)> = pad.state().axes().map(|(c, d)| (c.into_u32(), d.value())).collect();
+                // (macOS: the device's own axis elements where it is found among them - two
+                // of one usage stay two)
+                #[cfg(target_os = "macos")]
+                if !gamepad {
+                    if let Some((_, a)) = self.hid_axes.iter().find(|(n, _)| names_match(n, pad.name())) {
+                        axes = a.clone();
+                    }
+                }
+                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), buttons: 0 });
+            }
+        }
+        // (and a wheel gilrs does not list at all: one whose only axes are the simulation
+        // page's steering and pedals)
+        #[cfg(target_os = "macos")]
+        for (name, axes) in &self.hid_axes {
+            if !v.iter().any(|c| names_match(&c.name, name)) {
+                v.push(Connected { name: name.clone(), axes: di_slots(axes), gamepad: false, ff: false, buttons: 0 });
+            }
+        }
+        v
+    }
+}
+
+/// A DirectInput name of an Xbox-type pad (which gilrs lists with the system's layout).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn xinput_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("xbox") || n.contains("xinput") || n.starts_with("controller (")
+}
+
+/// The handle of `window` for DirectInput (Windows; elsewhere nothing is needed).
+pub(crate) fn window_handle(window: &winit::window::Window) -> Option<isize> {
+    #[cfg(windows)]
+    {
+        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        if let Ok(h) = window.window_handle() {
+            if let RawWindowHandle::Win32(w) = h.as_raw() {
+                return Some(w.hwnd.get());
+            }
+        }
+    }
+    let _ = window;
+    None
+}
+
+/// What the force feedback is made of this frame (OMSI's `FF_*` variables of the bus and
+/// its speed).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FfInput {
+    /// Driving (from the driver's seat): the forces are on; else the wheel is let go.
+    pub on: bool,
+    pub kmh: f32,
+    /// `FF_Vib_Amp` 0..1 and `FF_Vib_Period` (hundredths of a second) of the scripts.
+    pub vib_amp: f32,
+    pub vib_period: f32,
+    pub dt: f32,
+}
+
+pub struct Controllers {
+    devices: Devices,
     cfg: Vec<DeviceCfg>,
     pub enabled: bool,
     /// The settings' dead zone round the centre of a set-up device's axes (0..0.3).
     pub deadzone: f32,
+    /// The pedals' response curves (Settings → pedal strength; 1 = as the pedal reads).
+    pub pedal_throttle: f32,
+    pub pedal_brake: f32,
+    /// Devices switched off (Settings: `ctrl_off`): not read at all.
+    pub disabled: Vec<String>,
+    /// Force feedback the other way round (Settings: `ff_invert`).
+    pub ff_invert: bool,
+    /// Force feedback and rumble switched on (Settings: `ff_enabled`).
+    pub ff_enabled: bool,
+    /// The wheel's rotation over the rotation that is the bus's full lock (Settings:
+    /// `wheel_range` / `wheel_lock`; 1 = the whole wheel is the full lock, as OMSI).
+    pub steer_gain: f32,
     /// Key actions of buttons pressed (true) and released (false) since the last poll.
     pub actions: Vec<(String, bool)>,
+    /// Devices told about in the log (and on the screen) as not set up.
     announced: Vec<String>,
+    /// A message for the screen: a wheel that is not set up.
+    pub notice: Option<String>,
+    /// The steering device: its name, where the wheel stands (-1..1) and stood before, and
+    /// whether it pushes back.
+    steer: Option<(String, f32, f32, bool)>,
+    ff_t: f32,
     /// The rumble playing (`FF_Vib_Amp` and `FF_Vib_Period` of the bus), rebuilt when
     /// either changes.
     rumble: Option<(gilrs::ff::Effect, f32, f32)>,
 }
 
 impl Controllers {
-    pub fn new(root: &Path) -> Controllers {
-        let gilrs = match Gilrs::new() {
-            Ok(g) => Some(g),
-            Err(e) => {
-                log::info!("game controllers: {e}");
-                None
-            }
-        };
+    pub fn new(root: &Path, hwnd: Option<isize>) -> Controllers {
+        let devices = Devices::new(hwnd, true);
         let cfg = read_cfg(root);
-        if let Some(g) = gilrs.as_ref() {
-            for (_, pad) in g.gamepads() {
-                log::info!("game controller: {} ({})", pad.name(), if cfg.iter().any(|d| names_match(&d.name, pad.name())) { "set up in gamectrler.cfg" } else { "as a gamepad" });
-            }
+        for c in devices.connected() {
+            log::info!("game controller: {} ({})", c.name, if cfg.iter().any(|d| names_match(&d.name, &c.name)) { "set up in gamectrler.cfg" } else if c.gamepad { "as a gamepad" } else { "not set up: its X axis steers" });
         }
-        Controllers { gilrs, cfg, deadzone: 0.0, enabled: true, actions: Vec::new(), announced: Vec::new(), rumble: None }
+        Controllers { devices, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, ff_enabled: true, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, rumble: None }
+    }
+
+    /// A wheel or joystick steers the bus (then the arrow keys look around, as in OMSI:
+    /// a G29's buttons set to the arrow keys turned the view there).
+    pub fn wheel_steering(&self) -> bool {
+        self.enabled && self.steer.is_some()
     }
 
     /// Read the devices: the analog controls, and the button actions into `actions`.
     pub fn poll(&mut self) -> Analog {
         let mut out = Analog::default();
-        let Some(g) = self.gilrs.as_mut() else { return out };
-        while let Some(ev) = g.next_event() {
-            let pad = g.gamepad(ev.id);
-            let cfg = self.cfg.iter().find(|d| names_match(&d.name, pad.name()));
-            match ev.event {
-                EventType::Connected => {
-                    let name = pad.name().to_string();
-                    if !self.announced.contains(&name) {
-                        log::info!("game controller connected: {name}");
-                        self.announced.push(name);
-                    }
-                }
-                EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code) => {
-                    let down = matches!(ev.event, EventType::ButtonPressed(..));
-                    if let Some(action) = cfg.and_then(|d| d.buttons.get(button_index(&pad, code))).filter(|a| !a.0.is_empty()) {
-                        self.actions.push((action.0.clone(), down));
-                    }
-                }
-                _ => {}
+        for (name, n, down) in self.devices.poll() {
+            if self.off(&name) {
+                continue;
+            }
+            if let Some(action) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.buttons.get(n)).filter(|a| !a.0.is_empty()) {
+                self.actions.push((action.0.clone(), down));
             }
         }
         if !self.enabled {
             return out;
         }
-        // the devices set up in gamectrler.cfg first; a device the file does not know (a
-        // gamepad) only gives what none of them does - a pad lying beside a set-up wheel
-        // held the steering at its own centre, whichever the system listed first
-        let mut pads: Vec<(Option<&DeviceCfg>, gilrs::Gamepad)> = g.gamepads().map(|(_, pad)| (self.cfg.iter().find(|d| names_match(&d.name, pad.name())), pad)).collect();
+        // the devices set up in gamectrler.cfg first; a device the file does not know only
+        // gives what none of them does - a pad lying beside a set-up wheel held the steering
+        // at its own centre, whichever the system listed first
+        let off = self.disabled.clone();
+        let mut pads: Vec<(Option<&DeviceCfg>, Connected)> = self.devices.connected().into_iter().filter(|c| !off.iter().any(|d| names_match(d, &c.name))).map(|c| (self.cfg.iter().find(|d| names_match(&d.name, &c.name)), c)).collect();
         pads.sort_by_key(|(cfg, _)| cfg.is_none());
-        for (cfg, pad) in pads {
+        let mut steer: Option<(String, f32, bool)> = None;
+        let dz = self.deadzone.clamp(0.0, 0.3);
+        for (cfg, c) in pads {
             match cfg {
                 Some(d) => {
-                    let axes: Vec<(u32, f32)> = pad.state().axes().map(|(c, d)| (c.into_u32(), d.value())).collect();
-                    for (k, v) in di_slots(&axes) {
+                    for (k, v) in c.axes.iter().copied() {
                         let Some((f, inverted)) = d.axes[k] else { continue };
                         let v = if inverted { -v } else { v };
                         // the dead zone: round the wheel's centre, or at a pedal's rest
-                        let dz = self.deadzone.clamp(0.0, 0.3);
                         let v = match f {
                             Func::Steering | Func::ThrottleBrake => v.signum() * ((v.abs() - dz).max(0.0) / (1.0 - dz)),
                             _ => ((v + 1.0 - 2.0 * dz).max(0.0) / (1.0 - dz)) - 1.0,
@@ -231,47 +428,98 @@ impl Controllers {
                         // a pedal travels the whole range, -1 up to 1 down
                         let pedal = ((v + 1.0) * 0.5).clamp(0.0, 1.0);
                         match f {
-                            Func::Steering => set(&mut out.steering, v.clamp(-1.0, 1.0)),
-                            Func::Throttle => set(&mut out.throttle, pedal),
-                            Func::Brake => set(&mut out.brake, pedal),
+                            Func::Steering => {
+                                let v = v * self.steer_gain;
+                                set(&mut out.steering, v.clamp(-1.0, 1.0));
+                                if steer.is_none() {
+                                    steer = Some((c.name.clone(), v.clamp(-1.0, 1.0), c.ff));
+                                }
+                            }
+                            Func::Throttle => set(&mut out.throttle, crate::settings::pedal_curve(pedal, self.pedal_throttle)),
+                            Func::Brake => set(&mut out.brake, crate::settings::pedal_curve(pedal, self.pedal_brake)),
                             Func::Clutch => set(&mut out.clutch, pedal),
                             Func::ThrottleBrake => {
-                                set(&mut out.throttle, (-v).max(0.0));
-                                set(&mut out.brake, v.max(0.0));
+                                set(&mut out.throttle, crate::settings::pedal_curve((-v).max(0.0), self.pedal_throttle));
+                                set(&mut out.brake, crate::settings::pedal_curve(v.max(0.0), self.pedal_brake));
                             }
                         }
                     }
                 }
+                None if c.gamepad => {}
                 None => {
-                    // a gamepad: the left stick steers, the triggers are the pedals (only
-                    // one the system knows as a gamepad: other devices' axes mean nothing
-                    // here)
-                    if pad.mapping_source() == gilrs::MappingSource::None {
-                        continue;
+                    // a wheel or joystick nobody has set up yet: its X axis steers (as on
+                    // nearly every wheel), the pedals wait for the set-up (Launcher →
+                    // Controls → Game controllers), said once on the screen
+                    if !self.announced.contains(&c.name) {
+                        self.announced.push(c.name.clone());
+                        log::info!("game controller {} is not set up: its X axis steers", c.name);
+                        self.notice = Some(format!("{} is not set up: it steers; set up its pedals and buttons in the launcher (Controls → Game controllers)", c.name));
                     }
-                    let x = pad.value(Axis::LeftStickX);
-                    let dead = |v: f32| if v.abs() < 0.08 { 0.0 } else { v };
-                    let rt = pad.button_data(gilrs::Button::RightTrigger2).map(|d| d.value()).unwrap_or(0.0);
-                    let lt = pad.button_data(gilrs::Button::LeftTrigger2).map(|d| d.value()).unwrap_or(0.0);
-                    out.steering.get_or_insert(dead(x));
-                    out.throttle.get_or_insert(rt.clamp(0.0, 1.0));
-                    out.brake.get_or_insert(lt.clamp(0.0, 1.0));
+                    if let Some((_, v)) = c.axes.iter().find(|(k, _)| *k == 0) {
+                        let v = v.signum() * ((v.abs() - dz.max(0.02)).max(0.0) / (1.0 - dz.max(0.02))) * self.steer_gain;
+                        out.steering.get_or_insert(v.clamp(-1.0, 1.0));
+                        if steer.is_none() {
+                            steer = Some((c.name.clone(), v.clamp(-1.0, 1.0), c.ff));
+                        }
+                    }
                 }
             }
         }
+        // gamepads: the left stick steers, the triggers are the pedals
+        let di = self.devices.direct_input();
+        let off = self.disabled.clone();
+        if let Some(g) = self.devices.gilrs.as_ref() {
+            for (_, pad) in g.gamepads() {
+                if pad.mapping_source() == gilrs::MappingSource::None || self.cfg.iter().any(|d| names_match(&d.name, pad.name())) {
+                    continue;
+                }
+                #[cfg(target_os = "macos")]
+                if self.devices.hid_wheel(pad.name()) {
+                    continue;
+                }
+                if (di && pad.mapping_source() != gilrs::MappingSource::Driver) || off.iter().any(|d| names_match(d, pad.name())) {
+                    continue;
+                }
+                let x = pad.value(Axis::LeftStickX);
+                let dead = |v: f32| if v.abs() < 0.08 { 0.0 } else { v };
+                let rt = pad.button_data(gilrs::Button::RightTrigger2).map(|d| d.value()).unwrap_or(0.0);
+                let lt = pad.button_data(gilrs::Button::LeftTrigger2).map(|d| d.value()).unwrap_or(0.0);
+                out.steering.get_or_insert(dead(x));
+                out.throttle.get_or_insert(crate::settings::pedal_curve(rt, self.pedal_throttle));
+                out.brake.get_or_insert(crate::settings::pedal_curve(lt, self.pedal_brake));
+            }
+        }
+        let before = self.steer.as_ref().filter(|s| steer.as_ref().is_some_and(|n| n.0 == s.0)).map(|s| s.1);
+        self.steer = steer.map(|(name, v, ff)| (name, v, before.unwrap_or(v), ff));
         out
     }
 
-    /// The bus's force feedback: the scripts write `FF_Vib_Amp` (0..1, the engine's shaking,
-    /// a rough road) and OMSI shakes the wheel or pad with it - as a rumble on every device
-    /// that can (gilrs has no steering spring).
-    /// `period`: `FF_Vib_Period` (OMSI hands DirectInput Round(period × 10000) µs, so
-    /// a hundredth of a second per unit): the shaking comes in pulses that long, on for
-    /// half of it; 0 is a steady rumble.
-    pub fn feedback(&mut self, amp: f32, period: f32) {
-        let amp = if self.enabled { amp.clamp(0.0, 1.0) } else { 0.0 };
+    /// The force feedback: on a wheel that can push back (Windows, DirectInput) the forces
+    /// OMSI puts on it - the centring that grows with the speed, the heavy steering of a bus
+    /// standing still, the shaking of the engine and the road (`FF_Vib_Amp`); on any other
+    /// device that can, the shaking as a rumble.
+    pub fn feedback(&mut self, f: FfInput) {
+        let on = self.enabled && f.on && self.ff_enabled;
+        #[cfg(windows)]
+        if let (Some((name, x, x0, true)), Some(di)) = (self.steer.clone(), self.devices.di.as_mut()) {
+            // (the file's [FFScale] of the device: springs and drag, the effects)
+            let (k_s, k_e) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
+            let force = if on { wheel_force(&f, x, x0, &mut self.ff_t, k_s, k_e) } else { 0.0 };
+            let force = if self.ff_invert { -force } else { force };
+            di.set_force(&name, force);
+            return;
+        }
+        let _ = (&self.steer, &self.ff_t, wheel_force);
+        self.rumble_feedback(if on { f.vib_amp } else { 0.0 }, f.vib_period);
+    }
+
+    /// The shaking as a rumble (`FF_Vib_Amp`, `FF_Vib_Period`: OMSI hands DirectInput
+    /// Round(period × 10000) µs, so a hundredth of a second per unit - the shaking comes in
+    /// pulses that long, on for half of it; 0 is a steady rumble).
+    fn rumble_feedback(&mut self, amp: f32, period: f32) {
+        let amp = amp.clamp(0.0, 1.0);
         let period = if period.is_finite() { period.clamp(0.0, 100.0) } else { 0.0 };
-        let Some(g) = self.gilrs.as_mut() else { return };
+        let Some(g) = self.devices.gilrs.as_mut() else { return };
         if let Some((_, was, was_period)) = &self.rumble {
             if (was - amp).abs() < 0.02 && (was_period - period).abs() < 0.05 {
                 return;
@@ -286,7 +534,7 @@ impl Controllers {
             return;
         }
         // (the file's [FFScale] of a set-up device scales it)
-        let scale = self.cfg.iter().find_map(|d| d.ff_scale).map(|s| s.0).unwrap_or(1.0).clamp(0.0, 2.0);
+        let scale = self.cfg.iter().find_map(|d| d.ff_scale).map(|s| s.1).unwrap_or(1.0).clamp(0.0, 2.0);
         let m = ((amp * scale).min(1.0) * u16::MAX as f32) as u16;
         let ms = (period * 10.0).round() as u32;
         let scheduling = if ms >= 20 {
@@ -306,10 +554,29 @@ impl Controllers {
         }
     }
 
+    fn off(&self, name: &str) -> bool {
+        self.disabled.iter().any(|d| names_match(d, name))
+    }
+
     /// Any controller there at all.
     pub fn any(&self) -> bool {
-        self.gilrs.as_ref().map(|g| g.gamepads().next().is_some()).unwrap_or(false)
+        !self.devices.connected().is_empty()
     }
+}
+
+/// The force on a wheel standing at `x` (-1 full left .. 1), `x0` the frame before: -1..1.
+/// The centring pulls back harder the faster the bus goes (from a quarter of it standing
+/// still to all of it at 50 km/h), the steering is heavy and damped standing still (the
+/// power steering helps once the bus rolls), and the scripts' shaking comes on top.
+fn wheel_force(f: &FfInput, x: f32, x0: f32, t: &mut f32, k_springs: f32, k_effects: f32) -> f32 {
+    let dt = f.dt.max(1e-3);
+    let v = f.kmh.abs();
+    let spring = -x * (0.25 + 0.5 * (v / 50.0).min(1.0));
+    let drag = -(x - x0) / dt * 0.05 * (1.0 + 2.0 * (1.0 - v / 20.0).max(0.0));
+    *t += dt;
+    let period = (f.vib_period * 0.01).max(0.02);
+    let shake = f.vib_amp.clamp(0.0, 1.0) * 0.25 * (std::f32::consts::TAU * *t / period).sin();
+    ((spring + drag) * k_springs.clamp(0.0, 2.0) + shake * k_effects.clamp(0.0, 2.0)).clamp(-1.0, 1.0)
 }
 
 /// A control several set-up devices give: the first one set wins, unless a later one is
@@ -360,7 +627,9 @@ pub(crate) fn di_slots(axes: &[(u32, f32)]) -> Vec<(usize, f32)> {
     let mut out: Vec<(usize, f32)> = Vec::new();
     let mut rest = Vec::new();
     for (c, v) in sorted {
-        match known(c).filter(|k| !used[*k]) {
+        // (a second slider of the same usage is DirectInput's slider 1)
+        let k = known(c).map(|k| if used[k] && k == 6 && !used[7] && cfg!(target_os = "macos") && c == 0x10036 { 7 } else { k });
+        match k.filter(|k| !used[*k]) {
             Some(k) => {
                 used[k] = true;
                 out.push((k, v));
@@ -384,16 +653,37 @@ pub(crate) fn names_match(a: &str, b: &str) -> bool {
     !a.is_empty() && (a == b || a.contains(&b) || b.contains(&a))
 }
 
-/// The button's number on its device (DirectInput counts them in the order the device
-/// lists them, as the HID codes run).
+/// The button's number on its device as DirectInput counts them (and `gamectrler.cfg` with
+/// it), from the system's code for it: the HID button usage on macOS (page 9, from 1), the
+/// evdev key code on Linux (BTN_JOYSTICK.. and BTN_TRIGGER_HAPPY.. for a wheel's or
+/// joystick's buttons, BTN_GAMEPAD.. for a pad's), the button index on Windows. It used to be
+/// the place among the buttons pressed so far - the first button ever pressed was "button 1"
+/// whichever it was.
 pub(crate) fn button_number(pad: &gilrs::Gamepad, code: gilrs::ev::Code) -> usize {
-    button_index(pad, code)
+    code_button(code.into_u32()).unwrap_or_else(|| {
+        let mut codes: Vec<u32> = pad.state().buttons().map(|(c, _)| c.into_u32()).collect();
+        codes.sort_unstable();
+        codes.iter().position(|c| *c == code.into_u32()).unwrap_or(usize::MAX)
+    })
 }
 
-fn button_index(pad: &gilrs::Gamepad, code: gilrs::ev::Code) -> usize {
-    let mut codes: Vec<u32> = pad.state().buttons().map(|(c, _)| c.into_u32()).collect();
-    codes.sort_unstable();
-    codes.iter().position(|c| *c == code.into_u32()).unwrap_or(usize::MAX)
+fn code_button(code: u32) -> Option<usize> {
+    let (hi, lo) = (code >> 16, (code & 0xFFFF) as usize);
+    if cfg!(target_os = "macos") {
+        (hi == 9 && lo >= 1).then(|| lo - 1)
+    } else if cfg!(target_os = "linux") || cfg!(target_os = "android") {
+        match lo {
+            0x120..=0x12f => Some(lo - 0x120),
+            0x2c0..=0x2e7 => Some(16 + lo - 0x2c0),
+            0x130..=0x13e => Some(lo - 0x130),
+            0x100..=0x109 => Some(lo - 0x100),
+            _ => None,
+        }
+    } else if cfg!(windows) {
+        (hi == 0).then_some(lo)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -438,11 +728,38 @@ mod slot_tests {
 mod cfg_tests {
     #[test]
     fn the_stock_file_round_trips() {
-        let Ok(bytes) = std::fs::read("../../OMSI 2 Original/Inputs/gamectrler.cfg") else { return };
+        let Ok(bytes) = std::fs::read("../../../OMSI 2 Original/Inputs/gamectrler.cfg") else { return };
         let text = omsi_cfg::codepage::decode(&bytes);
         let devs = super::parse_cfg(&text);
         assert!(devs.iter().any(|d| d.name.contains("G25")), "{:?}", devs.iter().map(|d| &d.name).collect::<Vec<_>>());
         let again = super::parse_cfg(&super::cfg_text(&devs));
         assert_eq!(again, devs);
+    }
+}
+
+#[cfg(test)]
+mod button_tests {
+    #[test]
+    fn buttons_count_as_directinput_does() {
+        if cfg!(target_os = "macos") {
+            assert_eq!(super::code_button(0x9_0001), Some(0));
+            assert_eq!(super::code_button(0x9_0010), Some(15));
+        }
+        if cfg!(target_os = "linux") {
+            assert_eq!(super::code_button(0x1_0120), Some(0));
+            assert_eq!(super::code_button(0x1_02c0), Some(16));
+        }
+    }
+
+    #[test]
+    fn the_wheel_is_pulled_to_the_middle_harder_at_speed() {
+        let mut t = 0.0;
+        let f = |kmh| super::FfInput { on: true, kmh, dt: 0.016, ..Default::default() };
+        let slow = super::wheel_force(&f(0.0), 0.5, 0.5, &mut t, 1.0, 1.0);
+        let fast = super::wheel_force(&f(60.0), 0.5, 0.5, &mut t, 1.0, 1.0);
+        assert!(slow < 0.0 && fast < slow, "{slow} {fast}");
+        // turned to the right, it is pushed left; turning, it is held back
+        let turning = super::wheel_force(&f(0.0), 0.0, -0.05, &mut t, 1.0, 1.0);
+        assert!(turning < 0.0);
     }
 }

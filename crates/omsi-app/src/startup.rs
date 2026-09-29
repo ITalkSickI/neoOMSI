@@ -76,6 +76,28 @@ pub(crate) fn keyboard_cfg(root: &Path) -> PathBuf {
     root.join("Inputs/keyboard.cfg")
 }
 
+/// The keys (scan codes without a modifier) the player's own `keyboard.cfg` (the content
+/// folder's, written by the launcher) binds to something the original's does not bind to
+/// them: see `App::own_keys`.
+pub(crate) fn own_keys(root: &Path) -> std::collections::HashSet<i32> {
+    own_bindings(root, 0)
+}
+
+/// The keys held with `modifier` (1: Shift) that the file in use binds otherwise than OMSI 2's
+/// own assignment ([`crate::stock_keys::STOCK_KEYS`]): the player's own. Told apart from the
+/// built-in list, not from the installation's file - a player who edited that file had
+/// every change overridden by the game's conveniences (Z / X / C, Shift+number).
+pub(crate) fn own_bindings(root: &Path, modifier: i32) -> std::collections::HashSet<i32> {
+    let Ok(m) = omsi_content::KeyboardCfg::load(&keyboard_cfg(root)) else { return Default::default() };
+    let stock: std::collections::HashSet<(String, i32, i32)> = crate::stock_keys::STOCK_KEYS.iter().map(|(a, k, md)| (a.to_ascii_lowercase(), *k, *md)).collect();
+    m.vehicles
+        .iter()
+        .chain(m.game.iter())
+        .filter(|b| b.modifier == modifier && b.scan_code != 0 && !stock.contains(&(b.action.to_ascii_lowercase(), b.scan_code, b.modifier)))
+        .map(|b| b.scan_code)
+        .collect()
+}
+
 pub(crate) fn content_dir() -> Option<PathBuf> {
     if let Some(d) = omsi_cfg::env::var_os("OMSI_CONTENT") {
         return Some(PathBuf::from(d));
@@ -88,7 +110,7 @@ pub(crate) fn content_dir() -> Option<PathBuf> {
     } else {
         dir
     };
-    Some(dir)
+    Some(omsi_cfg::content_folder_of(&dir))
 }
 
 /// Where the last working installation was remembered.
@@ -128,16 +150,42 @@ pub(crate) fn graphics_instance() -> wgpu::Instance {
         descriptor.backend_options.noop = wgpu::NoopBackendOptions { enable: true };
         return wgpu::Instance::new(descriptor);
     }
-    descriptor.backends = if cfg!(target_os = "macos") {
-        wgpu::Backends::METAL
-    } else if cfg!(windows) {
-        // DX12 is temporarily disabled: wgpu-hal 29.0.4 and gpu-allocator 0.28.0
-        // use incompatible versions of windows-core when the DX12 feature is built.
-        wgpu::Backends::VULKAN
+    // The graphics interface: Metal on a Mac; elsewhere Vulkan first, and where the
+    // graphics chip or its driver has none (an older card - a GeForce GT 530 -, an old phone)
+    // DirectX 12 on Windows and then OpenGL. Settings → Graphics API (`graphics_api`) or
+    // OMSI_BACKEND=vulkan|dx12|gl picks one: a driver whose Vulkan misbehaves is got round.
+    let wanted = omsi_cfg::env::var("OMSI_BACKEND").ok().unwrap_or_else(|| crate::settings::Settings::load().graphics_api);
+    let order: Vec<wgpu::Backends> = if cfg!(target_os = "macos") {
+        vec![wgpu::Backends::METAL]
     } else {
-        wgpu::Backends::VULKAN
+        let all: Vec<wgpu::Backends> = if cfg!(windows) {
+            vec![wgpu::Backends::VULKAN, wgpu::Backends::DX12, wgpu::Backends::GL]
+        } else {
+            vec![wgpu::Backends::VULKAN, wgpu::Backends::GL]
+        };
+        let first = match wanted.trim().to_ascii_lowercase().as_str() {
+            "vulkan" => Some(wgpu::Backends::VULKAN),
+            "dx12" | "directx" | "d3d12" if cfg!(windows) => Some(wgpu::Backends::DX12),
+            "gl" | "opengl" | "gles" => Some(wgpu::Backends::GL),
+            _ => None,
+        };
+        // (the one asked for first, the others after it: a machine without it still starts)
+        first.into_iter().chain(all.into_iter().filter(|b| Some(*b) != first)).collect()
     };
-    wgpu::Instance::new(descriptor)
+    let mut last = None;
+    for b in order {
+        let mut d = wgpu::InstanceDescriptor::new_without_display_handle();
+        d.backends = b;
+        let instance = wgpu::Instance::new(d);
+        let adapters = pollster::block_on(instance.enumerate_adapters(b));
+        if !adapters.is_empty() {
+            log::info!("graphics: {:?} ({})", b, adapters.iter().map(|a| a.get_info().name).collect::<Vec<_>>().join(", "));
+            return instance;
+        }
+        log::info!("graphics: no {b:?} adapter here");
+        last = Some(instance);
+    }
+    last.unwrap_or_else(|| wgpu::Instance::new(descriptor))
 }
 
 /// The commit this binary was built from (see `build.rs`), so a log or a screenshot says
@@ -211,5 +259,19 @@ pub(crate) fn attach_parent_console() {
     // redirected log file stays the output)
     unsafe {
         AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(test)]
+mod own_key_tests {
+    /// OMSI's own file as it comes has no key of the player's own.
+    #[test]
+    fn the_stock_file_has_none_of_the_players() {
+        let root = std::path::Path::new("../../../OMSI 2 Original");
+        if !root.join("Inputs/keyboard.cfg").exists() {
+            return;
+        }
+        assert!(super::own_bindings(root, 0).is_empty());
+        assert!(super::own_bindings(root, 1).is_empty());
     }
 }

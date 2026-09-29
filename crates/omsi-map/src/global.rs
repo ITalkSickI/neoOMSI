@@ -52,6 +52,9 @@ pub struct MapTileRef {
     pub x: i32,
     pub y: i32,
     pub file: String,
+    /// Its place in global.cfg's `[map]` list (0-based, every entry counted): the number
+    /// entry points, repeaters and timetable tracks name a tile by.
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -136,6 +139,10 @@ pub struct GlobalCfg {
     pub spline_obj_types: Vec<String>,
     pub scen_obj_list: Vec<String>,
     pub tiles: Vec<MapTileRef>,
+    /// Every `[map]` entry's tile in file order, an entry listed twice too: a tile index of
+    /// the map's files counts those (Westcountry 3 lists 33 tiles twice, and every index
+    /// after the first of them named the wrong tile).
+    pub raw_tiles: Vec<(i32, i32)>,
     pub unknown_keywords: Vec<(String, usize)>,
 }
 
@@ -235,13 +242,32 @@ impl GlobalCfg {
                     let file = r.str().to_string();
                     // (a map listing a tile twice drew every object of it twice in one
                     // place: fences, houses, all of it flickering; the first entry counts)
+                    let index = g.raw_tiles.len();
+                    g.raw_tiles.push((x, y));
                     if !g.tiles.iter().any(|t| (t.x == x && t.y == y) || t.file.eq_ignore_ascii_case(&file)) {
-                        g.tiles.push(MapTileRef { x, y, file });
+                        g.tiles.push(MapTileRef { x, y, file, index });
                     }
                 }
                 _ => g.unknown_keywords.push((k, r.block_line())),
             }
         }
         g
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tile listed twice counts in the numbering the map's files use (an entry point on
+    /// the tile after the repeat names index 2, which is tile (5, 5)).
+    #[test]
+    fn a_repeated_tile_keeps_the_numbering() {
+        let text = "[map]\n0\n0\ntile_0_0.map\n\n[map]\n0\n0\ntile_0_0.map\n\n[map]\n5\n5\ntile_5_5.map\n";
+        let g = GlobalCfg::parse(&omsi_cfg::CfgFile::from_str("global.cfg", text));
+        assert_eq!(g.tiles.len(), 2);
+        assert_eq!(g.raw_tiles, vec![(0, 0), (0, 0), (5, 5)]);
+        assert_eq!(g.tiles[1].index, 2);
+        assert_eq!(g.raw_tiles.get(2), Some(&(5, 5)));
     }
 }

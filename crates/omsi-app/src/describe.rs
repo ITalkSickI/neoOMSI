@@ -20,9 +20,11 @@ pub struct ControlNames {
 impl ControlNames {
     /// Read the key assignment texts of `lang` from the installation (and the mods' copies).
     pub fn load(root: &Path, lang: &str) -> ControlNames {
+        // (OMSI's cockpit names are in English, German and French: every other language
+        // reads the English ones - the interface around them is translated)
         let lang = match language_code(lang).as_str() {
-            "RUS" => "ENG".to_string(),
-            l => l.to_string(),
+            l @ ("DEU" | "FRA") => l.to_string(),
+            _ => "ENG".to_string(),
         };
         let mut texts = HashMap::new();
         let mut dirs = omsi_cfg::content_dirs("Languages");
@@ -117,13 +119,7 @@ impl ControlNames {
 
 /// `ENG` / `DEU` / `FRA` from the settings' spelling (default English).
 pub fn language_code(s: &str) -> String {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "de" | "deu" | "ger" | "german" | "deutsch" => "DEU".into(),
-        "fr" | "fra" | "fre" | "french" | "francais" | "français" => "FRA".into(),
-        // (the navigator and the interface speak Russian; OMSI has no Russian cockpit names)
-        "ru" | "rus" | "russian" | "русский" => "RUS".into(),
-        _ => "ENG".into(),
-    }
+    omsi_launcher_lib::language_code(s).to_string()
 }
 
 static NAMES: OnceLock<ControlNames> = OnceLock::new();

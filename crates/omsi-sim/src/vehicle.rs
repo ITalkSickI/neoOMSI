@@ -125,6 +125,9 @@ pub struct VehicleType {
     /// that a ray (the mouse over the cockpit) can pass most meshes by without looking at a
     /// triangle. Zero for the meshes an AI type keeps no vertices of.
     pub mesh_bounds: Vec<(Vec3, f32)>,
+    /// Per mesh: the box (least, greatest corner) its vertices take in the mesh's own frame,
+    /// kept for AI types too (zero for a mesh without vertices).
+    pub mesh_boxes: Vec<(Vec3, Vec3)>,
 }
 
 /// One `.cti` item group: replaces the textures of `[CTCTexture]` slots and sets variables.
@@ -213,6 +216,36 @@ pub fn load_paint_schemes(dir: &Path) -> Vec<PaintScheme> {
     schemes
 }
 
+/// Where a `[mesh]` file of a model lives: next to the model file as OMSI reads it, else -
+/// for add-ons laid out for another folder (Studio Polygon's `Configuration Files` sit
+/// beside `model`, and packs that borrow parts name them from the vehicle folder or the
+/// game folder) - the first of the vehicle folder, its `model` folder and the game folder
+/// that has it. The model folder's spelling when none does, for the warning.
+fn mesh_path(root: &Path, dir: &Path, model_dir: &Path, file: &str) -> PathBuf {
+    let first = omsi_cfg::resolve_path(model_dir, file);
+    if omsi_cfg::vfs::exists(&first) {
+        return first;
+    }
+    let model = omsi_cfg::resolve_path(dir, "model");
+    let parent = model_dir.parent().map(Path::to_path_buf);
+    for base in [Some(dir.to_path_buf()), Some(model), parent, Some(root.to_path_buf())].into_iter().flatten() {
+        let p = omsi_cfg::resolve_path(&base, file);
+        if omsi_cfg::vfs::exists(&p) {
+            return p;
+        }
+        // (a path that names its own folder again: "model\Configuration Files\..." given
+        // from inside `model`)
+        let trimmed = file.trim_start_matches(['\\', '/']);
+        if let Some(rest) = trimmed.split_once(['\\', '/']).map(|(_, r)| r) {
+            let p = omsi_cfg::resolve_path(&base, rest);
+            if omsi_cfg::vfs::exists(&p) {
+                return p;
+            }
+        }
+    }
+    first
+}
+
 impl VehicleType {
     pub fn load(root: &Path, bus_file: &Path) -> Result<VehicleType> {
         Self::load_with(root, bus_file, true)
@@ -260,16 +293,7 @@ impl VehicleType {
                 .map(|l| l.first_mesh)
                 .unwrap_or(model.meshes.len());
             for (i, md) in model.meshes[start..end].iter().enumerate() {
-                // OMSI resolves [mesh] paths from the vehicle's Model folder,
-                // even when the model.cfg itself lives in a subfolder. Some
-                // add-ons instead keep meshes beside that cfg; support both.
-                let model_root = dir.join("Model");
-                let from_root = omsi_cfg::resolve_path(&model_root, &md.file);
-                let p = if omsi_cfg::vfs::is_file(&from_root) {
-                    from_root
-                } else {
-                    omsi_cfg::resolve_path(&model_dir, &md.file)
-                };
+                let p = mesh_path(root, &dir, &model_dir, &md.file);
                 match omsi_o3d::load_mesh(&p) {
                     Ok(m) => {
                         let skin = if md.smooth_skin {
@@ -332,6 +356,14 @@ impl VehicleType {
         }
         let texchanges = omsi_model::load_texchanges(&dir, &model.texchanges);
         let (wheel_meshes, suspension_axles) = wheel_meshes(&model, &meshes);
+        let mesh_boxes: Vec<(Vec3, Vec3)> = meshes
+            .iter()
+            .map(|m| {
+                let lo = m.data.positions.iter().fold(Vec3::splat(f32::MAX), |a, p| a.min(*p));
+                let hi = m.data.positions.iter().fold(Vec3::splat(f32::MIN), |a, p| a.max(*p));
+                if lo.x <= hi.x { (lo, hi) } else { (Vec3::ZERO, Vec3::ZERO) }
+            })
+            .collect();
         let mesh_bounds = if keep_meshes {
             meshes.iter().map(|m| omsi_geometry::bounding_sphere(&m.data.positions)).collect()
         } else {
@@ -392,6 +424,7 @@ impl VehicleType {
             suspension_axles,
             missing_packs,
             mesh_bounds,
+            mesh_boxes,
         })
     }
 
@@ -567,10 +600,12 @@ impl VehicleType {
 
     pub fn texture_dirs(&self, root: &Path) -> Vec<PathBuf> {
         vec![
-            self.def.dir().join("Texture"),
-            self.model_dir.join("Texture"),
+            // (the folder as it is spelled on the disk: many add-ons ship `texture`, which a
+            // case-sensitive file system - Linux, a phone - does not find as `Texture`)
+            omsi_cfg::resolve_path(self.def.dir(), "Texture"),
+            omsi_cfg::resolve_path(&self.model_dir, "Texture"),
             self.model_dir.clone(),
-            root.join("Texture"),
+            omsi_cfg::resolve_path(root, "Texture"),
         ]
     }
 }
@@ -1553,14 +1588,9 @@ impl VehicleInstance {
                 if let Some(rw) = rb.wheels.get(ai * 2 + si) {
                     self.put(w[0], rw.rotation_deg.to_radians());
                     self.put(w[1], rw.rpm);
-                    self.put(
-                        w[2],
-                        if rw.steered {
-                            rb.steer_deg.to_radians()
-                        } else {
-                            0.0
-                        },
-                    );
+                    // (each axle's own angle: OMSI turns every axle towards the centre of
+                    // the bend on the `[rot_pnt_long]` line)
+                    self.put(w[2], rw.steer);
                     // `Axle_Suspension_*` is the wheel's travel *relative to the body*, and
                     // the stock model.cfg moves the wheel down for a positive value
                     // (`origin_rot_y -90` + `anim_trans`, checked with OMSI_DEBUG_ANIM on
@@ -3271,6 +3301,29 @@ impl VehicleInstance {
         let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
         let eye = self.position + self.body_rotation().transform_point3(local).as_dvec3();
         (eye, self.heading as f32 + cam.yaw, cam.pitch)
+    }
+
+    /// A camera fixed to the body as OMSI keeps one (`[add_camera_reflexion]`: Omsi.exe
+    /// 0x7edfd0 puts it in the vehicle's own matrix): its eye, and yaw, pitch and roll (deg)
+    /// of its view with the body's pitch and bank in them - a mirror leans with the bus. A
+    /// `dist` above zero puts the eye that far behind the point along the view.
+    pub fn camera_world_full(&self, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32, f32) {
+        let rot = self.body_rotation();
+        let (sy, cy) = cam.yaw.to_radians().sin_cos();
+        let (sp, cp) = cam.pitch.to_radians().sin_cos();
+        let f_local = Vec3::new(sy * cp, cy * cp, sp);
+        let r_local = Vec3::new(cy, -sy, 0.0);
+        let f = rot.transform_vector3(f_local).normalize_or(Vec3::Y);
+        let up = rot.transform_vector3(r_local.cross(f_local)).normalize_or(Vec3::Z);
+        let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
+        let eye = self.position + rot.transform_point3(local).as_dvec3() - (f * cam.dist.max(0.0)).as_dvec3();
+        let yaw = f.x.atan2(f.y).to_degrees();
+        let pitch = f.z.clamp(-1.0, 1.0).asin().to_degrees();
+        // (the roll the renderer's `Camera::up` turns back into this up)
+        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or(Vec3::X);
+        let u0 = r0.cross(f);
+        let roll = up.dot(r0).atan2(up.dot(u0)).to_degrees();
+        (eye, yaw, pitch, roll)
     }
 }
 

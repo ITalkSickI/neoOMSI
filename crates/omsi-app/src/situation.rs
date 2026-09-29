@@ -123,6 +123,11 @@ pub(crate) fn apply_situation(args: &mut Args) -> Result<()> {
             }
         }
         args.situation_vars = v.vars.iter().map(|(n, x)| (n.clone(), *x as f32)).collect();
+        // the livery it was driven in: the scheme's index is the `Colorscheme` variable (the
+        // bus came back in its default paint - the variable alone repaints nothing)
+        if let Some((_, c)) = v.vars.iter().find(|(n, _)| n.eq_ignore_ascii_case("Colorscheme")).filter(|(_, c)| *c >= 0.0) {
+            args.paint = Some(format!("{}", *c as i64));
+        }
         args.situation_strvars = v.string_vars.clone();
         log::info!(
             "situation: player {} at {:?} line {:?} tour {:?} hof {:?}, {} vars",
