@@ -2095,6 +2095,7 @@ pub(crate) fn run_offscreen(
             &clock,
             args.weather.as_deref(),
             player_ref.as_ref(),
+            &[],
             &camera,
             duty.as_ref(),
             "openOMSI save",
