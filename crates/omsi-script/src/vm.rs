@@ -409,7 +409,12 @@ fn exec_op(s: &mut Stacks, op: &Op, p: &Program, state: &mut State, host: &mut d
             host.message(&v)
         }
         Op::StrRemoveSpaces => {
-            let v: String = s.pop_str().chars().filter(|c| *c != ' ').collect();
+            // Omsi.exe 0x7ef304: tabs, line breaks, spaces and quotes off both ends only -
+            // a Krueger++ bitmap "206 to jkkyz.bmp" lost its inner spaces and was not found
+            let v = s
+                .pop_str()
+                .trim_matches(|c| matches!(c, '\t' | '\n' | '\r' | ' ' | '"'))
+                .to_string();
             s.push_str(v)
         }
         Op::StrCutBegin => {
