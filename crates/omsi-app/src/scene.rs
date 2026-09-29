@@ -4901,7 +4901,7 @@ impl World {
                     None if !is_null_texture(&m.texture) => {
                         let rel = night_texture_name(&m.texture);
                         let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
-                        if omsi_texture::find_texture(&rel, &dirs_ref).is_some() {
+                        if night_texture_exists(&rel, &dirs_ref) {
                             t.auto_night = true;
                             tex_of(gpu, scene, &rel, &mut t)
                         } else {
@@ -4989,6 +4989,12 @@ impl World {
                     .any(|o| !matches!(o.tex_address, omsi_model::TexAddress::Wrap));
                 renderer.clamp_next.set(clamp);
                 renderer.light_map_next.set(ot.sco.light_map_mapping);
+                // OMSI_DEBUG_OBJMAT=<part of the object's file name>: how its slots are made
+                if let Ok(f) = omsi_cfg::env::var("OMSI_DEBUG_OBJMAT") {
+                    if ot.sco.path.to_string_lossy().to_ascii_lowercase().contains(&f.to_ascii_lowercase()) {
+                        log::info!("{} slot {slot} '{}': tex {} alpha {:?} color {:?} emissive {:?} night {} transmap {:?} envmap {:?} auto_night {}", ot.sco.path.display(), m.texture, tex.is_some(), alpha, color, emissive, night.is_some(), transmap.map(|t| t.1), envmap.map(|e| e.1), t.auto_night);
+                    }
+                }
                 let base = renderer.add_material_extra(
                     scene, tex, alpha, color, false, transmap, night, None, envmap, emissive, extra,
                 );
@@ -10893,6 +10899,21 @@ fn field_height(m: &MeshData, x: f32, y: f32) -> Option<f32> {
 
 
 /// The name of a texture's night copy: the same file in a `night` folder beside it.
+/// Whether an object's texture has its night copy (see [`night_texture_name`]). A texture
+/// named by its full path - a parked car's paint, resolved in its scheme's folder - has it
+/// there or not at all: the texture lookup takes such a path for one of its author's
+/// machine and falls back to the bare file name, which found the day picture itself, and
+/// every parked car of a paint scheme was lit by its own paint at night, glowing in the
+/// dark street.
+fn night_texture_exists(rel: &str, dirs: &[&Path]) -> bool {
+    // (`night_texture_name` writes backslashes: "\\Users\\...", "C:\\...")
+    let norm = rel.trim().replace('\\', "/");
+    if norm.starts_with('/') || norm.as_bytes().get(1) == Some(&b':') {
+        return omsi_cfg::vfs::is_file(Path::new(&norm));
+    }
+    omsi_texture::find_texture(rel, dirs).is_some()
+}
+
 fn night_texture_name(texture: &str) -> String {
     let name = texture.trim().replace('/', "\\");
     match name.rsplit_once('\\') {
