@@ -913,6 +913,8 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                     let (x, y) = xy();
                     self.on_cursor(x * scale, y * scale);
                 }
+                // `weather`: the next weather, as the admin menu's "Next weather"
+                "weather" => self.next_weather(),
                 // `rawmouse dx`: the mouse moved by dx device units (past the window's edge
                 // too, as mouse steering takes it)
                 "rawmouse" => {

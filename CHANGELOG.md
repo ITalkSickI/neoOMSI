@@ -144,6 +144,10 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 - Shift+U after a crash starts the bus again: a bus under power whose engine had died was
   taken for a running one and "switched off" round and round ("Shutting down..." for good).
   An auto-start that has gone on for 20 s is begun again by the next Shift+U.
+- The weather turning to snow (Next weather, or the weather file) no longer drops the bus
+  through the world: every tile is read again with the winter textures, and while the one
+  under the bus is away the bus is held where it stands (it fell, was put back in the sky
+  and fell again).
 - Esc → Destination display → *Route number*: the route (line) number on the displays, from
   the depot file's routes and the map's timetable; the destination stays.
 - Windows: a force feedback wheel (G29) no longer pulls itself to the middle after the pause

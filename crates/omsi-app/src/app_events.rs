@@ -595,7 +595,16 @@ impl ApplicationHandler for App {
                     self.renderer.as_ref(),
                     self.scene.as_mut(),
                 ) {
-                    if !self.paused {
+                    // (while the tile under the bus is being read again - the weather turned
+                    // to snow and every tile came back with the winter textures - there is
+                    // no ground under it: it is held where it is rather than falling through
+                    // the world and being put back somewhere in the sky)
+                    let ground_here = self.world.as_ref().is_none_or(|w| {
+                        let at = p.vehicle.position;
+                        let k = ((at.x / omsi_map::tile_size()).floor() as i32, (at.y / omsi_map::tile_size()).floor() as i32);
+                        w.terrains.read().contains_key(&k) || w.surfaces.read().contains_key(&k)
+                    });
+                    if !self.paused && ground_here {
                         p.tick(
                             dt,
                             self.audio.as_ref(),
