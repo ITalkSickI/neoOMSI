@@ -203,6 +203,9 @@ pub struct AiCar {
     pub pull_out: f32,
     /// Parking: the free space it drives into (see `Traffic::park_in`).
     pub park: Option<ParkPlan>,
+    /// A rail vehicle: the track it has come along, (odometer, point), oldest first -
+    /// where its rear bogie and its coupled cars and sections run (see `rail_behind`).
+    pub rail_trail: std::collections::VecDeque<(f64, DVec3)>,
 }
 
 /// A free parking space beside a lane that a car means to park in: the space of parked car
@@ -735,6 +738,42 @@ fn motion_kind(kind: LaneKind) -> MotionKind {
         LaneKind::Rail => MotionKind::Rail,
         _ => MotionKind::Road,
     }
+}
+
+/// How much track an AI rail vehicle keeps behind it (m): a long train's length.
+const RAIL_TRAIL: f64 = 400.0;
+
+/// Note where an AI rail vehicle is: `odometer` (m) and the point of its way there. A jump
+/// (put somewhere else, turned round at a terminus) starts the trail afresh.
+fn record_rail_trail(trail: &mut std::collections::VecDeque<(f64, DVec3)>, odometer: f64, here: DVec3) {
+    if let Some(&(u, p)) = trail.back() {
+        if (here - p).truncate().length() > (odometer - u).abs() + 2.0 {
+            trail.clear();
+        } else if (odometer - u).abs() <= 0.5 {
+            return;
+        }
+    }
+    // (backing up takes the trail back with it)
+    while trail.back().is_some_and(|b| b.0 > odometer) {
+        trail.pop_back();
+    }
+    trail.push_back((odometer, here));
+    while trail.front().is_some_and(|f| odometer - f.0 > RAIL_TRAIL) {
+        trail.pop_front();
+    }
+}
+
+/// The point of an AI rail vehicle's track `d` metres behind its origin: on the trail it
+/// came along. (Its way knows only the lane it came off; farther back it runs straight on,
+/// and a train's last cars stood beside the track after a pair of points.) Where the trail
+/// does not reach - the last half metre, a vehicle just put there - the way.
+fn rail_behind(trail: &std::collections::VecDeque<(f64, DVec3)>, state: &AiState, net: &Network, d: f64) -> DVec3 {
+    let u = state.odometer as f64 - d;
+    let newest = trail.back().map_or(f64::MIN, |b| b.0);
+    if u >= newest {
+        return state.way_point(net, -d as f32);
+    }
+    crate::rail_drive::point_at(trail, u).unwrap_or_else(|| state.way_point(net, -d as f32))
 }
 
 /// A body for a vehicle that has just been put on the way `state` describes, with the
@@ -2378,6 +2417,7 @@ impl Traffic {
             pass_retry: 0.0,
             light_at: None,
             pull_out: 0.0,
+            rail_trail: Default::default(),
             park: None,
             seed,
             scheme,
@@ -5337,13 +5377,14 @@ impl Traffic {
         {
             use rayon::prelude::*;
             let net = &self.net;
-            let mut work: Vec<(&AiState, &mut AiBody, &mut VehicleInstance, &mut AiFrame)> = self
+            type Work<'a> = (&'a AiState, &'a mut AiBody, &'a mut VehicleInstance, &'a mut AiFrame, &'a mut std::collections::VecDeque<(f64, DVec3)>);
+            let mut work: Vec<Work> = self
                 .cars
                 .iter_mut()
                 .zip(frames.iter_mut())
                 .filter_map(|(c, f)| {
                     let f = f.as_mut()?;
-                    Some((&c.state, &mut c.body, &mut c.vehicle, f))
+                    Some((&c.state, &mut c.body, &mut c.vehicle, f, &mut c.rail_trail))
                 })
                 .collect();
             let profile = omsi_cfg::env::var_os("OMSI_PROFILE").is_some();
@@ -5351,18 +5392,29 @@ impl Traffic {
             // the main thread more than a car's work)
             work.par_iter_mut()
                 .with_min_len(4)
-                .for_each(|(state, body, vehicle, frame)| {
+                .for_each(|(state, body, vehicle, frame, trail)| {
                     let t0 = std::time::Instant::now();
                     let ground = vehicle.ground.clone();
+                    let rail = body.kind == MotionKind::Rail;
+                    if rail {
+                        record_rail_trail(trail, state.odometer as f64, state.way_point(net, 0.0));
+                    }
+                    let trail = &**trail;
+                    let behind = |d: f64| rail_behind(trail, state, net, d);
                     body.step(
                         dt,
                         state.speed,
-                        &|d| state.way_point(net, d),
+                        &|d| if rail && d < 0.0 { behind(-d as f64) } else { state.way_point(net, d) },
                         ground
                             .as_ref()
                             .map(|g| g.as_ref() as &dyn Fn(f64, f64) -> Option<f64>),
                     );
                     body.apply(vehicle);
+                    if rail && !vehicle.trailers.is_empty() {
+                        // the coupled cars (a train's, a tram's sections) on the track it
+                        // came along, not dragged round the bends like a road trailer
+                        vehicle.retrail(0.0, &|d| Some(behind(d)));
+                    }
                     frame.steer_deg = body.steer;
                     let t1 = std::time::Instant::now();
                     vehicle.update_ai(dt, frame);
@@ -6524,6 +6576,7 @@ impl Traffic {
             pass_retry: 0.0,
             light_at: None,
             pull_out: 0.0,
+            rail_trail: Default::default(),
             park: None,
         });
         self.cars.len() - 1
