@@ -45,7 +45,14 @@ impl ApplicationHandler for App {
                     s.resize(r, size.width, size.height);
                 }
             }
+            WindowEvent::Focused(true) => self.window_focused = true,
             WindowEvent::Focused(false) => {
+                self.window_focused = false;
+                #[cfg(windows)]
+                {
+                    self.vr_cursor_physical = None;
+                    self.vr_cursor_warp_pending = None;
+                }
                 // No key-up reaches us for whatever was held when focus left (alt-tab, a
                 // click outside the window, an OS dialog popping up): without this, a held
                 // modifier got "stuck" and made the next plain key press look like it was
@@ -99,19 +106,43 @@ impl ApplicationHandler for App {
                     );
                 }
             }
-            // (the middle button - the wheel pressed - turns the view as well: OMSI's pan)
+            // In VR right-click zooms; with mouse steering it first releases the steering.
+            // On the desktop it retains OMSI's mouse-look and mouse-steering behaviour.
             WindowEvent::MouseInput {
                 state,
-                button: button @ (winit::event::MouseButton::Right | winit::event::MouseButton::Middle),
+                button: winit::event::MouseButton::Right,
                 ..
             } => {
                 if self.navigator.as_ref().map(|n| n.map_open()).unwrap_or(false) {
                     return;
                 }
-                // a right click lets go of the mouse steering, as in OMSI (#162)
-                if button == winit::event::MouseButton::Right && state == ElementState::Pressed && self.mouse_drive && self.game_menu.is_none() {
-                    self.mouse_drive = false;
-                    self.service_msg = Some(("Mouse steering off".into(), 3.0));
+                if self.vr_active() {
+                    #[cfg(windows)]
+                    if state == ElementState::Pressed && self.game_menu.is_none()
+                        && self.chooser.is_none() {
+                        if self.mouse_drive {
+                            self.mouse_drive = false;
+                            self.reset_vr_pointer();
+                            self.service_msg = Some(("Mouse steering off".into(), 3.0));
+                        } else {
+                            self.vr_zoom_active = !self.vr_zoom_active;
+                        }
+                    }
+                } else {
+                    if state == ElementState::Pressed && self.mouse_drive && self.game_menu.is_none() {
+                        self.mouse_drive = false;
+                        self.service_msg = Some(("Mouse steering off".into(), 3.0));
+                    }
+                    self.mouse_look = state == ElementState::Pressed;
+                }
+            }
+            WindowEvent::MouseInput {
+                state,
+                button: winit::event::MouseButton::Middle,
+                ..
+            } => {
+                if self.navigator.as_ref().map(|n| n.map_open()).unwrap_or(false) {
+                    return;
                 }
                 self.mouse_look = state == ElementState::Pressed;
             }
@@ -123,7 +154,17 @@ impl ApplicationHandler for App {
                 self.wheel(amount);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.on_mouse_moved(position.x as f32, position.y as f32);
+                #[cfg(windows)]
+                let vr_cockpit = self.vr.is_some() && self.game_menu.is_none()
+                    && matches!(self.view.as_str(), "driver" | "pax");
+                #[cfg(not(windows))]
+                let vr_cockpit = false;
+                if vr_cockpit && !self.mouse_look && !self.mouse_drive {
+                    #[cfg(windows)]
+                    self.on_vr_cursor_moved(position.x as f32, position.y as f32);
+                } else {
+                    self.on_mouse_moved(position.x as f32, position.y as f32);
+                }
             }
             WindowEvent::MouseInput {
                 state,
@@ -133,6 +174,8 @@ impl ApplicationHandler for App {
             // a finger (a phone; see touch.rs)
             WindowEvent::Touch(t) => self.on_touch(event_loop, t),
             WindowEvent::RedrawRequested => {
+                #[cfg(windows)]
+                self.poll_vr_cursor_position();
                 // OMSI's autosave of the last situation: every five minutes of play
                 if !self.paused && self.player.is_some() && self.clock.run_time - self.autosave_t >= 300.0 {
                     self.autosave_t = self.clock.run_time;
@@ -150,6 +193,10 @@ impl ApplicationHandler for App {
                     log::error!("ending the session: the graphics device was lost ({why})");
                     crate::platform::exit(event_loop);
                     return;
+                }
+                let desktop_vsync = self.settings.vsync && !self.vr_active();
+                if let (Some(surface), Some(renderer)) = (self.surface.as_mut(), self.renderer.as_ref()) {
+                    surface.set_vsync(renderer, desktop_vsync);
                 }
                 // in the own bus's cab: at the wheel, a passenger's view, or sitting in a
                 // seat of it after getting up (its inside is drawn and heard from inside)
@@ -488,7 +535,8 @@ impl ApplicationHandler for App {
                 // (in every view of the bus - driver, outside, passenger - as in OMSI, where
                 // switching the camera leaves the mouse steering on; not on foot or flying)
                 let bus_view = matches!(self.view.as_str(), "driver" | "outside" | "pax");
-                if let (true, Some(s)) = (self.mouse_drive && bus_view && !self.mouse_look && self.game_menu.is_none(), self.surface.as_ref()) {
+                if let (true, Some(s)) = (self.mouse_drive && bus_view && !self.mouse_look
+                    && self.game_menu.is_none(), self.surface.as_ref()) {
                     let (w, h) = (s.config.width as f32, s.config.height as f32);
                     // (the speed the divisor takes, smoothed over 0.4 s: the bus's own speed
                     // trembles by fractions of a km/h from frame to frame on its springs and
@@ -539,7 +587,8 @@ impl ApplicationHandler for App {
                     }
                     analog.throttle = Some(self.mouse_pedals.0);
                     analog.brake = Some(self.mouse_pedals.1);
-                } else if self.mouse_drive && bus_view && self.mouse_look && self.game_menu.is_none() {
+                } else if self.mouse_drive && bus_view && self.mouse_look
+                    && self.game_menu.is_none() {
                     // looking round with the right button: the wheel and the pedals stay where
                     // the mouse left them, as in OMSI (they went slack until the button was let
                     // go - no quick look round while driving)
@@ -1559,6 +1608,10 @@ impl ApplicationHandler for App {
                             width: w,
                             height: h,
                             cursor: self.cursor,
+                            vr: {
+                                #[cfg(windows)] { self.vr.is_some() }
+                                #[cfg(not(windows))] { false }
+                            },
                             tooltip: tooltip.filter(|_| self.settings.tooltips && !self.dragging),
                             notes: &notes,
                             fps: self.settings.show_fps.then_some(self.fps),
@@ -1747,7 +1800,24 @@ impl ApplicationHandler for App {
                         // street jerked past in them - up to two a frame then (each costs a
                         // few milliseconds of the frame).
                         let mirrors = self.player.as_ref().map(|p| p.vehicle.ty.def.cameras_reflexion.len()).unwrap_or(0) as f32;
-                        let rate = MIRROR_RATE.max(mirrors * MIRROR_MIN_HZ);
+                        let rate = {
+                            #[cfg(windows)]
+                            let vr_active = self.vr.is_some();
+                            #[cfg(not(windows))]
+                            let vr_active = false;
+                            if vr_active {
+                                // Each VR frame already draws two full-size eyes. Keep bus
+                                // mirrors useful without spending two more scene renders
+                                // on nearly every frame when the headset is below refresh.
+                                omsi_cfg::env::var("OMSI_OPENXR_MIRROR_RATE")
+                                    .ok()
+                                    .and_then(|s| s.parse::<f32>().ok())
+                                    .filter(|rate| rate.is_finite() && *rate >= 0.0)
+                                    .unwrap_or(self.settings.vr_mirror_rate)
+                            } else {
+                                MIRROR_RATE.max(mirrors * MIRROR_MIN_HZ)
+                            }
+                        };
                         self.mirror_budget = (self.mirror_budget + raw_dt.min(0.1) * rate).min(2.5);
                         let mut drawn = 0;
                         // (in the cab, and from outside too while the bus is near: its
@@ -1770,14 +1840,45 @@ impl ApplicationHandler for App {
                         }
                         *self.profile.entry("mirrors").or_default() += __t.elapsed().as_secs_f64();
                         let __t = Instant::now();
-                        r.render(
-                            scene,
-                            &view,
-                            s.config.width,
-                            s.config.height,
-                            cam,
-                            &lighting,
-                        );
+                        let mut mirrored = false;
+                        #[cfg(windows)]
+                        if let Some(vr) = self.vr.as_mut() {
+                            let menu_range = self.ui.as_ref().map(|u| u.menu_overlay_range.clone()).unwrap_or(0..0);
+                            let cursor_overlay = self.ui.as_ref().and_then(|u| u.vr_cursor_overlay);
+                            let tooltip_overlay = self.ui.as_ref().and_then(|u| u.vr_tooltip_overlay);
+                            match vr.render(
+                                r,
+                                scene,
+                                cam,
+                                &lighting,
+                                &view,
+                                (s.config.width, s.config.height),
+                                menu_range,
+                                cursor_overlay,
+                                tooltip_overlay,
+                                self.cursor,
+                                self.player.as_ref().map(|p| (p.vehicle.position, p.vehicle.body_rotation())),
+                                self.settings.vr_head_smoothing_ms,
+                                !self.mouse_drive,
+                                self.vr_zoom_active,
+                            ) {
+                                Ok(visible) => mirrored = visible,
+                                Err(e) => {
+                                    log::error!("OpenXR rendering stopped: {e:#}");
+                                    self.vr = None;
+                                }
+                            }
+                        }
+                        if !mirrored {
+                            r.render(
+                                scene,
+                                &view,
+                                s.config.width,
+                                s.config.height,
+                                cam,
+                                &lighting,
+                            );
+                        }
                         // the on-screen controls over the picture (a phone)
                         self.touch.render(r, &view, s.config.width, s.config.height);
                         *self.profile.entry("render").or_default() += __t.elapsed().as_secs_f64();
@@ -1841,7 +1942,11 @@ impl ApplicationHandler for App {
                     } else {
                         max_fps
                     };
-                    if max_fps > 0 {
+                    #[cfg(windows)]
+                    let vr_active = self.vr.is_some();
+                    #[cfg(not(windows))]
+                    let vr_active = false;
+                    if max_fps > 0 && !vr_active {
                         let __t = Instant::now();
                         if let Some(rest) = std::time::Duration::from_secs_f64(1.0 / max_fps as f64)
                             .checked_sub(now.elapsed())
@@ -2043,19 +2148,12 @@ impl App {
         // movement. Knobs, the sun blind and the ignition key are far easier to
         // set that way than by holding the button down and moving the mouse.
         if self.hover.is_some() && self.view != "free" {
-            if let (Some(p), Some(cam), Some(s)) = (
+            let ray = self.camera.as_ref().zip(self.surface.as_ref())
+                .map(|(cam, s)| self.cockpit_cursor_ray(cam, (s.config.width, s.config.height)));
+            if let (Some(p), Some((o, d, spread))) = (
                 self.player.as_mut(),
-                self.camera.as_ref(),
-                self.surface.as_ref(),
+                ray,
             ) {
-                let (o, d) = cursor_ray(
-                    cam,
-                    self.cursor.0,
-                    self.cursor.1,
-                    s.config.width as f32,
-                    s.config.height as f32,
-                );
-                let spread = pixel_angle(cam, s.config.height as f32) * 6.0;
                 if p.pick(o, d, spread).is_some() {
                     // a notch is worth a good push of the mouse: the scripts divide
                     // the movement by 10 (the ignition key), 200 (the parking brake)

@@ -8,6 +8,8 @@ pub(crate) struct App {
     pub(crate) window: Option<Arc<Window>>,
     pub(crate) surface: Option<SurfaceState<'static>>,
     pub(crate) renderer: Option<Renderer>,
+    #[cfg(windows)]
+    pub(crate) vr: Option<crate::openxr::Vr>,
     pub(crate) scene: Option<Scene>,
     pub(crate) camera: Option<Camera>,
     pub(crate) player: Option<Player>,
@@ -68,6 +70,10 @@ pub(crate) struct App {
     /// Sounds of the world around the camera (rain, footsteps).
     pub(crate) ambience: Option<ambience::Ambience>,
     pub(crate) cursor: (f32, f32),
+    /// Last Windows mouse position used for the unbounded VR cockpit pointer.
+    pub(crate) vr_cursor_physical: Option<(f32, f32)>,
+    pub(crate) vr_cursor_warp_pending: Option<(f32, f32)>,
+    pub(crate) window_focused: bool,
     pub(crate) keys: hashbrown::HashSet<KeyCode>,
     /// Door trigger groups currently held by the Shift+number shortcut. Keeping the
     /// release until physical key-up prevents latched button states and door chatter.
@@ -75,6 +81,8 @@ pub(crate) struct App {
     pub(crate) last: Instant,
     pub(crate) speed: f32,
     pub(crate) mouse_look: bool,
+    /// Right mouse button toggles the headset picture zoom.
+    pub(crate) vr_zoom_active: bool,
     /// The cockpit switch the cursor is over, shown in the HUD.
     pub(crate) hover: Option<String>,
     /// The part under the cursor when it is not a switch, so the HUD can say so.
@@ -236,13 +244,20 @@ pub(crate) struct App {
 }
 
 impl App {
+    #[cfg(windows)]
+    pub(crate) fn vr_active(&self) -> bool { self.vr.is_some() }
+
+    #[cfg(not(windows))]
+    pub(crate) fn vr_active(&self) -> bool { false }
+
     pub(crate) fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(window) = self.window.clone() {
             // back from the background (a phone): the window's surface is made again
             if self.surface.is_none() {
                 if let Some(r) = self.renderer.as_ref() {
                     let size = window.inner_size();
-                    self.surface = SurfaceState::new_with(&self.instance, window.clone(), r, size.width.max(1), size.height.max(1), self.settings.vsync).ok();
+                    let vsync = self.settings.vsync && !self.vr_active();
+                    self.surface = SurfaceState::new_with(&self.instance, window.clone(), r, size.width.max(1), size.height.max(1), vsync).ok();
                     self.last = Instant::now();
                 }
             }
@@ -290,6 +305,13 @@ impl App {
                 return;
             }
         };
+        #[cfg(windows)]
+        if self.settings.vr_requested() {
+            match crate::openxr::Vr::new(&renderer, self.settings.vr_scale, self.settings.vr_desktop_mirror) {
+                Ok(vr) => self.vr = Some(vr),
+                Err(e) => log::error!("OpenXR could not start: {e:#}"),
+            }
+        }
         crate::lights::load_smoke_texture(&mut renderer, &self.args.root);
         crate::lights::set_corona_root(&self.args.root);
         let size = window.inner_size();
@@ -299,7 +321,7 @@ impl App {
             &renderer,
             size.width,
             size.height,
-            self.settings.vsync,
+            self.settings.vsync && !self.vr_active(),
         ) {
             Ok(s) => s,
             Err(e) => {

@@ -429,6 +429,9 @@ impl State {
     }
 
     pub fn launch(&mut self) {
+        if !self.save_pending_settings() {
+            return;
+        }
         if !omsi_cfg::missing_original_essentials(std::path::Path::new(&self.config.root)).is_empty() {
             self.set_status("A session needs the original OMSI 2: choose its folder under Setup first.", true);
             return;
@@ -485,6 +488,9 @@ impl State {
 
     /// Continue the situation the game left on the chosen map (`laststn.osn`).
     pub fn launch_last_situation(&mut self) {
+        if !self.save_pending_settings() {
+            return;
+        }
         let Some(file) = core::last_situation(&self.choice.map) else {
             self.set_status("No situation left on this map yet", true);
             return;
@@ -498,11 +504,30 @@ impl State {
 
     /// Start one of OMSI's tutorials (1..4).
     pub fn launch_tutorial(&mut self, n: usize) {
+        if !self.save_pending_settings() {
+            return;
+        }
         let mut d = self.duty();
         d.tutorial = Some(n);
         d.lan = Some("off".into());
         self.set_status("Starting the tutorial…", false);
         self.spawn(move || Msg::Launched(core::launch(&d).map_err(|e| format!("{e:#}"))));
+    }
+
+    fn save_pending_settings(&mut self) -> bool {
+        if self.settings_dirty <= 0.0 {
+            return true;
+        }
+        match core::save_settings(&self.settings) {
+            Ok(()) => {
+                self.settings_dirty = 0.0;
+                true
+            }
+            Err(e) => {
+                self.set_status(format!("Could not save settings: {e:#}"), true);
+                false
+            }
+        }
     }
 
     /// Something of the duty changed: remember it (soon) and refresh what depends on it.
