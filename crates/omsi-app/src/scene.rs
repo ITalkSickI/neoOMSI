@@ -8349,6 +8349,7 @@ fn material_extra(
         screen: false,
         no_map_lights: false,
         moisture: 0.0,
+        transmap_declared: ov.iter().any(|o| o.transmap.is_some()),
     }
 }
 
@@ -9788,6 +9789,45 @@ impl World {
                 inst
             });
         }
+        // Omsi.exe draws a model mesh after mesh and each material subset in its turn, with
+        // the subset's own blend and depth-write states (0x7c32c4 -> 0x7fd6c4), so a slot
+        // blended by `[matl_alpha] 2` that writes depth hides what the model lists after it.
+        // Where that happens - a blended slot writing depth before an opaque or cut-out one -
+        // the whole vehicle is drawn in that order (see `Instance::ordered`); drawn with its
+        // opaque parts first, a body blended by its alpha showed the interior through it.
+        let slots_in_order = |i: usize| -> Vec<(omsi_render::AlphaMode, bool)> {
+            let Some(inst) = scene.instances.get(i) else { return Vec::new() };
+            let Some(mesh) = scene.meshes.get(inst.mesh) else { return Vec::new() };
+            mesh.ranges
+                .iter()
+                .filter_map(|(_, _, slot)| inst.materials.get(*slot as usize))
+                .filter_map(|&m| scene.materials.get(m))
+                .map(|m| (m.alpha, !m.no_z_write && !m.no_z_check))
+                .collect()
+        };
+        let mut blended_first = false;
+        let mut ordered = false;
+        for &i in &instances {
+            if scene.instances.get(i).is_none_or(|x| x.blob) {
+                continue;
+            }
+            for (alpha, writes) in slots_in_order(i) {
+                match alpha {
+                    omsi_render::AlphaMode::Blend if writes => blended_first = true,
+                    omsi_render::AlphaMode::Blend => {}
+                    _ if blended_first => ordered = true,
+                    _ => {}
+                }
+            }
+        }
+        if ordered && omsi_cfg::env::var_os("OMSI_NO_MODEL_ORDER").is_none() {
+            log::debug!("{}: drawn in model order (a blended slot writes depth before an opaque one)", vt.def.path.display());
+            for &i in &instances {
+                if scene.instances.get(i).is_some_and(|x| !x.blob) {
+                    renderer.set_ordered(scene, i, true);
+                }
+            }
+        }
         // the vehicle is drawn or left out as one object (see `set_object_culling`): its
         // sphere about the vehicle's origin, which every mesh instance shares
         let radius = set
@@ -10007,7 +10047,11 @@ impl World {
                         (hi - lo).max_element() > 0.5
                             && vt.mesh_boxes[..mesh_index].iter().any(|&(l2, h2)| (l2 - lo).abs().max_element() < 0.03 && (h2 - hi).abs().max_element() < 0.03)
                     });
-                    let repair_body_depth = !layer && is_vehicle_body_material(&def.file, &m.texture, tex.is_some(), transmap.is_some(), ov.iter().any(|o| o.no_z_write), body_hint);
+                    // (Retired: a body blended by `[matl_alpha] 2` is drawn as Omsi.exe draws
+                    // it, in model order with its depth written - see `Instance::ordered` -
+                    // instead of being guessed opaque, which drew overlay layers black, #127.
+                    // `OMSI_REPAIR_BODY_DEPTH=1` brings the old guess back for comparison.)
+                    let repair_body_depth = omsi_cfg::env::var_os("OMSI_REPAIR_BODY_DEPTH").is_some() && !layer && is_vehicle_body_material(&def.file, &m.texture, tex.is_some(), transmap.is_some(), ov.iter().any(|o| o.no_z_write), body_hint);
                     // (only a blended slot: an alpha-tested one - `[matl_alpha] 1`, the EN92's
                     // pictograms, a Sprinter's seat covers - is cut out as the model says, and
                     // made opaque its cut-out parts were grey boxes; and not a layer made of
