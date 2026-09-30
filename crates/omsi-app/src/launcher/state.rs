@@ -409,7 +409,9 @@ impl State {
         }
         self.choice.map = info.map.clone();
         self.choice.lan_mode = "join".into();
-        self.choice.lan_addr = address.to_string();
+        // (a server added by its bare address is joined where it answered: its web gateway)
+        let bare = omsi_net::ws::ws_url(address).is_none() && !omsi_net::official::is_alias(address);
+        self.choice.lan_addr = if bare && !info.reached_at.is_empty() { info.reached_at.clone() } else { address.to_string() };
         self.joined_server = Some(address.to_string());
         self.join = (true, format!("the server {}", info.name));
         self.join_checked = address.to_string();

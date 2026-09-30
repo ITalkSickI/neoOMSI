@@ -602,10 +602,14 @@ fn online(l: &mut Launcher, body: Rect) {
         let c = l.phone.code.trim().to_string();
         if c.is_empty() {
             l.state.set_status("Type the code your friend's game shows (or a server's address)", true);
-        } else if omsi_net::ws::ws_url(&c).is_some() || omsi_net::official::is_alias(&c) {
+        } else if omsi_net::ws::ws_url(&c).is_some() || omsi_net::official::is_alias(&c) || l.state.server_info.get(&c).is_some_and(|i| i.1.is_ok()) {
             join(l, &c);
         } else {
-            // a session code: joined when the game starts
+            // a session code or a friend's address (a server's too: asked meanwhile, and
+            // joined through its web gateway once it has answered): joined when the game starts
+            if !omsi_net::looks_like_code(&c) {
+                l.state.ask_server(&c, 5.0);
+            }
             l.state.choice.lan_mode = "join".into();
             l.state.choice.lan_addr = c;
             l.state.joined_server = None;
