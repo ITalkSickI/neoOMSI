@@ -267,10 +267,15 @@ pub fn depot(h: &Hof) -> ApiValue {
         let terminus_code = omsi_cfg::parse_i32(&t.route);
         let ti = h.termini.iter().position(|x| x.code == terminus_code);
         let names: Vec<String> = h.info_busstop_lists.get(i).map(|l| l.iter().map(|s| stop_name(h, s)).collect()).unwrap_or_default();
-        let line = t.line.trim().to_string();
+        let code = omsi_cfg::parse_i32(&t.code);
+        // `code` = line x 100 + route (the depot file's own rule); many depot files leave the
+        // line column as a placeholder ("XXX"), so the line then comes from the code
+        let raw_line = t.line.trim();
+        let placeholder = raw_line.is_empty() || raw_line.chars().all(|c| c == 'x' || c == 'X');
+        let line = if placeholder && code >= 100 { (code / 100).to_string() } else { raw_line.to_string() };
         let r = map(vec![
             ("index", ApiValue::Num(i as f64)),
-            ("code", ApiValue::Num(omsi_cfg::parse_i32(&t.code) as f64)),
+            ("code", ApiValue::Num(code as f64)),
             ("name", ApiValue::Str(t.name.trim().to_string())),
             ("line", ApiValue::Str(line.clone())),
             ("terminusCode", ApiValue::Num(terminus_code as f64)),
@@ -299,6 +304,21 @@ pub fn depot(h: &Hof) -> ApiValue {
             ])
         })
         .collect();
+    log::info!(
+        "omsi.depot '{}': {} trip(s), {} line(s), {} destination(s), {} busstop(s), {} busstop list(s)",
+        h.name.trim(),
+        h.info_trips.len(),
+        lines.len(),
+        h.termini.len(),
+        h.bus_stops.len(),
+        h.info_busstop_lists.len()
+    );
+    if h.info_trips.is_empty() {
+        log::warn!("omsi.depot '{}': no [infosystem_trip] entries parsed, omsi.depot.routes stays empty", h.name.trim());
+    }
+    for (i, t) in h.info_trips.iter().enumerate().take(40) {
+        log::info!("omsi.depot route #{i}: code={:?} name={:?} route={:?} line(file)={:?}", t.code, t.name, t.route, t.line);
+    }
     map(vec![
         ("name", ApiValue::Str(h.name.clone())),
         (
