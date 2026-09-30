@@ -705,7 +705,7 @@ impl App {
                 // driver → outside → passenger → driver (on foot: back to the bus)
                 self.view = match self.view.as_str() {
                     "driver" => "outside",
-                    "outside" if self.player.as_ref().is_some_and(|p| !p.vehicle.ty.def.cameras_pax.is_empty()) => "pax",
+                    "outside" if self.player.as_ref().is_some_and(|p| p.pax_camera_count() > 0) => "pax",
                     _ => "driver",
                 }
                 .into();

@@ -1354,6 +1354,11 @@ impl Player {
         cam
     }
 
+    /// How many passenger cameras the bus has, its coupled parts' included.
+    pub(crate) fn pax_camera_count(&self) -> usize {
+        self.vehicle.ty.def.cameras_pax.len() + self.vehicle.trailers.iter().map(|t| t.ty.def.cameras_pax.len()).sum::<usize>()
+    }
+
     /// `look`: yaw/pitch the player has turned the head (or the orbit) by; `dist`: how far
     /// the outside camera sits from the vehicle.
     pub(crate) fn camera_look(&self, view: &str, fallback: &Camera, look: (f32, f32), dist: f32) -> Camera {
@@ -1371,7 +1376,31 @@ impl Player {
                     .get((def.camera_std + self.cam_choice.0) % n)
                     .or(def.cameras_driver.first())
             }
-            "pax" => def.cameras_pax.get(self.cam_choice.1 % def.cameras_pax.len().max(1)),
+            "pax" => {
+                // the passenger cameras of every part of the bus, the front's first: an
+                // articulated bus's rear section brings its own in its `.bus`
+                let n = self.pax_camera_count().max(1);
+                let k = self.cam_choice.1 % n;
+                match def.cameras_pax.get(k) {
+                    Some(c) => Some(c),
+                    None => {
+                        let mut k = k - def.cameras_pax.len();
+                        let mut found = None;
+                        for t in &self.vehicle.trailers {
+                            if let Some(c) = t.ty.def.cameras_pax.get(k) {
+                                let (eye, yaw, pitch) = t.camera_world(c);
+                                found = Some((eye, yaw, pitch, c.fov));
+                                break;
+                            }
+                            k -= t.ty.def.cameras_pax.len();
+                        }
+                        if let Some((eye, yaw, pitch, fov)) = found {
+                            return Camera { position: eye, yaw: yaw + look.0, pitch: (pitch + look.1).clamp(-89.0, 89.0), roll: 0.0, fov_deg: fov, near: 0.25, far: 6000.0 };
+                        }
+                        def.cameras_pax.first()
+                    }
+                }
+            }
             _ => None,
         };
         match cam {

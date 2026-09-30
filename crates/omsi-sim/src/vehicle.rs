@@ -3017,6 +3017,15 @@ impl TrailerPart {
         Mat4::from_translation(self.position.as_vec3()) * self.body_rotation()
     }
 
+    /// Position/direction of one of the part's own `.bus` cameras in world space: (eye,
+    /// yaw, pitch) - as `VehicleInstance::camera_world` for the front part.
+    pub fn camera_world(&self, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32) {
+        let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
+        let eye = self.position + self.body_rotation().transform_point3(local).as_dvec3();
+        let heading = if self.reversed { self.heading + 180.0 } else { self.heading };
+        (eye, heading as f32 + cam.yaw, cam.pitch)
+    }
+
     /// Transform for mesh `i` relative to the part's position; a shadow blob lies on the
     /// ground under its axles (see `VehicleInstance::mesh_local_transform`).
     pub fn mesh_local_transform(&self, i: usize) -> Mat4 {

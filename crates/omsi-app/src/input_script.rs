@@ -1943,7 +1943,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             "view_toggle_viewpoint" | "view_interiorcam_plus" | "view_interiorcam_minus" => {
                 let Some(p) = self.player.as_mut() else { return true };
                 let def = &p.vehicle.ty.def;
-                let (count, pax) = if self.view == "pax" { (def.cameras_pax.len(), true) } else { (def.cameras_driver.len(), false) };
+                let (count, pax) = if self.view == "pax" { (p.pax_camera_count(), true) } else { (def.cameras_driver.len(), false) };
                 if count > 1 {
                     let c = if pax { &mut p.cam_choice.1 } else { &mut p.cam_choice.0 };
                     *c = if name == "view_interiorcam_minus" { (*c + count - 1) % count } else { (*c + 1) % count };
