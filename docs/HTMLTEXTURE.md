@@ -12,9 +12,9 @@ A page talks to the vehicle through `window.omsi`.
 ```js
 window.omsi = window.omsi || {};
 window.omsi.update = function (d) {
-  d.num, d.str      // script variables that changed since the last call (all on the first)
-  d.vehicle         // the normalised snapshot, same object as omsi.vehicle
-  d.vars            // every variable so far, same object as omsi.vars
+    d.num, d.str      // script variables that changed since the last call (all on the first)
+    d.vehicle         // the normalised snapshot, same object as omsi.vehicle
+    d.vars            // every variable so far, same object as omsi.vars
 };
 ```
 
@@ -32,6 +32,18 @@ value that only jitters in the last digit does not redraw the page.
 
 Bus-specific things (a mod's own switch, a battery voltage) are not standardised by OMSI: read
 them with `omsi.getVar("their_variable_name")`.
+
+## Time, date, locale
+
+| | |
+| --- | --- |
+| `omsi.time.hour`, `.minute`, `.second` | simulation clock (numbers) |
+| `omsi.time.asString` | `HH:MM:SS` |
+| `omsi.date.day`, `.month`, `.year` | simulation date (numbers) |
+| `omsi.date.asString` | `DD.MM.YYYY`, `MM/DD/YYYY` when `locale` is `en` |
+| `omsi.locale` | interface language, ISO 639-1 (`en`, `de`, ...) |
+
+They are set before `omsi.update` runs and change with the simulation clock (once per second).
 
 ## `omsi.vehicle` (version 1)
 

@@ -47,6 +47,10 @@ pub trait HtmlRenderer: Send {
     /// [`crate::vehicle_api`]). Called before [`Self::set_vars`] whenever it changed. A
     /// backend that has no such object leaves this as it is.
     fn set_vehicle(&mut self, _api: &crate::vehicle_api::ApiValue) {}
+    /// `omsi.time`, `omsi.date` and `omsi.locale` (see [`crate::vehicle_api::environment`]): a
+    /// map whose entries become properties of `window.omsi`. Called before [`Self::set_vars`]
+    /// whenever it changed.
+    fn set_env(&mut self, _env: &crate::vehicle_api::ApiValue) {}
     /// The depot file as a page sees it (`window.omsi.depot`, see [`crate::vehicle_api::depot`]).
     /// Called once, before the first update.
     fn set_depot(&mut self, _depot: &crate::vehicle_api::ApiValue) {}
@@ -174,6 +178,8 @@ pub struct HtmlTexture {
     last_str: HashMap<String, String>,
     /// The vehicle snapshot the page has seen.
     last_api: Option<crate::vehicle_api::ApiValue>,
+    /// The time, date and locale the page has seen.
+    last_env: Option<crate::vehicle_api::ApiValue>,
     started: bool,
 }
 
@@ -189,6 +195,7 @@ impl HtmlTexture {
             last_num: HashMap::new(),
             last_str: HashMap::new(),
             last_api: None,
+            last_env: None,
             started: false,
         }
     }
@@ -272,11 +279,13 @@ impl VehicleInstance {
         }
         // one snapshot of the vehicle for all pages
         let api = self.html_api_snapshot();
+        let env = self.html_env_snapshot();
         let mut events = Vec::new();
         let mut triggers = Vec::new();
         let mut frames = Vec::new();
         for t in self.html_textures.iter_mut() {
             let api_changed = t.last_api.as_ref() != Some(&api);
+            let env_changed = t.last_env.as_ref() != Some(&env);
             let dn: Vec<(String, f32)> = num
                 .iter()
                 .filter(|(n, v)| t.last_num.get(n) != Some(v))
@@ -287,7 +296,7 @@ impl VehicleInstance {
                 .filter(|(n, v)| t.last_str.get(n) != Some(v))
                 .cloned()
                 .collect();
-            if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed {
+            if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed || env_changed {
                 log::debug!(
                     "htmltexture #{}: {} numeric and {} string variable(s) to the page{}",
                     t.script_index,
@@ -307,6 +316,10 @@ impl VehicleInstance {
                 if api_changed {
                     t.renderer.set_vehicle(&api);
                     t.last_api = Some(api.clone());
+                }
+                if env_changed {
+                    t.renderer.set_env(&env);
+                    t.last_env = Some(env.clone());
                 }
                 t.renderer.set_vars(&dn, &ds);
                 for (n, v) in dn {

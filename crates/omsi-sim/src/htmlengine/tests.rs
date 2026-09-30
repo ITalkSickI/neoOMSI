@@ -602,3 +602,57 @@ fn the_demo_shows_a_real_vehicle_snapshot() {
     assert!(has_colour(&f, RED), "the open door is drawn red");
     assert!(has_colour(&f, GREEN), "the running engine is drawn green");
 }
+#[test]
+fn time_date_and_locale_reach_the_page() {
+    use crate::vehicle_api::environment;
+    let mut c = crate::SimClock::default();
+    c.set_date(2026, 9, 30);
+    c.time = 13.0 * 3600.0 + 5.0 * 60.0 + 9.0;
+    let mut r = EngineRenderer::new(
+        200,
+        100,
+        "<div id='a'></div><div id='b'></div><div id='c'></div><div id='d'></div>\
+         <script>\
+          omsi.update = function () {\
+            var t = omsi.time, d = omsi.date;\
+            document.getElementById('a').textContent = t.hour + ':' + t.minute + ':' + t.second + ' ' + t.asString;\
+            document.getElementById('b').textContent = d.day + '.' + d.month + '.' + d.year + ' ' + d.asString;\
+            document.getElementById('c').textContent = omsi.locale;\
+          };\
+         </script>",
+    );
+    r.set_env(&environment(&c, "de"));
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("a").as_deref(), Some("13:5:9 13:05:09"));
+    assert_eq!(r.text_of("b").as_deref(), Some("30.9.2026 30.09.2026"));
+    assert_eq!(r.text_of("c").as_deref(), Some("de"));
+}
+
+#[test]
+fn the_english_date_is_month_first() {
+    use crate::vehicle_api::{environment, ApiValue};
+    let mut c = crate::SimClock::default();
+    c.set_date(2026, 9, 30);
+    let ApiValue::Map(m) = environment(&c, "en") else { panic!() };
+    let ApiValue::Map(d) = &m.iter().find(|(k, _)| k == "date").unwrap().1 else { panic!() };
+    assert_eq!(d.iter().find(|(k, _)| k == "asString").unwrap().1, ApiValue::Str("09/30/2026".into()));
+}
+
+#[test]
+fn prefix_increment_and_decrement() {
+    let mut r = EngineRenderer::new(
+        200,
+        100,
+        "<div id='a'></div><div id='b'></div>\
+         <script>\
+          var S = { pt: 0 }, n = 5;\
+          var t = ++S.pt;\
+          ++S.pt;\
+          document.getElementById('a').textContent = t + ',' + S.pt;\
+          document.getElementById('b').textContent = (--n) + ',' + n;\
+         </script>",
+    );
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("a").as_deref(), Some("1,2"));
+    assert_eq!(r.text_of("b").as_deref(), Some("4,4"));
+}

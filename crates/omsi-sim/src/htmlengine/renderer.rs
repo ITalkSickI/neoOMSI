@@ -254,6 +254,15 @@ impl HtmlRenderer for EngineRenderer {
         }
     }
 
+    fn set_env(&mut self, env: &crate::vehicle_api::ApiValue) {
+        if let (Some(omsi), crate::vehicle_api::ApiValue::Map(m)) = (self.omsi(), env) {
+            let mut o = omsi.lock().unwrap();
+            for (k, v) in m {
+                o.insert(k.clone(), api_to_val(v));
+            }
+        }
+    }
+
     fn pointer(&mut self, x: f32, y: f32, kind: PointerKind) {
         self.clock();
         let node = self.hit_node(x, y);

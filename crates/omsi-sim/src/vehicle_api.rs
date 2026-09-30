@@ -41,13 +41,63 @@
 //! | `route.nextIndex`, `.delaySec`, `.source` | next stop, delay (s), `timetable` / `ibis` / `none` |
 //! | `route.ibis` | the IBIS's own numbers: `line`, `suffix`, `routeIndex`, `terminusIndex`, `terminusCode` |
 //!
+//! `window.omsi.time` (`hour`, `minute`, `second`, `asString`), `window.omsi.date` (`day`,
+//! `month`, `year`, `asString`) and `window.omsi.locale` come from [`environment`].
+//!
 //! `window.omsi.depot` (see [`depot`]) lists what the depot file offers: `lines[]` (each with
 //! its `routes[]`), `routes[]`, `destinations[]`. The page acts on it with
 //! `omsi.setRoute(index)`, `omsi.setLine(text)` and `omsi.setDestination(index)`; with a
 //! timetable `omsi.setNextStop(index)` skips to that stop.
 
 use crate::vehicle::VehicleInstance;
+use crate::SimClock;
 use omsi_vehicle::hof::Hof;
+use std::sync::RwLock;
+
+static LOCALE: RwLock<String> = RwLock::new(String::new());
+
+/// Set the interface language pages see as `omsi.locale` (ISO 639-1, e.g. `de`; empty = `en`).
+pub fn set_locale(iso: &str) {
+    *LOCALE.write().unwrap() = iso.trim().to_ascii_lowercase();
+}
+
+/// The current `omsi.locale`.
+pub fn locale() -> String {
+    let l = LOCALE.read().unwrap();
+    if l.is_empty() { "en".to_string() } else { l.clone() }
+}
+
+/// `window.omsi.time`, `.date` and `.locale`: the simulation clock and the interface language.
+/// `asString` of the time is `HH:MM:SS`; of the date `DD.MM.YYYY` (`MM/DD/YYYY` for `en`).
+pub fn environment(clock: &SimClock, locale: &str) -> ApiValue {
+    let secs: i64 = if clock.time.is_finite() { clock.time.floor() as i64 } else { 0 };
+    let t = secs.rem_euclid(86_400);
+    let (h, m, s) = (t / 3600, (t % 3600) / 60, t % 60);
+    let (d, mo) = clock.day_month();
+    let y = clock.year;
+    let date = if locale == "en" { format!("{mo:02}/{d:02}/{y:04}") } else { format!("{d:02}.{mo:02}.{y:04}") };
+    map(vec![
+        (
+            "time",
+            map(vec![
+                ("hour", ApiValue::Num(h as f64)),
+                ("minute", ApiValue::Num(m as f64)),
+                ("second", ApiValue::Num(s as f64)),
+                ("asString", ApiValue::Str(format!("{h:02}:{m:02}:{s:02}"))),
+            ]),
+        ),
+        (
+            "date",
+            map(vec![
+                ("day", ApiValue::Num(d as f64)),
+                ("month", ApiValue::Num(mo as f64)),
+                ("year", ApiValue::Num(y as f64)),
+                ("asString", ApiValue::Str(date)),
+            ]),
+        ),
+        ("locale", ApiValue::Str(locale.to_string())),
+    ])
+}
 
 /// A value of the snapshot tree.
 #[derive(Clone, Debug, PartialEq)]
@@ -519,6 +569,11 @@ pub fn snapshot(i: &Inputs) -> ApiValue {
 }
 
 impl VehicleInstance {
+    /// The normalised state of this vehicle for its HTML textures (see the module docs).
+    pub fn html_env_snapshot(&self) -> ApiValue {
+        environment(&self.host.clock, &locale())
+    }
+
     /// The normalised state of this vehicle for its HTML textures (see the module docs).
     pub fn html_api_snapshot(&self) -> ApiValue {
         let var = |n: &str| self.var(n);

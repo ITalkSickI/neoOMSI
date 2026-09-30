@@ -36,6 +36,9 @@
 //! `type`, `x`, `y` (texture pixels), `target`, `stopPropagation()` and `preventDefault()`.
 //! * `display:inline-block` (and `<button>`, which has a default look) lays boxes out in rows that
 //!   wrap; a box without a `width` is as wide as its content. Use it for key pads and lists.
+//! * `window.omsi.time` (`hour`, `minute`, `second`, `asString` = `HH:MM:SS`), `window.omsi.date`
+//!   (`day`, `month`, `year`, `asString`: `DD.MM.YYYY`, `MM/DD/YYYY` for `en`) show the simulation
+//!   clock; `window.omsi.locale` is the interface language (`en`, `de`, ...).
 //! * `window.omsi.vehicle.route` holds line, destination sign, the stops with their planned
 //!   times, the stop the bus is at and the last stop (see [`crate::vehicle_api`]).
 //!   `window.omsi.depot` lists the depot file's `lines[]` (each with its `routes[]`), `routes[]`

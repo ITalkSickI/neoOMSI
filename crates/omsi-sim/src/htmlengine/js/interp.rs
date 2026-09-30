@@ -60,6 +60,25 @@ impl Interp {
                 ])),
             ),
             ("apiVersion", Val::Num(1.0)),
+            (
+                "time",
+                Val::Obj(obj_of(&[
+                    ("hour", Val::Num(0.0)),
+                    ("minute", Val::Num(0.0)),
+                    ("second", Val::Num(0.0)),
+                    ("asString", Val::Str("00:00:00".to_string())),
+                ])),
+            ),
+            (
+                "date",
+                Val::Obj(obj_of(&[
+                    ("day", Val::Num(1.0)),
+                    ("month", Val::Num(1.0)),
+                    ("year", Val::Num(1970.0)),
+                    ("asString", Val::Str("01/01/1970".to_string())),
+                ])),
+            ),
+            ("locale", Val::Str("en".to_string())),
             ("vehicle", Val::Obj(obj_of(&[]))),
             ("vars", Val::Obj(obj_of(&[("num", Val::Obj(obj_of(&[]))), ("str", Val::Obj(obj_of(&[])))]))),
         ]);
