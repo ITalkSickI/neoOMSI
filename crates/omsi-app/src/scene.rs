@@ -6388,6 +6388,8 @@ impl World {
                             || ot.model.no_distance_check
                             || ot.model.meshes.iter().any(|m| m.no_distance_check);
                         for inst in all_instances.iter().chain(&lod_instances) {
+                            scene.instances[*inst].presurface =
+                                ot.sco.render_type == omsi_scenery::sco::RenderType::PreSurface;
                             renderer.set_object_culling(scene, *inst, radius, detail, any_distance);
                         }
                     }
