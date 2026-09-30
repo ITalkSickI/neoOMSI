@@ -2567,6 +2567,7 @@ fn drive_remote(rv: &mut RemoteVehicle, pose: &Pose, dt: f32, exact: bool) {
         brake: pose.flags & omsi_net::FLAG_BRAKE != 0 || pose.brake > 0.1,
         lights: pose.head >= 2,
         at_station: if doors_open { 1 } else { -1 },
+        priority_warning: false,
     };
     rv.vehicle.update_ai_with(dt, &frame, &inputs, &pinned);
     rv.last = pose.clone();
