@@ -682,7 +682,7 @@ impl Player {
             let n: Vec<String> = self
                 .bindings
                 .iter()
-                .filter(|b| b.scan_code == scan && b.modifier == modifiers)
+                .filter(|b| b.scan_code == scan && b.matches(modifiers))
                 .map(|b| b.action.clone())
                 .collect();
             self.held_keys.insert(scan, n.clone());
@@ -693,7 +693,7 @@ impl Player {
                 None => self
                     .bindings
                     .iter()
-                    .filter(|b| b.scan_code == scan && b.modifier == modifiers)
+                    .filter(|b| b.scan_code == scan && b.matches(modifiers))
                     .map(|b| b.action.clone())
                     .collect(),
             }

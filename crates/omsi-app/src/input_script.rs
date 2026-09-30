@@ -181,7 +181,7 @@ impl App {
             // driving layout uses keeps that meaning (with the OMSI layout, every binding
             // counts)
             if pressed && !repeat {
-                let m = shift_now as i32 | (ctrl as i32) * 2 | (alt as i32) * 4;
+                let m = omsi_content::input::chord(shift_now, ctrl, alt);
                 let own = keys::dik_code(code).is_some_and(|s| self.own_keys.contains(&s));
                 let ours = self.args.drive_keys != "omsi"
                     && m == 0
@@ -189,7 +189,7 @@ impl App {
                     && (fallback_action(code, &self.args.drive_keys).is_some()
                         || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
                 if let Some(scan) = keys::dik_code(code).filter(|_| !ours) {
-                    let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.modifier == m).map(|b| b.action.clone());
+                    let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.matches(m)).map(|b| b.action.clone());
                     if let Some(a) = action {
                         if self.game_action(&a) {
                             return;
@@ -229,7 +229,7 @@ impl App {
                     }
                     // (F12 alone only where the bus has no key of its own on it: in OMSI's
                     // keyboard.cfg it is the pram/wheelchair button, which it took away)
-                    KeyCode::F12 if !self.player.as_ref().is_some_and(|p| p.bindings.iter().any(|b| b.scan_code == 88 && b.modifier == 0 && p.vehicle.ty.program.trigger(&b.action).is_some())) => {
+                    KeyCode::F12 if !self.player.as_ref().is_some_and(|p| p.bindings.iter().any(|b| b.scan_code == 88 && b.chord() == 0 && p.vehicle.ty.program.trigger(&b.action).is_some())) => {
                         self.take_screenshot();
                         return;
                     }
@@ -483,15 +483,11 @@ impl App {
                     let m = if covers_vehicle_key {
                         0
                     } else {
-                        shift as i32 * 1
-                            | (self.keys.contains(&KeyCode::ControlLeft)
-                                || self.keys.contains(&KeyCode::ControlRight))
-                                as i32
-                                * 2
-                            | (self.keys.contains(&KeyCode::AltLeft)
-                                || self.keys.contains(&KeyCode::AltRight))
-                                as i32
-                                * 4
+                        omsi_content::input::chord(
+                            shift,
+                            self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight),
+                            self.keys.contains(&KeyCode::AltLeft) || self.keys.contains(&KeyCode::AltRight),
+                        )
                     };
                     p.key(scan, m, pressed);
                 }
@@ -1822,7 +1818,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         let dir = crate::startup::content_dir().unwrap_or_else(|| self.args.root.clone()).join("Situations");
         let file = dir.join("quicksave.osn");
         if !file.exists() {
-            self.service_msg = Some(("No quicksave yet (Alt+S saves one)".into(), 4.0));
+            self.service_msg = Some(("No quicksave yet (Ctrl+S saves one)".into(), 4.0));
             return false;
         }
         let Ok(exe) = std::env::current_exe() else { return false };

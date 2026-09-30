@@ -698,13 +698,13 @@ fn key_name(scan: i64, modifier: i64) -> String {
     }
     let k = crate::keys::scan_name(scan as i32).unwrap_or_else(|| format!("scan {scan}"));
     let mut mods = Vec::new();
-    if modifier & 1 != 0 {
+    if modifier & omsi_content::input::KEY_SHIFT as i64 != 0 {
         mods.push("Shift");
     }
-    if modifier & 2 != 0 {
+    if modifier & omsi_content::input::KEY_CTRL as i64 != 0 {
         mods.push("Ctrl");
     }
-    if modifier & 4 != 0 {
+    if modifier & omsi_content::input::KEY_ALT as i64 != 0 {
         mods.push("Alt");
     }
     if mods.is_empty() {
@@ -732,11 +732,13 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         } else if !matches!(code, K::ShiftLeft | K::ShiftRight | K::ControlLeft | K::ControlRight | K::AltLeft | K::AltRight | K::SuperLeft | K::SuperRight) {
             match crate::keys::dik_code(code) {
                 Some(scan) => {
-                    let m = (l.ui.input.shift as i64) | ((l.ui.input.ctrl as i64) << 1) | ((l.ui.input.alt as i64) << 2);
+                    let m = omsi_content::input::chord(l.ui.input.shift, l.ui.input.ctrl, l.ui.input.alt) as i64;
                     let section = ["vehicles", "game"][sec];
                     if let Some(b) = l.state.keybindings.get_mut(section).and_then(|a| a.as_array_mut()).and_then(|a| a.get_mut(idx)) {
+                        // (the entry's "held" bit is the action's, not the key's: it stays)
+                        let hold = b.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0) & omsi_content::input::KEY_HOLD as i64;
                         b["scan_code"] = json!(scan);
-                        b["modifier"] = json!(m);
+                        b["modifier"] = json!(m | hold);
                     }
                     save_keys(l);
                 }
