@@ -436,7 +436,13 @@ impl RigidBody {
         let mass = if def.mass < 100.0 { def.mass * 1000.0 } else { def.mass }.max(500.0);
         let moi = def.moment_of_inertia;
         let scale = if moi[0] < 5000.0 { 1000.0 } else { 1.0 };
-        let inertia = Vec3::new((moi[0] * scale).max(100.0), (moi[1] * scale).max(100.0), (moi[2] * scale).max(100.0));
+        // `[momentofintertia]` goes to ODE as I11, I22, I33 of Omsi.exe's y-up body frame
+        // (0x7af0a4): about the lateral axis (pitch), the vertical one (yaw) and the
+        // longitudinal one (roll) - roll takes the third value (0x7e4ef3), yaw the second
+        // (0x7e5110), whatever the SDK's comment says. Here (right, forward, up): pitch,
+        // roll, yaw. Read in the comment's order the SD202 rolled on 80 t m² instead of
+        // 300, twice as fast, and every uneven patch rocked it like a boat.
+        let inertia = Vec3::new((moi[0] * scale).max(100.0), (moi[2] * scale).max(100.0), (moi[1] * scale).max(100.0));
         let cog_xy = def.cog.map(|c| (c[0], c[1])).unwrap_or((0.0, 0.0));
         let cog_z = if def.cog_height > 0.0 { def.cog_height } else { def.cog.map(|c| c[2]).filter(|z| *z > 0.0).unwrap_or(1.0) };
         let cog = Vec3::new(cog_xy.0, cog_xy.1, cog_z);
@@ -764,7 +770,11 @@ impl RigidBody {
                     // on: "like a boat on the sea".)
                     let k = w.spring * w.spring_factor.max(0.0);
                     let top = hub0.z + (CLIMB * r) as f64;
-                    let under = probe(hub0.x, hub0.y, top).below;
+                    // (nothing under it: Omsi.exe's ground query looks from 3 m over the model
+                    // origin's plane, 0x7a0985 - a wheel that sank through a face at a joint of
+                    // two surfaces, or into a bridge deck, found nothing within reach, the
+                    // spring let go and the bus fell through the world)
+                    let under = probe(hub0.x, hub0.y, top).below.or_else(|| probe(hub0.x, hub0.y, hub0.z - r as f64 + 3.0).below);
                     let t = under.map(|g| ((g + r as f64 - hub0.z) / up.z.max(0.3) as f64) as f32);
                     if let Some(g) = under {
                         w.ground_z = g;
@@ -1930,7 +1940,9 @@ mod tests {
                 assert!(crash > 0.5 * kinetic && crash < 1.05 * kinetic, "{kmh} km/h at {fps} fps: crash of {crash} J for {kinetic} J");
                 assert!(front < 6.0 - 0.47 + 0.03, "{kmh} km/h at {fps} fps: front axle reached {front}");
                 assert!(top < 0.3, "{kmh} km/h at {fps} fps: thrown up to {top}");
-                assert!(rb.forward_speed().abs() < 1.0, "{kmh} km/h at {fps} fps: still at {}", rb.forward_speed());
+                // (a rebound of a metre or so: with the moments of inertia on Omsi.exe's axes
+                // the body's lower yaw inertia takes a little more of the blow back)
+                assert!(rb.forward_speed().abs() < 1.5, "{kmh} km/h at {fps} fps: still at {}", rb.forward_speed());
             }
         }
     }

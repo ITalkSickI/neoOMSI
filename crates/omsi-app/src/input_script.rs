@@ -2078,8 +2078,11 @@ impl App {
                 }
             }
             "view_toggle_informationdisplay" => self.info_bar = !self.info_bar,
+            // (Omsi.exe's camera reset, 0x7edde4, puts back the field of view with the
+            // direction: the zoom goes as well, #244)
             "view_reset_direction" => {
                 self.look = (0.0, 0.0);
+                self.view_zoom.remove(&self.view);
                 #[cfg(windows)]
                 if let Some(vr) = self.vr.as_mut() { vr.recenter(); }
             }
@@ -2087,6 +2090,7 @@ impl App {
             "view_reset_all_directions" => {
                 self.look = (0.0, 0.0);
                 self.view_looks.clear();
+                self.view_zoom.clear();
             }
             "view_toggle_viewpoint" | "view_interiorcam_plus" | "view_interiorcam_minus" => {
                 let Some(p) = self.player.as_mut() else { return true };

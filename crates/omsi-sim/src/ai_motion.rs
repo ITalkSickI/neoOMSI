@@ -244,7 +244,9 @@ impl AiBody {
             damper[2] += w.c * w.lat * w.lat;
         }
         let half_track = wheels.iter().map(|w| w.lat.abs()).fold(0.5, f32::max);
-        let mut inertia = [def.moment_of_inertia[0] * unit, def.moment_of_inertia[1] * unit];
+        // (pitch and roll: the first and the third value, as Omsi.exe reads them - see
+        // `RigidBody::from_definition`)
+        let mut inertia = [def.moment_of_inertia[0] * unit, def.moment_of_inertia[2] * unit];
         if inertia[0] <= 0.0 {
             inertia[0] = mass * (front_long * front_long + rear_long * rear_long) * 0.5;
         }
@@ -359,9 +361,31 @@ impl AiBody {
         let g = way(self.rot_long + look).truncate() - self.rear;
         let alpha = (g.dot(right) as f32).atan2(g.dot(fwd) as f32).clamp(-FRAC_PI_2, FRAC_PI_2);
         let reach = (g.length() as f32).max(1.0);
-        let want = (2.0 * self.wheelbase * alpha.sin() / reach).atan().to_degrees().clamp(-self.max_steer, self.max_steer);
+        // The way itself says how tight it bends here: a junction's turn laid tighter than
+        // the model's `[inv_min_turnradius]` still has to be followed - capped at the
+        // model's lock the car ran wide of it, through the kerb, the corner house and the
+        // people on the pavement (#249; OMSI's AI keeps to its path). The lock the bend
+        // needs, and a little more, is allowed, and the wheel may turn that much faster.
+        let (a, b, c) = (way(self.rot_long).truncate(), way(self.rot_long + 0.5 * look).truncate(), way(self.rot_long + look).truncate());
+        let (u, w) = (b - a, c - b);
+        let turn = (u.x * w.y - u.y * w.x).atan2(u.dot(w)).abs() as f32;
+        let bend_k = if look > 0.1 { 2.0 * turn / look } else { 0.0 };
+        let need = (bend_k * self.wheelbase).atan().to_degrees() * 1.15;
+        let limit = if std::env::var_os("OMSI_AI_MODEL_LOCK").is_some() { self.max_steer } else { self.max_steer.max(need.min(60.0)) };
+        // OMSI_DEBUG_AI_WIDE: every tenth of a second a car stands over 1.5 m beside its way
+        if std::env::var_os("OMSI_DEBUG_AI_WIDE").is_some() {
+            let off = ((target - self.rear).dot(right)).abs();
+            if off > 1.5 {
+                static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if n % 50 == 0 {
+                    log::info!("ai wide: {off:.1} m beside its way at ({:.0}, {:.0}), bend needs {need:.0} deg, lock {:.0} ({} so far)", self.rear.x, self.rear.y, self.max_steer, n + 1);
+                }
+            }
+        }
+        let want = (2.0 * self.wheelbase * alpha.sin() / reach).atan().to_degrees().clamp(-limit, limit);
         if dt > 0.0 {
-            let rate = self.steer_rate * dt;
+            let rate = self.steer_rate * dt * if limit > self.max_steer { 1.5 } else { 1.0 };
             self.steer_cmd += (want - self.steer_cmd).clamp(-rate, rate);
             self.steer += (self.steer_cmd - self.steer) * (dt / 0.08).min(1.0);
         }

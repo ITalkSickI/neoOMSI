@@ -1891,8 +1891,13 @@ pub fn model_lights_owned(
 /// a `[collision_mesh]` it is a step the wheels climb (a traffic island).
 pub const LOW_OBJECT: f32 = 0.3;
 
-/// Faces this close over another road face are paint on it, not a step (m).
-const PAINT_LAYER: f32 = 0.045;
+/// Faces this close over another road face are paint on it, not a step (m). Omsi.exe's
+/// ground query (0x7a0814) takes the highest face whatever lies under it; this keeps only
+/// the thinnest layers flat (a marking a centimetre or two over the asphalt). At 4.5 cm it
+/// also took the speed cushions, manhole and plate objects, lowered kerbs and slab edges
+/// away, and the bottom 4.5 cm of every speed bump's ramp - "no road bumps", and wheels
+/// drawn sunk into what they drove on.
+const PAINT_LAYER: f32 = 0.02;
 
 /// What a wheel stands on at world (x, y): the faces of the roads, crossings and surface
 /// objects there, and the terrain wherever it is not cut away under them - the highest at
@@ -8496,7 +8501,9 @@ fn sync_materials(
             let mut mask = 0u32;
             for (k, (_, var)) in l.maps.iter().enumerate() {
                 let x = var.trim().parse::<f32>().ok().or_else(|| vehicle.var(var)).unwrap_or(0.0);
-                if x > 0.01 {
+                // (on at 0.5, as each map's texture stage is, 0x7fe51f: a variable a script
+                // dims through 0.1 lit the map at full)
+                if x >= 0.5 {
                     mask |= 1 << k;
                 }
             }
@@ -9147,7 +9154,10 @@ impl MultiLight {
                             let sx = x * iw / w.max(1);
                             let (d, s) = ((y * w + x) * 4, (sy * iw + sx) * 4);
                             for c in 0..3 {
-                                acc.rgba[d + c] = acc.rgba[d + c].saturating_add(img.rgba[s + c]);
+                                // (ADDSMOOTH, as Omsi.exe chains a slot's maps in its
+                                // texture stages, 0x7fe5ff: a + b - a b)
+                                let (a, b) = (acc.rgba[d + c] as u32, img.rgba[s + c] as u32);
+                                acc.rgba[d + c] = (a + b - a * b / 255).min(255) as u8;
                             }
                         }
                     }

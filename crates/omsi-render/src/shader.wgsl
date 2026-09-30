@@ -1310,17 +1310,21 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let map_lamps = select(1.0, 0.0, (material.params.y > 0.2 && material.params.y < 0.3) || lm_only);
     let lamp_light = point_lights(in.world, n, map_lamps);
     var light = diffuse + lamp_light;
-    if (material.params2.x > 0.5 && material.extra.x < 0.5) {
+    let light_mapped = material.params2.x > 0.5 && material.extra.x < 0.5;
+    var lit = albedo * material.color.rgb * light;
+    if (light_mapped) {
         // [matl_lightmap], as Omsi.exe's texture stages have it (0x7fe4d3..0x7fe604): the
         // light map is laid onto the vertex light with D3DTOP_ADDSMOOTH (light + map x (1 -
         // light)) before the texture is multiplied in - a lit saloon glows at night and
-        // hardly shows in daylight. (Added after the texture, the maps whitened the cabin
-        // by day as well.)
+        // hardly shows in daylight. The vertex light is D3D's: the material's emissive and
+        // its colour times every light - the saloon lamps (`[interiorlight]`, D3D lights
+        // too, 0x5fa8f0) among them - clamped at 1. (Added once more after the map, the
+        // saloon lamps lit a cabin twice over, flat white where the map was full; and the
+        // material's colour took the map down with it.)
         let lm = textureSample(t_light, s_diffuse, buv).rgb * clamp(in.params2.x, 0.0, 1.0);
-        let l = clamp(light, vec3<f32>(0.0), vec3<f32>(1.0));
-        light = l + lm * (vec3<f32>(1.0) - l);
+        let v = clamp(material.emissive.rgb + material.color.rgb * (light + interior_lamps(in.world, n, in.params2.z)), vec3<f32>(0.0), vec3<f32>(1.0));
+        lit = albedo * (v + lm * (vec3<f32>(1.0) - v));
     }
-    var lit = albedo * material.color.rgb * light;
     // the D3D material's own highlight (specular colour and power of the o3d file or a
     // [matl_allcolor]), lit at the vertices (see `vertex_specular`) and added after the
     // texture as D3D's specular is; the sun's not in its shadow
@@ -1328,7 +1332,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (material.params.y > 0.5) {
         lit = tex.rgb * material.color.rgb;
     }
-    lit = lit + tex.rgb * material.emissive.rgb;
+    if (!light_mapped || material.params.y > 0.5) {
+        lit = lit + tex.rgb * material.emissive.rgb;
+    }
     // the tile light map, as on the terrain: the lamps' pools on the roads and the plates,
     // lighting the surface (not painted over it: added as it was, the pool lay on the road
     // as a white patch); only where it is their light at night - elsewhere the map's lamps
@@ -1336,8 +1342,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (lm_only) {
         lit = lit + albedo * material.color.rgb * light_map_at(in.world) * camera.sun_color.w;
     }
-    // [interiorlight]: the saloon lamps on the meshes and passengers they illuminate
-    lit = lit + tex.rgb * interior_lamps(in.world, n, in.params2.z);
+    // [interiorlight]: the saloon lamps on the meshes and passengers they illuminate (in
+    // a light-mapped material's vertex light already, above)
+    if (!light_mapped) {
+        lit = lit + tex.rgb * interior_lamps(in.world, n, in.params2.z);
+    }
     if (material.extra.w > 0.5) {
         // [matl_nightmap]: self-illumination that fades in with the night
         // terrain: the tile light map in tile space (north at the top row)
