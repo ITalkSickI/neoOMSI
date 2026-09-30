@@ -6021,6 +6021,22 @@ impl World {
                     } else {
                         None
                     };
+                    // Some signs derive filenames in {frame}. Probe on a separate
+                    // instance: its placeholder inputs must not mutate the live script
+                    // state or retain queued sounds/animations.
+                    let freetex_probe = if ot.meshes.iter().any(|(_, _, overrides)| {
+                        overrides.iter().any(|o| !o.item && o.freetex.is_some())
+                    }) {
+                        ot.program.as_ref().map(|program| {
+                            let mut probe = omsi_sim::scenery::SceneryInstance::new(
+                                program.clone(), &ot.mesh_defs(), self.script_clock(), &strings,
+                            );
+                            probe.update(0.0, &omsi_sim::scenery::SceneryVars {
+                                in_use: 1.0, ..Default::default()
+                            });
+                            probe
+                        })
+                    } else { None };
                     // a crossing warped onto the ground has meshes of its own
                     let own_meshes: Option<Vec<(MeshId, Vec<MaterialId>)>> = warped.as_ref().map(|ms| {
                         ms.iter()
@@ -6115,7 +6131,10 @@ impl World {
                                 let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, override_) else { continue };
                                 let Some((_, var)) = &override_.freetex else { continue };
                                 let Some(started) = object_script.as_ref() else { continue };
-                                let name = started.str_var(var).trim().to_string();
+                                let initial = started.str_var(var).trim();
+                                let name = if initial.is_empty() {
+                                    freetex_probe.as_ref().map(|p| p.str_var(var).trim()).unwrap_or("")
+                                } else { initial }.to_string();
                                 if name.is_empty() {
                                     continue;
                                 }
