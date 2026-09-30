@@ -25,6 +25,39 @@ pub fn builtin_scenobj_vars(root: &Path) -> Vec<String> {
     v
 }
 
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+
+    #[test]
+    fn busstop_frame_resolves_each_placements_texture() {
+        let dir = std::env::temp_dir().join(format!("omsi_busstop_freetex_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let vars = dir.join("strings.txt");
+        let script = dir.join("BusStop.osc");
+        std::fs::write(&vars, "BusStop\nTexture\n").unwrap();
+        std::fs::write(&script, concat!(
+            "{init}\n{end}\n{frame}\n",
+            "(L.$.BusStop) \"\" $= !\n{if}\n",
+            "\"Busstop\\\" $+ (L.$.BusStop) $+ \".png\" $+ (S.$.Texture)\n",
+            "{endif}\n{end}\n",
+        )).unwrap();
+        let program = Arc::new(compile(&CompileInput {
+            stringvarlists: vec![vars], scripts: vec![script], ..Default::default()
+        }));
+        assert!(program.errors.is_empty(), "{:?}", program.errors);
+        for name in ["BentenDaini_1", "BentenDaini_2", ""] {
+            let mut inst = SceneryInstance::new_with_strings(
+                program.clone(), &[], crate::SimClock::default(), &[name.to_string()],
+            );
+            inst.update(0.0, &SceneryVars::default());
+            let expected = if name.is_empty() { String::new() } else { format!("Busstop\\{name}.png") };
+            assert_eq!(inst.str_var("Texture"), expected);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
 /// Compile the scripts of a scenery object type (an empty program with the builtin
 /// variables when it has none, so animations can still bind to `Switch` & co).
 pub fn compile_scenery(root: &Path, scripts: &ScriptSet) -> Program {
@@ -72,7 +105,16 @@ pub struct SceneryInstance {
 impl SceneryInstance {
     /// `meshes`: (mesh definition, pivot) per rendered mesh.
     pub fn new(program: Arc<Program>, meshes: &[(&MeshDef, Mat4)], clock: crate::SimClock) -> SceneryInstance {
+        Self::new_with_strings(program, meshes, clock, &[])
+    }
+
+    /// Map object strings follow the compiled stringvarnamelist order. Seed them
+    /// before init so scripts can derive texture filenames from placement data.
+    pub fn new_with_strings(program: Arc<Program>, meshes: &[(&MeshDef, Mat4)], clock: crate::SimClock, strings: &[String]) -> SceneryInstance {
         let mut state = State::new(&program);
+        for (dst, src) in state.str_vars.iter_mut().zip(strings) {
+            dst.clone_from(src);
+        }
         let mut vm = Vm::new();
         let mut host = VehicleHost::new(clock);
         // `Colorscheme`: the object's paint scheme, −1 for its own textures (OMSI
