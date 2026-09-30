@@ -2183,15 +2183,24 @@ impl App {
                 #[cfg(windows)]
                 if let Some(vr) = self.vr.as_mut() { vr.recenter(); }
             }
-            // (Space in Inputs/keyboard.cfg: every view looks ahead again)
+            // (Space in Inputs/keyboard.cfg: every view looks ahead again, and back to the
+            // standard camera - "center")
             "view_reset_all_directions" => {
                 self.look = (0.0, 0.0);
                 self.view_looks.clear();
                 self.view_zoom.clear();
                 self.orbit = ORBIT_DEFAULT;
+                if let Some(p) = self.player.as_mut() {
+                    p.cam_choice = (0, 0);
+                }
             }
             "view_toggle_viewpoint" | "view_interiorcam_plus" | "view_interiorcam_minus" => {
                 let Some(p) = self.player.as_mut() else { return true };
+                // (the interior cameras only cycle in the interior: from outside the keys
+                // would change an invisible camera)
+                if !matches!(self.view.as_str(), "driver" | "pax") {
+                    return true;
+                }
                 let def = &p.vehicle.ty.def;
                 let (count, pax) = if self.view == "pax" { (p.pax_camera_count(), true) } else { (def.cameras_driver.len(), false) };
                 if count > 1 {
