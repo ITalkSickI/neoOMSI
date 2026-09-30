@@ -8640,7 +8640,15 @@ impl Renderer {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: if parts > 1 { wgpu::LoadOp::Load } else { depth_first },
-                        store: wgpu::StoreOp::Store,
+                        // (nothing reads the picture's depth after the pass - the ambient
+                        // occlusion reads the prepass's own texture - so where the depth is
+                        // not carried over, a tile-based GPU need not flush a full-size
+                        // depth buffer back)
+                        store: if share_depth || msaa_prepass || ao_on {
+                            wgpu::StoreOp::Store
+                        } else {
+                            wgpu::StoreOp::Discard
+                        },
                     }),
                     stencil_ops: None,
                 }),
@@ -10122,11 +10130,18 @@ fn record_bundles(
 
 /// The render scale for a picture of this size: the requested one (0.5..1), or with 0
 /// (automatic) full size up to `AUTO_SCALE_PIXELS` and that many pixels above it.
+/// A requested one keeps to the same budget on a Mac or a phone: the Low preset's fixed
+/// 0.75 of a Retina window drew more pixels than the budget allows (3.24 of 2.8 million
+/// on a 3200x1800 window), and the automatic scale would never have drawn that many.
 fn scene_scale_for(requested: f32, width: u32, height: u32) -> f32 {
-    if requested > 0.0 {
-        return requested.clamp(0.5, 1.0);
-    }
     let pixels = width as f32 * height as f32;
+    if requested > 0.0 {
+        let requested = requested.clamp(0.5, 1.0);
+        if (cfg!(target_os = "macos") || cfg!(target_os = "android")) && pixels > AUTO_SCALE_PIXELS {
+            return requested.min((AUTO_SCALE_PIXELS / pixels).sqrt().clamp(0.5, 1.0));
+        }
+        return requested;
+    }
     if pixels <= AUTO_SCALE_PIXELS {
         1.0
     } else {
@@ -10232,11 +10247,12 @@ impl<'w> SurfaceState<'w> {
             } else {
                 wgpu::PresentMode::AutoNoVsync
             },
-            // (with V-sync two frames waiting for the screen put every steering movement and
-            // key two frames - 33 ms at 60 Hz, more on a laptop's graphics chip that is behind
-            // anyway - on the screen late: the "input delay" players felt. One is enough to
-            // keep the chip busy there.)
-            desired_maximum_frame_latency: if vsync { 1 } else { 2 },
+            // (two frames in flight keep the graphics chip busy while the next frame is
+            // recorded: with one, the whole loop serialized behind the vsync'd drawable -
+            // on Apple silicon a frame cost GPU + CPU instead of the larger of the two,
+            // 50 ms where 24 of them were GPU. The price is one more frame of input
+            // delay, 33 ms at 60 Hz.)
+            desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
@@ -10262,7 +10278,8 @@ impl<'w> SurfaceState<'w> {
             return;
         }
         self.config.present_mode = mode;
-        self.config.desired_maximum_frame_latency = if enabled { 1 } else { 2 };
+        // (two frames in flight: see `new_with`)
+        self.config.desired_maximum_frame_latency = 2;
         self.surface.configure(&renderer.device, &self.config);
     }
 }
@@ -10808,8 +10825,16 @@ mod tests {
         }
         // never below half size
         assert_eq!(scene_scale_for(0.0, 16384, 16384), 0.5);
-        // what is asked for, within 0.5..1
-        assert_eq!(scene_scale_for(0.75, 3200, 1800), 0.75);
+        // what is asked for, within 0.5..1 - on a Mac or a phone a scale over the pixel
+        // budget is capped like the automatic one
+        let s = scene_scale_for(0.75, 3200, 1800);
+        if cfg!(target_os = "macos") || cfg!(target_os = "android") {
+            assert!((s - 0.697).abs() < 0.01, "{s}");
+            assert!((3200.0 * s * 1800.0 * s - AUTO_SCALE_PIXELS).abs() < 1.0);
+        } else {
+            assert_eq!(s, 0.75);
+        }
+        // a small window under the budget keeps what it asked for
         assert_eq!(scene_scale_for(0.3, 1600, 900), 0.5);
         assert_eq!(scene_scale_for(1.4, 1600, 900), 1.0);
     }

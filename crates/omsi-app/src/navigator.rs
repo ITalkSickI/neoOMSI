@@ -826,7 +826,7 @@ impl Navigator {
         let y0 = if top { margin } else { sh - margin - ph };
 
         if self.gpu.is_none() {
-            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 4, self.atlas.size));
+            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 1, self.atlas.size));
         }
         let resized = self.target.map(|t| (t.1, t.2) != (w, h)).unwrap_or(true);
         if resized {
@@ -1903,7 +1903,7 @@ impl Navigator {
         self.city.rect = [x0, y0, x0 + w, y0 + h];
         let (tw, th) = (w as u32, h as u32);
         if self.gpu.is_none() {
-            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 4, self.atlas.size));
+            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 1, self.atlas.size));
         }
         if self.city.target.map(|t| (t.1, t.2) != (tw, th)).unwrap_or(true) {
             if let Some((t, _, _)) = self.city.target.take() {
