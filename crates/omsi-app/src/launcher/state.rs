@@ -932,8 +932,13 @@ impl State {
     pub fn first_trip(&self) -> Option<usize> {
         let t = self.tour()?;
         let now = self.choice.time as f64 * 60.0;
-        t.trips.iter().position(|x| x.departure >= now - 120.0).or(if t.trips.is_empty() { None } else { Some(t.trips.len() - 1) })
+        trip_index_at(t, now)
     }
+}
+
+/// The trip a tour starts with at `now`, shared by the route preview and the launch choice.
+pub(super) fn trip_index_at(tour: &core::TourInfo, now: f64) -> Option<usize> {
+    tour.trips.iter().position(|x| x.departure >= now - 120.0).or(if tour.trips.is_empty() { None } else { Some(tour.trips.len() - 1) })
 }
 
 pub fn hhmm(seconds: f64) -> String {
