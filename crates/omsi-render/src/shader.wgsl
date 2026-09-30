@@ -917,8 +917,31 @@ fn finite_or(v: vec3<f32>, fallback: vec3<f32>) -> vec3<f32> {
 }
 
 fn rain_hash(p: vec2<f32>) -> vec2<f32> {
-    let q = vec2<f32>(dot(p, vec2<f32>(127.1, 311.7)), dot(p, vec2<f32>(269.5, 183.3)));
-    return fract(sin(q) * 43758.5453);
+    // Integer mixing keeps neighbouring cells independent without the precision loss and
+    // repeated sine evaluations of a floating-point hash.
+    let cell = bitcast<vec2<u32>>(vec2<i32>(floor(p)));
+    var a = cell.x * 0x9e3779b9u ^ cell.y * 0x85ebca6bu;
+    a = (a ^ (a >> 16u)) * 0x7feb352du;
+    a = (a ^ (a >> 15u)) * 0x846ca68bu;
+    a = a ^ (a >> 16u);
+    var b = a ^ 0x68bc21ebu;
+    b = (b ^ (b >> 16u)) * 0x7feb352du;
+    b = (b ^ (b >> 15u)) * 0x846ca68bu;
+    b = b ^ (b >> 16u);
+    return vec2<f32>(f32(a), f32(b)) * (1.0 / 4294967296.0);
+}
+
+fn rain_patch(q: vec2<f32>) -> f32 {
+    // Broad, smooth patches of relatively clear and crowded glass. The noise is in pane
+    // coordinates, so it stays put while the bus moves and never turns into screen grain.
+    let g = q / 0.19;
+    let c = floor(g);
+    let f = smoothstep(vec2<f32>(0.0), vec2<f32>(1.0), fract(g));
+    let a = rain_hash(c + vec2<f32>(19.0, 47.0)).x;
+    let b = rain_hash(c + vec2<f32>(20.0, 47.0)).x;
+    let d = rain_hash(c + vec2<f32>(19.0, 48.0)).x;
+    let e = rain_hash(c + vec2<f32>(20.0, 48.0)).x;
+    return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
 }
 
 // Raindrops on a window pane: the drops that sit on the glass (they land, grow and dry up
@@ -974,28 +997,67 @@ fn rain_drops(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32) -
     var rim = 0.0;
     var glint = 0.0;
     var body = 0.0;
-    // the drops that sit: two sizes on grids of 16 and 9 mm, one drop a cell at most
-    for (var layer = 0; layer < 2; layer = layer + 1) {
-        let cellsz = select(0.016, 0.009, layer == 1);
-        let g = q / cellsz + vec2<f32>(f32(layer) * 17.3, f32(layer) * 5.1);
+    // Three differently oriented grids avoid aligned rows and give the glass a broad range
+    // of beads. Tighter cells and higher occupancy make a storm read as a sheet of rain;
+    // the radius scales compensate so individual beads stay the same physical size. Each
+    // drop stays inside its cell, so a single cell lookup per layer suffices at its edge.
+    let rain_field = rain_patch(q);
+    let density_patch = mix(0.55, 1.6, rain_field);
+    let pixel = max(length(dpdx(q)), length(dpdy(q)));
+    for (var layer = 0; layer < 3; layer = layer + 1) {
+        var grid_q = q;
+        var cellsz = 0.024;
+        var coverage = 0.80;
+        if (layer == 1) {
+            grid_q = vec2<f32>(q.x * 0.91 + q.y * 0.41, -q.x * 0.41 + q.y * 0.91);
+            cellsz = 0.014;
+            coverage = 0.73;
+        } else if (layer == 2) {
+            grid_q = vec2<f32>(q.x * 0.73 - q.y * 0.68, q.x * 0.68 + q.y * 0.73);
+            cellsz = 0.0065;
+            coverage = 0.48;
+        }
+        // Bend each lattice with a shared, smooth pane-space warp. This preserves coherent
+        // storm patches while breaking the fixed spacing that made the beads read as grids.
+        let warp_amount = (rain_field - 0.5) * (cellsz * 0.55);
+        var warp = vec2<f32>(warp_amount, 0.0);
+        if (layer == 1) {
+            warp = vec2<f32>(0.0, warp_amount);
+        } else if (layer == 2) {
+            warp = vec2<f32>(warp_amount * 0.707, warp_amount * 0.707);
+        }
+        let g = (grid_q + warp) / cellsz + vec2<f32>(f32(layer) * 37.0, f32(layer) * 71.0);
         let c = floor(g);
         let h = rain_hash(c);
-        let life = 6.0 + h.y * 14.0;
-        let ph = fract(t / life + h.x);
+        let detail = rain_hash(c + vec2<f32>(11.0, 83.0));
+        let centre = c + 0.27 + 0.46 * detail;
+        let life = 5.0 + h.y * 17.0;
+        let ph = fract(t / life + detail.x);
         // landed, full, drying: a drop comes and goes; more of them the wetter the glass
-        let present = step(h.x, wet * select(0.55, 0.4, layer == 1)) * smoothstep(0.0, 0.05, ph) * (1.0 - smoothstep(0.8, 1.0, ph));
-        let centre = c + 0.3 + 0.4 * rain_hash(c + 3.7);
-        let r = (0.12 + 0.2 * h.y) * mix(0.7, 1.0, ph);
-        let dv = (g - centre) * vec2<f32>(1.0, 0.85);
-        let dist = length(dv) / max(r, 1e-3);
-        let inside = (1.0 - smoothstep(0.8, 1.0, dist)) * present;
+        let present = step(h.x, min(wet * coverage * density_patch, 0.9)) * smoothstep(0.0, 0.08, ph) * (1.0 - smoothstep(0.78, 1.0, ph));
+        let raw_dv = (g - centre) * cellsz;
+        var dv = raw_dv;
+        if (layer == 1) {
+            dv = vec2<f32>(raw_dv.x * 0.91 - raw_dv.y * 0.41, raw_dv.x * 0.41 + raw_dv.y * 0.91);
+        } else if (layer == 2) {
+            dv = vec2<f32>(raw_dv.x * 0.73 + raw_dv.y * 0.68, -raw_dv.x * 0.68 + raw_dv.y * 0.73);
+        }
+        let r = cellsz * (0.085 + 0.12 * detail.y) * mix(0.7, 1.0, ph);
+        let stretch = 0.70 + 0.95 * h.y;
+        let dist = length(vec2<f32>(dv.x, dv.y / stretch)) / max(r, 1e-5);
+        // A subpixel bead should fade rather than blink between pixels as the camera moves.
+        let resolved = smoothstep(0.28, 0.9, r / max(pixel, 1e-5));
+        let edge = clamp(pixel / max(r, 1e-5) * 0.45, 0.1, 0.5);
+        let inside = (1.0 - smoothstep(1.0 - edge, 1.0 + edge, dist)) * present * resolved * mix(0.55, 1.0, h.y);
         body = max(body, inside);
-        rim = max(rim, inside * smoothstep(0.45, 0.95, dist));
-        // the sky's reflection: a small spot towards the top
-        glint = max(glint, inside * (1.0 - smoothstep(0.0, 0.3, length(dv / max(r, 1e-3) - vec2<f32>(-0.25, -0.35)))));
+        rim = max(rim, inside * smoothstep(0.4, 0.9, dist));
+        // The reflected sky varies with the bead rather than stamping the same bright
+        // pinpoint into every cell.
+        let sparkle = 1.0 - smoothstep(0.0, 0.34, length(dv / max(r, 1e-5) - vec2<f32>(-0.17 - 0.17 * detail.x, -0.27)));
+        glint = max(glint, inside * sparkle * mix(0.25, 1.0, detail.y));
     }
-    // the runners: one lane every 6 cm, each with its own drop sliding down in jerks
-    let lane_w = 0.06;
+    // Sparse runners at irregular heights: each lane has its own speed and spacing.
+    let lane_w = 0.07;
     let lane = floor(q.x / lane_w);
     let lh = rain_hash(vec2<f32>(lane, 7.0));
     if (lh.x < wet * 0.6) {
@@ -1003,23 +1065,22 @@ fn rain_drops(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32) -
         // stick and slip: the drop pauses and then hurries on
         let tt = t * speed + lh.x * 13.0;
         let y = (floor(tt) + smoothstep(0.35, 1.0, fract(tt))) * 0.35;
-        let span = 1.5;
+        let span = 0.9 + 1.4 * lh.y;
         let dy = fract((q.y - y) / span) * span; // how far above the drop's head
-        let head_y = q.y - dy;
-        let wobble = sin(head_y * 40.0 + lane) * 0.004;
+        let wobble = sin(q.y * 38.0 + lane) * 0.002;
         let x0 = (lane + 0.5 + (lh.y - 0.5) * 0.4) * lane_w + wobble;
         let dx = q.x - x0;
         // the head: a drop about 4 mm across, a little longer than wide
         let hd = length(vec2<f32>(dx, (dy - 0.004) * 0.7)) / 0.0028;
         let head = 1.0 - smoothstep(0.8, 1.0, hd);
-        // the trail above it: a clear streak where the drop wiped the glass, beaded with
-        // droplets, fading with the distance
-        let trail_len = 0.1 + 0.25 * lh.y;
-        let bead = step(0.6, fract(dy * 80.0 + lh.x * 5.0));
-        let trail = (1.0 - smoothstep(0.0007, 0.0013, abs(dx))) * (1.0 - smoothstep(0.0, trail_len, dy)) * step(0.006, dy) * bead;
-        // (the wiped streak behind the drop read as a drawn line down the glass in the
-        // enhanced picture: only the head is drawn)
-        _ = trail;
+        // A faint, short trail on the glass above the moving head. Break it into beads
+        // rather than drawing the long straight line that dominated the old picture.
+        let behind = span - dy;
+        let bead = smoothstep(0.25, 0.55, fract(q.y * 55.0 + lh.x * 7.0));
+        let trail = (1.0 - smoothstep(0.0005, 0.0011, abs(dx))) * smoothstep(0.006, 0.018, behind)
+            * (1.0 - smoothstep(0.04, 0.10 + 0.05 * lh.y, behind)) * bead;
+        body = max(body, trail * 0.12);
+        rim = max(rim, trail * 0.16);
         body = max(body, head);
         rim = max(rim, head * smoothstep(0.45, 0.95, hd));
         glint = max(glint, head * (1.0 - smoothstep(0.0, 0.35, length(vec2<f32>(dx / 0.0028 + 0.25, (dy - 0.004) * 0.7 / 0.0028 + 0.35)))));
