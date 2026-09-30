@@ -2234,7 +2234,20 @@ impl VehicleInstance {
                 if k >= rb.wheels.len() {
                     continue;
                 }
-                seats.push((i, k, vm.pivot.w_axis.truncate()));
+                // (the hub is where the wheel turns about: its `origin_trans`, or the mesh's
+                // own pivot for `origin_from_mesh`. Measured at the .o3d's pivot, a tyre without
+                // one - the NEOMAN's right front, at the model's origin - was measured at a point
+                // swinging round the hub as the wheel turned: it was pushed up and down by
+                // centimetres while its hub cap stayed, and the cap "rolled off" the tyre.)
+                let mut hub = None;
+                for o in &an.origins {
+                    match o {
+                        omsi_model::AnimOrigin::Trans(t) => hub = Some(hub.unwrap_or(Vec3::ZERO) + Vec3::from(*t)),
+                        omsi_model::AnimOrigin::FromMesh => hub = Some(vm.pivot.w_axis.truncate()),
+                        _ => {}
+                    }
+                }
+                seats.push((i, k, hub.unwrap_or(vm.pivot.w_axis.truncate())));
             }
             self.wheel_seats = Some(seats);
         }
@@ -2243,7 +2256,7 @@ impl VehicleInstance {
             let comp = rb.wheels[k].compression.clamp(-crate::rigid::DROOP, crate::rigid::BUMP);
             let drawn = self.mesh_transforms[i].transform_point3(pivot).z;
             let dz = pivot.z + comp - drawn;
-            if k == 0 && omsi_cfg::env::var_os("OMSI_DEBUG_SEAT").is_some() {
+            if omsi_cfg::env::var_os("OMSI_DEBUG_SEAT").is_some() {
                 log::info!("seat mesh {i} wheel {k}: comp {:.4} drawn {:.4} pivot {:.4} dz {:.4}", comp, drawn, pivot.z, dz);
             }
             // (every frame, however small: a dead band of 3 mm had the correction switch on
