@@ -845,7 +845,12 @@ fn extents(ty: &VehicleType, length: f32) -> (f32, f32, f32) {
             bb[1] * 0.5 - bb[4],
             (bb[0] * 0.5).max(0.5),
         ),
-        _ => (length * 0.5, length * 0.5, 0.9),
+        // without a `[boundingbox]` the model's own box, as Omsi.exe takes it (0x7b5da4):
+        // the Berlin S-Bahn's cars, 18 m long, counted as 12 m ones
+        _ => match ty.model_box() {
+            Some((lo, hi)) if hi.y - lo.y > 1.0 => (hi.y.max(0.5), (-lo.y).max(0.5), (hi.x.max(-lo.x)).max(0.5)),
+            _ => (length * 0.5, length * 0.5, 0.9),
+        },
     }
 }
 

@@ -253,6 +253,26 @@ impl VehicleType {
         Self::load_with(root, bus_file, true)
     }
 
+    /// The box the whole model takes (least, greatest corner; y forward), None without
+    /// vertices.
+    pub fn model_box(&self) -> Option<(Vec3, Vec3)> {
+        let (lo, hi) = self
+            .mesh_boxes
+            .iter()
+            .filter(|(lo, hi)| hi.x > lo.x || hi.y > lo.y)
+            .fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(a, b), (lo, hi)| (a.min(*lo), b.max(*hi)));
+        (hi.y > lo.y).then_some((lo, hi))
+    }
+
+    /// Half its length as Omsi.exe keeps it (type +0xd4): half the `[boundingbox]`'s
+    /// length, else half the model's.
+    pub fn half_length(&self) -> Option<f32> {
+        match self.def.bounding_box {
+            Some(bb) if bb[1] > 0.0 => Some(bb[1] * 0.5),
+            _ => self.model_box().map(|(lo, hi)| (hi.y - lo.y) * 0.5),
+        }
+    }
+
     /// A type for AI copies: its meshes are measured (the tyres) and let go - nothing but
     /// the upload to the GPU needs them, and a timetable fleet kept half a gigabyte of
     /// vertices on the CPU. [`VehicleType::mesh_data`] reads a mesh again.

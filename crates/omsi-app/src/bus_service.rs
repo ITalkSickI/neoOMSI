@@ -383,6 +383,17 @@ impl BusService {
     }
 }
 
+/// How far before a station's point a vehicle stops with its origin, as Omsi.exe measures
+/// the way to the station (0x7da4e3): from the origin of the vehicle that leads, less half
+/// its length for a train (its front comes to rest at the station, not its middle - the
+/// S-Bahn stopped with half a car past the end of the platform), plus the holding point
+/// offset of its `[ai_brakeperformance]` ("to correct unprecise braking").
+pub fn stop_shift(ty: &omsi_sim::VehicleType, rail: bool) -> f32 {
+    let hold = ty.def.ai_brake_performance.map(|b| b[4]).unwrap_or(0.0);
+    let half = if rail { ty.half_length().unwrap_or(0.0) } else { 0.0 };
+    half - hold
+}
+
 /// How many people ride a timetable bus put on the road at `day_time` (seconds of the
 /// day): the rush hours full, the night nearly empty; `seed` spreads it between buses.
 pub fn riders_at(day_time: f64, seed: u64) -> u8 {

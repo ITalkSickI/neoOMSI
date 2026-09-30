@@ -242,6 +242,28 @@ struct Choice {
 /// map's bus bay is a spline of its own that the route runs through). The pole's offset
 /// says nothing about where the kerb is - most stand behind the pavement - and a bus
 /// moved 1.6 m to the right of its lane drove along with its right wheels on the pavement.
+/// Stops moved `shift` metres back along `route` (the lanes the stops' route indices less
+/// `base` count in): where the vehicle's origin comes to rest (`bus_service::stop_shift`).
+/// One that comes to lie before the route's first lane keeps a distance below zero on it.
+fn shift_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize, f32, f32, f64, i64)], shift: f32) {
+    if shift.abs() < 1e-3 {
+        return;
+    }
+    for st in stops.iter_mut() {
+        let (mut k, mut ss) = (st.0.saturating_sub(base), st.1 - shift);
+        while ss < 0.0 && k > 0 && k <= route.len() - 1 {
+            k -= 1;
+            ss += net.lanes[route[k]].length();
+        }
+        while ss > 0.0 && k + 1 < route.len() && ss > net.lanes[route[k]].length() {
+            ss -= net.lanes[route[k]].length();
+            k += 1;
+        }
+        st.0 = base + k;
+        st.1 = ss;
+    }
+}
+
 fn bay_offset(_lat: f32) -> f32 {
     0.0
 }
@@ -1879,6 +1901,8 @@ impl Schedule {
                         run.served[si] = true;
                     }
                 }
+                let shift = crate::bus_service::stop_shift(&traffic.cars[ci].vehicle.ty, traffic.cars[ci].is_rail());
+                shift_stops(&traffic.net, &lanes, base, &mut stops, shift);
                 stops.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
                 log::debug!(
                     "scheduled bus {}: route carried on by {} lanes, {} more stops",
@@ -2108,6 +2132,8 @@ impl Schedule {
                     }
                 }
             }
+            let shift = crate::bus_service::stop_shift(&traffic.cars[ci].vehicle.ty, traffic.cars[ci].is_rail());
+            shift_stops(&traffic.net, &section, 0, &mut stops, shift);
             // the tour's bus that has just finished its trip takes this one on from where
             // it stands: the section itself when it stands on it, else the shortest way
             // from its lane onto one of the section's first lanes (round a terminal loop)
@@ -2201,6 +2227,33 @@ impl Schedule {
             return Placed::Drop;
         };
         self.next_number += 1;
+        let rail = traffic.net.lanes[section[start_index]].kind == omsi_sim::traffic::LaneKind::Rail;
+        // every further car of the train with the cars of its unit, as Omsi.exe creates
+        // each car of a `.zug` (the first has its own with `create_car`): the ones before it
+        // (towards the front of the train), the car, the ones behind it
+        let rest: Option<Vec<(Arc<VehicleType>, bool)>> = train.as_ref().map(|cars| {
+            let mut rest = Vec::new();
+            for (t, rev) in &cars[1..] {
+                let mut front = traffic.coupled_chain(t, *rev, false);
+                front.reverse();
+                rest.extend(front);
+                rest.push((t.clone(), *rev));
+                rest.extend(traffic.coupled_chain(t, *rev, true));
+            }
+            rest
+        });
+        // a trip that runs the train turned round (`[trainreverse]`): its last car leads
+        let turned: Option<Vec<(Arc<VehicleType>, bool)>> = (self.data.trips[self.departures[i].trip].train_reverse
+            && rail)
+            .then(|| {
+                let mut all = vec![(ty.clone(), false)];
+                all.extend(traffic.trailer_chain(&ty));
+                all.extend(rest.clone().unwrap_or_default());
+                all.into_iter().rev().map(|(t, r)| (t, !r)).collect()
+            });
+        // where the one that leads comes to rest at a station
+        let lead_ty = turned.as_ref().map(|t| t[0].0.clone()).unwrap_or_else(|| ty.clone());
+        shift_stops(&traffic.net, &section, 0, &mut stops, crate::bus_service::stop_shift(&lead_ty, rail));
         log::debug!("spawn trip {trip_name}: departure {:.2} min, now {:.2} min, leg {leg} at {:.0} %, step {at} of {}, start {s:.0} m into its lane", departure / 60.0, day_time / 60.0, frac * 100.0, steps.len());
         // the bus starts on its step's lane; the stops behind it are dropped
         let mut start_index = start_index;
@@ -2288,34 +2341,11 @@ impl Schedule {
         };
         let tour = self.departures[i].tour.clone();
         let terminus = self.data.trips[self.departures[i].trip].terminus.clone();
-        // every further car of the train with the cars of its unit, as Omsi.exe creates
-        // each car of a `.zug` (the first has its own with `create_car`): the ones before it
-        // (towards the front of the train), the car, the ones behind it
-        let rest: Option<Vec<(Arc<VehicleType>, bool)>> = train.as_ref().map(|cars| {
-            let mut rest = Vec::new();
-            for (t, rev) in &cars[1..] {
-                let mut front = traffic.coupled_chain(t, *rev, false);
-                front.reverse();
-                rest.extend(front);
-                rest.push((t.clone(), *rev));
-                rest.extend(traffic.coupled_chain(t, *rev, true));
-            }
-            rest
-        });
-        // a trip that runs the train turned round (`[trainreverse]`): its last car leads
-        let turned: Option<Vec<(Arc<VehicleType>, bool)>> = (self.data.trips[self.departures[i].trip].train_reverse
-            && traffic.net.lanes[route[0]].kind == omsi_sim::traffic::LaneKind::Rail)
-            .then(|| {
-                let mut all = vec![(ty.clone(), false)];
-                all.extend(traffic.trailer_chain(&ty));
-                all.extend(rest.clone().unwrap_or_default());
-                all.into_iter().rev().map(|(t, r)| (t, !r)).collect()
-            });
         let Some(ci) = traffic.spawn_bus(
             world,
             renderer,
             scene,
-            turned.as_ref().map(|t| t[0].0.clone()).unwrap_or_else(|| ty.clone()),
+            lead_ty.clone(),
             route,
             s,
             stops,
