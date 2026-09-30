@@ -18804,3 +18804,25 @@ _version: 2
   zh: "振动"
   hi: "कंपन"
   zh-tw: "震動"
+
+"On foot: W A S D walk, Shift runs, F4 free camera / F1 back, G sits down (by the driver's place: back at the wheel), Ctrl+Shift+G steps out of the bus":
+  pt: "A pé: W A S D para andar, Shift para correr, F4 para câmera livre / F1 para voltar, G para sentar (perto do banco do motorista: volta ao volante), Ctrl+Shift+G para sair do ônibus"
+  pt-pt: "A pé: W A S D para andar, Shift para correr, F4 para câmara livre / F1 para voltar, G para sentar (junto ao lugar do condutor: volta ao volante), Ctrl+Shift+G para sair do autocarro"
+"No door within reach here (or no room outside it): walk to a door first":
+  pt: "Nenhuma porta ao alcance (ou sem espaço do lado de fora): vá até uma porta primeiro"
+  pt-pt: "Nenhuma porta ao alcance (ou sem espaço no exterior): aproxime-se primeiro de uma porta"
+"There is no vehicle to remove: you are on foot":
+  pt: "Não há veículo para remover: você está a pé"
+  pt-pt: "Não há nenhum veículo para remover: está a pé"
+"Placing: point at the ground, mouse wheel or Q / E turns it, R turns it round, click sets it down, Esc takes it away":
+  pt: "Posicionando: aponte para o chão; a roda do mouse ou Q / E gira, R vira 180°, clique posiciona e Esc cancela"
+  pt-pt: "A posicionar: aponte para o chão; a roda do rato ou Q / E roda, R vira 180°, clique coloca e Esc cancela"
+"It would stand in another vehicle here":
+  pt: "O veículo ficaria sobre outro veículo aqui"
+  pt-pt: "O veículo ficaria sobre outro veículo neste local"
+"Point at the ground to set it down":
+  pt: "Aponte para o chão para posicioná-lo"
+  pt-pt: "Aponte para o chão para o colocar"
+"Placing given up":
+  pt: "Posicionamento cancelado"
+  pt-pt: "Colocação cancelada"
