@@ -1123,7 +1123,18 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let lm_only = light_map_mapped(material.params) && camera.sky_color.w > 0.5;
     let map_lamps = select(1.0, 0.0, (material.params.y > 0.2 && material.params.y < 0.3) || lm_only);
     let lamp_light = point_lights(in.world, n, map_lamps);
-    var lit = albedo * material.color.rgb * (diffuse + lamp_light);
+    var light = diffuse + lamp_light;
+    if (material.params2.x > 0.5 && material.extra.x < 0.5) {
+        // [matl_lightmap], as Omsi.exe's texture stages have it (0x7fe4d3..0x7fe604): the
+        // light map is laid onto the vertex light with D3DTOP_ADDSMOOTH (light + map x (1 -
+        // light)) before the texture is multiplied in - a lit saloon glows at night and
+        // hardly shows in daylight. (Added after the texture, the maps whitened the cabin
+        // by day as well.)
+        let lm = textureSample(t_light, s_diffuse, buv).rgb * clamp(in.params2.x, 0.0, 1.0);
+        let l = clamp(light, vec3<f32>(0.0), vec3<f32>(1.0));
+        light = l + lm * (vec3<f32>(1.0) - l);
+    }
+    var lit = albedo * material.color.rgb * light;
     // the D3D material's own highlight (specular colour and power of the o3d file or a
     // [matl_allcolor]), lit at the vertices (see `vertex_specular`) and added after the
     // texture as D3D's specular is; the sun's not in its shadow
@@ -1150,12 +1161,6 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // it glows whenever that is on, by day as well; the others fade in with the night
         let night = select(camera.sun_color.w, 1.0, material.extra.w > 1.5);
         lit = lit + nm.rgb * night * select(clamp(in.params2.y, 0.0, 1.0), 1.0, material.extra.w > 1.5);
-    }
-    if (material.params2.x > 0.5 && material.extra.x < 0.5) {
-        // [matl_lightmap]: a light mask (interior lighting) multiplied with the diffuse
-        // texture, scaled by a script variable
-        let lm = textureSample(t_light, s_diffuse, buv);
-        lit = lit + tex.rgb * lm.rgb * clamp(in.params2.x, 0.0, 1.0);
     }
     if (material.params2.y > 0.0) {
         // [matl_envmap]: sphere map reflection, masked by the diffuse alpha like the original

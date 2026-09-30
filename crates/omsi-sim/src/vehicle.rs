@@ -2478,7 +2478,7 @@ pub fn compute_mesh_props(ty: &VehicleType, var: &dyn Fn(&str) -> Option<f32>) -
                             .ok()
                             .or_else(|| var(v))
                             .unwrap_or(0.0);
-                        props.slot_light[slot] = props.slot_light[slot].max(x.clamp(0.0, 1.0));
+                        props.slot_light[slot] = props.slot_light[slot].max(if x >= 0.5 { 1.0 } else { 0.0 });
                     }
                 }
             }
@@ -2676,8 +2676,10 @@ impl PropsPlan {
             for &(slot, _) in &plan.light {
                 props.slot_light[slot] = 0.0;
             }
+            // (a light map is on at its variable's 0.5 and off below - Omsi.exe skips the
+            // texture stage of one whose variable reads under 0.5, 0x7fe51f - never half lit)
             for &(slot, src) in &plan.light {
-                props.slot_light[slot] = props.slot_light[slot].max(src.value(vars, 0.0).clamp(0.0, 1.0));
+                props.slot_light[slot] = props.slot_light[slot].max(if src.value(vars, 0.0) >= 0.5 { 1.0 } else { 0.0 });
             }
             if let Some((i, value)) = plan.visible {
                 if let Some(x) = vars.get(i) {
