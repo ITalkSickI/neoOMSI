@@ -271,6 +271,21 @@ The event object has `type`, `x`, `y` (in texture pixels), `target`, `stopPropag
 There is no keyboard input, no hover and no drag and drop. Build keypads and lists from
 buttons or boxes and react to `click`.
 
+## Scenery objects
+
+A scenery object (`.sco`) can show pages too: `[htmltexture]` in its model config and
+`[useHtmlTexture]` on the material, the same as in a vehicle. The page is looked up in the
+model folder, then in the folder of the `.sco`.
+
+A scenery page only gets the basic API: `omsi.setVar`, `omsi.trigger`, `omsi.getVar`,
+`omsi.vars`, `omsi.time`, `omsi.date` and `omsi.locale`. `omsi.vehicle`, `omsi.depot` and
+`setRoute`, `setLine`, `setDestination`, `clearLine` and `setNextStop` do not exist there
+(`d.vehicle` in `update` neither). The variables are those of the object's script; an object
+without a script still shows its page.
+
+The pages run only within 60 m of the camera. Clicks reach them from up to 4 m away, unless the
+bus is in front of the page.
+
 ## What the HTML engine supports
 
 The engine is deliberately small. It is not a browser, so a page that looks fine in Chrome may
@@ -370,6 +385,9 @@ without any game content) and handed to the backend through `HtmlRenderer::set_v
 `set_depot`, which a backend may ignore. The requests from `setRoute`, `setLine`,
 `setDestination`, `clearLine` and `setNextStop` become `HtmlRequest` values that the game
 picks up between two frames (`take_requests`, at most 32 per frame).
+
+A scenery object's page is created with `PageApi::Scenery` (`HtmlTexture::with_api`), whose
+`window.omsi` has none of the vehicle's parts; `drive_pages` then gets no snapshot and no depot.
 
 To add a signal, add it to `vehicle_api::snapshot`, write a test next to the others, and list
 it in the table above and in the module docs. Existing names stay stable within an API
