@@ -322,8 +322,31 @@ impl SessionCode {
             }
             chars.push(ALPHABET[v] as char);
         }
+        // (the last group filled up to four with the zero character: a code of two
+        // addresses ended in a group of three, and players took it for cut short, #152)
+        while chars.len() % 4 != 0 {
+            chars.push(ALPHABET[0] as char);
+        }
         let groups: Vec<String> = chars.chunks(4).map(|c| c.iter().collect()).collect();
         format!("OMSI-{}", groups.join("-"))
+    }
+
+    /// A code's characters (after `OMSI-`) without the filling of its last group, or None
+    /// when it has no length a code has.
+    fn unpadded(s: &str) -> Option<&str> {
+        let lengths = Self::valid_lengths();
+        if lengths.contains(&s.len()) {
+            return Some(s);
+        }
+        lengths
+            .into_iter()
+            .find(|&l| l < s.len() && l.div_ceil(4) * 4 == s.len() && s.as_bytes()[l..].iter().all(|c| *c == ALPHABET[0]))
+            .map(|l| &s[..l])
+    }
+
+    /// The lengths a code is written with (its last group filled to four).
+    fn written_lengths() -> Vec<usize> {
+        Self::valid_lengths().into_iter().map(|l| l.div_ceil(4) * 4).collect()
     }
 
     /// The code lengths (characters after `OMSI-`) that exist: one address, or two to
@@ -342,12 +365,14 @@ impl SessionCode {
             .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
             .collect::<String>()
             .to_ascii_uppercase();
-        let lengths = Self::valid_lengths();
+        let lengths = Self::written_lengths();
         // (O and I are not in the alphabet: a code itself never starts with OMSI)
         if s.starts_with("OMSI") {
             s = s[4..].to_string();
         }
-        if !lengths.contains(&s.len()) {
+        if let Some(u) = Self::unpadded(&s) {
+            s = u.to_string();
+        } else {
             let n = s.len();
             return Err(format!(
                 "a session code has {} characters after OMSI- (this one has {n}) - copy the whole code",
@@ -453,10 +478,8 @@ pub fn looks_like_code(text: &str) -> bool {
     }
     // the full code, the code without its prefix, or something that was meant to be one
     // (the prefix and a few groups: a code cut short while copying)
-    let lengths = SessionCode::valid_lengths();
-    lengths.contains(&s.len())
-        || (s.starts_with("OMSI")
-            && (lengths.contains(&(s.len() - 4)) || (t.starts_with("OMSI-") && s.len() >= 8)))
+    let ok = |s: &str| SessionCode::unpadded(s).is_some();
+    ok(&s) || (s.starts_with("OMSI") && (ok(&s[4..]) || (t.starts_with("OMSI-") && s.len() >= 8)))
 }
 
 /// A session id as it is written in messages (12 hex digits).
