@@ -2143,7 +2143,7 @@ fn new_remote(
         });
     }
     vehicle.apply_paint_vars(scheme);
-    let render = world.add_vehicle_shared(r, scene, &ty, scheme);
+    let render = world.add_vehicle_shared(r, scene, &ty, scheme, None);
     // the coupled sections of an articulated bus
     let mut trailer_renders = Vec::new();
     let mut lead = ty.clone();
@@ -2160,6 +2160,7 @@ fn new_remote(
                     scene,
                     &t,
                     scheme.filter(|i| *i < t.paint_schemes.len()),
+                    Some(&render),
                 ));
                 vehicle.attach_trailer_ex(t.clone(), rev);
                 lead = t;
