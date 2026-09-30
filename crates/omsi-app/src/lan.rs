@@ -3337,6 +3337,26 @@ thread_local! {
 mod tests {
     use super::*;
 
+    /// What is seen comes before what is heard in the capped values list: the AA-FR Agora
+    /// L's sound variables filled it in name order before its roller blind's scroll.
+    #[test]
+    fn the_roller_blind_scroll_is_in_the_sync_table() {
+        let root = omsi_cfg::env::var_os("OMSI_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
+        let bus = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_L_4d_main.bus");
+        if !bus.exists() {
+            eprintln!("skipped: no {}", bus.display());
+            return;
+        }
+        let ty = omsi_sim::VehicleType::load(&root, &bus).expect("Agora L");
+        let t = SyncTable::new(&ty, &[]);
+        assert!(t.values.len() <= omsi_net::wire::MAX_VALUES);
+        for want in ["Rollband_Linie_Trans", "Rollband_Linie_Trans_2"] {
+            assert!(t.values.iter().any(|v| v.0.eq_ignore_ascii_case(want)), "no {want}: {}", t.describe());
+        }
+    }
+
     /// An articulated bus's rear section is in its sync table: its lamps, displays' switches
     /// and outside sounds (the AA-FR Agora L's rear section stood dark and silent in the
     /// other players' games).
