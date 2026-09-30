@@ -4,6 +4,49 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.323 - 2026-09-30
+
+Crash reports from phones, a lost graphics device on DirectX 12, the vanilla night, and five
+pull requests.
+
+### Crashes and reports
+- Phones: an app the system ended in the background (or that was swiped away) is no longer
+  reported as a crash at the next start - most of the "closed without a word" reports were
+  that. A report sent to GitHub carries the end of the log, and the whole report is on the
+  clipboard as well; the renderer names each stage it compiles, so a report says where a
+  driver gave up.
+- A phone whose Vulkan driver went down while the shaders were being compiled (the reports
+  that end at "cloud noise made") draws with OpenGL from then on (Settings → Graphics API
+  takes it back).
+- A graphics device lost on DirectX 12 starts the game again on Vulkan, as one lost on
+  Vulkan starts it on DirectX 12. The launcher, too, makes its device again on the other
+  interface instead of drawing on a dead one with thousands of errors (#274, an AMD Radeon).
+- The automatic texture budget stays at 2.5 GB: since 0.1.237 a PC with 32-64 GB let the
+  textures take 4-8 GB (#277).
+
+### Pictures
+- Vanilla: the texture times the light as Omsi.exe multiplies them, in gamma space - nights
+  were several times too bright, a late dusk instead of the dark (#300).
+- Night maps switch on with the street lamps, fully, as in Omsi.exe, instead of fading in
+  with the dusk (a clear evening showed lit windows at a fraction, #276).
+- Enhanced: chrome and other opaque sphere-mapped parts reflect again (#266, #264).
+
+### Vehicles
+- `[kmcounter_init]` starts the odometer at the bus's years in service times its
+  kilometres a year (#305).
+- Phones: a manual gearbox whose dashboard answers to the automatic's keys shows the manual
+  gate (#279).
+- The automatic clutch's help is for gearboxes that read the clutch pedal only: an
+  automatic with number-key gears had its clutch pressed at stops (#234); a script without
+  `engine_n` no longer keeps the clutch down for good (#260).
+
+### Pull requests
+- Merged: #298 (backwards meshes of exporters with a positive determinant: the Citelis'
+  dashboard lamps, by ThiBot77), #307 (force feedback on Logitech and Moza wheels, by
+  tistron), #310 (a warning when the driver uploads far too slowly, by ThiBot77), #313 (all
+  buttons of a Linux wheel in the launcher, by ThiBot77), and #240's scenery-object support
+  for HTML textures (by shloooo).
+
 ## 0.1.307 - 2026-09-30
 
 Passengers, bus physics and light maps checked against Omsi.exe once more, and ten pull
