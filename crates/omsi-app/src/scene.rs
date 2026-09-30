@@ -235,6 +235,9 @@ pub struct LightObject {
     pub script: Option<Arc<Mutex<omsi_sim::scenery::SceneryInstance>>>,
     /// `[light_enh_2]` coronas switched by a lamp variable, and that variable.
     pub coronas: Vec<(omsi_render::Corona, String)>,
+    /// Per corona the mesh its light belongs to and the light's place and direction in the
+    /// model: an animated lamp's lights move with their mesh (see `model_light_sources`).
+    pub corona_mesh: Vec<(usize, glam::Vec3, glam::Vec3)>,
     /// Current brightness of each corona (set with the lamp state every frame).
     pub lit: Vec<f32>,
     /// The object's rotation, and whether its script moves meshes of it: a level
@@ -1721,6 +1724,25 @@ pub fn model_lights_faded(
     fades: &[f32],
 ) -> Vec<omsi_render::Corona> {
     model_lights_owned(model, mesh_transforms, pos, value_of, fades).into_iter().map(|c| c.0).collect()
+}
+
+/// Every light of a model in the order [`model_lights_owned`] numbers them: the mesh it
+/// belongs to, its place and its direction (zero for a `[light_enh]` and an omni light).
+/// Omsi.exe files each `[light_enh]`/`[light_enh_2]` with the `[mesh]` before it (the
+/// model loader, 0x5f3140: the light goes into the current mesh's list, mesh +0x1b0) and
+/// draws it where that mesh's animation takes it - the lamps along a level crossing's arm
+/// rise with the arm.
+pub fn model_light_sources(model: &Model) -> Vec<(usize, glam::Vec3, glam::Vec3)> {
+    let mut out = Vec::new();
+    for (i, md) in model.meshes.iter().enumerate() {
+        for l in &md.light_enh {
+            out.push((i, glam::Vec3::from(l.pos), glam::Vec3::ZERO));
+        }
+        for l in &md.light_enh_2 {
+            out.push((i, glam::Vec3::from(l.pos), if l.omni { glam::Vec3::ZERO } else { glam::Vec3::from(l.dir) }));
+        }
+    }
+    out
 }
 
 /// [`model_lights_faded`], each sprite with the light it belongs to (the n-th light of the
@@ -6397,13 +6419,14 @@ impl World {
                             1.0
                         }, &[]);
                         let names = names.into_inner();
-                        let coronas: Vec<(omsi_render::Corona, String)> = lights
+                        let sources = model_light_sources(&ot.model);
+                        let (coronas, corona_mesh): (Vec<(omsi_render::Corona, String)>, Vec<(usize, glam::Vec3, glam::Vec3)>) = lights
                             .into_iter()
                             .filter_map(|(c, k)| match names.get(k) {
-                                Some(LightSwitch::Variable(v)) => Some((c, v.clone())),
+                                Some(LightSwitch::Variable(v)) => Some(((c, v.clone()), sources.get(k).copied().unwrap_or((0, glam::Vec3::ZERO, glam::Vec3::ZERO)))),
                                 _ => None,
                             })
-                            .collect();
+                            .unzip();
                         let script = ot.program.as_ref().map(|p| {
                             Arc::new(Mutex::new(omsi_sim::scenery::SceneryInstance::new(
                                 p.clone(),
@@ -6426,6 +6449,7 @@ impl World {
                             pos,
                             script,
                             coronas,
+                            corona_mesh,
                             lit,
                             xf,
                             animated,

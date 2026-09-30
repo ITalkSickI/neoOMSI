@@ -6381,6 +6381,16 @@ impl Traffic {
                             renderer.set_transform(scene, *inst, lamp.pos, lamp.xf * *m);
                         }
                     }
+                    // the lights go with their meshes (a barrier's lamps rise with its arm)
+                    for (c, (mi, local, dir)) in lamp.coronas.iter_mut().zip(&lamp.corona_mesh) {
+                        if let Some(m) = s.mesh_transforms.get(*mi) {
+                            let xf = lamp.xf * *m;
+                            c.0.position = lamp.pos + xf.transform_point3(*local).as_dvec3();
+                            if *dir != glam::Vec3::ZERO {
+                                c.0.direction = xf.transform_vector3(*dir).normalize_or_zero();
+                            }
+                        }
+                    }
                 }
             }
             for k in 0..lamp.coronas.len() {
