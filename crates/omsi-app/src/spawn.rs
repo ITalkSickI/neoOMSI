@@ -417,6 +417,7 @@ pub(crate) fn spawn_player(
         ibis_duty: None,
         ibis_typist: None,
         duty_typed: false,
+        html_next_stop: None,
         ibis_background: false,
         arm: Default::default(),
         blinker_key_state: 0,

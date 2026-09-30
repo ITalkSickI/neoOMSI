@@ -495,6 +495,9 @@ pub(crate) fn run_offscreen(
         if let Some(player) = player.as_mut() {
             player.tick_startup(dt);
             if let Some(d) = duty.as_mut() {
+                if let Some(stop) = player.html_next_stop.take() {
+                    d.skip_to(stop);
+                }
                 if let Some((arrival, departure)) =
                     d.update(&mut player.vehicle, parse_time(&args.time) + t_s as f64)
                 {

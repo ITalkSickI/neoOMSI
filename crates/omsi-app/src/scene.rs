@@ -8631,6 +8631,7 @@ pub fn sync_vehicle_textures(
     vehicle: &mut omsi_sim::VehicleInstance,
     render: &VehicleRender,
 ) {
+    vehicle.update_html_textures();
     sync_interior_lamps(
         renderer,
         scene,

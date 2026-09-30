@@ -3847,6 +3847,20 @@ impl PlayerDuty {
         }
     }
 
+    /// A page skips to stop `stop` of the current trip (`omsi.setNextStop`): the stops in
+    /// between are not served. Only forwards, and not once the trip's last stop is reached.
+    pub fn skip_to(&mut self, stop: usize) -> bool {
+        let last = self.trip().stops.len().saturating_sub(1);
+        let stop = stop.min(last);
+        if self.done || stop <= self.next_stop {
+            return false;
+        }
+        self.next_stop = stop;
+        self.at_stop = false;
+        self.arrived_late = None;
+        true
+    }
+
     fn set_trip(&mut self, index: usize) {
         self.trip_index = index;
         self.next_stop = 0;

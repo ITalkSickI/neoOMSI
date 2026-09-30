@@ -804,6 +804,7 @@ pub struct VehicleInstance {
     pub physics: VehiclePhysics,
     /// `[texttexture]` states, parallel to `ty.model.text_textures`.
     pub text_textures: Vec<crate::texttex::TextTextureState>,
+    pub html_textures: Vec<crate::htmltex::HtmlTexture>,
     /// Ground height query (world x, y → z), set by the world.
     /// Ground height sampler (shared: the script host probes the same one).
     pub ground: Option<std::sync::Arc<dyn Fn(f64, f64) -> Option<f64> + Send + Sync>>,
@@ -911,6 +912,17 @@ impl VehicleInstance {
             .map(|(w, h)| crate::scripttex::ScriptTexture::new(*w, *h))
             .collect();
         host.content_dir = ty.def.dir().to_path_buf();
+        let html_textures: Vec<crate::htmltex::HtmlTexture> = ty
+            .model
+            .html_textures
+            .iter()
+            .map(|d| {
+                let dirs = [ty.model_dir.as_path(), ty.def.dir()];
+                let html = crate::htmltex::load_page(&dirs, &d.path);
+                crate::htmltex::HtmlTexture::new(d.script_index, d.width, d.height, &html)
+                    .with_asset_dirs(crate::htmltex::asset_dirs(&dirs, &d.path))
+            })
+            .collect();
         host.number_var = program.str_var("number");
         // defaults every bus expects before {init}
         let mut var_index = HashMap::new();
@@ -1090,6 +1102,7 @@ impl VehicleInstance {
             mesh_props: vec![MeshProps::default(); n],
             physics,
             text_textures: Vec::new(),
+            html_textures,
             ground: None,
             trailers: Vec::new(),
             skin_rest: Vec::new(),

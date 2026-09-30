@@ -607,33 +607,33 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
     let (flat, tops): (Vec<_>, Vec<_>) = def.height_profiles.iter().partition(|hp| !ridge(hp));
     let mut flat_end = 0u32;
     for (pass, list) in [flat, tops].into_iter().enumerate() {
-    for hp in list {
-        if (hp.x1 - hp.x0).abs() < 1e-3 {
-            continue;
-        }
-        let base = mesh.positions.len() as u32;
-        let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
-            Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
-            _ => (hp.z0, hp.z1),
-        };
-        for i in 0..=n {
-            let s = curve.length * i as f64 / n as f64;
-            for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
-                let (p, _) = skewed_point(curve, s, x as f64 * sign, z as f64);
-                mesh.positions.push((p - origin).as_vec3());
-                mesh.normals.push(Vec3::Z);
-                mesh.uvs.push(Vec2::ZERO);
+        for hp in list {
+            if (hp.x1 - hp.x0).abs() < 1e-3 {
+                continue;
+            }
+            let base = mesh.positions.len() as u32;
+            let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
+                Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
+                _ => (hp.z0, hp.z1),
+            };
+            for i in 0..=n {
+                let s = curve.length * i as f64 / n as f64;
+                for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
+                    let (p, _) = skewed_point(curve, s, x as f64 * sign, z as f64);
+                    mesh.positions.push((p - origin).as_vec3());
+                    mesh.normals.push(Vec3::Z);
+                    mesh.uvs.push(Vec2::ZERO);
+                }
+            }
+            for i in 0..n as u32 {
+                let (a, b) = (base + i * 2, base + i * 2 + 1);
+                let (c, d) = (a + 2, b + 2);
+                mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
             }
         }
-        for i in 0..n as u32 {
-            let (a, b) = (base + i * 2, base + i * 2 + 1);
-            let (c, d) = (a + 2, b + 2);
-            mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
+        if pass == 0 {
+            flat_end = mesh.indices.len() as u32;
         }
-    }
-    if pass == 0 {
-        flat_end = mesh.indices.len() as u32;
-    }
     }
     mesh.ranges.push((0, flat_end, 0));
     if mesh.indices.len() as u32 > flat_end {
@@ -1171,6 +1171,12 @@ mod tests {
 
 /// Möller-Trumbore ray/triangle test. Returns the distance along the ray.
 pub fn ray_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
+    ray_triangle_bary(origin, dir, a, b, c).map(|(t, _, _)| t)
+}
+
+/// The same test, with the barycentric coordinates of the hit: `(t, u, v)`, the point being
+/// `a + u * (b - a) + v * (c - a)`.
+pub fn ray_triangle_bary(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<(f32, f32, f32)> {
     let e1 = b - a;
     let e2 = c - a;
     let p = dir.cross(e2);
@@ -1191,10 +1197,62 @@ pub fn ray_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Optio
     }
     let d = e2.dot(q) * inv;
     if d > 1e-4 {
-        Some(d)
+        Some((d, u, v))
     } else {
         None
     }
+}
+
+/// Where a ray met a mesh.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshHit {
+    /// Distance along the ray.
+    pub t: f32,
+    /// Position of the triangle's first index in `MeshData::indices` (its material slot is the
+    /// one of the `ranges` entry that holds it).
+    pub index: usize,
+    /// The texture coordinates at the hit.
+    pub uv: Vec2,
+}
+
+impl MeshData {
+    /// The material slot of the triangle whose first index is `index`.
+    pub fn slot_of(&self, index: usize) -> u32 {
+        self.ranges
+            .iter()
+            .find(|(first, count, _)| index >= *first as usize && index < (*first + *count) as usize)
+            .map(|r| r.2)
+            .unwrap_or(0)
+    }
+}
+
+/// Closest hit of a world-space ray against a mesh under `transform`, with the triangle it
+/// hit and the texture coordinates there (what a click on a screen texture needs).
+pub fn ray_mesh_hit(origin: Vec3, dir: Vec3, mesh: &MeshData, transform: &Mat4) -> Option<MeshHit> {
+    let inv = transform.inverse();
+    let o = inv.transform_point3(origin);
+    let d = inv.transform_vector3(dir);
+    let scale = d.length();
+    if scale < 1e-9 {
+        return None;
+    }
+    let dn = d / scale;
+    let mut best: Option<MeshHit> = None;
+    for (k, tri) in mesh.indices.chunks_exact(3).enumerate() {
+        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let (a, b, c) = (mesh.positions[i0], mesh.positions[i1], mesh.positions[i2]);
+        if let Some((t, u, v)) = ray_triangle_bary(o, dn, a, b, c) {
+            let t = t / scale;
+            if best.map(|h| t < h.t).unwrap_or(true) {
+                let uv = match (mesh.uvs.get(i0), mesh.uvs.get(i1), mesh.uvs.get(i2)) {
+                    (Some(&x), Some(&y), Some(&z)) => x * (1.0 - u - v) + y * u + z * v,
+                    _ => Vec2::ZERO,
+                };
+                best = Some(MeshHit { t, index: k * 3, uv });
+            }
+        }
+    }
+    best
 }
 
 /// Closest hit of a world-space ray against a mesh under `transform`.
@@ -1990,5 +2048,48 @@ mod cant_tests {
         // beyond the half cant width the height stays what it is at its edge
         assert!((c.offset_point(5.0, 6.0, 0.0).z + 0.15).abs() < 1e-9);
         assert!((c.offset_point(5.0, -6.0, 0.0).z - 0.15).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod ray_hit_tests {
+    use super::*;
+
+    /// A 2 x 2 quad in the x/z plane at y = 0 (x -1..1, z -1..1), two triangles, two material slots;
+    /// u runs with x, v runs down (v = 0 at z = 1).
+    fn quad() -> MeshData {
+        MeshData {
+            positions: vec![Vec3::new(-1.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 1.0), Vec3::new(1.0, 0.0, -1.0), Vec3::new(-1.0, 0.0, -1.0)],
+            normals: vec![Vec3::Y; 4],
+            uvs: vec![Vec2::new(0.0, 0.0), Vec2::new(1.0, 0.0), Vec2::new(1.0, 1.0), Vec2::new(0.0, 1.0)],
+            ranges: vec![(0, 3, 0), (3, 3, 1)],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            one_sided: false,
+        }
+    }
+
+    #[test]
+    fn a_ray_gives_the_texture_coordinates_it_hit() {
+        let m = quad();
+        let id = Mat4::IDENTITY;
+        let h = ray_mesh_hit(Vec3::new(0.5, -5.0, 0.5), Vec3::Y, &m, &id).unwrap();
+        assert!((h.t - 5.0).abs() < 1e-4);
+        assert!((h.uv - Vec2::new(0.75, 0.25)).length() < 1e-4, "{:?}", h.uv);
+        assert_eq!(m.slot_of(h.index), 0, "the upper right triangle is slot 0");
+        let h = ray_mesh_hit(Vec3::new(-0.5, -5.0, -0.5), Vec3::Y, &m, &id).unwrap();
+        assert!((h.uv - Vec2::new(0.25, 0.75)).length() < 1e-4, "{:?}", h.uv);
+        assert_eq!(m.slot_of(h.index), 1);
+        assert!(ray_mesh_hit(Vec3::new(2.0, -5.0, 0.0), Vec3::Y, &m, &id).is_none());
+    }
+
+    #[test]
+    fn the_mesh_transform_is_undone() {
+        let m = quad();
+        // the quad moved 10 m east and doubled in size: its middle is at x = 10, z = 0
+        let xf = Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)) * Mat4::from_scale(Vec3::splat(2.0));
+        let h = ray_mesh_hit(Vec3::new(11.0, -3.0, 0.5), Vec3::Y, &m, &xf).unwrap();
+        assert!((h.t - 3.0).abs() < 1e-4);
+        assert!((h.uv - Vec2::new(0.75, 0.375)).length() < 1e-4, "{:?}", h.uv);
+        assert_eq!(ray_mesh_hit(Vec3::new(11.0, -3.0, 0.5), Vec3::Y, &m, &xf).map(|h| h.t), ray_mesh(Vec3::new(11.0, -3.0, 0.5), Vec3::Y, &m, &xf));
     }
 }

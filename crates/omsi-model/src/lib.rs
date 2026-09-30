@@ -157,6 +157,14 @@ pub struct Lod {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+pub struct HtmlTextureDef {
+    pub script_index: usize,
+    pub width: i32,
+    pub height: i32,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TextTexture {
     pub variable: String,
     pub font: String,
@@ -363,6 +371,7 @@ pub struct Model {
     pub ctc: Vec<Ctc>,
     pub ctc_textures: Vec<(String, String)>,
     pub script_textures: Vec<(i32, i32)>,
+    pub html_textures: Vec<HtmlTextureDef>,
     pub text_textures: Vec<TextTexture>,
     /// `[texttexture_enh]` raw parameter lines.
     pub text_textures_enh: Vec<Vec<String>>,
@@ -508,6 +517,14 @@ impl Model {
                 let w = r.i32();
                 let h = r.i32();
                 self.script_textures.push((w, h));
+            }
+            "htmltexture" => {
+                let width = r.i32();
+                let height = r.i32();
+                let path = r.str().to_string();
+                let script_index = self.script_textures.len();
+                self.script_textures.push((width, height));
+                self.html_textures.push(HtmlTextureDef { script_index, width, height, path });
             }
             "texttexture" => {
                 let variable = r.str().to_string();
@@ -793,6 +810,16 @@ impl Model {
                     m.use_script_texture = Some(v);
                 }
             }
+            "usehtmltexture" => {
+                let v = r.i32();
+                let index = usize::try_from(v)
+                    .ok()
+                    .and_then(|n| self.html_textures.get(n))
+                    .map(|d| d.script_index as i32);
+                if let (Some(m), Some(i)) = (self.cur_matl(), index) {
+                    m.use_script_texture = Some(i);
+                }
+            }
             "usetexttexture" => {
                 let v = r.i32();
                 if let Some(m) = self.cur_matl() {
@@ -1036,6 +1063,17 @@ mod tests {
         assert!(m.items[1].set_vars.is_empty());
         assert_eq!((m.items[1].name.as_str(), m.items[1].ctc.as_str(), m.items[1].texture.as_str()), ("HVL", "body", "hvl.dds"));
         assert_eq!(m.set_vars, vec![("lost".to_string(), 1.0)]);
+    }
+
+    #[test]
+    fn an_html_texture_takes_a_script_texture_index() {
+        let text = "[scripttexture]\n64\n32\n\n[htmltexture]\n800\n480\nhtml\\demo.html\n\n[mesh]\nx.o3d\n\n[matl]\nx.dds\n0\n[useHtmlTexture]\n0\n";
+        let m = Model::parse(&CfgFile::from_str("model.cfg", text));
+        assert_eq!(m.script_textures, vec![(64, 32), (800, 480)]);
+        assert_eq!(m.html_textures.len(), 1);
+        assert_eq!(m.html_textures[0].script_index, 1);
+        assert_eq!(m.html_textures[0].path, "html\\demo.html");
+        assert_eq!(m.meshes[0].materials[0].use_script_texture, Some(1));
     }
 
     /// A tab-indented block (the stock F90 lorry's second rear axle, whose mesh does not
