@@ -9175,12 +9175,13 @@ pub fn sync_vehicle_textures(
     let mut rebound = Vec::new();
     for (i, st) in vehicle.host.script_textures.iter_mut().enumerate() {
         // (far away what the scripts redraw goes up every half second: `displays_far`)
-        if st.dirty && !st.locked && !render.displays_far {
+        if !render.displays_far {
             if let Some(Some(tex)) = render.script_textures.get(i) {
+                let Some(rgba) = st.take_upload() else { continue };
                 let img = Image {
                     width: st.width,
                     height: st.height,
-                    rgba: st.rgba.clone(),
+                    rgba,
                     has_alpha: true,
                 };
                 if st.mipmaps {
@@ -9191,7 +9192,6 @@ pub fn sync_vehicle_textures(
                     renderer.update_texture(scene, *tex, &img);
                 }
             }
-            st.dirty = false;
         }
     }
     renderer.rebind_textures(scene, &rebound);
