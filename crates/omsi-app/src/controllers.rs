@@ -737,7 +737,10 @@ fn wheel_force(f: &FfInput, x: f32, x0: f32, t: &mut f32, k_springs: f32, k_effe
     let dt = f.dt.max(1e-3);
     let v = f.kmh.abs();
     let x = x.clamp(-1.0, 1.0);
-    let spring_strength = 0.22 + 0.28 * v / (v + 10.0);
+    // At road speed, power steering gives the driver a firmer sense of direction.
+    // Keep parking and town-speed forces familiar while separating 70 km/h from 10 km/h.
+    let road_speed = ((v - 20.0) / 50.0).clamp(0.0, 1.0);
+    let spring_strength = (0.22 + 0.28 * v / (v + 10.0)) * (1.0 + 0.5 * road_speed);
     let moving_steering_gain = 1.0 + 0.18 * v / (v + 8.0);
     let spring = -spring_strength * x / (1.0 + 0.65 * x.abs());
     let road_align = -(f.lateral_accel / 9.81).clamp(-0.45, 0.45) * 0.25 * (v / 5.0).clamp(0.0, 1.0);
@@ -1139,6 +1142,15 @@ mod button_tests {
         t = 0.37;
         let at_impact = super::wheel_force(&f, 0.0, 0.0, &mut t, 0.0, 1.0);
         assert!((on - at_impact).abs() < 0.001, "{on} {at_impact}");
+    }
+
+    #[test]
+    fn active_turning_feels_firmer_at_road_speed_than_in_town() {
+        let mut t = 0.0;
+        let f = |kmh| super::FfInput { on: true, kmh, dt: 0.016, ..Default::default() };
+        let town = super::wheel_force(&f(10.0), 0.5, 0.48, &mut t, 1.0, 0.0);
+        let road = super::wheel_force(&f(70.0), 0.5, 0.48, &mut t, 1.0, 0.0);
+        assert!(town < 0.0 && road < town * 1.4, "{town} {road}");
     }
 
     #[test]
