@@ -142,10 +142,12 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   joysticks and button boxes as in OMSI's `gamectrler.cfg` - a connected device not set up
   yet has **Set up**, and **Set up step by step** finds its axes (turn the wheel left, press
   each pedal); every button of the device is listed (press one to jump to it). On Windows the
-  devices are read through DirectInput, as OMSI does, so every wheel Windows lists works
-  (a wheel's force feedback: the centring that grows with the speed, the heavy steering of a
-  bus standing still and the scripts' shaking, `FF_Vib_Amp`); a wheel nobody has set up
-  steers with its X axis. A wheel that a community controller mapping also makes a gamepad (a
+  devices are read through DirectInput, as OMSI does, so wheels Windows lists can be
+  configured for steering. Force feedback needs a driver that supports constant force:
+  parking resistance eases as the bus rolls, with centring and
+  feedback from the bus's sideways acceleration, short bumps when the front wheels cross
+  an edge, plus the scripts' shaking, `FF_Vib_Amp`. A wheel nobody has set up steers with
+  its X axis. A wheel that a community controller mapping also makes a gamepad (a
   Logitech G29) is listed once, and *Use this device* switches any device off
   (it is then neither read nor listed as steering). Select a device to adjust *Steering force*
   (centering and resistance) and *Vibration* separately, then press **Save**. The values are stored
