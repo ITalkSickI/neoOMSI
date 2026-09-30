@@ -4854,8 +4854,13 @@ impl Traffic {
                                 stand = Some((gap, lane, at, lat));
                             }
                         }
-                    } else if !passing && a < 2.7 && along < 30.0 {
-                        let need = (2.7 - a) * -lat.signum();
+                    } else if !passing && a < car.half_width + 0.9 + 0.15 && along < 30.0 {
+                        // (only as far as the two bodies would touch: OMSI's cars keep to
+                        // their paths, and moved out by a margin of our own round every car
+                        // at the kerb - 2.7 m from the lane's middle - the traffic of a
+                        // narrow British street lined with parked cars wove to and fro
+                        // across the road instead of keeping to its lane)
+                        let need = (car.half_width + 0.9 + 0.15 - a) * -lat.signum();
                         swerve = Some(
                             swerve
                                 .map(|w| if w.abs() > need.abs() { w } else { need })
