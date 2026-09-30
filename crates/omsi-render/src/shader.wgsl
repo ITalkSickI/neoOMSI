@@ -1407,7 +1407,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // (a light-mapped road or plate takes the map's lamps only in Vanilla+: as OMSI 2 shows
     // it, the vanilla picture lights it from the tile light map alone)
     let lm_only = light_map_mapped(material.params) && camera.sky_color.w > 0.5;
-    let map_lamps = select(1.0, 0.0, (material.params.y > 0.2 && material.params.y < 0.3) || lm_only);
+    // (and a [tree]'s leaf cards, params.y 0.15: OMSI 2 leaves a tree dark even right under
+    // a street lamp, where the lamp's 40 m core lit the crown up yellow-green)
+    let tree_unlamped = camera.sky_color.w > 0.5 && material.params.y > 0.1 && material.params.y < 0.2;
+    let map_lamps = select(1.0, 0.0, (material.params.y > 0.2 && material.params.y < 0.3) || lm_only || tree_unlamped);
     let lamp_light = point_lights(in.world, n, map_lamps);
     var light = diffuse + lamp_light;
     let light_mapped = material.params2.x > 0.5 && material.extra.x < 0.5;

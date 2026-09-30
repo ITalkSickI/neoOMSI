@@ -753,6 +753,10 @@ pub struct MaterialExtra {
     /// `[nomaplighting]`: the map's lamps (`[maplight]`) do not light it - a street lamp
     /// is not lit by its own light.
     pub no_map_lights: bool,
+    /// A `[tree]`'s leaf cards: the vanilla picture leaves the map's lamps off them, as
+    /// OMSI 2 shows a tree standing right under a street lamp dark; Vanilla+ and Enhanced
+    /// still light them.
+    pub tree: bool,
     /// 1 when the texture's `.cfg` sidecar carries `[moisture]`/`[puddles]`: the road of a
     /// junction or crossing object gets wet and collects puddles like a spline's.
     pub moisture: f32,
@@ -4827,8 +4831,9 @@ impl Renderer {
             color,
             params: [
                 mode,
-                // 1 unlit (0.9 a mirror's own picture); 0.25 lit by everything but the map's lamps
-                if mirror { 0.9 } else if unlit { 1.0 } else if lm_mapped { 0.35 } else if extra.no_map_lights { 0.25 } else { 0.0 },
+                // 1 unlit (0.9 a mirror's own picture); 0.25 lit by everything but the map's
+                // lamps; 0.15 a tree, not lit by the map's lamps in the vanilla picture
+                if mirror { 0.9 } else if unlit { 1.0 } else if lm_mapped { 0.35 } else if extra.no_map_lights { 0.25 } else if extra.tree { 0.15 } else { 0.0 },
                 if transmap.is_some() { 1.0 } else { 0.0 },
                 if transmap.map(|t| t.1).unwrap_or(false) {
                     1.0
