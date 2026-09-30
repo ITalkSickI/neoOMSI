@@ -25,7 +25,7 @@ pub struct FirstPersonDriver {
     pub anim_timer: f32,
     pub anim_duration: f32,
     pub right_hand_target: Vec3,
-    pub current_gear: i32,
+    pub last_gear: f32,
 }
 
 impl FirstPersonDriver {
@@ -34,17 +34,26 @@ impl FirstPersonDriver {
             enabled: true,
             arm_state: DriverArmState::Steering,
             anim_timer: 0.0,
-            anim_duration: 0.35,
-            right_hand_target: Vec3::new(0.25, -0.25, 0.35),
-            current_gear: 0,
+            anim_duration: 0.40, // Duração do movimento de ida e volta em segundos
+            // Posicionamento relativo do alvo para alcançar o console/câmbio
+            right_hand_target: Vec3::new(0.28, 0.15, -0.15),
+            last_gear: 0.0,
         }
     }
 
-    pub fn update(&mut self, delta_time: f32, script_gear: i32) {
-        if script_gear != self.current_gear && self.arm_state == DriverArmState::Steering {
-            self.current_gear = script_gear;
+    /// Dispara o movimento do braço para trocar de marcha / apertar botão
+    pub fn trigger_action(&mut self) {
+        if self.arm_state == DriverArmState::Steering {
             self.arm_state = DriverArmState::MovingToShifter;
             self.anim_timer = 0.0;
+        }
+    }
+
+    pub fn update(&mut self, delta_time: f32, current_gear: f32) {
+        // Se a marcha/seletor mudou (qualquer variação numérica no script do câmbio)
+        if (current_gear - self.last_gear).abs() > 0.1 {
+            self.last_gear = current_gear;
+            self.trigger_action();
         }
 
         match self.arm_state {
@@ -57,7 +66,7 @@ impl FirstPersonDriver {
             }
             DriverArmState::Shifting => {
                 self.anim_timer += delta_time;
-                if self.anim_timer >= 0.15 {
+                if self.anim_timer >= 0.15 { // Tempo de permanência no botão/alavanca
                     self.anim_timer = 0.0;
                     self.arm_state = DriverArmState::ReturningToSteering;
                 }
@@ -69,7 +78,7 @@ impl FirstPersonDriver {
                     self.arm_state = DriverArmState::Steering;
                 }
             }
-            _ => {}
+            DriverArmState::Steering => {}
         }
     }
 }
@@ -354,7 +363,13 @@ impl DriverFigure {
     }
 
     pub(crate) fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, dt: f32, show: bool, mirror_only: bool) {
-        let gear = v.var("antrieb_getriebe_gang").map(|g| g as i32).unwrap_or(0);
+        // Tenta ler a marcha/seletor das variáveis mais comuns de ônibus manuais e automáticos
+        let gear = v.var("antrieb_getriebe_gang")
+            .or_else(|| v.var("cockpit_gangwahl"))
+            .or_else(|| v.var("gang"))
+            .or_else(|| v.var("gear_select"))
+            .unwrap_or(0.0);
+
         self.fp_driver.update(dt, gear);
 
         let effective_mirror_only = if self.fp_driver.enabled { true } else { mirror_only };
