@@ -1561,7 +1561,14 @@ impl Player {
     /// Pose and place the driver at the wheel; `show` false hides the figure (the `driver`
     /// setting off), `mirror_only` keeps it to the mirrors (the cab view).
     pub(crate) fn sync_driver(&mut self, renderer: &Renderer, scene: &mut Scene, dt: f32, show: bool, mirror_only: bool) {
+        self.sync_driver_hands(renderer, scene, dt, show, mirror_only, false);
+    }
+
+    /// As [`Player::sync_driver`], with the driver's hands shown in the cab view or not
+    /// (Settings → "Driver's hands in the cab view").
+    pub(crate) fn sync_driver_hands(&mut self, renderer: &Renderer, scene: &mut Scene, dt: f32, show: bool, mirror_only: bool, hands: bool) {
         if let Some(d) = self.driver.as_mut() {
+            d.show_hands_in_cab = hands;
             d.update(renderer, scene, &self.vehicle, dt, show, mirror_only);
         }
     }

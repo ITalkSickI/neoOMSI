@@ -815,7 +815,7 @@ impl ApplicationHandler for App {
                     // from the driver's seat the figure stays in the mirrors
                     // (from the driver's seat only the mirrors show him)
                     // (out of the seat: nobody at the wheel)
-                    p.sync_driver(r, scene, dt, self.settings.driver && self.on_foot.is_none(), self.view == "driver");
+                    p.sync_driver_hands(r, scene, dt, self.settings.driver && self.on_foot.is_none(), self.view == "driver", self.settings.hands_in_cab);
                     if self.view != "free" && self.view != "foot" {
                         let key = crate::input_script::look_key_of(&self.view, Some(p.cam_choice));
                         crate::input_script::swap_view_look(&mut self.look, &mut self.view_looks, &mut self.look_view, &key);

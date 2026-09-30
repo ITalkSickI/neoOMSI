@@ -315,7 +315,7 @@ impl DriverFigure {
             sign: 0.0,
             lean: 0.0,
             base_lean: 0.0,
-            show_hands_in_cab: true,
+            show_hands_in_cab: false,
             shown: true,
             settled: false,
             slide: 0.0,

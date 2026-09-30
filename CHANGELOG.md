@@ -4,6 +4,17 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.438 - 2026-10-01
+
+### View
+- The driver's hands in the cab view are a setting now (Settings and the pause Options,
+  "Driver's hands in the cab view"), off by default.
+
+### Graphics
+- Vanilla: reflections blend in gamma like the rest of the classic picture; at night the
+  MAN NL/NG instrument glass no longer lies milky white over the unlit gauges (#401, by
+  Sulamufor).
+
 ## 0.1.434 - 2026-10-01
 
 ### Driving
