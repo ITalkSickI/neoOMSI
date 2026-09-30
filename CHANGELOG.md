@@ -4,6 +4,22 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.451 - 2026-10-01
+
+### Vehicles
+- Wheels stay under their hub caps: the drawn tyres are seated on the physical hub at the
+  point they turn about (the rotation's `origin_trans`), not at the .o3d's own pivot. A tyre
+  without a pivot (the NEOMAN's right front) was measured at a point circling the hub and
+  moved up and down by centimetres as it turned, so its cap seemed to roll off it.
+
+### View
+- Smooth camera transitions when changing and entering views, a setting in the pause menu
+  as well (#408, by shloooo).
+
+### Graphics (Vanilla, at night)
+- The map's lamps leave `[tree]`s dark, as in OMSI 2 (#407, by Sulamufor).
+- The terrain's light map lights the ground instead of glowing over it (#406, by Sulamufor).
+
 ## 0.1.438 - 2026-10-01
 
 ### View
