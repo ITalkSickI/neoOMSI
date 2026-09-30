@@ -64,6 +64,7 @@ pub(crate) struct App {
     pub(crate) total_frames: u32,
     /// Mirror pictures due (see `MIRROR_RATE`), and which mirror is next.
     pub(crate) mirror_budget: f32,
+    pub(crate) mirrors_seen: usize,
     pub(crate) mirror_turn: usize,
     /// Cursor and view the hover was last worked out for (see the redraw).
     pub(crate) hover_key: Option<(i32, i32, i32, i32)>,
