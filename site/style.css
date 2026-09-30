@@ -214,3 +214,5 @@ main { margin-left: var(--drawer-w); padding-top: 64px; min-height: 100vh; displ
   .donate { right: 14px; bottom: 14px; }
   .donate-fab { padding: 10px 14px 10px 12px; }
 }
+.dl-mine { outline: 2px solid var(--primary, #1e88e5); }
+.dl-badge { font-size: 0.6em; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--primary, #1e88e5); color: #fff; vertical-align: middle; }

@@ -4,6 +4,39 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.371 - 2026-09-30
+
+### Graphics
+- Vanilla lights textures through the sRGB curve instead of a plain power of 2.2, so dark
+  colours are no longer crushed (#343, by Sulamufor).
+- Small dashboard indicator lights are drawn again instead of being dropped as too small
+  (#346, by no-felix).
+
+### Driving
+- Turning the wheel can turn the driver's view into the bend, as in OMSI's "look with the
+  steering wheel" (#363, by shloooo).
+- AI emergency vehicles sound their siren when something holds them up (#357, by Sulamufor).
+- System gamepads on Windows can have their buttons bound again (#358, by EpixIXIx).
+
+### Game and launcher
+- The game menu's scrollbar can be dragged (#354, by XiZyno).
+- When the game was closed by the system (out of memory), the launcher says so and points
+  to the settings that help (#355, by no-felix).
+- A saved situation keeps each vehicle's livery; read-only content folders fall back to a
+  writable place (#365, by no-felix).
+
+### Multiplayer
+- LAN protocol 6: a vehicle's state carries up to 63 values, the rear section's sounds and
+  what is seen first come first, and INFO messages are sent at most four times a second
+  (#353, with the updated #338 and #334, by Jaja80330). Players and servers need this
+  version together.
+
+### Website
+- Download: the Windows button downloaded the dedicated server (its zip ends the same way).
+  Every build now has its own button - Windows and Windows on ARM, macOS for Apple silicon
+  and Intel, Linux and Linux on ARM, Android - the one for your system first, and the four
+  dedicated servers apart below. Installing on macOS is explained too.
+
 ## 0.1.344 - 2026-09-30
 
 ### Driving
