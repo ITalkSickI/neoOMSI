@@ -18,9 +18,9 @@ pub enum DriverArmState {
     ReturningToSteering,   // Retornando a mão para o volante
 }
 
-/// Gerenciador da animação em primeira pessoa
+/// Gerenciador da animação e visibilidade em primeira pessoa com opção de menu
 pub struct FirstPersonDriver {
-    pub is_first_person: bool,
+    pub enabled: bool,     // Alterna se os braços aparecem na 1ª pessoa (opção de menu)
     pub arm_state: DriverArmState,
     pub anim_timer: f32,
     pub anim_duration: f32,
@@ -31,7 +31,7 @@ pub struct FirstPersonDriver {
 impl FirstPersonDriver {
     pub fn new() -> Self {
         Self {
-            is_first_person: true,
+            enabled: true,
             arm_state: DriverArmState::Steering,
             anim_timer: 0.0,
             anim_duration: 0.35,
@@ -40,7 +40,6 @@ impl FirstPersonDriver {
         }
     }
 
-    /// Processa a animação do braço direito de acordo com as variáveis de câmbio
     pub fn update(&mut self, delta_time: f32, script_gear: i32) {
         if script_gear != self.current_gear && self.arm_state == DriverArmState::Steering {
             self.current_gear = script_gear;
@@ -70,7 +69,7 @@ impl FirstPersonDriver {
                     self.arm_state = DriverArmState::Steering;
                 }
             }
-            DriverArmState::Steering => {}
+            _ => {}
         }
     }
 }
@@ -355,11 +354,12 @@ impl DriverFigure {
     }
 
     pub(crate) fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, dt: f32, show: bool, mirror_only: bool) {
-        // Atualiza a animação do braço com base nas marchas
         let gear = v.var("antrieb_getriebe_gang").map(|g| g as i32).unwrap_or(0);
         self.fp_driver.update(dt, gear);
 
-        let effective_show = show || mirror_only;
+        let effective_mirror_only = if self.fp_driver.enabled { true } else { mirror_only };
+        let effective_show = show || effective_mirror_only;
+
         if effective_show != self.shown {
             for (_, inst) in &self.meshes {
                 renderer.set_params(scene, *inst, &[], effective_show, &[]);
@@ -367,7 +367,7 @@ impl DriverFigure {
             self.shown = effective_show;
         }
         for (_, inst) in &self.meshes {
-            renderer.set_mirror_only(scene, *inst, if self.fp_driver.is_first_person { false } else { mirror_only });
+            renderer.set_mirror_only(scene, *inst, effective_mirror_only);
         }
         if !effective_show {
             return;
