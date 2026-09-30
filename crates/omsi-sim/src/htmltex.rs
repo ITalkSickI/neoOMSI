@@ -221,8 +221,13 @@ pub fn load_page(dirs: &[&Path], rel: &str) -> String {
             let close = after.to_ascii_lowercase().find("</script>").map(|c| c + "</script>".len()).unwrap_or(0);
             rest = &after[close..];
         } else {
+            // an inline script (or one that cannot be read) is copied whole, so text inside
+            // it that looks like a tag (`"<link ..."`) is not taken for one
+            let after = &rest[end..];
+            let close = after.to_ascii_lowercase().find("</script>").map(|c| c + "</script>".len()).unwrap_or(after.len());
             out.push_str(tag);
-            rest = &rest[end..];
+            out.push_str(&after[..close]);
+            rest = &after[close..];
         }
     }
     out.push_str(rest);

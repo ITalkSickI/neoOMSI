@@ -892,3 +892,16 @@ fn bench_htmlengine() {
         println!("    pointer hit     {}", stats(hit));
     }
 }
+#[test]
+fn hit_test_follows_layout_changes_and_idle_updates_draw_nothing() {
+    let html = "<body style='margin:0'><div id=a style='height:10px'></div><div id=b style='height:10px'></div><script>window.omsi = window.omsi || {}; window.omsi.update = function () {}; function grow() { document.getElementById('a').style.height = '30px'; }</script></body>";
+    let mut r = EngineRenderer::new(20, 40, html);
+    let (a, b) = (r.js.dom.by_id("a").unwrap(), r.js.dom.by_id("b").unwrap());
+    assert_eq!(r.hit_node(5.0, 15.0), b);
+    assert!(r.poll_frame().is_some());
+    r.set_vars(&[("x".to_string(), 1.0)], &[]);
+    assert!(r.poll_frame().is_none(), "an update that changes nothing draws nothing");
+    r.js.run("grow()").unwrap();
+    assert_eq!(r.hit_node(5.0, 15.0), a, "the cached layout is dropped when the page changes");
+    assert!(r.poll_frame().is_some());
+}

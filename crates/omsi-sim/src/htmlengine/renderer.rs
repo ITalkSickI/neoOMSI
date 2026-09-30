@@ -15,6 +15,17 @@ pub struct EngineRenderer {
     pub(crate) pressed: bool,
     /// The pictures of the page (`<img>`, `background-image`), loaded when first drawn.
     pub(crate) imgs: Arc<ImageStore>,
+    /// The laid-out page of the last `dom.gen`, shared by `render` and `hit_node`.
+    pub(crate) cache: Mutex<Option<LayoutCache>>,
+    /// `dom.gen` of the last frame handed out.
+    pub(crate) rendered_gen: u64,
+}
+
+/// The laid-out body and the root style it was built with.
+pub(crate) struct LayoutCache {
+    pub(crate) gen: u64,
+    pub(crate) root: Style,
+    pub(crate) b: LBox,
 }
 
 impl EngineRenderer {
@@ -49,7 +60,21 @@ impl EngineRenderer {
             start: std::time::Instant::now(),
             pressed: false,
             imgs: Arc::new(ImageStore::new(Vec::new())),
+            cache: Mutex::new(None),
+            rendered_gen: 0,
         }
+    }
+
+    /// The cached layout when it is still current, else a fresh one.
+    fn layout_cache(&self, lay: &Layouter) -> LayoutCache {
+        if let Some(c) = self.cache.lock().unwrap().take() {
+            if c.gen == self.js.dom.gen {
+                return c;
+            }
+        }
+        let root = self.root_style(lay);
+        let b = lay.build(self.js.dom.body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
+        LayoutCache { gen: self.js.dom.gen, root, b }
     }
 
     pub(crate) fn clock(&mut self) {
@@ -99,9 +124,10 @@ impl EngineRenderer {
         let body = self.js.dom.body;
         with_fonts(|reg, bold| {
             let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
-            let root = self.root_style(&lay);
-            let b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
-            hit(&b, x, y)
+            let c = self.layout_cache(&lay);
+            let r = hit(&c.b, x, y);
+            *self.cache.lock().unwrap() = Some(c);
+            r
         })
             .flatten()
             .unwrap_or(body)
@@ -220,22 +246,23 @@ impl EngineRenderer {
         let mut cv = Canvas { w: self.width, h: self.height, px: vec![0; (self.width * self.height * 4) as usize] };
         with_fonts(|reg, bold| {
             let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
-            let body = self.js.dom.body;
-            let root = self.root_style(&lay);
+            let mut c = self.layout_cache(&lay);
             // the background of html and body covers the whole texture
             let full = [0.0, 0.0, self.width as f32, self.height as f32];
-            if root.bg[3] > 0 {
-                cv.fill(full, root.bg, 0.0);
+            if c.root.bg[3] > 0 {
+                cv.fill(full, c.root.bg, 0.0);
             }
-            paint_bg(&mut cv, &self.imgs, full, 0.0, &root);
-            let mut b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
-            if b.st.bg[3] > 0 {
-                cv.fill(full, b.st.bg, 0.0);
+            paint_bg(&mut cv, &self.imgs, full, 0.0, &c.root);
+            if c.b.st.bg[3] > 0 {
+                cv.fill(full, c.b.st.bg, 0.0);
             }
-            paint_bg(&mut cv, &self.imgs, full, 0.0, &b.st);
-            b.st.bg = [0, 0, 0, 0];
-            b.st.bg_img = None;
-            paint(&mut cv, &lay, &b);
+            paint_bg(&mut cv, &self.imgs, full, 0.0, &c.b.st);
+            let (bg, bg_img) = (c.b.st.bg, c.b.st.bg_img.take());
+            c.b.st.bg = [0, 0, 0, 0];
+            paint(&mut cv, &lay, &c.b);
+            c.b.st.bg = bg;
+            c.b.st.bg_img = bg_img;
+            *self.cache.lock().unwrap() = Some(c);
         });
         log::debug!("htmltexture: rendered {}x{} in {:?}", self.width, self.height, started.elapsed());
         cv.px
@@ -252,7 +279,6 @@ impl HtmlRenderer for EngineRenderer {
         self.clock();
         self.store_vars(num, strs);
         self.call_update(num, strs);
-        self.dirty = true;
     }
 
     fn set_vehicle(&mut self, api: &crate::vehicle_api::ApiValue) {
@@ -288,19 +314,18 @@ impl HtmlRenderer for EngineRenderer {
             }
             PointerKind::Move => self.dispatch(node, "mousemove", x, y),
         }
-        self.dirty = true;
     }
 
     fn poll_frame(&mut self) -> Option<Vec<u8>> {
         self.clock();
-        if self.run_timers() {
-            self.dirty = true;
-        }
-        if !self.dirty {
+        self.run_timers();
+        if !self.dirty && self.js.dom.gen == self.rendered_gen {
             return None;
         }
         self.dirty = false;
-        Some(self.render())
+        let frame = self.render();
+        self.rendered_gen = self.js.dom.gen;
+        Some(frame)
     }
 
     fn take_events(&mut self) -> Vec<(String, f32)> {
@@ -313,6 +338,7 @@ impl HtmlRenderer for EngineRenderer {
 
     fn set_asset_dirs(&mut self, dirs: Vec<std::path::PathBuf>) {
         self.imgs = Arc::new(ImageStore::new(dirs));
+        *self.cache.lock().unwrap() = None;
         self.dirty = true;
     }
 
