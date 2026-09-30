@@ -4,6 +4,15 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.344 - 2026-09-30
+
+### Driving
+- Braking and pulling away pitch the bus as much as in OMSI (the tyres' forces act about
+  the hubs), and it no longer pitches at a standstill.
+- Turning the wheel no longer kicks the body into a roll: while the tyres hold, the bus
+  leans only by the bend's pull, as Omsi.exe does.
+- A wheel in the air stays where it hangs at rest (`Axle_Suspension`), as in OMSI.
+
 ## 0.1.342 - 2026-09-30
 
 ### Performance
