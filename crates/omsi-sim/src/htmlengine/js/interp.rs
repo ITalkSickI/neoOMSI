@@ -822,7 +822,7 @@ impl Interp {
                 Val::Undef
             }
             Nat::Log => {
-                log::debug!("htmltexture console: {}", args.iter().map(to_str).collect::<Vec<_>>().join(" "));
+                log::info!("htmltexture console: {}", args.iter().map(to_str).collect::<Vec<_>>().join(" "));
                 Val::Undef
             }
             Nat::SetTimeout | Nat::SetInterval => {

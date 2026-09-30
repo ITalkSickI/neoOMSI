@@ -243,7 +243,16 @@ impl VehicleInstance {
         }
         // the depot file, for the pages that start now
         let depot = if self.html_textures.iter().any(|t| !t.started) {
-            self.host.hof.as_ref().map(|h| crate::vehicle_api::depot(h))
+            match self.host.hof.as_ref() {
+                Some(h) => {
+                    log::info!("htmltexture: page starts, depot '{}' ({}) goes to omsi.depot", h.name.trim(), h.path.display());
+                    Some(crate::vehicle_api::depot(h))
+                }
+                None => {
+                    log::warn!("htmltexture: page starts, but the vehicle has no depot file (host.hof is None): omsi.depot stays empty");
+                    None
+                }
+            }
         } else {
             None
         };
@@ -282,8 +291,12 @@ impl VehicleInstance {
                     if t.started { "" } else { " (first update)" }
                 );
                 if !t.started {
-                    if let Some(d) = &depot {
-                        t.renderer.set_depot(d);
+                    match &depot {
+                        Some(d) => {
+                            log::info!("htmltexture #{}: omsi.depot set on the page", t.script_index);
+                            t.renderer.set_depot(d);
+                        }
+                        None => log::warn!("htmltexture #{}: first update without a depot: omsi.depot is empty", t.script_index),
                     }
                 }
                 if api_changed {
