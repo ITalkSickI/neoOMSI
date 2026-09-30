@@ -4153,6 +4153,36 @@ impl Renderer {
         scene.textures.get(id).map(|t| t.view.clone())
     }
 
+    pub fn upload_speed_mb_s(&self) -> f64 {
+        let n = 1024u32;
+        let size = wgpu::Extent3d { width: n, height: n, depth_or_array_layers: 1 };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("upload check"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let data = vec![0u8; (n * n * 4) as usize];
+        let rounds = 4;
+        let t = std::time::Instant::now();
+        for _ in 0..rounds {
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                &data,
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(n * 4), rows_per_image: Some(n) },
+                size,
+            );
+        }
+        let secs = t.elapsed().as_secs_f64().max(1e-6);
+        self.queue.submit([]);
+        texture.destroy();
+        (data.len() * rounds) as f64 / 1e6 / secs
+    }
+
     /// A texture the scene can be rendered into (`render_to_texture`), e.g. a rear-view mirror.
     pub fn add_render_texture(&self, scene: &mut Scene, width: u32, height: u32) -> TextureId {
         let size = wgpu::Extent3d {
