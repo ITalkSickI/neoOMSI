@@ -1551,6 +1551,7 @@ pub const LANGUAGES: &[(&str, &str, &str, &[&str])] = &[
     ("HUN", "Magyar", "hu", &["hu", "hungarian", "magyar"]),
     ("ESP", "Español", "es", &["es", "spa", "spanish", "español"]),
     ("PTB", "Português (Brasil)", "pt", &["pt", "br", "pt-br", "por", "portuguese", "português"]),
+    ("PTP", "Português (Portugal)", "pt-pt", &["pt-pt", "pt_pt", "pt-portugal", "portuguese-portugal", "português (portugal)", "português de portugal"]),
     ("ITA", "Italiano", "it", &["it", "italian", "italiano"]),
     ("NLD", "Nederlands", "nl", &["nl", "dutch", "nederlands"]),
     ("TUR", "Türkçe", "tr", &["tr", "turkish", "türkçe"]),
@@ -2350,6 +2351,14 @@ mod tests {
         assert_eq!(old.plate, None);
         let typed: Duty = serde_json::from_str(r#"{"map":"maps/x/global.cfg","bus":"Vehicles/x.bus","time":"09:00","plate":"B-AB 1234"}"#).unwrap();
         assert_eq!(typed.plate.as_deref(), Some("B-AB 1234"));
+    }
+
+    #[test]
+    fn portuguese_variants_are_distinct() {
+        assert_eq!(language_code("pt-BR"), "PTB");
+        assert_eq!(language_iso("PTB"), "pt");
+        assert_eq!(language_code("pt-PT"), "PTP");
+        assert_eq!(language_iso("PTP"), "pt-pt");
     }
 
     #[test]
