@@ -1236,15 +1236,28 @@ impl Traffic {
         }
     }
 
-    /// The `[couple_back]` chain of `ty`, loaded (once per file).
-    pub(crate) fn trailer_chain(&mut self, ty: &Arc<VehicleType>) -> Vec<Arc<VehicleType>> {
+    /// The vehicles coupled behind `ty` (its rear sections, trailers, the cars of a unit),
+    /// each with whether it is turned round, loaded (once per file). As Omsi.exe builds a
+    /// consist (0x70a174): towards the back of the train a vehicle goes on with its
+    /// `[couple_back]`, or with its `[couple_front]` when it is itself turned round; the
+    /// coupled one is turned round when the coupling's flag says so, against the one it
+    /// hangs on; and a coupling back to the file it came from that turns nothing round is
+    /// not followed. (Following `[couple_back]` whatever the way, the Berlin A3's unit -
+    /// the S car and its K car turned round behind it, whose own `[couple_back]` names the
+    /// S car again - went on S, K, S, K, S, none of them turned.)
+    pub(crate) fn trailer_chain(&mut self, ty: &Arc<VehicleType>) -> Vec<(Arc<VehicleType>, bool)> {
+        self.coupled_chain(ty, false, true)
+    }
+
+    /// See [`Traffic::trailer_chain`]: from `ty` (turned round: `rev`) towards the back of
+    /// the train, or towards its front, the nearest first.
+    pub(crate) fn coupled_chain(&mut self, ty: &Arc<VehicleType>, rev: bool, toward_back: bool) -> Vec<(Arc<VehicleType>, bool)> {
         let mut out = Vec::new();
-        let mut lead = ty.clone();
-        for _ in 0..4 {
-            let Some((file, _)) = lead.def.couple_back.clone() else {
+        let (mut lead, mut lead_rev) = (ty.clone(), rev);
+        for _ in 0..8 {
+            let Some((path, r)) = crate::spawn::next_coupled(&lead.def, lead_rev, toward_back) else {
                 break;
             };
-            let path = omsi_cfg::resolve_path(lead.def.dir(), &file);
             let root = self.root.clone();
             let t =
                 self.trailer_types.entry(path.clone()).or_insert_with(
@@ -1257,8 +1270,9 @@ impl Traffic {
                     },
                 );
             let Some(t) = t.clone() else { break };
-            out.push(t.clone());
+            out.push((t.clone(), r));
             lead = t;
+            lead_rev = r;
         }
         out
     }
@@ -1274,14 +1288,14 @@ impl Traffic {
     ) -> Vec<VehicleRender> {
         let mut renders = Vec::new();
         let ty = vehicle.ty.clone();
-        for t in self.trailer_chain(&ty) {
+        for (t, rev) in self.trailer_chain(&ty) {
             renders.push(world.add_vehicle_shared(
                 renderer,
                 scene,
                 &t,
                 scheme.filter(|i| *i < t.paint_schemes.len()),
             ));
-            vehicle.attach_trailer(t);
+            vehicle.attach_trailer_ex(t, rev);
         }
         renders
     }
@@ -2885,7 +2899,6 @@ impl Traffic {
         i: usize,
         gap: Option<f32>,
         standing: bool,
-        parked: bool,
         by_lane: &HashMap<usize, Vec<(usize, f32, f32, bool)>>,
     ) {
         let st = &self.cars[i].state;
@@ -5017,7 +5030,7 @@ impl Traffic {
                 let at = st.front + (p.hold - st.odometer).max(0.0) + 0.6;
                 keep_back = Some(keep_back.map(|k| k.min(at)).unwrap_or(at));
             }
-            self.plan_bypass(i, lead.map(|l| l.0.gap), standing, parked_ahead, &by_lane);
+            self.plan_bypass(i, lead.map(|l| l.0.gap), standing, &by_lane);
             let way_now = self.way_lanes(&self.cars[i].state, 120.0);
             self.guard_pass(i, &by_lane);
             self.plan_pass(
@@ -5900,7 +5913,7 @@ impl Traffic {
         let h = heading.to_radians();
         let fwd = DVec3::new(h.sin(), h.cos(), 0.0);
         let (mut origin, mut lead) = (pos, ty.clone());
-        for t in self.trailer_chain(ty) {
+        for (t, _) in self.trailer_chain(ty) {
             let back = lead
                 .def
                 .coupling_back
