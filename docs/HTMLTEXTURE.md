@@ -1,15 +1,60 @@
-# HTML textures: the page API
+# HTML Textures
 
-An `[htmltexture]` entry in a `model.cfg` draws a small HTML page onto a mesh. That is how
-IBIS displays, cab screens and touch panels get their picture. openOMSI runs the page with its
-own little engine, so there is no browser involved and it behaves the same on every platform,
-Android included.
+**Note:** This API is still under development, so breaking changes may occur at any time.
 
-This file explains how a page talks to the bus, and what the engine can and can't do. If you
-have never written a page like this before, read it top to bottom once. After that it works as
-a reference.
+Previously, you had to use `scriptTexture` in Omsi 2; to make things easier for both modders and developers, openOmsi now offers `htmlTexture`.
+These can be used, for example, as IBIS or other information in vehicles, giving you a few more design options.
 
-Working example: `docs/examples/htmltexture/demo.html`.
+This documentation explains how to use the API in HTML. If anything is missing or you encounter any issues, please feel free to open an issue with relevant information and steps to reproduce the problem.
+
+Working html example: `docs/examples/htmltexture/demo.html`.
+
+### Example model config:
+```
+[htmltexture]
+1024
+512
+html\index.html
+
+##########################################
+
+[mesh]
+generic\AFR4\AFR4_Display.o3d
+
+[visible]
+AFR4_Display
+1
+
+[matl]
+afr4.dds
+0
+
+[useHtmlTexture]
+0
+
+[matl_lightmap]
+1px_lm.bmp
+0.5
+
+[matl_freetex]
+afr4.dds
+AFR4_ST_texture
+
+[matl_transmap]
+\S:7
+
+[viewpoint]
+3
+```
+
+`[useHtmlTexture]` describes which `[htmlTexture]` it is; `\S:7` is the corresponding script texture ID in this case.
+Note: An `[htmlTexture]` is registered as a `[scriptTexture]`, but it is also registered as an `[htmlTexture]`.
+
+This means: If an `htmlTexture` follows `scriptTexture 6`, the `htmlTexture` is automatically `scriptTexture 7`. But it is not `htmlTexture 7`.
+
+### Html file
+
+`html\index.html` is the relative path from the bus path. Example: `Data\Vehicles\MAN_NewLionsCity\html\index.html` = `html\index.html`
 
 ## The basic idea
 
@@ -25,10 +70,10 @@ The smallest useful page:
 ```html
 <div id="speed">--</div>
 <script>
-window.omsi = window.omsi || {};
-window.omsi.update = function (d) {
-    document.getElementById('speed').textContent = d.vehicle.motion.speedKmh + ' km/h';
-};
+    window.omsi = window.omsi || {};
+    window.omsi.update = function (d) {
+        document.getElementById('speed').textContent = d.vehicle.motion.speedKmh + ' km/h';
+    };
 </script>
 ```
 
@@ -45,12 +90,12 @@ window.omsi.update = function (d) {
 };
 ```
 
-| | |
-| --- | --- |
-| `omsi.vehicle` | The normalised state of the bus, with **the same names on every bus** (see below). You can also read it from timers. |
-| `omsi.vars.num`, `omsi.vars.str` | The latest value of every variable in the bus's own variable list, keyed by lower-case name. |
-| `omsi.getVar(name)` | One variable, any letter case. Gives a number, else text, else `undefined`. |
-| `omsi.apiVersion` | `1` |
+|                                  |                                                                                                                      |
+|----------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `omsi.vehicle`                   | The normalised state of the bus, with **the same names on every bus** (see below). You can also read it from timers. |
+| `omsi.vars.num`, `omsi.vars.str` | The latest value of every variable in the bus's own variable list, keyed by lower-case name.                         |
+| `omsi.getVar(name)`              | One variable, any letter case. Gives a number, else text, else `undefined`.                                          |
+| `omsi.apiVersion`                | `1`                                                                                                                  |
 
 Why two ways? OMSI buses name their variables however the author likes (`door_0`,
 `Fahrertuer_Rechts`, `elec_busbar_main` ...). If your page wanted to know whether the engine
@@ -67,39 +112,39 @@ standardised by OMSI. Read those with `omsi.getVar("their_variable_name")`.
 
 ## Time, date, locale
 
-| | |
-| --- | --- |
-| `omsi.time.hour`, `.minute`, `.second` | Simulation clock, as numbers |
-| `omsi.time.asString` | `HH:MM:SS` |
-| `omsi.date.day`, `.month`, `.year` | Simulation date, as numbers |
-| `omsi.date.asString` | `DD.MM.YYYY`, or `MM/DD/YYYY` when `locale` is `en` |
-| `omsi.locale` | Interface language as an ISO 639-1 code (`en`, `de` ...) |
+|                                        |                                                          |
+|----------------------------------------|----------------------------------------------------------|
+| `omsi.time.hour`, `.minute`, `.second` | Simulation clock, as numbers                             |
+| `omsi.time.asString`                   | `HH:MM:SS`                                               |
+| `omsi.date.day`, `.month`, `.year`     | Simulation date, as numbers                              |
+| `omsi.date.asString`                   | `DD.MM.YYYY`, or `MM/DD/YYYY` when `locale` is `en`      |
+| `omsi.locale`                          | Interface language as an ISO 639-1 code (`en`, `de` ...) |
 
 These are set before `omsi.update` runs and change with the simulation clock, once per second.
 Use `omsi.locale` to pick your texts, and fall back to English for languages you didn't write.
 
 ## `omsi.vehicle` (version 1)
 
-| path | meaning |
-| --- | --- |
-| `info.number`, `.ident`, `.yard`, `.route`, `.nextStop` | text variables of the bus |
-| `motion.speedKmh`, `.heading`, `.pitch`, `.bank`, `.steeringDeg`, `.x`, `.y`, `.z`, `.odometerKm` | movement and position |
-| `engine.running`, `.rpm`, `.throttle`, `.brake`, `.clutch`, `.gear`, `.tankContent` | drive train and pedals |
-| `electrics.on`, `.busbarMain`, `.busbarAvailable`, `.failure` | on-board network |
-| `battery.on` | battery switch, `null` when the bus has none |
-| `doors.count`, `.anyOpen` | number of door leaves (`door_0`, `door_1` ...) and whether any is open |
-| `doors.list[i].number`, `.open` (0..1), `.isOpen` | `list[0]` is door 1 |
-| `passengers.onboard` | people aboard |
-| `passengers.entries[i]`, `.exits[i]` | `number`, `open`, `requested` (`PAX_Entry/Exit<n>_Open/_Req`) |
-| `lights.headlights` | 0 off, 1 parking, 2 dipped, 3 main beam |
-| `lights.brake`, `.reverse`, `.fog`, `.interior` | lamps (`interior` is 0..1) |
-| `lights.indicator` | 0 off, 1 left, 2 right, 3 hazard. `.indicatorLeft` and `.indicatorRight` are the lamps, `.hazard` the switch |
-| `brakes.parking`, `.stop`, `.kneeling` | switches |
-| `wipers.running` | windscreen wipers |
-| `cabin.temperature` | cabin air in °C |
-| `condition.dirt`, `.crashes`, `.lastImpactKJ`, `.streetCondition` | wear and road |
-| `train.trailers` | coupled vehicles behind this one |
-| `route.*` | line, stops, delay: see the next section |
+| path                                                                                              | meaning                                                                                                      |
+|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| `info.number`, `.ident`, `.yard`, `.route`, `.nextStop`                                           | text variables of the bus                                                                                    |
+| `motion.speedKmh`, `.heading`, `.pitch`, `.bank`, `.steeringDeg`, `.x`, `.y`, `.z`, `.odometerKm` | movement and position                                                                                        |
+| `engine.running`, `.rpm`, `.throttle`, `.brake`, `.clutch`, `.gear`, `.tankContent`               | drive train and pedals                                                                                       |
+| `electrics.on`, `.busbarMain`, `.busbarAvailable`, `.failure`                                     | on-board network                                                                                             |
+| `battery.on`                                                                                      | battery switch, `null` when the bus has none                                                                 |
+| `doors.count`, `.anyOpen`                                                                         | number of door leaves (`door_0`, `door_1` ...) and whether any is open                                       |
+| `doors.list[i].number`, `.open` (0..1), `.isOpen`                                                 | `list[0]` is door 1                                                                                          |
+| `passengers.onboard`                                                                              | people aboard                                                                                                |
+| `passengers.entries[i]`, `.exits[i]`                                                              | `number`, `open`, `requested` (`PAX_Entry/Exit<n>_Open/_Req`)                                                |
+| `lights.headlights`                                                                               | 0 off, 1 parking, 2 dipped, 3 main beam                                                                      |
+| `lights.brake`, `.reverse`, `.fog`, `.interior`                                                   | lamps (`interior` is 0..1)                                                                                   |
+| `lights.indicator`                                                                                | 0 off, 1 left, 2 right, 3 hazard. `.indicatorLeft` and `.indicatorRight` are the lamps, `.hazard` the switch |
+| `brakes.parking`, `.stop`, `.kneeling`                                                            | switches                                                                                                     |
+| `wipers.running`                                                                                  | windscreen wipers                                                                                            |
+| `cabin.temperature`                                                                               | cabin air in °C                                                                                              |
+| `condition.dirt`, `.crashes`, `.lastImpactKJ`, `.streetCondition`                                 | wear and road                                                                                                |
+| `train.trailers`                                                                                  | coupled vehicles behind this one                                                                             |
+| `route.*`                                                                                         | line, stops, delay: see the next section                                                                     |
 
 `doors.anyOpen` follows what the passengers are told is open (`PAX_*_Open`) if the bus has
 those variables, and the door leaves (`door_<n>`) if not. Some mod buses use `door_<n>` for
@@ -109,18 +154,18 @@ other things, so don't be surprised if a strange bus behaves oddly here.
 
 Everything about the current trip lives in `omsi.vehicle.route`.
 
-| path | meaning |
-| --- | --- |
-| `route.active` | `true` when the bus has a timetable (a duty) |
-| `route.source` | where the stops come from: `"timetable"`, `"ibis"` or `"none"` |
-| `route.line` | the line text |
-| `route.destination` | the text on the destination sign |
-| `route.stops[i]` | one stop: `index`, `name`, `arrival`, `departure` (`"HH:MM"`), `arrivalSec`, `departureSec` (seconds after midnight), `served`, `current` |
-| `route.current` | the stop the bus is at or heading for (same fields as a stop) |
-| `route.terminus` | the last stop (same fields) |
-| `route.nextIndex` | index of the next stop. `null` when `active` is `false` |
-| `route.delaySec` | delay in seconds. Negative means early |
-| `route.ibis.line`, `.suffix`, `.routeIndex`, `.terminusIndex`, `.terminusCode` | the raw numbers the IBIS itself holds |
+| path                                                                           | meaning                                                                                                                                   |
+|--------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `route.active`                                                                 | `true` when the bus has a timetable (a duty)                                                                                              |
+| `route.source`                                                                 | where the stops come from: `"timetable"`, `"ibis"` or `"none"`                                                                            |
+| `route.line`                                                                   | the line text                                                                                                                             |
+| `route.destination`                                                            | the text on the destination sign                                                                                                          |
+| `route.stops[i]`                                                               | one stop: `index`, `name`, `arrival`, `departure` (`"HH:MM"`), `arrivalSec`, `departureSec` (seconds after midnight), `served`, `current` |
+| `route.current`                                                                | the stop the bus is at or heading for (same fields as a stop)                                                                             |
+| `route.terminus`                                                               | the last stop (same fields)                                                                                                               |
+| `route.nextIndex`                                                              | index of the next stop. `null` when `active` is `false`                                                                                   |
+| `route.delaySec`                                                               | delay in seconds. Negative means early                                                                                                    |
+| `route.ibis.line`, `.suffix`, `.routeIndex`, `.terminusIndex`, `.terminusCode` | the raw numbers the IBIS itself holds                                                                                                     |
 
 A few things worth knowing:
 
@@ -133,15 +178,15 @@ A few things worth knowing:
 
 ## Acting on the vehicle
 
-| | |
-| --- | --- |
-| `omsi.setVar(name, value)` | Write a script variable. |
-| `omsi.trigger(name)` | Press a trigger of the bus's scripts, like a button in the cab does. |
-| `omsi.setRoute(index)` | Type route `omsi.depot.routes[index]` into the IBIS: line, route and destination, the way a driver would. |
-| `omsi.setLine(text)` | Set a line by its text. The game takes the first route of that line in the depot file. It matches the whole text (any letter case) or the leading digits. |
-| `omsi.setDestination(index)` | Only change the destination sign, using `omsi.depot.destinations[index]`. The line and route stay as they are. |
-| `omsi.clearLine()` | Clear the IBIS: no line, no route. Use it before a route is chosen, or to throw the current one away. |
-| `omsi.setNextStop(index)` | With a timetable: jump to stop `index` of the trip. The stops before it are skipped. |
+|                              |                                                                                                                                                           |
+|------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `omsi.setVar(name, value)`   | Write a script variable.                                                                                                                                  |
+| `omsi.trigger(name)`         | Press a trigger of the bus's scripts, like a button in the cab does.                                                                                      |
+| `omsi.setRoute(index)`       | Type route `omsi.depot.routes[index]` into the IBIS: line, route and destination, the way a driver would.                                                 |
+| `omsi.setLine(text)`         | Set a line by its text. The game takes the first route of that line in the depot file. It matches the whole text (any letter case) or the leading digits. |
+| `omsi.setDestination(index)` | Only change the destination sign, using `omsi.depot.destinations[index]`. The line and route stay as they are.                                            |
+| `omsi.clearLine()`           | Clear the IBIS: no line, no route. Use it before a route is chosen, or to throw the current one away.                                                     |
+| `omsi.setNextStop(index)`    | With a timetable: jump to stop `index` of the trip. The stops before it are skipped.                                                                      |
 
 Two details that trip people up:
 
@@ -163,17 +208,17 @@ first `update`. If the bus has no depot file it stays empty.
 
 **`omsi.depot.routes[i]`**
 
-| field | meaning |
-| --- | --- |
-| `index` | position in the list, the number you give to `setRoute` |
-| `code` | the IBIS route code (line × 100 + route number, by the depot file's own rule) |
-| `name` | name of the trip |
-| `line` | the line text |
-| `terminusCode` | the destination code of the route |
-| `destinationIndex` | index in `destinations`, or `-1` if there is none |
-| `destination` | the text of that destination sign |
-| `first`, `last` | name of the first and last stop |
-| `stops` | names of all stops, in order |
+| field              | meaning                                                                       |
+|--------------------|-------------------------------------------------------------------------------|
+| `index`            | position in the list, the number you give to `setRoute`                       |
+| `code`             | the IBIS route code (line × 100 + route number, by the depot file's own rule) |
+| `name`             | name of the trip                                                              |
+| `line`             | the line text                                                                 |
+| `terminusCode`     | the destination code of the route                                             |
+| `destinationIndex` | index in `destinations`, or `-1` if there is none                             |
+| `destination`      | the text of that destination sign                                             |
+| `first`, `last`    | name of the first and last stop                                               |
+| `stops`            | names of all stops, in order                                                  |
 
 Many depot files leave the line column as a placeholder like `XXX`. When that happens the
 game works the line out from the route code instead (code 1203 becomes line `12`).
@@ -189,7 +234,10 @@ A small example, a line picker that starts the first route it finds:
 function pickLine(text) {
     var routes = omsi.depot.routes, i;
     for (i = 0; i < routes.length; i++) {
-        if (routes[i].line === text) { omsi.setRoute(routes[i].index); return; }
+        if (routes[i].line === text) {
+            omsi.setRoute(routes[i].index);
+            return;
+        }
     }
 }
 ```
@@ -209,9 +257,12 @@ You can listen in three ways:
 ```html
 <button onclick="doSomething()">Press</button>
 ```
+
 ```js
-el.onclick = function (event) { ... };
-el.addEventListener('click', function (event) { ... });
+el.onclick = function (event) { ...
+};
+el.addEventListener('click', function (event) { ...
+});
 ```
 
 The event object has `type`, `x`, `y` (in texture pixels), `target`, `stopPropagation()` and
@@ -242,8 +293,7 @@ video.
 
 ### CSS
 
-* Selectors: tag, `#id`, `.class`, `*`, combinations like `div.a#b`, descendant chains
-  (`.panel span`) and comma lists.
+* Selectors: tag, `#id`, `.class`, `*`, combinations like `div.a#b`, descendant chains (`.panel span`) and comma lists.
 * Properties: `color`, `background` / `background-color`, `font-size`, `font-weight`,
   `text-align`, `line-height`, `margin` (and `-top/-right/-bottom/-left`), `padding` (same),
   `width`, `height`, `display` (`none`, `inline`, `inline-block`), `visibility`,
@@ -301,7 +351,8 @@ Redrawing on every call wastes time on a slow phone.
 * **Start from `demo.html`** and change one thing at a time. If the texture goes blank, the
   last thing you touched is the culprit.
 * **Write to the log.** `console.log(...)` ends up in the game's log with the prefix
-  `htmltexture console:`, which is the quickest way to see what `omsi.vehicle` or `omsi.depot` really contain on your bus.
+  `htmltexture console:`, which is the quickest way to see what `omsi.vehicle` or `omsi.depot` really contain on your
+  bus.
 * **Guard for missing data.** A bus without a depot file has no `omsi.depot.routes`, a bus
   without a timetable has no stops. Check the length before you loop.
 * **Test on the real bus.** Each bus fills the variable list differently, and some values
