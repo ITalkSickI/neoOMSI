@@ -1055,7 +1055,7 @@ impl Player {
         }
     }
 
-    pub(crate) fn tick(&mut self, dt: f32, audio: Option<&omsi_audio::AudioEngine>, inside: bool) {
+    pub(crate) fn tick(&mut self, dt: f32, audio: Option<&omsi_audio::AudioEngine>, inside: bool, listener_follows_bus: bool) {
         self.tick_startup(dt);
         self.tick_auto_drag(dt);
         self.axes.speed_kmh = self.vehicle.physics.velocity_kmh();
@@ -1123,6 +1123,7 @@ impl Player {
             // samples outside, the rain on the roof in the cab)
             ss.set_inside(inside);
             ss.set_muffled(inside);
+            ss.set_listener_vehicle(listener_follows_bus);
             // how open the bus is to the outside (doors, driver's window) for every outside
             // sound heard in it - this bus's own and the traffic's
             omsi_audio::soundset::set_outside_open(if inside { v.var("Snd_OutsideVol") } else { None });

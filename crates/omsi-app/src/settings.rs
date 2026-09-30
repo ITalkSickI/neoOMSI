@@ -232,7 +232,12 @@ impl Settings {
         if let Ok(g) = omsi_cfg::env::var("OMSI_GRAPHICS") {
             text.push_str(&format!("\ngraphics={g}\n"));
         }
-        let s = Self::from_text(&text);
+        let mut s = Self::from_text(&text);
+        // OMSI_SAFE_GPU=<n>: the game was started again after its graphics device was lost
+        // (see `App::restart_after_device_loss`): lighter on the card each time
+        if let Some(n) = omsi_cfg::env::var("OMSI_SAFE_GPU").ok().and_then(|v| v.parse::<u32>().ok()).filter(|n| *n > 0) {
+            s.apply_safe_gpu(n);
+        }
         log::info!("settings from {}: msaa {} af {} ssao {} shadows {} ({}) navigator {} graphics {} post aa {} vsync {} render scale {} boarding {} min object size {} max object distance {} max fps {}", p.display(), s.msaa, s.anisotropy, s.ssao, s.shadows, s.shadow_size, s.navigator, s.graphics, s.post_aa, s.vsync, s.render_scale_text(), s.boarding, s.min_obj_size, s.object_distance(), s.max_fps);
         s
     }
@@ -407,6 +412,26 @@ impl Settings {
     /// `auto` or the fraction, as the file and the log write it.
     pub fn render_scale_text(&self) -> String {
         if self.render_scale > 0.0 { format!("{}", self.render_scale) } else { "auto".into() }
+    }
+
+    /// Lighter graphics after the graphics device was lost `n` times this session: no
+    /// multisampling, no SSAO, smaller shadow and mirror maps, fewer textures kept; a second
+    /// loss also a smaller picture and no shadows.
+    pub fn apply_safe_gpu(&mut self, n: u32) {
+        self.msaa = 1;
+        self.ssao = false;
+        self.shadow_size = self.shadow_size.min(2048);
+        self.mirror_size = self.mirror_size.min(256);
+        let budget = if self.texture_memory > 0 { self.texture_memory } else { 1200 };
+        self.texture_memory = (budget * 2 / 3).max(400);
+        if n >= 2 {
+            self.shadows = false;
+            self.shadow_size = 1024;
+            self.render_scale = if self.render_scale > 0.0 { self.render_scale.min(0.75) } else { 0.75 };
+            self.texture_memory = self.texture_memory.min(700);
+            self.mirror_size = 128;
+        }
+        log::warn!("safer graphics after a lost graphics device ({n}): msaa 1, SSAO off, shadows {} ({}), textures {} MB, render scale {}", self.shadows, self.shadow_size, self.texture_memory, self.render_scale_text());
     }
 
     pub fn render_options(&self) -> omsi_render::RenderOptions {

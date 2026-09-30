@@ -4,6 +4,96 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.237 - 2026-09-30
+
+The testers' second round: the crashes with "the graphics device was lost", weak cards and
+phones, traffic that stood on free roads and roundabouts, passengers' necks, VR, gamepads,
+and six pull requests.
+
+### Crashes and graphics cards
+- A lost graphics device (the driver reset the card: "the graphics device was lost",
+  #219, #223) no longer ends the drive: the game saves the situation and starts again on
+  it by itself with lighter graphics (no MSAA, no SSAO, smaller shadow maps, mirrors and
+  texture budget; on Windows DirectX 12 when it was Vulkan that was lost), at most twice. The launcher does not
+  report such a restart as a crash.
+- Windows tries DirectX 12 before Vulkan.
+- When the card runs out of memory, the textures are cut down (to 60 % of the budget each
+  time, not below 300 MB) before the driver gives up.
+- The interface's vertex buffers are made where a failure can be seen: after the card ran
+  out of memory, one invalid buffer was written to every frame, flooding the log with
+  thousands of GPU errors and taking the frame rate down to 12 fps (#217). A failed one
+  is now made again at the next frame and nothing draws from it meanwhile.
+- The automatic render scale moves in three steps (100, 85, 70 %), at most every five
+  seconds. Every 5 % step every two seconds made all the picture's targets anew -
+  hundreds of MB each time - a stutter and memory the driver ran out of. At the smallest
+  scale and still too slow, SSAO and then the shadows go off.
+- A small or shared graphics chip (integrated graphics outside a Mac, a phone, a card of up
+  to 2.5 GB, OpenGL) is drawn without SSAO and MSAA; a card of up to 4 GB without SSAO and
+  with at most 2x MSAA. `OMSI_FULL_GPU=1` keeps the settings as they are.
+- The status log shows the GPU memory the textures and meshes take; on Windows the
+  machine's memory sets the texture budget.
+- Textures shrunk while far away come back whole at once when they are near again:
+  buildings right in front of the bus stayed blurred on a map that filled the budget.
+
+### Traffic
+- A roundabout's entry no longer waits at its line for a gap at the far side of the ring:
+  a nine-second gap that never came kept the queue standing for minutes (Westcountry: no
+  car stuck any more, mean speed 13 -> 21 km/h).
+- A hold of one frame winds a waiting driver's reaction back only a little: a junction
+  "free, not free" by turns kept cars about to go for good, on open roads too.
+- A car at the stop line when the light turns green goes; a green of a second let nobody
+  through before.
+- Nobody waits for a car of the ring that is itself creeping in a queue.
+- `OMSI_DEBUG_STUCK` names the light programs and the hidden reasons a car holds.
+
+### People
+- Passengers who look at the bus turn their shoulders with it, and the head turns no more
+  than 45 degrees on them. The people have no neck bone: a head turned 60 degrees on still
+  shoulders twisted the neck.
+
+### VR
+- The bus's own head movement is off in the headset (the cab swayed before the eyes).
+- The sphere-map reflections are laid out by the bus's heading, not by each eye's view:
+  they no longer swim with every turn of the head.
+
+### Controllers
+- Gamepads (#200): the stick sets where the wheel turns to, on a gentler curve and less the
+  faster the bus goes, and the wheel follows at a hand's pace; the bus no longer swerves
+  with every touch of the stick.
+- An Xbox pad on Windows named in OMSI's `gamectrler.cfg` keeps its sticks and triggers
+  (#171).
+- Force feedback (#224, #230, by tistron): DirectInput wheels have their own centring
+  spring turned off before they are acquired, and again when they are acquired anew; the
+  steering is lighter while turning, heavier when parking, centres itself under control
+  and follows the bus's sideways acceleration; the front wheels' bumps and kerbs are felt
+  as short vibrations (also in a gamepad's rumble). Steering force and vibration are set
+  per controller under Controls -> Game controllers and kept in `Inputs/gamectrler.cfg`.
+
+### Pictures
+- Raindrops on the glass are lenses (#228, by Jaja80330): each drop shows the world behind
+  it upside down and mirrors the sky; drops sit in three sizes on turned grids, a mist of
+  droplets greys the pane, and runners slide down in fits and starts, wiping a track and
+  leaving beads behind. Storms are denser and less regular (#222, by TruckiHD).
+- `[rendertype] presurface` objects draw before the terrain, so excavations under the
+  ground show through their invisible covers (#218 by TruckiHD, #215).
+
+### Sound
+- The player's bus's own sounds keep their pitch while the camera follows it: sound and
+  listener were moved at different moments and the Doppler shift made them waver (#214,
+  by TruckiHD).
+
+### Launcher
+- The timetable chooser shows the chosen trip's duration, in words as OMSI's BBS writes
+  them (#233, by tistron).
+
+### Checks
+- `OMSI_AUTOPILOT=<km/h>` (offscreen): the player's bus follows the lanes and logs where
+  it stands against the ground, for roundabouts and places buses fall through.
+
+### Pull requests
+- Merged: #214, #218, #222, #224 / #230 (the same commits), #228 (with #222's hash; its
+  own patches replace #222's density field), #233.
+
 ## 0.1.221 - 2026-09-30
 
 Everything since 0.1.178: the testers' reports from Fikcyjny Szczecin (MAN NL/NG Enhanced),

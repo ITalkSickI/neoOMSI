@@ -2254,20 +2254,57 @@ impl App {
     /// `laststn.osn` in the map's folder (the content folder's copy: the original is never
     /// written), as OMSI keeps it: the launcher offers to continue it. Not
     /// in a tutorial, a LAN session or without a bus of one's own.
-    pub(crate) fn save_last_situation(&mut self) {
+    pub(crate) fn save_last_situation(&mut self) -> Option<std::path::PathBuf> {
         if self.tutorial.is_some() || self.lan.is_some() || self.player.is_none() {
-            return;
+            return None;
         }
-        let (Some(w), Some(cam)) = (self.world.as_ref(), self.camera.as_ref()) else { return };
-        let Some(dir) = std::path::Path::new(&self.args.map.replace('\\', "/")).parent().map(|d| d.to_path_buf()) else { return };
-        let Some(base) = crate::startup::content_dir() else { return };
+        let (Some(w), Some(cam)) = (self.world.as_ref(), self.camera.as_ref()) else { return None };
+        let dir = std::path::Path::new(&self.args.map.replace('\\', "/")).parent().map(|d| d.to_path_buf())?;
+        let base = crate::startup::content_dir()?;
         let dir = base.join(dir);
         let _ = std::fs::create_dir_all(&dir);
         let out = dir.join("laststn.osn");
         let sit = build_situation(&self.args, w, &self.clock, self.args.weather.as_deref(), self.player.as_ref(), &self.placed, cam, self.duty.as_ref(), "Last situation");
         match sit.save(&out) {
-            Ok(()) => log::info!("saved the last situation {}", out.display()),
-            Err(e) => log::warn!("saving {}: {e}", out.display()),
+            Ok(()) => {
+                log::info!("saved the last situation {}", out.display());
+                Some(out)
+            }
+            Err(e) => {
+                log::warn!("saving {}: {e}", out.display());
+                None
+            }
+        }
+    }
+
+    /// The graphics device was lost (the driver reset the card: it ran out of memory, or a
+    /// frame took it too long): the game starts again by itself on the situation just
+    /// saved, with lighter graphics (`Settings::apply_safe_gpu`), and on Windows with the
+    /// other graphics interface when the lost one was Vulkan. Twice at most in a row. False
+    /// when it cannot (a LAN session, the tutorial, nothing to save): the session ends.
+    pub(crate) fn restart_after_device_loss(&mut self) -> bool {
+        let n = omsi_cfg::env::var("OMSI_SAFE_GPU").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+        if n >= 2 {
+            return false;
+        }
+        let Some(file) = self.save_last_situation() else { return false };
+        let Ok(exe) = std::env::current_exe() else { return false };
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg("--root").arg(&self.args.root).arg("--no-menu").arg("--situation").arg(&file);
+        cmd.env("OMSI_SAFE_GPU", (n + 1).to_string());
+        let vulkan = self.renderer.as_ref().is_some_and(|r| r.adapter_name.contains("(Vulkan)"));
+        if cfg!(windows) && vulkan && omsi_cfg::env::var_os("OMSI_BACKEND").is_none() {
+            cmd.env("OMSI_BACKEND", "dx12");
+        }
+        match cmd.spawn() {
+            Ok(_) => {
+                log::warn!("starting again with safer graphics on {} (the graphics device was lost)", file.display());
+                true
+            }
+            Err(e) => {
+                log::warn!("could not start the game again: {e}");
+                false
+            }
         }
     }
 

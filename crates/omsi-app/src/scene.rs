@@ -6388,6 +6388,8 @@ impl World {
                             || ot.model.no_distance_check
                             || ot.model.meshes.iter().any(|m| m.no_distance_check);
                         for inst in all_instances.iter().chain(&lod_instances) {
+                            scene.instances[*inst].presurface =
+                                ot.sco.render_type == omsi_scenery::sco::RenderType::PreSurface;
                             renderer.set_object_culling(scene, *inst, radius, detail, any_distance);
                         }
                     }
@@ -7365,6 +7367,11 @@ impl World {
             .store(bytes, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// The textures' budget now (bytes, 0 = none).
+    pub fn texture_budget_bytes(&self) -> u64 {
+        self.texture_limit.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Keep the textures within their budget, once a second (`force`: now): while they take
     /// more, the scenery textures only far tiles use lose their finest mip level, the
     /// farthest first, down to 64 texels a side and never within 150 m of `centers` (the
@@ -7479,6 +7486,22 @@ impl World {
             .collect();
         let mut shrunk: Vec<TextureId> = Vec::new();
         let mut restoring = 0usize;
+        // A texture shrunk while its tiles were far that is near now comes back whole at
+        // once, room or not: the far ones give way for it in the seconds after. (Waiting for
+        // room left the buildings right in front of the bus blurred for good on a map that
+        // filled the budget - they had lost their levels on the way in.)
+        {
+            let pending = self.upgrades_pending.lock();
+            for (d, p) in &entries {
+                if *d >= NEAR || restoring >= 24 {
+                    continue;
+                }
+                if gpu.textures.get(p).is_some_and(|e| e.dropped > 0) && !pending.contains(p) && !gpu.wants_restore.contains(p) {
+                    gpu.wants_restore.push(p.clone());
+                    restoring += 1;
+                }
+            }
+        }
         if usage > limit {
             entries.sort_by(|a, b| b.0.total_cmp(&a.0));
             let mut over = usage - limit;
