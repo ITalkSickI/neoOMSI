@@ -503,6 +503,20 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     sel_setting(ui, s, dirty, "s-minobj", row(&mut y), "Small objects", "min_obj_size", &[("0.005", "All"), ("0.013", "Normal"), ("0.02", "Fewer (faster)"), ("0.03", "Few (fastest)")]);
     sel_setting(ui, s, dirty, "s-maxobj", row(&mut y), "Object distance", "max_obj_dist", &[("auto", "Automatic"), ("500", "500 m"), ("750", "750 m"), ("900", "900 m"), ("1500", "1500 m"), ("3000", "3000 m")]);
     sel_setting(ui, s, dirty, "s-mirror", row(&mut y), "Mirrors", "mirror_size", &[("128", "Low (128)"), ("256", "Normal (256)"), ("512", "High (512)"), ("1024", "Very high (1024)")]);
+    if cfg!(windows) {
+        y += 6.0;
+        ui.heading(Rect::new(inner.x, y, inner.w, 28.0), "Virtual reality", Some("view_in_ar"));
+        y += 32.0;
+        toggle_setting(ui, s, dirty, row(&mut y), "Use OpenXR headset", "vr");
+        if get(s, "vr").as_bool().unwrap_or(false) {
+            sel_setting(ui, s, dirty, "s-vr-scale", row(&mut y), "Eye resolution", "vr_scale", &[("0.5", "50%"), ("0.65", "65%"), ("0.8", "80%"), ("1", "100%")]);
+            sel_setting(ui, s, dirty, "s-vr-head-smoothing", row(&mut y), "Head tracking smoothing", "vr_head_smoothing_ms", &[("0", "Off"), ("5", "5 ms"), ("10", "10 ms"), ("20", "20 ms"), ("30", "30 ms")]);
+            sel_setting(ui, s, dirty, "s-vr-mirror-rate", row(&mut y), "Bus mirror refresh", "vr_mirror_rate", &[("0", "Off"), ("8", "8/s"), ("16", "16/s"), ("24", "24/s"), ("32", "32/s")]);
+            toggle_setting(ui, s, dirty, row(&mut y), "Show headset picture on monitor", "vr_desktop_mirror");
+            ui.text_in("VR keys: Controls → Keyboard (search VR)", row(&mut y),
+                11.0, omsi_ui::Weight::Regular, TEXT_DIM, omsi_ui::paint::Align::Left);
+        }
+    }
     // updates from the GitHub releases (see `crate::updater`)
     y += 6.0;
     ui.heading(Rect::new(inner.x, y, inner.w, 28.0), "Updates", Some("system_update"));
@@ -686,6 +700,9 @@ fn action_label(a: &str) -> String {
         ("view_set_passenger", "Passenger view"),
         ("view_set_outside", "Outside view"),
         ("view_toggle_viewpoint", "Next view"),
+        ("vr_recenter", "VR: Reset view"),
+        ("vr_toggle_desktop_mirror", "VR: Monitor preview"),
+        ("vr_toggle_mode", "VR: Switch VR / desktop"),
         ("exit", "Quit"),
         ("sim_pause", "Pause"),
     ];
@@ -734,13 +751,16 @@ pub fn controls(l: &mut Launcher, area: Rect) {
                 Some(scan) => {
                     let m = omsi_content::input::chord(l.ui.input.shift, l.ui.input.ctrl, l.ui.input.alt) as i64;
                     let section = ["vehicles", "game"][sec];
+                    let vr_binding = l.state.keybindings.get(section).and_then(|a| a.as_array())
+                        .and_then(|a| a.get(idx)).and_then(|b| b.get("action"))
+                        .and_then(|a| a.as_str()).is_some_and(|a| a.starts_with("vr_"));
                     if let Some(b) = l.state.keybindings.get_mut(section).and_then(|a| a.as_array_mut()).and_then(|a| a.get_mut(idx)) {
                         // (the entry's "held" bit is the action's, not the key's: it stays)
                         let hold = b.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0) & omsi_content::input::KEY_HOLD as i64;
                         b["scan_code"] = json!(scan);
                         b["modifier"] = json!(m | hold);
                     }
-                    save_keys(l);
+                    save_keys(l, vr_binding);
                 }
                 None => l.state.set_status(format!("{code:?} has no DirectInput scan code the game understands."), true),
             }
@@ -786,7 +806,7 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         l.pages.kb_filter[sec] = filter.clone();
         let q = filter.to_lowercase();
         let list: Vec<(usize, String, i64, i64)> = l.state.keybindings.get(*key).and_then(|a| a.as_array()).map(|a| a.iter().enumerate().map(|(i, b)| (i, b.get("action").and_then(|x| x.as_str()).unwrap_or("").to_string(), b.get("scan_code").and_then(|x| x.as_i64()).unwrap_or(0), b.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0))).collect()).unwrap_or_default();
-        let shown: Vec<(usize, String, String, bool)> = list
+        let mut shown: Vec<(usize, String, String, bool)> = list
             .iter()
             .filter(|(_, a, s, m)| q.is_empty() || action_label(a).to_lowercase().contains(&q) || key_name(*s, *m).to_lowercase().contains(&q))
             .map(|(i, a, s, m)| {
@@ -794,6 +814,9 @@ pub fn controls(l: &mut Launcher, area: Rect) {
                 (*i, action_label(a), key_name(*s, *m), clash)
             })
             .collect();
+        if sec == 1 {
+            shown.sort_by_key(|(_, label, _, _)| !label.starts_with("VR:"));
+        }
         let capturing = l.pages.capturing;
         let mut clicked: Option<(usize, bool)> = None;
         let time = l.ui.time;
@@ -828,11 +851,14 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         });
         match clicked {
             Some((i, true)) => {
+                let vr_binding = l.state.keybindings.get(*key).and_then(|a| a.as_array())
+                    .and_then(|a| a.get(i)).and_then(|b| b.get("action"))
+                    .and_then(|a| a.as_str()).is_some_and(|a| a.starts_with("vr_"));
                 if let Some(b) = l.state.keybindings.get_mut(*key).and_then(|a| a.as_array_mut()).and_then(|a| a.get_mut(i)) {
                     b["scan_code"] = json!(0);
                     b["modifier"] = json!(0);
                 }
-                save_keys(l);
+                save_keys(l, vr_binding);
             }
             Some((i, false)) => l.pages.capturing = Some((sec, i)),
             None => {}
@@ -1237,7 +1263,7 @@ fn use_custom_keys(l: &mut Launcher) -> bool {
     true
 }
 
-fn save_keys(l: &mut Launcher) {
+fn save_keys(l: &mut Launcher, vr_binding: bool) {
     match core::save_keybindings(&l.state.keybindings) {
         Ok(()) => {
             l.state.keybindings_error.clear();
@@ -1246,7 +1272,7 @@ fn save_keys(l: &mut Launcher) {
             }
             // a key changed is a key the player wants to use: with a ready-made layout it
             // would be ignored wherever that layout has a key of its own
-            if use_custom_keys(l) {
+            if !vr_binding && use_custom_keys(l) {
                 l.state.set_status("Key bindings saved; Driving keys switched to Custom controls so the game uses them.", false);
             } else {
                 l.state.set_status("Key bindings saved.", false);

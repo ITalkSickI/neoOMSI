@@ -1119,6 +1119,45 @@ impl Player {
         pick_trailer_in(&self.vehicle, origin, dir, spread)
     }
 
+    /// Exact surface under a VR pointer, including meshes without a mouse event.
+    /// This runs when the mouse moves, not for every headset frame.
+    pub(crate) fn surface_hit(&self, origin: DVec3, dir: Vec3) -> Option<DVec3> {
+        let mut nearest = f32::INFINITY;
+        let mut nearest_control = f32::INFINITY;
+        let vehicle = &self.vehicle;
+        let o = (origin - vehicle.position).as_vec3();
+        for (i, mesh) in vehicle.ty.meshes.iter().enumerate() {
+            if !vehicle.mesh_props[i].visible { continue; }
+            let transform = vehicle.mesh_local_transform(i);
+            if !ray_may_hit(&vehicle.ty, i, &transform, o, dir, 0.0) { continue; }
+            if let Some(t) = omsi_geometry::ray_mesh(o, dir, &mesh.data, &transform) {
+                if t > 0.02 {
+                    if t < nearest { nearest = t; }
+                    if vehicle.ty.model.meshes[mesh.def_index].mouse_event.is_some()
+                        && t < nearest_control { nearest_control = t; }
+                }
+            }
+        }
+        for trailer in &vehicle.trailers {
+            let o = (origin - trailer.position).as_vec3();
+            for (i, mesh) in trailer.ty.meshes.iter().enumerate() {
+                if !trailer.mesh_props[i].visible { continue; }
+                let transform = trailer.mesh_local_transform(i);
+                if !ray_may_hit(&trailer.ty, i, &transform, o, dir, 0.0) { continue; }
+                if let Some(t) = omsi_geometry::ray_mesh(o, dir, &mesh.data, &transform) {
+                    if t > 0.02 {
+                        if t < nearest { nearest = t; }
+                        if trailer.ty.model.meshes[mesh.def_index].mouse_event.is_some()
+                            && t < nearest_control { nearest_control = t; }
+                    }
+                }
+            }
+        }
+        if nearest_control.is_finite() { nearest = nearest_control; }
+        (nearest.is_finite() && nearest < 8.0)
+            .then(|| origin + (dir * nearest).as_dvec3())
+    }
+
     /// The part of the bus under a ray, switch or not: `(name, operable)`. Without this the
     /// HUD stayed empty over everything that is not a switch, and there was no way to tell
     /// "this is not a control" from "the cursor is not hitting anything".

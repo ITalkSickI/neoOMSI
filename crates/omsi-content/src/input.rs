@@ -90,6 +90,21 @@ impl KeyboardCfg {
         self
     }
 
+    pub fn with_vr_defaults(mut self) -> Self {
+        // VR controls are included in the same editable list as the game's
+        // other keys. An existing entry (including an unbound one) wins.
+        for (action, scan_code, modifier) in [
+            ("vr_recenter", 19, KEY_SHIFT | KEY_CTRL),
+            ("vr_toggle_desktop_mirror", 65, 0),
+            ("vr_toggle_mode", 66, 0),
+        ] {
+            if !self.game.iter().any(|b| b.action.eq_ignore_ascii_case(action)) {
+                self.game.push(KeyBinding { action: action.into(), scan_code, modifier });
+            }
+        }
+        self
+    }
+
     /// Write a `keyboard.cfg` the game (and this same loader) can read back: one
     /// `[game]`/`[vehicles]` section, each entry as `action / scan code / modifier`, blank
     /// lines between entries as the original ships it (some tools that read the file split
@@ -194,6 +209,16 @@ mod tests {
         // Alt: Omsi.exe's keys fire with it held; ours with Alt want it
         assert!(b(0).matches(KEY_ALT) && b(8).matches(KEY_ALT) && !b(8).matches(0));
         assert_eq!(b(3).chord(), KEY_SHIFT);
+    }
+
+    #[test]
+    fn vr_defaults_keep_custom_and_unbound_keys() {
+        let custom = KeyBinding { action: "vr_recenter".into(), scan_code: 0, modifier: 0 };
+        let cfg = KeyboardCfg { game: vec![custom.clone()], ..Default::default() }
+            .with_vr_defaults().with_vr_defaults();
+        assert_eq!(cfg.game.iter().filter(|b| b.action == "vr_recenter").count(), 1);
+        assert!(cfg.game.contains(&custom));
+        assert!(cfg.game.iter().any(|b| b.action == "vr_toggle_mode" && b.scan_code == 66));
     }
 
     #[test]

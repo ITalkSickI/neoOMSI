@@ -108,6 +108,20 @@ impl App {
             } else if !pressed {
                 self.keys.remove(&code);
             }
+            #[cfg(windows)]
+            if pressed && !repeat && (self.vr.is_some() || self.settings.vr_requested()) {
+                let modifier = omsi_content::input::chord(
+                    self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight),
+                    self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight),
+                    self.keys.contains(&KeyCode::AltLeft) || self.keys.contains(&KeyCode::AltRight),
+                );
+                let action = keys::dik_code(code).and_then(|scan| self.game_keys.iter()
+                    .find(|b| b.scan_code == scan && b.matches(modifier) && b.action.starts_with("vr_"))
+                    .map(|b| b.action.clone()));
+                if let Some(action) = action {
+                    if self.game_action(&action) { return; }
+                }
+            }
             // Shift+number works a door the way a key bound to its trigger in
             // `Inputs/keyboard.cfg` does in OMSI: `<trigger>` when it goes down and
             // `<trigger>_off` when it comes up. The door buttons of automatic-door buses
@@ -189,7 +203,8 @@ impl App {
                     && (fallback_action(code, &self.args.drive_keys).is_some()
                         || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
                 if let Some(scan) = keys::dik_code(code).filter(|_| !ours) {
-                    let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.matches(m)).map(|b| b.action.clone());
+                    let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.matches(m)
+                        && !b.action.starts_with("vr_")).map(|b| b.action.clone());
                     if let Some(a) = action {
                         if self.game_action(&a) {
                             return;
@@ -703,6 +718,64 @@ impl App {
         self.move_cursor(x, y);
     }
 
+    #[cfg(windows)]
+    pub(crate) fn reset_vr_pointer(&mut self) {
+        if let Some(vr) = self.vr.as_mut() {
+            vr.recenter_pointer();
+        }
+        self.vr_cursor_physical = None;
+        self.vr_cursor_warp_pending = None;
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn on_vr_cursor_moved(&mut self, x: f32, y: f32) {
+        if let Some(target) = self.vr_cursor_warp_pending.take() {
+            // CursorMoved from set_cursor_position is not hand movement.
+            self.vr_cursor_physical = Some((x, y));
+            if (x - target.0).abs() < 3.0 && (y - target.1).abs() < 3.0 {
+                return;
+            }
+            // A real move arrived first; use the next event as the new baseline.
+            return;
+        }
+        if let Some(previous) = self.vr_cursor_physical {
+            self.cursor.0 += x - previous.0;
+            self.cursor.1 += y - previous.1;
+        }
+        self.vr_cursor_physical = Some((x, y));
+        let Some((width, height)) = self.surface.as_ref().map(|s|
+            (s.config.width as f32, s.config.height as f32)) else { return };
+        if self.window_focused && !self.mouse_look
+            && (x < 12.0 || x > width - 12.0 || y < 12.0 || y > height - 12.0) {
+            let center = (width * 0.5, height * 0.5);
+            if self.window.as_ref().is_some_and(|window| window.set_cursor_position(
+                winit::dpi::PhysicalPosition::new(center.0 as f64, center.1 as f64)).is_ok()) {
+                self.vr_cursor_physical = Some(center);
+                self.vr_cursor_warp_pending = Some(center);
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn poll_vr_cursor_position(&mut self) {
+        let cockpit = self.vr.is_some() && self.game_menu.is_none()
+            && self.chooser.is_none() && !self.mouse_drive
+            && matches!(self.view.as_str(), "driver" | "pax");
+        if !cockpit {
+            self.vr_cursor_physical = None;
+            self.vr_cursor_warp_pending = None;
+            return;
+        }
+        if !self.window_focused || self.mouse_look { return; }
+        let Some(window) = self.window.as_ref() else { return };
+        let Ok(client_origin) = window.inner_position() else { return };
+        let mut point = windows::Win32::Foundation::POINT::default();
+        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point) }.is_ok() {
+            self.on_vr_cursor_moved((point.x - client_origin.x) as f32,
+                (point.y - client_origin.y) as f32);
+        }
+    }
+
     /// Mouse steering beyond the window's edge: with the cursor pinned at the left or right
     /// edge, the mouse moving on outwards turns the wheel further (the whole width per full
     /// lock, as standing); moving back gives that back first, the cursor held at the edge
@@ -809,22 +882,25 @@ impl App {
         if self.view == "foot" && !self.foot_reaches_bus() {
             return;
         }
-        if let (Some(p), Some(cam), Some(s)) = (
+        #[cfg(windows)]
+        if self.vr.is_some() && self.mouse_drive && self.game_menu.is_none()
+            && matches!(self.view.as_str(), "driver" | "pax") {
+            if !pressed {
+                if let Some(player) = self.player.as_mut() { player.release(); }
+                self.dragging = false;
+            }
+            return;
+        }
+        let ray = self.camera.as_ref().zip(self.surface.as_ref())
+            .map(|(cam, s)| self.cockpit_cursor_ray(cam, (s.config.width, s.config.height)));
+        if let (Some(p), Some((o, d, spread))) = (
             self.player.as_mut(),
-            self.camera.as_ref(),
-            self.surface.as_ref(),
+            ray,
         ) {
             self.drag_delta = (0.0, 0.0);
             if pressed {
-                let (o, d) = cursor_ray(
-                    cam,
-                    self.cursor.0,
-                    self.cursor.1,
-                    s.config.width as f32,
-                    s.config.height as f32,
-                );
                 self.dragging = p
-                    .click(o, d, pixel_angle(cam, s.config.height as f32) * 6.0)
+                    .click(o, d, spread)
                     .is_some();
             } else {
                 p.release();
@@ -1863,8 +1939,52 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         }
     }
 
+    #[cfg(windows)]
+    fn vr_action(&mut self, name: &str) -> bool {
+        if name == "vr_toggle_mode" {
+            self.vr_zoom_active = false;
+            if !self.settings.vr_requested() { return false; }
+            if self.vr.is_some() {
+                self.vr = None;
+                self.service_msg = Some(("Desktop mode".into(), 2.0));
+            } else if let Some(renderer) = self.renderer.as_ref() {
+                match crate::openxr::Vr::new(renderer, self.settings.vr_scale,
+                    self.settings.vr_desktop_mirror) {
+                    Ok(vr) => {
+                        self.vr = Some(vr);
+                        self.service_msg = Some(("VR mode".into(), 2.0));
+                    }
+                    Err(e) => {
+                        log::error!("OpenXR could not restart: {e:#}");
+                        self.service_msg = Some((format!("{}: {e}", omsi_ui::tr("Could not start VR")), 5.0));
+                    }
+                }
+            }
+            self.hover_key = None;
+            return true;
+        }
+        if self.vr.is_none() { return false; }
+        match name {
+            "vr_recenter" => {
+                self.vr.as_mut().unwrap().recenter();
+                self.look = (0.0, 0.0);
+                self.service_msg = Some(("VR view recentered".into(), 2.0));
+            }
+            "vr_toggle_desktop_mirror" => {
+                let visible = self.vr.as_mut().unwrap().toggle_desktop_mirror();
+                self.settings.vr_desktop_mirror = visible;
+                self.service_msg = Some((if visible { "Desktop VR mirror on" }
+                    else { "Desktop VR mirror off" }.into(), 2.0));
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// One of OMSI's global key actions; false when it is not one this game does.
     pub(crate) fn game_action(&mut self, name: &str) -> bool {
+        #[cfg(windows)]
+        if self.vr_action(name) { return true; }
         match name {
             "sim_pause" => self.toggle_pause(),
             "screenshot" => self.take_screenshot(),
@@ -1930,7 +2050,11 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 }
             }
             "view_toggle_informationdisplay" => self.info_bar = !self.info_bar,
-            "view_reset_direction" => self.look = (0.0, 0.0),
+            "view_reset_direction" => {
+                self.look = (0.0, 0.0);
+                #[cfg(windows)]
+                if let Some(vr) = self.vr.as_mut() { vr.recenter(); }
+            }
             // (Space in Inputs/keyboard.cfg: every view looks ahead again)
             "view_reset_all_directions" => {
                 self.look = (0.0, 0.0);
@@ -1953,6 +2077,10 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
                 self.mouse_drive = !self.mouse_drive;
                 if !self.mouse_drive {
                     crate::player::keep_wheel(self.player.as_mut());
+                }
+                #[cfg(windows)]
+                if !self.mouse_drive {
+                    self.reset_vr_pointer();
                 }
                 // (the wheel eases from where it is to the cursor for the first second)
                 self.mouse_steer = (self.player.as_ref().map(|p| p.vehicle.physics.controls.steering).unwrap_or(0.0), 1.0);
@@ -2163,21 +2291,45 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         }
     }
 
+    pub(crate) fn cockpit_cursor_ray(&self, cam: &Camera, size: (u32, u32)) -> (glam::DVec3, glam::Vec3, f32) {
+        #[cfg(windows)]
+        if let Some(ray) = self.vr.as_ref().and_then(|vr| vr.cursor_ray(self.cursor.0, self.cursor.1, size)) {
+            return (ray.0, ray.1, ray.2 * 6.0);
+        }
+        let (o, d) = cursor_ray(cam, self.cursor.0, self.cursor.1, size.0 as f32, size.1 as f32);
+        (o, d, pixel_angle(cam, size.1 as f32) * 6.0)
+    }
+
     pub(crate) fn update_hover(&mut self) {
+        #[cfg(windows)]
+        if !self.mouse_drive && self.vr.as_ref().is_some_and(|vr| vr.needs_cursor_surface(
+            self.cursor, self.game_menu.is_some() || self.chooser.is_some())) {
+            let surface = self.player.as_ref()
+                .zip(self.camera.as_ref())
+                .zip(self.surface.as_ref())
+                .filter(|_| matches!(self.view.as_str(), "driver" | "pax"))
+                .map(|((player, camera), window)| {
+                    let (origin, direction, _) = self.cockpit_cursor_ray(camera,
+                        (window.config.width, window.config.height));
+                    (player.surface_hit(origin, direction),
+                        (player.vehicle.position, player.vehicle.body_rotation()))
+                });
+            if let Some(vr) = self.vr.as_mut() {
+                vr.set_cursor_surface(surface.as_ref().and_then(|s| s.0),
+                    surface.map(|s| s.1));
+            }
+        }
         let found = match (
             self.player.as_ref(),
             self.camera.as_ref(),
             self.surface.as_ref(),
         ) {
-            (Some(p), Some(cam), Some(s)) if self.view != "free" && (self.view != "foot" || self.foot_reaches_bus()) => {
-                let (o, d) = cursor_ray(
-                    cam,
-                    self.cursor.0,
-                    self.cursor.1,
-                    s.config.width as f32,
-                    s.config.height as f32,
-                );
-                p.hovered_part(o, d, pixel_angle(cam, s.config.height as f32) * 6.0)
+            (Some(p), Some(cam), Some(s)) if self.view != "free"
+                && (self.view != "foot" || self.foot_reaches_bus())
+                && !(self.vr_active() && self.mouse_drive
+                    && matches!(self.view.as_str(), "driver" | "pax")) => {
+                let (o, d, spread) = self.cockpit_cursor_ray(cam, (s.config.width, s.config.height));
+                p.hovered_part(o, d, spread)
             }
             // (in another player's bus nothing is offered: its switches are the driver's)
             _ => None,

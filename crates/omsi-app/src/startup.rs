@@ -174,7 +174,12 @@ pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
     if cfg!(target_os = "macos") {
         return vec![wgpu::Backends::METAL];
     }
-    let wanted = omsi_cfg::env::var("OMSI_BACKEND").ok().unwrap_or_else(|| crate::settings::Settings::load().graphics_api);
+    let settings = crate::settings::Settings::load();
+    let wanted = if settings.vr_requested() {
+        "dx12".to_owned()
+    } else {
+        omsi_cfg::env::var("OMSI_BACKEND").ok().unwrap_or(settings.graphics_api)
+    };
     let all: Vec<wgpu::Backends> = if cfg!(windows) {
         vec![wgpu::Backends::VULKAN, wgpu::Backends::DX12, wgpu::Backends::GL]
     } else {
