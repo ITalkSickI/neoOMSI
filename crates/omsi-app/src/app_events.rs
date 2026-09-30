@@ -111,6 +111,7 @@ impl ApplicationHandler for App {
                 // a right click lets go of the mouse steering, as in OMSI (#162)
                 if button == winit::event::MouseButton::Right && state == ElementState::Pressed && self.mouse_drive && self.game_menu.is_none() {
                     self.mouse_drive = false;
+                    crate::player::keep_wheel(self.player.as_mut());
                     self.service_msg = Some(("Mouse steering off".into(), 3.0));
                 }
                 self.mouse_look = state == ElementState::Pressed;

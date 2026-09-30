@@ -1680,6 +1680,17 @@ pub(crate) fn pick_trailer_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3
     None
 }
 
+/// Mouse steering switched off: the wheel stays where the mouse left it and the keys go on
+/// from there, as in OMSI, where the mouse and the keys turn the one wheel (#184). The
+/// keys' own position was held at the middle while the mouse steered, and the wheel sprang
+/// back to it.
+pub(crate) fn keep_wheel(p: Option<&mut Player>) {
+    if let Some(p) = p {
+        p.axes.steering = p.vehicle.physics.controls.steering;
+        p.axes.centering = false;
+    }
+}
+
 /// OMSI's mouse steering (Omsi.exe 0x6f4284..0x6f447b): the cursor's place across the whole
 /// window is the steering from full left to full right lock, divided by the speed in tens of
 /// km/h once the bus is faster than 10 km/h (going backwards counts as standing). At 50 km/h

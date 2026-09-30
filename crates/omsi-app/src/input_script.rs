@@ -1951,6 +1951,9 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             }
             "toggel_mouse_ctrl" => {
                 self.mouse_drive = !self.mouse_drive;
+                if !self.mouse_drive {
+                    crate::player::keep_wheel(self.player.as_mut());
+                }
                 // (the wheel eases from where it is to the cursor for the first second)
                 self.mouse_steer = (self.player.as_ref().map(|p| p.vehicle.physics.controls.steering).unwrap_or(0.0), 1.0);
                 self.mouse_pedals = self.player.as_ref().map(|p| (p.vehicle.physics.controls.throttle, p.vehicle.physics.controls.brake)).unwrap_or((0.0, 0.0));
