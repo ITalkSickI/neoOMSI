@@ -1667,6 +1667,8 @@ pub struct Person {
     from: i64,
     exit_stop: i32,
     stops_left: i32,
+    /// The stop object a timetable bus's rider gets off at (None: see `stops_left`).
+    exit_id: Option<i64>,
     /// The rider wants out at the stop the bus stands at.
     leaving_here: bool,
     /// A bus this person will not board (they just left it).
@@ -2494,15 +2496,41 @@ impl Humans {
 
     /// Timetable stop where a boarding rider will get off: one to four stops ahead (-1
     /// without a timetable: decided at random at each stop).
-    fn choose_exit(&mut self, bus: Option<&VehicleInstance>) -> i32 {
+    fn choose_exit(&mut self, bus: Option<&VehicleInstance>, world: &World) -> i32 {
         let Some(b) = bus else { return -1 };
         let n = b.host.tt_stops.len() as i32;
         if n == 0 {
             return -1;
         }
         let next = b.host.tt_busstop_index;
-        let r = (self.rand() % 4) as i32;
-        (next + 1 + r).min(n - 1).max(next.min(n - 1))
+        // the stops after the next one, weighed as Omsi.exe weighs them (see `draw_exit`);
+        // with nothing to weigh, the end of the trip
+        let from = (next + 1).clamp(0, n - 1);
+        let ids: Vec<i64> = (from..n).map(|k| b.host.tt_stop_ids.get(k as usize).copied().unwrap_or(0)).collect();
+        match self.draw_exit(&ids, world) {
+            Some(k) => from + k as i32,
+            None => n - 1,
+        }
+    }
+
+    /// Where a boarding passenger gets off among the stops `ahead` (map objects, in order):
+    /// Omsi.exe draws it at random, each stop as likely as its passengers-alighting number
+    /// says (0x61baa8: Random x the total, then down the list until it is used up; see
+    /// `tiles::stop_exit_weight`). None when there is nothing to weigh.
+    fn draw_exit(&mut self, ahead: &[i64], world: &World) -> Option<usize> {
+        let w: Vec<f32> = ahead.iter().map(|&id| if id == 0 { 0.5 } else { world.stop_exit_weight(id) }).collect();
+        let total: f32 = w.iter().sum();
+        if !(total > 0.0) {
+            return None;
+        }
+        let mut r = self.rand_f() as f32 * total;
+        for (k, wk) in w.iter().enumerate() {
+            if r < *wk {
+                return Some(k);
+            }
+            r -= wk;
+        }
+        Some(w.len() - 1)
     }
 
     /// Seat `n` passengers in the player's bus straight away, each with the stop they
@@ -2587,7 +2615,10 @@ impl Humans {
             let exit = if n == 0 {
                 -1
             } else {
-                (bus.host.tt_busstop_index + (self.rand() % 4) as i32).min(n - 1)
+                // (drawn as a boarding passenger's: `draw_exit`)
+                let from = bus.host.tt_busstop_index.clamp(0, n - 1);
+                let ids: Vec<i64> = (from..n).map(|k| bus.host.tt_stop_ids.get(k as usize).copied().unwrap_or(0)).collect();
+                self.draw_exit(&ids, world).map(|k| from + k as i32).unwrap_or(n - 1)
             };
             let s = &cabin.seats[seat];
             let pos = train_point(bus.position, &rot, &frames, s.floor);
@@ -2660,7 +2691,18 @@ impl Humans {
                 let st = &cabin.seats[seat];
                 let pos = train_point(bn.pos, &bn.rot, &bn.trailers, st.floor);
                 let heading = train_heading(bn.heading, &bn.trailers, st.floor);
-                let stops_left = 1 + (self.rand() % 5) as i32;
+                // (where they get off: as a boarding passenger draws it)
+                let ahead: Vec<i64> = match bn.id {
+                    BusId::Ai(id) => traffic
+                        .cars
+                        .iter()
+                        .find(|c| c.id == id)
+                        .and_then(|c| c.bus.as_ref())
+                        .map(|b| b.stops.iter().map(|st| st.id).filter(|&x| x != 0).collect())
+                        .unwrap_or_default(),
+                    BusId::Player => Vec::new(),
+                };
+                let exit_id = self.draw_exit(&ahead, world).map(|k| ahead[k]);
                 if let Some(i) = self.spawn(
                     world,
                     renderer,
@@ -2673,7 +2715,8 @@ impl Humans {
                     p.place = Place::Bus(bn.id, st.floor);
                     p.lheading = st.rot as f64;
                     p.from = -1;
-                    p.stops_left = stops_left;
+                    p.stops_left = i32::MAX;
+                    p.exit_id = exit_id;
                     p.exit_stop = -1;
                     p.activity = if st.seated { Activity::Sit } else { Activity::Stand };
                     seated += 1;
@@ -2858,6 +2901,7 @@ impl Humans {
             from: -1,
             exit_stop: -1,
             stops_left: 1,
+            exit_id: None,
             leaving_here: false,
             avoid: None,
             target,
@@ -4727,8 +4771,8 @@ impl Humans {
                         State::Riding { bus, .. }
                             if bus == bn.id && self.people[i].from != stop =>
                         {
-                            self.people[i].stops_left -= 1;
-                            if self.people[i].stops_left <= 0 {
+                            self.people[i].stops_left = self.people[i].stops_left.saturating_sub(1);
+                            if self.people[i].stops_left <= 0 || self.people[i].exit_id == Some(stop) {
                                 self.people[i].leaving_here = true;
                             }
                         }
@@ -5830,15 +5874,25 @@ impl Humans {
                 p.leaving_here = false;
                 p.avoid = None;
                 // OMSI_PAX_STOPS=n: everybody gets off a timetable bus after n stops (a test)
-                p.stops_left = omsi_cfg::env::var("OMSI_PAX_STOPS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(1 + (self.rng % 4) as i32);
+                let test_stops: Option<i32> = omsi_cfg::env::var("OMSI_PAX_STOPS").ok().and_then(|v| v.parse().ok());
+                p.stops_left = test_stops.unwrap_or(i32::MAX);
+                p.exit_id = None;
                 let exit = if bus == BusId::Player {
-                    self.choose_exit(player_bus)
+                    self.choose_exit(player_bus, world)
                 } else {
                     -1
                 };
+                // a timetable bus: where to get off among the stops it still serves, drawn
+                // as Omsi.exe draws it (`draw_exit`); nothing to draw from: to its end
+                if let (BusId::Ai(id), None) = (bus, test_stops) {
+                    let ahead: Vec<i64> = traffic
+                        .and_then(|t| t.cars.iter().find(|c| c.id == id))
+                        .and_then(|c| c.bus.as_ref())
+                        .map(|b| b.stops.iter().map(|st| st.id).filter(|&x| x != stop && x != 0).collect())
+                        .unwrap_or_default();
+                    let k = self.draw_exit(&ahead, world);
+                    self.people[i].exit_id = k.map(|k| ahead[k]);
+                }
                 self.people[i].exit_stop = exit;
                 self.set_state(
                     i,
@@ -6609,6 +6663,8 @@ impl Humans {
                         bn.cabin.part_label(s.floor),
                         if bus == BusId::Player {
                             format!("timetable stop {}", self.people[i].exit_stop)
+                        } else if let Some(x) = self.people[i].exit_id {
+                            format!("stop object {x}")
                         } else {
                             format!("{} stops", self.people[i].stops_left)
                         }

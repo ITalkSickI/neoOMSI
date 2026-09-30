@@ -82,6 +82,8 @@ pub struct VehicleHost {
     pub tt_line: String,
     pub tt_delay: f32,
     pub tt_stops: Vec<(String, f32, f32)>,
+    /// The map objects of `tt_stops` (0: not known).
+    pub tt_stop_ids: Vec<i64>,
     pub tt_terminus_index: i32,
     pub tt_busstop_index: i32,
     /// The next buses due at the bus stop a scenery object belongs to (its `[varparent]`),
@@ -175,6 +177,7 @@ impl VehicleHost {
             tt_line: self.tt_line.clone(),
             tt_delay: self.tt_delay,
             tt_stops: self.tt_stops.clone(),
+            tt_stop_ids: self.tt_stop_ids.clone(),
             tt_terminus_index: self.tt_terminus_index,
             tt_busstop_index: self.tt_busstop_index,
             ..Default::default()

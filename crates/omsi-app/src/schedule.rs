@@ -1875,7 +1875,7 @@ impl Schedule {
                     if let Some((ri, ss, lat)) =
                         project_stop(&traffic.net, &lanes, pos, Some(STOP_REACH))
                     {
-                        stops.push((base + ri, ss, bay_offset(lat), *t_dep));
+                        stops.push((base + ri, ss, bay_offset(lat), *t_dep, *sid));
                         run.served[si] = true;
                     }
                 }
@@ -2063,7 +2063,7 @@ impl Schedule {
                 Some((pos, _)) => match project_stop(net, &section, pos, reach) {
                     Some((ri, ss, lat)) => {
                         served[si] = true;
-                        stops.push((ri, ss, bay_offset(lat), leave[si]));
+                        stops.push((ri, ss, bay_offset(lat), leave[si], *sid));
                     }
                     None => log::debug!("station {sid}: not near the route"),
                 },
@@ -2106,15 +2106,15 @@ impl Schedule {
             let route: Vec<usize> = prefix.iter().copied().chain(section[from..].iter().copied()).collect();
             let shift = prefix.len() as isize - from as isize;
             // the stops from the bus on; one just behind it on its lane is where it stands
-            let stops: Vec<(usize, f32, f32, f64)> = stops
+            let stops: Vec<(usize, f32, f32, f64, i64)> = stops
                 .into_iter()
                 .filter(|st| st.0 >= from)
-                .filter_map(|(ri, ss, lat, t)| {
+                .filter_map(|(ri, ss, lat, t, id)| {
                     let nri = (ri as isize + shift) as usize;
                     if nri == 0 && ss <= s0 + 0.3 {
-                        (s0 - ss < 25.0).then_some((0, s0 + 0.3, 0.0, t))
+                        (s0 - ss < 25.0).then_some((0, s0 + 0.3, 0.0, t, id))
                     } else {
-                        Some((nri, ss, lat, t))
+                        Some((nri, ss, lat, t, id))
                     }
                 })
                 .collect();
@@ -2182,7 +2182,7 @@ impl Schedule {
         // a bus that would start a few metres short of its next stop stands at it (half a
         // metre short, so that it is served): starting before it, it had to pull over into
         // the stop - often a lane over - in less than its own length
-        if let Some(&(ri, ss, _, _)) = stops
+        if let Some(&(ri, ss, _, _, _)) = stops
             .iter()
             .find(|st| st.0 > start_index || (st.0 == start_index && st.1 > s))
         {
@@ -2238,10 +2238,10 @@ impl Schedule {
             return Placed::Busy;
         }
         self.startup.remove(&i);
-        let stops: Vec<(usize, f32, f32, f64)> = stops
+        let stops: Vec<(usize, f32, f32, f64, i64)> = stops
             .into_iter()
-            .filter(|(ri, ss, _, _)| *ri > start_index || (*ri == start_index && *ss > s))
-            .map(|(ri, ss, lat, t)| (ri - start_index, ss, lat, t))
+            .filter(|(ri, ss, _, _, _)| *ri > start_index || (*ri == start_index && *ss > s))
+            .map(|(ri, ss, lat, t, id)| (ri - start_index, ss, lat, t, id))
             .collect();
         let route: Vec<usize> = section[start_index..].to_vec();
         // the trip's own line (" 5"), which is what the displays show; the timetable line's
@@ -3829,6 +3829,7 @@ impl PlayerDuty {
             .iter()
             .map(|s| (s.name.clone(), s.arr as f32, s.dep as f32))
             .collect();
+        host.tt_stop_ids = trip.stops.iter().map(|s| s.object_id).collect();
         host.tt_busstop_index = self.next_stop as i32;
         host.tt_terminus_index = trip.stops.len() as i32 - 1;
         host.tt_delay = delay as f32;

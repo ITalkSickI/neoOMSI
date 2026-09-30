@@ -2907,6 +2907,12 @@ impl World {
     }
 
     /// The map index, built on first use (every tile file read once, in parallel).
+    /// How many passengers get off at stop object `id` (see `tiles::stop_exit_weight`; a
+    /// stop without strings: the defaults' mean, 0.5).
+    pub fn stop_exit_weight(&self, id: i64) -> f32 {
+        self.index().stop_weights.get(&id).copied().unwrap_or(0.5)
+    }
+
     pub fn index(&self) -> Arc<MapIndex> {
         let mut g = self.index.lock();
         if let Some(ix) = g.as_ref() {

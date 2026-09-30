@@ -21,11 +21,13 @@ pub struct Stop {
     pub bay: f32,
     /// Timetable departure (seconds of the day).
     pub depart: f64,
+    /// The stop's map object (its `[busstop]` strings weigh who gets off there).
+    pub id: i64,
 }
 
 impl Stop {
-    pub fn from_tuple(t: (usize, f32, f32, f64)) -> Stop {
-        Stop { ri: t.0, s: t.1, bay: t.2, depart: t.3 }
+    pub fn from_tuple(t: (usize, f32, f32, f64, i64)) -> Stop {
+        Stop { ri: t.0, s: t.1, bay: t.2, depart: t.3, id: t.4 }
     }
 }
 
