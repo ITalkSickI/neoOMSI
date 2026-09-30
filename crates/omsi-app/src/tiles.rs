@@ -286,12 +286,18 @@ pub struct Pose {
 
 impl Pose {
     /// The pose of an object hanging on attachment point `attach` of this pose, turned by
-    /// its own heading/pitch/bank `own`.
+    /// its own heading/pitch/bank `own`, as Omsi.exe puts it there (0x79d4c4..0x79d689): the
+    /// point's place turned with the parent, and for the turn the D3DX quaternion product
+    /// point x own x parent - the point's rotation, then the object's own (bank, pitch,
+    /// heading), then the parent's, all taken as rotations of the world axes. For the
+    /// usual turns about the vertical this is the plain hierarchy; with a tilt in more than
+    /// one of them it is what the original shows.
     pub fn attached(&self, attach: &Mat4, own: [f64; 3]) -> Pose {
         let local = attach.transform_point3(Vec3::ZERO);
         let pos = self.pos + self.rot.transform_vector3(local).as_dvec3();
         let (_, r, _) = attach.to_scale_rotation_translation();
-        let rot = self.rot * Mat4::from_quat(r) * omsi_geometry::object_rotation(own);
+        let (_, parent, _) = self.rot.to_scale_rotation_translation();
+        let rot = Mat4::from_quat((omsi_geometry::object_rotation_ypr(own).to_scale_rotation_translation().1 * r * parent).normalize());
         Pose { pos, rot }
     }
 

@@ -3223,6 +3223,23 @@ impl World {
                 }
             }
             let mesh = build_spline_mesh(&st.def, &curve, s.mirror, origin);
+            // OMSI_CHECK_SPIKES: a face standing taller than the profile, the gradient and
+            // the cant allow (a spike out of the road)
+            if omsi_cfg::env::var_os("OMSI_CHECK_SPIKES").is_some() && !mesh.is_empty() {
+                let (zlo, zhi) = st.def.profiles.iter().flat_map(|p| p.points.iter().map(|q| q.z)).fold((f32::MAX, f32::MIN), |(a, b), z| (a.min(z), b.max(z)));
+                let n = omsi_geometry::spline_station_count(&st.def, &curve).max(1);
+                let step = curve.length / n as f64;
+                let slope = curve.grad_start.abs().max(curve.grad_end.abs()) / 100.0;
+                let cant = curve.cant_start.abs().max(curve.cant_end.abs()) / 100.0 * 2.0 * omsi_geometry::half_cant_width(&st.def).min(20.0);
+                let allow = (zhi - zlo) as f64 + slope * step * 2.0 + cant + 0.5;
+                let worst = mesh.indices.chunks_exact(3).map(|t| {
+                    let z = [t[0], t[1], t[2]].map(|i| mesh.positions[i as usize].z);
+                    (z.iter().cloned().fold(f32::MIN, f32::max) - z.iter().cloned().fold(f32::MAX, f32::min)) as f64
+                }).fold(0.0f64, f64::max);
+                if worst > allow {
+                    log::info!("spike: tile {tx},{ty} spline {} {} face {worst:.1} m tall (allowed {allow:.1}) len {:.1} r {:.1} grad {:.2}/{:.2} h {:?} cant {:.1}/{:.1} skew {:.2}/{:.2} at ({:.1}, {:.1}, {:.1})", s.id, s.file, s.length, s.radius, s.grad_start, s.grad_end, s.delta_h, s.cant_start, s.cant_end, s.skew_start, s.skew_end, origin2.x + s.pos[0], origin2.y + s.pos[1], s.pos[2]);
+                }
+            }
             if debug_splines {
                 let (lo, hi) = mesh.positions.iter().fold(
                     (glam::Vec3::splat(f32::MAX), glam::Vec3::splat(f32::MIN)),
@@ -3585,26 +3602,16 @@ impl World {
             .objects
             .iter()
             .map(|o| match &o.place {
-                Placement::Ground { x, y, z, rot } => {
-                    // a parked car stands on its wheels: on a slope it leans with the ground
-                    // under it (the map gives it no pitch or bank of its own), as OMSI puts it
-                    // down - it stood level on every inclined street
-                    let mut rot = *rot;
-                    if o.parked && rot[1] == 0.0 && rot[2] == 0.0 {
-                        let h = rot[0].to_radians();
-                        let (f, r) = (DVec2::new(h.sin(), h.cos()), DVec2::new(h.cos(), -h.sin()));
-                        let at = |d: DVec2| ground_at(x + d.x, y + d.y);
-                        let (l, w) = (2.0, 0.8);
-                        let pitch = ((at(f * l) - at(-f * l)) / (2.0 * l)).atan().to_degrees();
-                        let bank = ((at(-r * w) - at(r * w)) / (2.0 * w)).atan().to_degrees();
-                        rot[1] = pitch.clamp(-15.0, 15.0);
-                        rot[2] = bank.clamp(-15.0, 15.0);
-                    }
-                    Some(Pose {
-                        pos: DVec3::new(*x, *y, z + ground_at(*x, *y)),
-                        rot: object_rotation(rot),
-                    })
-                }
+                // Omsi.exe places every object, a parking space's car as well, with the pitch
+                // and bank of the map file on the terrain height at its position (0x79e3c8
+                // .. 0x79e5fb: RotationX(pitch), RotationZ(bank), RotationY(heading), the
+                // translation) - it is never leaned to the slope. Leaned by the terrain under
+                // it, a car at the kerb of a hill street stood crooked on a road that runs
+                // on a different grade from the ground beneath.
+                Placement::Ground { x, y, z, rot } => Some(Pose {
+                    pos: DVec3::new(*x, *y, z + ground_at(*x, *y)),
+                    rot: object_rotation(*rot),
+                }),
                 Placement::Pose(p) => Some(*p),
                 Placement::Attached { .. } => None,
             })
