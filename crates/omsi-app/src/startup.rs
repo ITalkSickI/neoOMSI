@@ -84,7 +84,7 @@ pub(crate) fn own_keys(root: &Path) -> std::collections::HashSet<i32> {
     own_bindings(root, 0)
 }
 
-/// The keys held with `modifier` (1: Shift) that the file in use binds otherwise than OMSI 2's
+/// The keys held with `modifier` (a chord: `KEY_SHIFT` …) that the file in use binds otherwise than OMSI 2's
 /// own assignment ([`crate::stock_keys::STOCK_KEYS`]): the player's own. Told apart from the
 /// built-in list, not from the installation's file - a player who edited that file had
 /// every change overridden by the game's conveniences (Z / X / C, Shift+number).
@@ -94,7 +94,7 @@ pub(crate) fn own_bindings(root: &Path, modifier: i32) -> std::collections::Hash
     m.vehicles
         .iter()
         .chain(m.game.iter())
-        .filter(|b| b.modifier == modifier && b.scan_code != 0 && !stock.contains(&(b.action.to_ascii_lowercase(), b.scan_code, b.modifier)))
+        .filter(|b| b.chord() == modifier && b.scan_code != 0 && !stock.contains(&(b.action.to_ascii_lowercase(), b.scan_code, b.modifier)))
         .map(|b| b.scan_code)
         .collect()
 }
@@ -174,7 +174,12 @@ pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
     if cfg!(target_os = "macos") {
         return vec![wgpu::Backends::METAL];
     }
-    let wanted = omsi_cfg::env::var("OMSI_BACKEND").ok().unwrap_or_else(|| crate::settings::Settings::load().graphics_api);
+    let settings = crate::settings::Settings::load();
+    let wanted = if settings.vr_requested() {
+        "dx12".to_owned()
+    } else {
+        omsi_cfg::env::var("OMSI_BACKEND").ok().unwrap_or(settings.graphics_api)
+    };
     let all: Vec<wgpu::Backends> = if cfg!(windows) {
         vec![wgpu::Backends::VULKAN, wgpu::Backends::DX12, wgpu::Backends::GL]
     } else {
@@ -352,6 +357,6 @@ mod own_key_tests {
             return;
         }
         assert!(super::own_bindings(root, 0).is_empty());
-        assert!(super::own_bindings(root, 1).is_empty());
+        assert!(super::own_bindings(root, omsi_content::input::KEY_SHIFT).is_empty());
     }
 }

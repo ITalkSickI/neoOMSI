@@ -382,8 +382,22 @@ pub struct Model {
     pub interior_lights: Vec<InteriorLight>,
     /// `[light]` legacy lights (raw).
     pub lights: Vec<Vec<String>>,
+    /// `[setvar]` lines before any `[item]`: Omsi.exe files them under an item that is
+    /// never chosen, so they set nothing (kept for the record).
     pub set_vars: Vec<(String, f32)>,
+    /// The model's own paint items (`[item]`: name, `[CTCTexture]` name, texture), each with
+    /// the `[setvar]` lines after it - a `.cti` written into the model.cfg (0x5efae8 files
+    /// a `[setvar]` under the item before it).
+    pub items: Vec<ModelItem>,
     pub unknown_keywords: Vec<(String, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ModelItem {
+    pub name: String,
+    pub ctc: String,
+    pub texture: String,
+    pub set_vars: Vec<(String, f32)>,
 }
 
 impl Model {
@@ -555,11 +569,19 @@ impl Model {
                 let illumination_interior = self.meshes.last().map(|m| m.illumination_interior.clone()).unwrap_or_else(|| vec![0, 1, 2, 3]);
                 self.meshes.push(MeshDef { file, lod: self.lods.len() - 1, illumination_interior, ..Default::default() });
             }
-            "item" => {}
+            "item" => {
+                let name = r.str().to_string();
+                let ctc = r.str().to_string();
+                let texture = r.str().to_string();
+                self.items.push(ModelItem { name, ctc, texture, set_vars: Vec::new() });
+            }
             "setvar" => {
                 let n = r.str().to_string();
                 let v = r.f32();
-                self.set_vars.push((n, v));
+                match self.items.last_mut() {
+                    Some(i) => i.set_vars.push((n, v)),
+                    None => self.set_vars.push((n, v)),
+                }
             }
             "mesh_ident" => {
                 let s = r.str().to_string();
@@ -1030,10 +1052,23 @@ mod tests {
 
     use super::*;
 
+    /// `[setvar]` belongs to the `[item]` before it (a paint scheme in the model.cfg), as
+    /// Omsi.exe files it; one before any item sets nothing.
+    #[test]
+    fn setvar_belongs_to_the_item_before_it() {
+        let text = "[setvar]\nlost\n1\n[item]\nBVG\nbody\nbvg.dds\n[setvar]\nDisplay_Type\n2\n[item]\nHVL\nbody\nhvl.dds\n";
+        let m = Model::parse(&CfgFile::from_str("model.cfg", text));
+        assert_eq!(m.items.len(), 2);
+        assert_eq!(m.items[0].set_vars, vec![("Display_Type".to_string(), 2.0)]);
+        assert!(m.items[1].set_vars.is_empty());
+        assert_eq!((m.items[1].name.as_str(), m.items[1].ctc.as_str(), m.items[1].texture.as_str()), ("HVL", "body", "hvl.dds"));
+        assert_eq!(m.set_vars, vec![("lost".to_string(), 1.0)]);
+    }
+
     #[test]
     fn an_html_texture_takes_a_script_texture_index() {
         let text = "[scripttexture]\n64\n32\n\n[htmltexture]\n800\n480\nhtml\\demo.html\n\n[mesh]\nx.o3d\n\n[matl]\nx.dds\n0\n[useHtmlTexture]\n0\n";
-        let m = Model::parse(&omsi_cfg::CfgFile::from_str("model.cfg", text));
+        let m = Model::parse(&CfgFile::from_str("model.cfg", text));
         assert_eq!(m.script_textures, vec![(64, 32), (800, 480)]);
         assert_eq!(m.html_textures.len(), 1);
         assert_eq!(m.html_textures[0].script_index, 1);

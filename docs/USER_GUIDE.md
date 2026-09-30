@@ -2,6 +2,7 @@
 
 How to run openOMSI, drive, use the launcher, install mods and play over LAN. For building
 from source see [BUILDING.md](BUILDING.md).
+For OpenXR headset setup and controls on Windows, see [VR.md](VR.md).
 
 > openOMSI runs on the content of an **original OMSI 2 installation**. Without one the game does not start.
 
@@ -102,13 +103,13 @@ ahead again in every view (OMSI's `view_reset_all_directions`), Home recentres t
 The mouse wheel (and **=** / **-**, a pinch on a phone) zooms: outside the camera comes closer,
 inside the bus the view narrows, as in OMSI; **Ctrl**+wheel outside narrows the view instead
 (a telephoto, the camera stays where it is). F1-F4 driver / passenger / outside / map (free) camera, F5-F8 the destination
-sign and roller blind keys as in OMSI, Alt+S quick save, F9 write the run into the personnel
+sign and roller blind keys as in OMSI, Ctrl+S quick save, F9 write the run into the personnel
 file, WASD+QE in the free camera, left click on cockpit elements, **V** the chat line in a
 LAN session. Esc opens the game menu: drive the next placed vehicle, place any vehicle of
 the installation in front of the camera (or beside the bus), couple what stands close behind
 the bus and uncouple it again, save the situation or load the quicksave, the next weather, the clock an hour on or back, refuel and wash (only at a
 petrol station, as in OMSI), repair (the team needs the map's travel time when the bus stands
-in no depot yard), screenshot, timetable, the object editor (below), quit. Shift+Home is the ticket desk camera, and the
+in no depot yard), screenshot, timetable, the object editor (below), quit. Home is the ticket desk camera and Insert the timetable view (as OMSI's keyboard.cfg binds them), and the
 change keys of keyboard.cfg hand out or take back the change. The HUD
 shows time, speed, line, next stop, delay and what the workshop just did (and why the bus
 stands: the parking brake, low air pressure, a line the date's chrono takes off), and the
