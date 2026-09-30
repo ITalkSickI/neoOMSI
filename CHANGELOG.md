@@ -4,6 +4,18 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.434 - 2026-10-01
+
+### Driving
+- An automatic gearbox is no longer taken for a manual one. A bus counted as manual when
+  its scripts answered to the gate keys (`kw_s_1`, `kw_s_2`) and read a `Clutch` anywhere -
+  many automatics do both (gear hold keys, a torque converter's own clutch) - and the
+  automatic clutch of the settings then worked their clutch at every stop and pull-away,
+  and the phone showed a manual's gate. Now a gearbox is manual when it has the gates and
+  no automatic's `automatic_D`, or when its first gate itself asks for the clutch, or when
+  it works a clutch of its own through `AutoClutch` (checked on the LiAZ MKPP/GMP, the
+  Sprinter G32/G-tronic, the SD202 and the NEOMAN A23).
+
 ## 0.1.433 - 2026-10-01
 
 ### Graphics

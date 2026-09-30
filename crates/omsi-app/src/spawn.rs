@@ -210,6 +210,7 @@ pub(crate) fn spawn_player(
         None => log::info!("paint: the model's own textures"),
     }
     vehicle.apply_paint_vars(scheme);
+    log::info!("gearbox: {}", if vehicle.ty.program.manual_gearbox() { "manual (gates)" } else { "automatic or none" });
     if let Some(sp) = &args.spawn {
         let v: Vec<f64> = sp
             .split(',')
