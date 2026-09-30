@@ -4,7 +4,7 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
-## 0.1.373 - 2026-09-30
+## 0.1.374 - 2026-09-30
 
 ### Graphics
 - Vanilla lights textures through the sRGB curve instead of a plain power of 2.2, so dark
