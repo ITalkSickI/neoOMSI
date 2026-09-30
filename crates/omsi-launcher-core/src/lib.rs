@@ -1921,6 +1921,10 @@ pub struct Duty {
     pub map: String,
     pub bus: String,
     pub paint: Option<String>,
+    /// The number plate (registration) the player typed: it wins over the plate the bus's
+    /// `[number]` list or the map's `registrations.txt` gives it (empty: as the content says).
+    #[serde(default)]
+    pub plate: Option<String>,
     pub hof: Option<String>,
     pub entry: Option<i32>,
     pub line: Option<String>,
@@ -1991,6 +1995,9 @@ pub fn duty_args(d: &Duty) -> Result<Vec<String>> {
     let mut a: Vec<String> = vec!["--root".into(), root.to_string_lossy().to_string(), "--no-menu".into(), "--map".into(), d.map.clone(), "--bus".into(), d.bus.clone(), "--time".into(), if d.time.trim().is_empty() { "09:00".into() } else { d.time.trim().to_string() }];
     if let Some(p) = d.paint.as_deref().filter(|p| !p.trim().is_empty()) {
         a.extend(["--paint".into(), p.trim().to_string()]);
+    }
+    if let Some(pl) = d.plate.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        a.extend(["--plate".into(), pl.to_string()]);
     }
     // (a vehicle file taken for a depot from a broken ailists.cfg by older launchers is none)
     if let Some(h) = d.hof.as_deref().filter(|h| !h.trim().is_empty() && !h.to_ascii_lowercase().contains(".bus") && !h.to_ascii_lowercase().contains(".ovh")) {
@@ -2293,6 +2300,16 @@ mod tests {
     }
 
     use super::*;
+
+    /// A duty file written before the number plate field (or one that leaves it out) loads
+    /// with no plate, and a plate the player typed is kept as it stands.
+    #[test]
+    fn a_duty_keeps_its_plate_and_older_files_load_without_one() {
+        let old: Duty = serde_json::from_str(r#"{"map":"maps/x/global.cfg","bus":"Vehicles/x.bus","time":"09:00"}"#).unwrap();
+        assert_eq!(old.plate, None);
+        let typed: Duty = serde_json::from_str(r#"{"map":"maps/x/global.cfg","bus":"Vehicles/x.bus","time":"09:00","plate":"B-AB 1234"}"#).unwrap();
+        assert_eq!(typed.plate.as_deref(), Some("B-AB 1234"));
+    }
 
     #[test]
     fn update_settings_round_trip() {

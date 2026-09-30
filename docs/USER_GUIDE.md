@@ -34,7 +34,7 @@ Everything can also be given on the command line, which then skips both:
 | --- | --- |
 | `--map maps/Grundorf/global.cfg` | map to load |
 | `--weather Weather/Schmuddelwetter.owt --date 1989-01-15` | weather, and the date that decides the season |
-| `--bus Vehicles/MAN_SD200/MAN_SD80.bus` | player vehicle (`--paint name`, `--hof name`) |
+| `--bus Vehicles/MAN_SD200/MAN_SD80.bus` | player vehicle (`--paint name`, `--hof name`, `--plate "B-AB 1234"`) |
 | `--entry N` / `--spawn x,y,heading` | where the vehicle starts |
 | `--time HH:MM --date YYYY-MM-DD --weather Weather/x.owt` | time, date, weather |
 | `--traffic N --schedule --line 76 --tour 1 --passengers` | AI cars, timetable buses, the player's tour, people at the stops |
@@ -126,7 +126,7 @@ picture **drawn by the game's renderer** - its model, paint, materials, reflecti
 shadows exactly as in the game, under the light of the chosen time and weather - drawn
 again only when something changes; drag on it to turn the bus, scroll to zoom. Its pages:
 
-* **Drive** - four steps: the bus (search, liveries, depot file), the route (map, start
+* **Drive** - four steps: the bus (search, liveries, depot file, number plate), the route (map, start
   point, line and tour - the lines that run on the chosen date), time and weather (time,
   date, season, traffic, passengers, timetable buses, autostart, *LAN play: host / join*,
   the weather presets that suit the season), and the roadbook with the IBIS codes; the

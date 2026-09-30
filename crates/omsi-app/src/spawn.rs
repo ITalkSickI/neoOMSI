@@ -290,6 +290,18 @@ pub(crate) fn spawn_player(
             }
         }
     }
+    // a plate given by hand (the launcher's field, `--plate`) is the player's own: it wins
+    // over every plate the content gave the bus
+    if let Some(plate) = args.plate.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        match vt.program.str_var("ident") {
+            Some(i) => {
+                vehicle.state.str_vars[i as usize] = plate.to_string();
+                log::info!("number plate set by hand: {plate}");
+            }
+            // a bus whose scripts know no `ident` draws its plate from the model's texture
+            None => log::warn!("--plate {plate}: this bus has no `ident` string variable"),
+        }
+    }
     // ground following through the loaded tiles (road surfaces first, then terrain)
     let terrains = world.terrains.clone();
     let surfaces = world.surfaces.clone();
