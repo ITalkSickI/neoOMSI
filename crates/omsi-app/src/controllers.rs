@@ -72,9 +72,23 @@ pub(crate) fn cfg_path(root: &Path) -> std::path::PathBuf {
 }
 
 /// `Inputs/gamectrler.cfg`: the configured devices.
-fn read_cfg(root: &Path) -> Vec<DeviceCfg> {
-    let Ok(text) = std::fs::read(cfg_path(root)) else { return Vec::new() };
-    parse_cfg(&omsi_cfg::codepage::decode(&text))
+pub(crate) fn read_cfg(root: &Path) -> Vec<DeviceCfg> {
+    let path = cfg_path(root);
+    let Ok(text) = std::fs::read(&path) else { return Vec::new() };
+    let mut devices = parse_cfg(&omsi_cfg::codepage::decode(&text));
+    // An inherited OMSI file can contain 0/0 FFScale on a wheel. Keep its axis and
+    // button bindings, but use openOMSI's 100/100 default until our own file is saved.
+    let original = root.join("Inputs").join("gamectrler.cfg");
+    let from_original = path == original
+        || std::fs::canonicalize(&path).ok().zip(std::fs::canonicalize(&original).ok()).is_some_and(|(a, b)| a == b);
+    if from_original {
+        for d in &mut devices {
+            if d.ff_scale == Some((0.0, 0.0)) {
+                d.ff_scale = None;
+            }
+        }
+    }
+    devices
 }
 
 pub(crate) fn parse_cfg(text: &str) -> Vec<DeviceCfg> {
@@ -174,6 +188,8 @@ pub(crate) struct Connected {
     pub axes: Vec<(usize, f32)>,
     pub gamepad: bool,
     pub ff: bool,
+    /// The hardware advertises FFB, even when this window has not created an effect.
+    pub ff_capable: bool,
     /// How many buttons it has (0: the system does not say).
     pub buttons: usize,
 }
@@ -241,6 +257,16 @@ impl Devices {
         }
     }
 
+    /// Release foreground wheel effects when the game loses focus.
+    pub(crate) fn set_focus(&mut self, focused: bool) {
+        #[cfg(windows)]
+        if let Some(d) = self.di.as_mut() {
+            d.set_focus(focused);
+        }
+        #[cfg(not(windows))]
+        let _ = focused;
+    }
+
     /// Read the devices; the buttons pressed (true) and let go since the last call:
     /// (device, button number from 0, as DirectInput and `gamectrler.cfg` count them).
     pub fn poll(&mut self) -> Vec<(String, usize, bool)> {
@@ -283,8 +309,11 @@ impl Devices {
             v.extend(
                 d.devices
                     .iter()
-                    .filter(|d| !(xinput_pads && xinput_name(&d.name)))
-                    .map(|d| Connected { name: d.name.clone(), axes: d.axes(), gamepad: false, ff: d.has_ff(), buttons: d.buttons.min(128) }),
+                    .filter(|_| d.is_focused())
+                    // A G920's DirectInput name contains "Xbox One", but it is the
+                    // force-feedback wheel. Keep it even when gilrs also lists a pad.
+                    .filter(|d| include_direct_input_device(&d.name, d.ff_capable(), xinput_pads))
+                    .map(|d| Connected { name: d.name.clone(), axes: d.axes(), gamepad: false, ff: d.has_ff(), ff_capable: d.ff_capable(), buttons: d.buttons.min(128) }),
             );
         }
         let _ = xinput_pads;
@@ -315,7 +344,7 @@ impl Devices {
                         axes = a.clone();
                     }
                 }
-                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), buttons: 0 });
+                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), ff_capable: pad.is_ff_supported(), buttons: 0 });
             }
         }
         // (and a wheel gilrs does not list at all: one whose only axes are the simulation
@@ -323,7 +352,7 @@ impl Devices {
         #[cfg(target_os = "macos")]
         for (name, axes) in &self.hid_axes {
             if !v.iter().any(|c| names_match(&c.name, name)) {
-                v.push(Connected { name: name.clone(), axes: di_slots(axes), gamepad: false, ff: false, buttons: 0 });
+                v.push(Connected { name: name.clone(), axes: di_slots(axes), gamepad: false, ff: false, ff_capable: false, buttons: 0 });
             }
         }
         v
@@ -335,6 +364,11 @@ impl Devices {
 fn xinput_name(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     n.contains("xbox") || n.contains("xinput") || n.starts_with("controller (")
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn include_direct_input_device(name: &str, ff_capable: bool, xinput_pads: bool) -> bool {
+    !xinput_pads || !xinput_name(name) || ff_capable
 }
 
 /// The handle of `window` for DirectInput (Windows; elsewhere nothing is needed).
@@ -361,8 +395,10 @@ pub struct FfInput {
     pub kmh: f32,
     /// Sideways acceleration in the bus frame (m/s², right positive).
     pub lateral_accel: f32,
-    /// Short front-wheel jolt from suspension travel or an impact, 0..1.
+    /// Short jolt from wheel suspension travel or an impact, 0..1.
     pub wheel_bump: f32,
+    /// Time since the latest wheel jolt, for a repeatable initial kick.
+    pub(crate) wheel_bump_age: f32,
     /// `FF_Vib_Amp` 0..1 and `FF_Vib_Period` (hundredths of a second) of the scripts.
     pub vib_amp: f32,
     pub vib_period: f32,
@@ -371,6 +407,7 @@ pub struct FfInput {
 
 pub struct Controllers {
     devices: Devices,
+    focused: bool,
     cfg: Vec<DeviceCfg>,
     pub enabled: bool,
     /// The settings' dead zone round the centre of a set-up device's axes (0..0.3).
@@ -399,6 +436,8 @@ pub struct Controllers {
     ff_t: f32,
     ff_lateral: f32,
     ff_bump: f32,
+    ff_bump_age: f32,
+    ff_source_logged: Option<String>,
     /// The rumble playing (`FF_Vib_Amp` and `FF_Vib_Period` of the bus), rebuilt when
     /// either changes.
     rumble: Option<(gilrs::ff::Effect, f32, f32)>,
@@ -413,13 +452,26 @@ impl Controllers {
         self.devices.refresh();
     }
 
+    pub(crate) fn set_focus(&mut self, focused: bool) {
+        if self.focused == focused {
+            return;
+        }
+        self.focused = focused;
+        self.devices.set_focus(focused);
+        if !focused {
+            self.steer = None;
+            self.actions.clear();
+            self.ff_source_logged = None;
+        }
+    }
+
     pub fn new(root: &Path, hwnd: Option<isize>) -> Controllers {
         let devices = Devices::new(hwnd, true);
         let cfg = read_cfg(root);
         for c in devices.connected() {
             log::info!("game controller: {} ({})", c.name, if cfg.iter().any(|d| names_match(&d.name, &c.name)) { "set up in gamectrler.cfg" } else if c.gamepad { "as a gamepad" } else { "not set up: its X axis steers" });
         }
-        Controllers { devices, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, ff_enabled: true, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, ff_lateral: 0.0, ff_bump: 0.0, rumble: None, #[cfg(all(target_os = "linux", target_pointer_width = "64"))] wheel: None, #[cfg(all(target_os = "linux", target_pointer_width = "64"))] wheel_tried: None }
+        Controllers { devices, focused: true, cfg, deadzone: 0.0, pedal_throttle: 1.0, pedal_brake: 1.0, disabled: Vec::new(), ff_invert: false, ff_enabled: true, steer_gain: 1.0, enabled: true, actions: Vec::new(), announced: Vec::new(), notice: None, steer: None, ff_t: 0.0, ff_lateral: 0.0, ff_bump: 0.0, ff_bump_age: 0.0, ff_source_logged: None, rumble: None, #[cfg(all(target_os = "linux", target_pointer_width = "64"))] wheel: None, #[cfg(all(target_os = "linux", target_pointer_width = "64"))] wheel_tried: None }
     }
 
     /// A wheel or joystick steers the bus (then the arrow keys look around, as in OMSI:
@@ -435,7 +487,7 @@ impl Controllers {
             if self.off(&name) {
                 continue;
             }
-            if let Some(action) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.buttons.get(n)).filter(|a| !a.0.is_empty()) {
+            if let Some(action) = find_device_cfg(&self.cfg, &name).and_then(|d| d.buttons.get(n)).filter(|a| !a.0.is_empty()) {
                 self.actions.push((action.0.clone(), down));
             }
         }
@@ -446,7 +498,7 @@ impl Controllers {
         // gives what none of them does - a pad lying beside a set-up wheel held the steering
         // at its own centre, whichever the system listed first
         let off = self.disabled.clone();
-        let mut pads: Vec<(Option<&DeviceCfg>, Connected)> = self.devices.connected().into_iter().filter(|c| !off.iter().any(|d| names_match(d, &c.name))).map(|c| (self.cfg.iter().find(|d| names_match(&d.name, &c.name)), c)).collect();
+        let mut pads: Vec<(Option<&DeviceCfg>, Connected)> = self.devices.connected().into_iter().filter(|c| !off.iter().any(|d| names_match(d, &c.name))).map(|c| (find_device_cfg(&self.cfg, &c.name), c)).collect();
         pads.sort_by_key(|(cfg, _)| cfg.is_none());
         let mut steer: Option<(String, f32, bool)> = None;
         let dz = self.deadzone.clamp(0.0, 0.3);
@@ -553,16 +605,40 @@ impl Controllers {
             self.ff_lateral = 0.0;
         }
         f.lateral_accel = self.ff_lateral;
-        self.ff_bump = if on { (self.ff_bump - f.dt.max(0.0) * 4.0).max(f.wheel_bump.clamp(0.0, 1.0)) } else { 0.0 };
+        let incoming_bump = if on { f.wheel_bump.clamp(0.0, 1.0) } else { 0.0 };
+        if incoming_bump > 0.05 && (self.ff_bump < 0.02 || incoming_bump > self.ff_bump + 0.12) {
+            self.ff_bump_age = 0.0;
+        } else {
+            self.ff_bump_age += f.dt.max(0.0);
+        }
+        self.ff_bump = if on { (self.ff_bump - f.dt.max(0.0) * 6.0).max(incoming_bump) } else { 0.0 };
         f.wheel_bump = self.ff_bump;
+        f.wheel_bump_age = self.ff_bump_age;
+        if self.ff_source_logged.as_deref() != self.steer.as_ref().map(|s| s.0.as_str()) {
+            self.ff_source_logged = self.steer.as_ref().map(|s| s.0.clone());
+            if let Some((name, _, _, effect)) = self.steer.as_ref() {
+                let cfg = find_device_cfg(&self.cfg, name);
+                let (steering, vibration) = cfg.and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
+                #[cfg(windows)]
+                let axis_reversed = self.devices.di.as_ref().is_some_and(|di| force_axis_reversed(cfg, di.force_axis(name)));
+                #[cfg(not(windows))]
+                let axis_reversed = false;
+                log::info!("force feedback: steering source {name}, effect available: {effect}, config: {}, steering force: {steering:.2}, vibration: {vibration:.2}, invert: {}", cfg.map(|d| d.name.as_str()).unwrap_or("none"), self.ff_invert ^ axis_reversed);
+            }
+        }
         #[cfg(windows)]
         if let (Some((name, x, x0, true)), Some(di)) = (self.steer.clone(), self.devices.di.as_mut()) {
             // (the file's [FFScale] of the device: steering forces, then vibration)
-            let (k_s, k_e) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
+            let cfg = find_device_cfg(&self.cfg, &name);
+            let (k_s, k_e) = cfg.and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
             let force = if on { wheel_force(&f, x, x0, &mut self.ff_t, k_s, k_e) } else { 0.0 };
-            let force = if self.ff_invert { -force } else { force };
-            di.set_force(&name, force);
-            return;
+            // The wheel force is calculated from the steering axis after its configured
+            // reversal, while DirectInput sends forces in the physical axis direction.
+            let axis_reversed = force_axis_reversed(cfg, di.force_axis(&name));
+            let force = if self.ff_invert ^ axis_reversed { -force } else { force };
+            if di.set_force(&name, force) {
+                return;
+            }
         }
         #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
         if let Some((name, x, x0, true)) = self.steer.clone() {
@@ -573,7 +649,7 @@ impl Controllers {
                 self.wheel = crate::evdev_ff::Wheel::open(&name);
             }
             if let Some(w) = self.wheel.as_mut() {
-                let (k_s, k_e) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
+                let (k_s, k_e) = find_device_cfg(&self.cfg, &name).and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
                 let force = if on { wheel_force(&f, x, x0, &mut self.ff_t, k_s, k_e) } else { 0.0 };
                 if !w.set_force(if self.ff_invert { -force } else { force }) {
                     log::warn!("force feedback: {name} went away; looking for it again");
@@ -637,17 +713,18 @@ impl Controllers {
     }
 }
 
-/// A short jolt from suspension motion or a wheel striking a raised edge.
-pub(crate) fn front_wheel_bump(body: &omsi_sim::rigid::RigidBody, kmh: f32) -> f32 {
-    body.wheels.iter().enumerate().filter(|(_, w)| w.steered).map(|(i, w)| {
+/// Front-wheel contact reaches the steering linkage directly; rear-wheel contact
+/// reaches it through the bus body at a lower strength.
+pub(crate) fn wheel_contact_bump(body: &omsi_sim::rigid::RigidBody, kmh: f32) -> f32 {
+    body.wheels.iter().enumerate().map(|(i, w)| {
         let impact_speed = body.wheel_impacts.iter().filter(|hit| hit.obstacle == i).map(|hit| hit.speed).fold(0.0, f32::max);
-        bump_strength(w.compression_rate, impact_speed, kmh)
+        bump_strength(w.compression_rate, impact_speed, kmh) * if w.steered { 1.0 } else { 0.55 }
     }).fold(0.0, f32::max)
 }
 
 fn bump_strength(compression_rate: f32, impact_speed: f32, kmh: f32) -> f32 {
-    let suspension = ((compression_rate.abs() - 0.2) / 1.2).clamp(0.0, 1.0);
-    let impact = ((impact_speed - 0.2) / 1.5).clamp(0.0, 1.0);
+    let suspension = ((compression_rate.abs() - 0.12) / 0.9).clamp(0.0, 1.0);
+    let impact = ((impact_speed - 0.12) / 1.1).clamp(0.0, 1.0);
     suspension.max(impact) * (kmh.abs() / 4.0).clamp(0.0, 1.0)
 }
 
@@ -661,6 +738,7 @@ fn wheel_force(f: &FfInput, x: f32, x0: f32, t: &mut f32, k_springs: f32, k_effe
     let v = f.kmh.abs();
     let x = x.clamp(-1.0, 1.0);
     let spring_strength = 0.22 + 0.28 * v / (v + 10.0);
+    let moving_steering_gain = 1.0 + 0.18 * v / (v + 8.0);
     let spring = -spring_strength * x / (1.0 + 0.65 * x.abs());
     let road_align = -(f.lateral_accel / 9.81).clamp(-0.45, 0.45) * 0.25 * (v / 5.0).clamp(0.0, 1.0);
     // Assisted steering should not demand ever more hand force near full lock.
@@ -679,8 +757,10 @@ fn wheel_force(f: &FfInput, x: f32, x0: f32, t: &mut f32, k_springs: f32, k_effe
     *t += dt;
     let period = (f.vib_period * 0.01).max(0.02);
     let shake = f.vib_amp.clamp(0.0, 1.0) * 0.25 * (std::f32::consts::TAU * *t / period).sin();
-    let bump = f.wheel_bump.clamp(0.0, 1.0) * 0.4 * (std::f32::consts::TAU * *t * 11.0).cos();
-    (((spring + road_align) * lock_assist * assist + drag) * k_springs.clamp(0.0, 2.0) + (shake + bump) * k_effects.clamp(0.0, 2.0)).clamp(-1.0, 1.0)
+    // Preserve small road details while softening kerb-sized peaks. One short
+    // kick and rebound feels less like a continuously shaking wheel mount.
+    let bump = f.wheel_bump.clamp(0.0, 1.0).sqrt() * 0.46 * (std::f32::consts::TAU * f.wheel_bump_age * 6.5).cos();
+    (((spring + road_align) * lock_assist * assist + drag) * moving_steering_gain * k_springs.clamp(0.0, 2.0) + (shake + bump) * k_effects.clamp(0.0, 2.0)).clamp(-1.0, 1.0)
 }
 
 /// A control several set-up devices give: the first one set wins, unless a later one is
@@ -751,12 +831,28 @@ pub(crate) fn di_slots(axes: &[(u32, f32)]) -> Vec<(usize, f32)> {
 }
 
 /// OMSI stores DirectInput's product name; the system's may differ in spacing and case.
+fn normalized_device_name(s: &str) -> String {
+    s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
 pub(crate) fn names_match(a: &str, b: &str) -> bool {
     // (letters of any script: a name of Cyrillic or Chinese letters only was empty here and
     // matched nothing)
-    let n = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
-    let (a, b) = (n(a), n(b));
+    let (a, b) = (normalized_device_name(a), normalized_device_name(b));
     !a.is_empty() && (a == b || a.contains(&b) || b.contains(&a))
+}
+
+/// An exact device name wins over a shorter alias elsewhere in the same OMSI file.
+fn find_device_cfg<'a>(cfg: &'a [DeviceCfg], name: &str) -> Option<&'a DeviceCfg> {
+    let exact = normalized_device_name(name);
+    cfg.iter().find(|d| !exact.is_empty() && normalized_device_name(&d.name) == exact)
+        .or_else(|| cfg.iter().find(|d| names_match(&d.name, name)))
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn force_axis_reversed(cfg: Option<&DeviceCfg>, axis: Option<usize>) -> bool {
+    axis.and_then(|axis| cfg.and_then(|d| d.axes.get(axis).copied().flatten()))
+        .is_some_and(|(function, reversed)| function == Func::Steering && reversed)
 }
 
 /// The button's number on its device as DirectInput counts them (and `gamectrler.cfg` with
@@ -846,6 +942,12 @@ mod tests {
         assert!(super::names_match("Кнопочная панель", "кнопочная  панель"));
         assert!(!super::names_match("Кнопочная панель", "Руль"));
     }
+
+    #[test]
+    fn an_xbox_named_ff_wheel_stays_visible_in_the_launcher() {
+        assert!(super::include_direct_input_device("G920 Driving Force Racing Wheel for Xbox One", true, true));
+        assert!(!super::include_direct_input_device("Controller (Xbox One)", false, true));
+    }
 }
 
 #[cfg(test)]
@@ -888,6 +990,26 @@ mod cfg_tests {
         let saved = super::parse_cfg(&super::cfg_text(&devices));
         assert_eq!(saved[0].ff_scale, Some((2.0, 0.5)));
         assert_eq!(saved[1].ff_scale, Some((0.75, 1.25)));
+    }
+
+    #[test]
+    fn exact_wheel_configuration_beats_a_shorter_alias() {
+        let devices = vec![
+            super::DeviceCfg { name: "G920".into(), ff_scale: Some((0.0, 0.0)), ..Default::default() },
+            super::DeviceCfg { name: "G920 Driving Force Racing Wheel for Xbox One".into(), ff_scale: Some((1.2, 0.6)), ..Default::default() },
+        ];
+        let matched = super::find_device_cfg(&devices, "G920 Driving Force Racing Wheel for Xbox One").unwrap();
+        assert_eq!(matched.ff_scale, Some((1.2, 0.6)));
+    }
+
+    #[test]
+    fn a_reversed_steering_axis_reverses_its_motor_force_too() {
+        let mut wheel = super::DeviceCfg::default();
+        wheel.axes[0] = Some((super::Func::Steering, true));
+        wheel.axes[1] = Some((super::Func::Throttle, true));
+        assert!(super::force_axis_reversed(Some(&wheel), Some(0)));
+        assert!(!super::force_axis_reversed(Some(&wheel), Some(1)));
+        assert!(!super::force_axis_reversed(Some(&wheel), None));
     }
 
     #[test]
@@ -996,6 +1118,8 @@ mod button_tests {
     fn wheel_bumps_need_motion_and_a_suspension_or_impact_event() {
         assert_eq!(super::bump_strength(0.0, 0.0, 20.0), 0.0);
         assert_eq!(super::bump_strength(1.0, 0.0, 0.0), 0.0);
+        assert_eq!(super::bump_strength(0.08, 0.08, 20.0), 0.0);
+        assert!(super::bump_strength(0.5, 0.0, 20.0) > 0.3);
         assert!(super::bump_strength(1.0, 0.0, 20.0) > 0.5);
         assert!(super::bump_strength(0.0, 1.0, 20.0) > 0.5);
     }
@@ -1009,5 +1133,21 @@ mod button_tests {
         let on = super::wheel_force(&f, 0.0, 0.0, &mut t, 0.0, 1.0);
         assert_eq!(off, 0.0);
         assert!(on.abs() > 0.15, "{on}");
+        assert!(on.abs() < 0.5, "{on}");
+        let lighter = super::wheel_force(&super::FfInput { wheel_bump: 0.25, ..f }, 0.0, 0.0, &mut t, 0.0, 1.0);
+        assert!(lighter.abs() > on.abs() * 0.45, "{lighter} {on}");
+        t = 0.37;
+        let at_impact = super::wheel_force(&f, 0.0, 0.0, &mut t, 0.0, 1.0);
+        assert!((on - at_impact).abs() < 0.001, "{on} {at_impact}");
+    }
+
+    #[test]
+    fn steering_force_scale_changes_the_constant_force() {
+        let mut t = 0.0;
+        let f = super::FfInput { on: true, kmh: 30.0, dt: 0.016, ..Default::default() };
+        let zero = super::wheel_force(&f, 0.4, 0.4, &mut t, 0.0, 0.0);
+        let normal = super::wheel_force(&f, 0.4, 0.4, &mut t, 1.0, 0.0);
+        assert_eq!(zero, 0.0);
+        assert!(normal.abs() > 0.05, "{normal}");
     }
 }
