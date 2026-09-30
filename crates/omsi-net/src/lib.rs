@@ -122,6 +122,9 @@ pub const LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 pub const HEARTBEAT: f32 = 1.0;
 /// Seconds between two INFO messages of a player whose info has not changed.
 pub const INFO_EVERY: f32 = 2.0;
+/// The shortest time (s) between two `INFO`s: well inside what a host takes from a player
+/// (`MESSAGE_RATE`), with room for its other messages.
+pub const INFO_MIN_GAP: f32 = 0.25;
 /// Seconds between two CLOCK messages of the host.
 pub const CLOCK_EVERY: f32 = 5.0;
 /// At most this many other players: a host turns away the next one, a client ignores more.
@@ -2340,7 +2343,10 @@ impl LanSession {
             }
         }
         let info = p.encode_info();
-        if info != self.last_info || self.info_acc >= INFO_EVERY {
+        // Sent when it changes, but no more often than INFO_MIN_GAP: a roller blind turning
+        // through its numbers or a pilot screen changes the `[matl_freetex]` pictures many
+        // times a second, and the host took ten messages a second and dropped the rest.
+        if (info != self.last_info && self.info_acc >= INFO_MIN_GAP) || self.info_acc >= INFO_EVERY {
             self.info_acc = 0.0;
             match self.role {
                 Role::Host => self.broadcast(info.as_bytes(), None),
