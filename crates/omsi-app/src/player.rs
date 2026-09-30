@@ -1656,17 +1656,22 @@ impl Player {
         };
         match cam {
             Some(c) => {
-                // inside: the head turns, the seat does not move
-                let (eye, yaw, pitch) = self.vehicle.camera_world(c);
+                // inside: the head turns, the seat does not move. The camera hangs on the
+                // body as Omsi.exe hangs its driver's and passengers' cameras (0x7cf82c ->
+                // 0x7edfd0, the vehicle's own matrix): it pitches and rolls with the bus, the
+                // look turned in the bus's frame. Kept level, the view stood still while the
+                // cab rocked about it - the "boat" (the body's own motion matches Omsi's).
+                let turned = omsi_vehicle::Camera { yaw: c.yaw + look.0, pitch: (c.pitch + look.1).clamp(-89.0, 89.0), ..c.clone() };
+                let (eye, yaw, pitch, roll) = self.vehicle.camera_world_full(&turned);
                 let eye = if view == "driver" { eye + self.vehicle.body_rotation().transform_vector3(self.head + self.seat).as_dvec3() } else { eye };
                 // near 0.25 rather than 0.1: the depth buffer has to reach 6 km, and the
                 // nearer the near plane the coarser it gets out there - the flicker between
                 // the road and the ground at a distance is that precision running out
                 Camera {
                     position: eye,
-                    yaw: yaw + look.0,
-                    pitch: (pitch + look.1).clamp(-89.0, 89.0),
-                    roll: 0.0,
+                    yaw,
+                    pitch: pitch.clamp(-89.0, 89.0),
+                    roll,
                     fov_deg: c.fov,
                     near: 0.25,
                     far: 6000.0,
