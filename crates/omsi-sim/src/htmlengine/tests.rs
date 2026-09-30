@@ -851,3 +851,44 @@ fn linked_style_sheet_and_script_are_inlined_with_their_pictures() {
     let f = r.poll_frame().unwrap();
     assert_eq!(px(&f, 8, 5, 5), [255, 0, 0, 255]);
 }
+/// Speed of the engine on `docs/examples/htmltexture/demo.html`. Not part of the normal test
+/// run; start it in release mode (debug numbers mean nothing):
+///
+/// `cargo test -p omsi-sim --release --lib bench_htmlengine -- --ignored --nocapture`
+///
+/// Set `HTMLBENCH_PAGE=path/to/page.html` to measure your own page and `HTMLBENCH_RUNS=n` for
+/// the number of timed runs (default 200).
+#[test]
+#[ignore]
+fn bench_htmlengine() {
+    use std::time::{Duration, Instant};
+
+    fn stats(mut v: Vec<Duration>) -> String {
+        v.sort();
+        format!("median {:>9.3?}  min {:>9.3?}  p95 {:>9.3?}", v[v.len() / 2], v[0], v[v.len() * 95 / 100])
+    }
+
+    let page = std::env::var("HTMLBENCH_PAGE").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/examples/htmltexture/demo.html").to_string());
+    let runs: usize = std::env::var("HTMLBENCH_RUNS").ok().and_then(|v| v.parse().ok()).unwrap_or(200);
+    let html = std::fs::read_to_string(&page).unwrap();
+    println!("page: {page} ({} bytes), {runs} runs", html.len());
+
+    for &(w, h) in &[(512u32, 256u32), (1024, 512), (2048, 1024)] {
+        let t = Instant::now();
+        let mut r = EngineRenderer::new(w, h, &html);
+        let parse = t.elapsed();
+        let t = Instant::now();
+        let _ = r.render();
+        let cold = t.elapsed();
+        for _ in 0..10 {
+            let _ = r.render();
+        }
+        let render: Vec<_> = (0..runs).map(|_| { let t = Instant::now(); let _ = r.render(); t.elapsed() }).collect();
+        let frame: Vec<_> = (0..runs).map(|i| { let t = Instant::now(); r.set_vars(&[("engine_n".to_string(), i as f32)], &[]); let _ = r.poll_frame(); t.elapsed() }).collect();
+        let hit: Vec<_> = (0..runs).map(|_| { let t = Instant::now(); let _ = r.hit_node(100.0, 100.0); t.elapsed() }).collect();
+        println!("--- {w}x{h}: parse + scripts {parse:?}, first render {cold:?}");
+        println!("    render          {}", stats(render));
+        println!("    update + frame  {}", stats(frame));
+        println!("    pointer hit     {}", stats(hit));
+    }
+}
