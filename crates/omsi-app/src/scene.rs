@@ -4474,7 +4474,7 @@ impl World {
             .and_then(|t| {
                 let p = omsi_cfg::resolve_path(&self.map_dir, &format!("{}.LM.bmp", t.file));
                 if omsi_cfg::vfs::is_file(&p) {
-                    omsi_texture::decode_file(&p).ok()
+                    omsi_texture::decode_file(&p).ok().map(|img| own_tile_of_light_map(&img))
                 } else {
                     None
                 }
@@ -7706,8 +7706,41 @@ fn mesh_bounds(m: &MeshData, xf: &Mat4, origin: DVec3) -> [f64; 4] {
     b
 }
 
-/// Give the lamps of a tile the hue its light map (`.map.LM.bmp`: the tile's area, north at
-/// the top row) shows under them, where the map is lit there at all; their brightness stays.
+/// The part of a `.map.LM.bmp` that covers its own tile, resampled to the picture's full
+/// size. The editor bakes each light map over the tile and its eight neighbours, north at the
+/// top row: the tile is the middle third. Neighbouring light maps are the same picture shifted
+/// by a third (85 texels between two tiles, 171 between every other one, on all stock maps).
+/// Laid over the tile whole, every pool of light came out three times as large and away from
+/// its lamp - a filling station's blue light lay on a garden 390 m off.
+fn own_tile_of_light_map(img: &omsi_texture::Image) -> omsi_texture::Image {
+    let (w, h) = (img.width as usize, img.height as usize);
+    if w < 3 || h < 3 {
+        return img.clone();
+    }
+    let texel = |x: usize, y: usize, c: usize| img.rgba[(y * w + x) * 4 + c] as f32;
+    let mut rgba = vec![0u8; w * h * 4];
+    for y in 0..h {
+        // (bilinear, the texel centres of the output spread evenly over the middle third)
+        let sy = (h as f32 / 3.0 + (y as f32 + 0.5) / 3.0 - 0.5).clamp(0.0, (h - 1) as f32);
+        let (y0, fy) = (sy.floor() as usize, sy.fract());
+        let y1 = (y0 + 1).min(h - 1);
+        for x in 0..w {
+            let sx = (w as f32 / 3.0 + (x as f32 + 0.5) / 3.0 - 0.5).clamp(0.0, (w - 1) as f32);
+            let (x0, fx) = (sx.floor() as usize, sx.fract());
+            let x1 = (x0 + 1).min(w - 1);
+            for c in 0..4 {
+                let top = texel(x0, y0, c) * (1.0 - fx) + texel(x1, y0, c) * fx;
+                let bottom = texel(x0, y1, c) * (1.0 - fx) + texel(x1, y1, c) * fx;
+                rgba[(y * w + x) * 4 + c] = (top * (1.0 - fy) + bottom * fy).round() as u8;
+            }
+        }
+    }
+    omsi_texture::Image { width: img.width, height: img.height, rgba, has_alpha: img.has_alpha }
+}
+
+/// Give the lamps of a tile the hue its light map (the tile's own part, see
+/// [`own_tile_of_light_map`]; north at the top row) shows under them, where the map is lit
+/// there at all; their brightness stays.
 fn tint_lights_from_light_map(lights: &mut [omsi_render::PointLight], img: &omsi_texture::Image, origin: DVec3) {
     let ts = omsi_map::tile_size();
     let (w, h) = (img.width as i64, img.height as i64);
@@ -11037,6 +11070,36 @@ fn object_lanes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A light map covers the 3x3 tiles around its own: a lamp's pool in the middle of the
+    /// picture is in the middle of the tile, one in a neighbour's third is left out, and the
+    /// tile's edges take the texels a third of the way in.
+    #[test]
+    fn a_light_map_is_laid_on_its_middle_third() {
+        let n = 12usize;
+        let mut rgba = vec![0u8; n * n * 4];
+        for y in 0..n {
+            for x in 0..n {
+                let i = (y * n + x) * 4;
+                rgba[i] = (x * 20) as u8;
+                rgba[i + 1] = (y * 20) as u8;
+                rgba[i + 3] = 255;
+            }
+        }
+        // a pool in the western neighbour, left out
+        rgba[(6 * n + 1) * 4 + 2] = 255;
+        let img = omsi_texture::Image { width: n as u32, height: n as u32, rgba, has_alpha: false };
+        let own = own_tile_of_light_map(&img);
+        assert_eq!((own.width, own.height), (n as u32, n as u32));
+        let at = |x: usize, y: usize, c: usize| own.rgba[(y * n + x) * 4 + c] as f32;
+        // output texel x samples x = 4 + (x + 0.5) / 3 - 0.5 of the source
+        let expect = |x: usize| 20.0 * (4.0 + (x as f32 + 0.5) / 3.0 - 0.5);
+        for x in [0, 5, 11] {
+            assert!((at(x, 0, 0) - expect(x)).abs() <= 1.0, "column {x}: {} against {}", at(x, 0, 0), expect(x));
+            assert!((at(0, x, 1) - expect(x)).abs() <= 1.0, "row {x}");
+        }
+        assert!((0..n * n).all(|i| own.rgba[i * 4 + 2] == 0));
+    }
 
     /// A film modelled as a copy of the floor's faces with a slot of its own is an overlay;
     /// a panel beside the floor, sharing one edge with it, is not.
