@@ -3397,10 +3397,19 @@ fn rest_transforms(animators: &[MeshAnimator], n_vars: usize) -> Vec<Mat4> {
 /// The vertices (positions, normals) of `[smoothskin]` mesh `i` with its bones where
 /// `transforms` has them, in the mesh's own frame (the renderer puts `transforms[i]` on
 /// top); `rest` are the transforms of the modelled pose. None for a mesh without bones or
-/// vertices. A vertex no bone holds stays with the mesh, and so does the share of a vertex
-/// that an unbound bone holds: dropping that share and making up the rest to 1, a vertex
-/// hung half on the armature's fixed root moved all the way with the other bone - the
-/// Agora's bellows and its retarder lever bent out of shape.
+/// vertices.
+///
+/// As in Omsi.exe, the bones move the vertices first and the mesh's own motion (its
+/// animations and its `[animparent]`) comes on top: the Agora L's rear half of the bellows
+/// (`gelenk_B`) hangs on the arch that turns by half the joint's angle and takes the same
+/// bones as the front half (a quarter and a half of it), so that its far ring ends up at
+/// the whole angle, with the rear section. Put in place of the mesh's motion, the bones
+/// held that ring at half the angle and the bellows fanned out across the bend.
+///
+/// A vertex no bone holds stays with the mesh, and so does the share of a vertex that an
+/// unbound bone holds: dropping that share and making up the rest to 1, a vertex hung half
+/// on the armature's fixed root moved all the way with the other bone - the Agora's retarder
+/// lever bent out of shape.
 pub fn skin_vertices(
     ty: &VehicleType,
     i: usize,
@@ -3418,12 +3427,9 @@ pub fn skin_vertices(
     }
     let mut sum = vec![Mat4::ZERO; n];
     let mut total = vec![0.0f32; n];
-    // (the mesh's own motion: with it, `own_inv * bone * own_rest` below leaves a vertex where
-    // it was modelled)
-    let own = transforms[i] * rest[i].inverse();
     for b in &vm.skin {
         let bone = match b.def_index {
-            None => own,
+            None => Mat4::IDENTITY,
             Some(d) => {
                 let Some(k) = ty.meshes.iter().position(|m| m.def_index == d) else {
                     continue;
@@ -3439,8 +3445,9 @@ pub fn skin_vertices(
             }
         }
     }
-    let own_inv = transforms[i].inverse();
-    let own_rest = rest[i];
+    // (the renderer puts the mesh's transform on top: in the modelled pose, the vertices
+    // are where the file has them)
+    let own_rest_inv = rest[i].inverse();
     let mut pos = Vec::with_capacity(n);
     let mut nrm = Vec::with_capacity(n);
     for v in 0..n {
@@ -3451,7 +3458,7 @@ pub fn skin_vertices(
             nrm.push(q);
             continue;
         }
-        let m = own_inv * (sum[v] * (1.0 / total[v])) * own_rest;
+        let m = own_rest_inv * (sum[v] * (1.0 / total[v]));
         pos.push(m.transform_point3(p));
         nrm.push(m.transform_vector3(q).normalize_or_zero());
     }
@@ -3900,7 +3907,6 @@ mod grip_tests {
         let bone = v.mesh_transforms[k] * rest[k].inverse();
         assert!(bone.abs_diff_eq(Mat4::IDENTITY, 1e-3) == false, "the lever's dummy did not move");
         let (pos, _) = v.skinned(i).expect("skinned lever");
-        let own = v.mesh_transforms[i] * rest[i].inverse();
         let mut checked = 0;
         for &(vi, w) in &bound.weights {
             let vi = vi as usize;
@@ -3908,9 +3914,8 @@ mod grip_tests {
                 continue;
             }
             let p = vm.data.positions[vi];
-            // (1 - w) with the mesh, w with the bone, in the mesh's own frame
-            let want = v.mesh_transforms[i].inverse()
-                * ((own * (1.0 - w) + bone * w) * rest[i]);
+            // (1 - w) where it was modelled, w with the bone, in the mesh's own frame
+            let want = rest[i].inverse() * (Mat4::IDENTITY * (1.0 - w) + bone * w);
             let want = want.transform_point3(p);
             assert!((pos[vi] - want).length() < 1e-4, "vertex {vi} (weight {w}): {:?} for {:?}", pos[vi], want);
             checked += 1;
