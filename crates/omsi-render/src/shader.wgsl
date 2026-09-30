@@ -896,6 +896,25 @@ fn rain_dome(d: vec2<f32>, r: f32, px: f32) -> vec3<f32> {
     return vec3<f32>(s, cover);
 }
 
+// Smooth noise over the glass (0..1): the rain gathers in patches, not evenly.
+fn rain_patches(q: vec2<f32>) -> f32 {
+    let c = floor(q);
+    let f = q - c;
+    let w = f * f * (3.0 - 2.0 * f);
+    let a = rain_hash(c).x;
+    let b = rain_hash(c + vec2<f32>(1.0, 0.0)).x;
+    let d = rain_hash(c + vec2<f32>(0.0, 1.0)).x;
+    let e = rain_hash(c + vec2<f32>(1.0, 1.0)).x;
+    return mix(mix(a, b, w.x), mix(d, e, w.x), w.y);
+}
+
+// A grid of its own for each layer of drops: turned by its own angle and shifted, so that
+// no two layers line up and none runs along the glass's edges.
+fn rain_turn(q: vec2<f32>, a: f32) -> vec2<f32> {
+    let cs = vec2<f32>(cos(a), sin(a));
+    return vec2<f32>(q.x * cs.x - q.y * cs.y, q.x * cs.y + q.y * cs.x);
+}
+
 fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, outside_in: bool) -> RainGlass {
     var g: RainGlass;
     g.n = n;
@@ -1005,10 +1024,15 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
         }
     }
 
-    // --- the drops that sit: three sizes, one drop a cell at most
+    // where the glass is wetter and where drier, in patches a hand across
+    let wetter = 0.45 + 1.1 * rain_patches(q * 9.0 + 3.1);
+
+    // --- the drops that sit: three sizes, one drop a cell at most, anywhere in it
     for (var layer = 0; layer < 3; layer = layer + 1) {
+        let fl = f32(layer);
         let cellsz = select(select(0.0045, 0.0075, layer == 1), 0.012, layer == 0);
-        let g2 = q / cellsz + vec2<f32>(f32(layer) * 17.3, f32(layer) * 5.1);
+        let turn = 0.61 + fl * 1.37;
+        let g2 = rain_turn(q, turn) / cellsz + vec2<f32>(fl * 17.3, fl * 5.1);
         let c = floor(g2);
         let h = rain_hash(c);
         let h2 = rain_hash(c + 3.7);
@@ -1016,15 +1040,18 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
         let ph = fract(t / life + h2.x);
         // landed, grown, drying: a drop comes and goes; more of them the wetter the pane,
         // and the big ones only on a wet pane
-        let dens = wet * select(select(0.6, 0.5, layer == 1), 0.42 * smoothstep(0.15, 0.6, wet), layer == 0);
+        let dens = wet * wetter * select(0.45, 0.42 * smoothstep(0.15, 0.6, wet), layer == 0);
         let present = step(h.x, dens) * smoothstep(0.0, 0.04, ph) * (1.0 - smoothstep(0.85, 1.0, ph)) * (1.0 - track);
         if (present <= 0.0) {
             continue;
         }
-        let centre = c + 0.5 + (h2 - 0.5) * 0.36;
-        let r = (0.16 + 0.18 * h.y) * mix(0.75, 1.0, smoothstep(0.0, 0.5, ph)) * mix(0.8, 1.1, wet);
-        // flattened by its weight: fuller below than above
-        var d = (g2 - centre) * cellsz;
+        let r = (0.12 + 0.24 * h.y * h.y) * mix(0.75, 1.0, smoothstep(0.0, 0.5, ph)) * mix(0.8, 1.1, wet);
+        // (anywhere in the cell it still fits in)
+        let room = min(r * 1.12, 0.48);
+        let centre = c + vec2<f32>(room) + rain_hash(c + 9.1) * (1.0 - 2.0 * room);
+        // flattened by its weight (below the pane's own down, not the turned grid's):
+        // fuller below than above
+        var d = rain_turn((g2 - centre) * cellsz, -turn);
         d.y = d.y * select(1.12, 0.9, d.y > 0.0);
         let drop = rain_dome(d, r * cellsz, px);
         let cover = drop.z * present;
@@ -1034,13 +1061,18 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
         }
     }
 
-    // --- the mist: droplets of a millimetre or less, one in most 2.5 mm cells
-    let mg = q / 0.0025;
-    let mc = floor(mg);
-    let mh = rain_hash(mc + 71.0);
-    let grain = step(mh.x, wet * 0.9) * (1.0 - smoothstep(0.18, 0.32, length(mg - mc - 0.5 - (mh - 0.5) * 0.3)));
+    // --- the mist: droplets of a millimetre or less, scattered on two turned grids
+    var grain = 0.0;
+    for (var k = 0; k < 2; k = k + 1) {
+        let mg = rain_turn(q, 0.33 + f32(k) * 2.1) / 0.0028 + f32(k) * 7.7;
+        let mc = floor(mg);
+        let mh = rain_hash(mc + 71.0);
+        let mr = 0.1 + 0.16 * mh.y;
+        let at = mc + vec2<f32>(mr) + rain_hash(mc + 5.3) * (1.0 - 2.0 * mr);
+        grain = max(grain, step(mh.x, wet * wetter * 0.35) * (1.0 - smoothstep(mr * 0.6, mr, length(mg - at))));
+    }
     // (seen from further than a millimetre a pixel: their average)
-    let mist = mix(wet * 0.9 * 0.22, grain, smoothstep(0.0015, 0.0006, px));
+    let mist = mix(wet * wetter * 0.35 * 0.12, grain, smoothstep(0.0015, 0.0006, px));
     g.mist = mist * (1.0 - track) * clamp(wet * 1.4, 0.0, 1.0);
 
     g.cover = best;
