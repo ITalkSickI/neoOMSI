@@ -52,6 +52,9 @@ struct CameraUniform {
     flags: [f32; 4],
     /// The close shadow cascade (right half of the near map).
     light_view_proj_close: [[f32; 4]; 4],
+    /// The player's vehicle's velocity (m/s, world) and 1: the airstream the rain on its
+    /// glass meets (see `Lighting::glass_wind`).
+    wind: [f32; 4],
 }
 
 /// The period the sky's cloud patterns repeat with (m): 5 x the cloud field (14 km), 8 x
@@ -524,6 +527,9 @@ pub struct Lighting {
     /// sampled at full resolution: the dots stay visible when the panel is small on the
     /// screen, at the cost of the shimmer the mip chain exists to prevent.
     pub led_mips: bool,
+    /// The player's vehicle's velocity (m/s, world): at speed the airstream drives the drops
+    /// on its glass up the windscreen and back along the side windows.
+    pub glass_wind: Vec3,
 }
 
 impl Lighting {
@@ -568,6 +574,7 @@ impl Default for Lighting {
             envir_tint: [Vec3::ONE; 3],
             led_glow: 1.5,
             led_mips: true,
+            glass_wind: Vec3::ZERO,
         }
     }
 }
@@ -607,6 +614,10 @@ pub struct GpuTexture {
     gen: u64,
 }
 
+/// Which picture is behind the glass: the Enhanced path's glow level (true) or the plain
+/// graphics' copy (false), for a window picture of this size.
+type GlassKey = (bool, u32, u32);
+
 static TEXTURE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 fn next_gen() -> u64 {
@@ -614,6 +625,12 @@ fn next_gen() -> u64 {
 }
 
 impl GpuTexture {
+    /// A slot showing `view` (a picture the renderer draws: the one behind the rain on the
+    /// glass), with `texture` a small stand-in the slot's bookkeeping asks about.
+    fn showing(texture: wgpu::Texture, view: wgpu::TextureView, size: (u32, u32)) -> GpuTexture {
+        GpuTexture { texture, view, size, bytes: 0, gen: next_gen() }
+    }
+
     fn new(texture: wgpu::Texture, size: (u32, u32), bytes: u64) -> GpuTexture {
         let view = texture.create_view(&Default::default());
         GpuTexture {
@@ -921,6 +938,10 @@ pub struct Instance {
 pub struct Scene {
     pub meshes: Vec<GpuMesh>,
     pub textures: Vec<GpuTexture>,
+    /// The texture slot the rain films read the picture behind the glass from (last
+    /// frame's, see `Renderer::glass_behind`), and which picture it shows now.
+    glass_slot: Option<TextureId>,
+    glass_key: Option<GlassKey>,
     pub materials: Vec<Material>,
     pub instances: Vec<Instance>,
     /// World position everything is expressed relative to on the GPU (updated per frame).
@@ -1220,6 +1241,11 @@ pub struct Renderer {
     upscale_layout: wgpu::BindGroupLayout,
     upscale_buf: wgpu::Buffer,
     scale_targets: HashMap<(u32, u32), (wgpu::TextureView, wgpu::BindGroup)>,
+    /// The plain graphics' copy of the last picture at half its size, for the rain on the
+    /// glass (the Enhanced path has its glow's first level for that).
+    glass_prev: Option<(wgpu::TextureView, (u32, u32))>,
+    /// The picture behind the glass drawn by the last window frame, for the next one.
+    glass_live: Option<GlassKey>,
     /// When each size of the size-keyed targets (scale, MSAA, HDR) was last asked for.
     target_use: HashMap<(u32, u32), std::time::Instant>,
     /// The game's frame-rate governor on top of the render scale (1 = none; see
@@ -3654,6 +3680,8 @@ impl Renderer {
             upscale_layout,
             upscale_buf,
             scale_targets: HashMap::new(),
+            glass_prev: None,
+            glass_live: None,
             target_use: HashMap::new(),
             dynamic_scale: std::cell::Cell::new(1.0),
             flicker: std::cell::RefCell::new(HashMap::new()),
@@ -3855,6 +3883,8 @@ impl Renderer {
         Scene {
             meshes: Vec::new(),
             textures: Vec::new(),
+            glass_slot: None,
+            glass_key: None,
             materials: Vec::new(),
             instances: Vec::new(),
             render_origin: DVec3::ZERO,
@@ -4766,6 +4796,9 @@ impl Renderer {
         // the mask and the bump map only ever change the reflection
         let env_mask = extra.env_mask.filter(|_| envmap.is_some());
         let bump = extra.bump.filter(|_| envmap.is_some());
+        // a rain film's reflection slot holds the picture behind the glass: its drops show
+        // the street through themselves, bent and upside down, as real drops do
+        let envmap = if extra.rain_film { Some((self.glass_slot(scene), 0.0)) } else { envmap };
         let clamp = self.clamp_next.replace(false);
         let lm_mapped = self.light_map_next.replace(false);
         let mode = match alpha {
@@ -4894,6 +4927,35 @@ impl Renderer {
             bind_group,
         });
         scene.materials.len() - 1
+    }
+
+    /// The scene's slot for the picture behind the glass (black until a frame is drawn).
+    fn glass_slot(&self, scene: &mut Scene) -> TextureId {
+        if let Some(id) = scene.glass_slot {
+            return id;
+        }
+        scene.textures.push(GpuTexture::showing(self.black_texture.texture.clone(), self.black_texture.view.clone(), (1, 1)));
+        let id = scene.textures.len() - 1;
+        scene.glass_slot = Some(id);
+        id
+    }
+
+    /// Point the scene's rain films at picture `key` (after a window frame: its bundles
+    /// are recorded, the next frame's read the new bind groups).
+    fn show_glass_behind(&self, scene: &mut Scene, key: GlassKey) {
+        let Some(id) = scene.glass_slot else { return };
+        if scene.glass_key == Some(key) {
+            return;
+        }
+        let view = if key.0 {
+            self.hdr_targets.get(&(key.1, key.2)).and_then(|h| h.down.first()).cloned()
+        } else {
+            self.glass_prev.as_ref().filter(|g| g.1 == (key.1, key.2)).map(|g| g.0.clone())
+        };
+        let Some(view) = view else { return };
+        scene.textures[id] = GpuTexture::showing(self.black_texture.texture.clone(), view, (key.1, key.2));
+        self.rebind_textures(scene, &[id]);
+        scene.glass_key = Some(key);
     }
 
     /// The bind group of a material: its textures (or the plain white/black ones), its
@@ -7063,7 +7125,18 @@ impl Renderer {
             && self.options.msaa <= 1
             && !(lighting.enhanced && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none())
             && omsi_cfg::env::var_os("OMSI_NO_FXAA").is_none();
-        let scaled = (width, height) != (full_w, full_h) || vanilla_fxaa;
+        // The rain on the glass shows last frame's picture through its drops: the Enhanced
+        // path keeps it anyway (its glow's first level), the plain graphics draw into a
+        // texture while it rains and keep a copy at half the size (see `glass_prev`).
+        let enhanced_view = lighting.enhanced && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none();
+        let glass_on = with_overlays
+            && scene.glass_slot.is_some()
+            && (lighting.rain > 0.001 || lighting.wetness > 0.02)
+            && omsi_cfg::env::var_os("OMSI_NO_GLASS_PICTURE").is_none();
+        let glass_key: Option<GlassKey> = glass_on.then_some((enhanced_view, width, height));
+        // (what the films may read this frame: the picture the last window frame left)
+        let glass_ok = with_overlays && self.glass_live.take().is_some_and(|k| Some(k) == scene.glass_key && Some(k) == glass_key);
+        let scaled = (width, height) != (full_w, full_h) || vanilla_fxaa || (glass_on && !enhanced_view);
         let scene_target: Option<(wgpu::TextureView, wgpu::BindGroup)> = if scaled {
             Some(self.scale_target(width, height))
         } else {
@@ -7371,10 +7444,13 @@ impl Renderer {
             flags: [
                 if lighting.detail { 1.0 } else { 0.0 },
                 if enhanced { 1.0 } else { 0.0 },
-                0.0,
+                // (below zero: the rain films have last frame's picture to look through,
+                // see `rain_behind`; above zero is an old branch never taken)
+                if glass_ok { -1.0 } else { 0.0 },
                 if shadows { SHADOW_RANGE_CLOSE } else { 0.0 },
             ],
             light_view_proj_close: light_view_proj_close.to_cols_array_2d(),
+            wind: [lighting.glass_wind.x, lighting.glass_wind.y, lighting.glass_wind.z, 1.0],
         };
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&cu));
@@ -8783,6 +8859,39 @@ impl Renderer {
                 0,
                 bytemuck::cast_slice(&[width as f32, height as f32, sharpen.clamp(0.0, 0.8), if vanilla_fxaa { 1.0 } else { 0.0 }]),
             );
+            // the picture at half its size for the rain on the glass next frame
+            if glass_key.is_some_and(|k| !k.0) {
+                if self.glass_prev.as_ref().map(|g| g.1) != Some((width, height)) {
+                    let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("picture behind the glass"),
+                        size: wgpu::Extent3d { width: (width / 2).max(1), height: (height / 2).max(1), depth_or_array_layers: 1 },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: self.format,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    });
+                    self.glass_prev = Some((tex.create_view(&Default::default()), (width, height)));
+                }
+                let view = &self.glass_prev.as_ref().unwrap().0;
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("picture behind the glass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                pass.set_pipeline(&self.upscale_pipeline);
+                pass.set_bind_group(0, bg, &[]);
+                pass.draw(0..3, 0..1);
+            }
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("upscale"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -8811,6 +8920,10 @@ impl Renderer {
                     }
                 }
             }
+        }
+        if let Some(k) = glass_key {
+            self.glass_live = Some(k);
+            self.show_glass_behind(scene, k);
         }
         stage(self, "encode", "mirror.encode");
         // Turning the recorded passes into Metal commands is the costliest CPU step of a

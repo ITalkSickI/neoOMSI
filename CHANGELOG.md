@@ -4,6 +4,20 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.381 - 2026-09-30
+
+### Graphics
+- Rain on the bus windows looks like real drops, in all three graphics modes (Vanilla had
+  OMSI's sliding texture until now):
+  - every drop is a lens: it shows the street behind the glass through itself, small and
+    upside down, with the sky at its bottom (from the last frame's picture);
+  - drops come in four sizes up to over a centimetre, with uneven rims, the heavy ones
+    drawn out downwards, and clear glass between them;
+  - a runner leaves a thin stream of water in its track;
+  - while the bus drives, the airstream takes the runners up and out across the windscreen
+    and back along the side windows, harder the faster it goes.
+  It costs about half a millisecond at 1080p.
+
 ## 0.1.380 - 2026-09-30
 
 ### Game menu
