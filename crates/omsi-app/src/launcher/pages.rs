@@ -1299,7 +1299,12 @@ fn moved_most(rest: &[Option<f32>; 8], now: &[Option<f32>; 8], exclude: &[usize]
 /// Write the devices to the content folder's `Inputs/gamectrler.cfg` (OMSI 2's own is only
 /// read; the game takes the content folder's first).
 fn save_gamectrler(devices: &[crate::controllers::DeviceCfg]) -> Result<std::path::PathBuf, String> {
-    let dir = core::content_dir().ok_or("no content folder")?.join("Inputs");
+    let candidate = core::content_dir().unwrap_or_else(core::data_dir).join("Inputs");
+    let dir = if (candidate.exists() || std::fs::create_dir_all(&candidate).is_ok()) && omsi_cfg::is_writable(&candidate) {
+        candidate
+    } else {
+        core::data_dir().join("Inputs")
+    };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let p = dir.join("gamectrler.cfg");
     std::fs::write(&p, crate::controllers::cfg_text(devices)).map_err(|e| e.to_string())?;
