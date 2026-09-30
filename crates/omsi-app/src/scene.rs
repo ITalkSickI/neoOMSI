@@ -5541,6 +5541,17 @@ impl World {
                     });
                     let mesh_list: &Vec<(MeshId, Vec<MaterialId>)> =
                         own_meshes.as_ref().unwrap_or(&type_meshes);
+                    let mut placement_script = ot.program.as_ref().map(|program| {
+                        let mut inst = omsi_sim::scenery::SceneryInstance::new_with_strings(
+                            program.clone(), &ot.mesh_defs(), self.script_clock(), &strings,
+                        );
+                        // Numazu's BusStop.osc derives Texture in {frame}, rather
+                        // than {init}. Evaluate it before resolving freetex slots.
+                        if ot.meshes.iter().any(|(_, _, overrides)| overrides.iter().any(|o| o.freetex.is_some())) {
+                            inst.update(0.0, &omsi_sim::scenery::SceneryVars { in_use: 1.0, ..Default::default() });
+                        }
+                        inst
+                    });
                     for (mi, (mesh_id, mats)) in mesh_list.iter().enumerate() {
                         let inst = if surface || ot.mesh_shadow.get(mi).copied().unwrap_or(false) {
                             let i = instance!(renderer.add_surface_instance(
@@ -5573,8 +5584,7 @@ impl World {
                             for override_ in overrides.iter().filter(|o| !o.item && o.freetex.is_some()) {
                                 let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, override_) else { continue };
                                 let Some((_, var)) = &override_.freetex else { continue };
-                                let Some(index) = ot.program.as_ref().and_then(|p| p.str_var(var)) else { continue };
-                                let Some(name) = strings.get(index as usize).map(|s| s.trim()).filter(|s| !s.is_empty()) else { continue };
+                                let Some(name) = placement_script.as_ref().map(|s| s.str_var(var).trim()).filter(|s| !s.is_empty()) else { continue };
                                 let dirs = texture_dirs(&self.root, &ot.model_dir);
                                 let Some((tex, path)) = gpu.texture(renderer, scene, name, &dirs, images) else { continue };
                                 let Some(base) = mats.get(slot).and_then(|id| scene.materials.get(*id)) else {
@@ -5843,13 +5853,7 @@ impl World {
                                 _ => None,
                             })
                             .collect();
-                        let script = ot.program.as_ref().map(|p| {
-                            Arc::new(Mutex::new(omsi_sim::scenery::SceneryInstance::new(
-                                p.clone(),
-                                &ot.mesh_defs(),
-                                self.script_clock(),
-                            )))
-                        });
+                        let script = placement_script.take().map(|s| Arc::new(Mutex::new(s)));
                         let lit = vec![0.0; coronas.len()];
                         let animated = script.as_ref().map(|s| s.lock().animated()).unwrap_or(false);
                         let sound = ot.sco.sound.as_ref().map(|rel| {
@@ -5870,13 +5874,8 @@ impl World {
                             sound,
                             sounds: Default::default(),
                         });
-                    } else if let Some(program) = &ot.program {
+                    } else if let Some(inst) = placement_script.take() {
                         // scripted / animated object: its own script state
-                        let inst = omsi_sim::scenery::SceneryInstance::new(
-                            program.clone(),
-                            &ot.mesh_defs(),
-                            self.script_clock(),
-                        );
                         if inst.is_dynamic()
                             || !object_variants.is_empty()
                             || ot.sco.sound.is_some()
