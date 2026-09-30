@@ -1411,7 +1411,9 @@ impl Player {
         // `mirror<n>`: what the n-th mirror's camera sees, as it is drawn into the mirror's
         // picture (a check of the mirrors against OMSI's own `reflexion<n>.bmp`)
         if let Some(c) = view.strip_prefix("mirror").and_then(|n| n.parse::<usize>().ok()).and_then(|n| def.cameras_reflexion.get(n)) {
-            let (eye, yaw, pitch, roll) = self.vehicle.camera_world_full(&crate::camera_util::reflexion_camera(c));
+            let k = def.cameras_reflexion.iter().position(|x| std::ptr::eq(x, c)).unwrap_or(0);
+            let aimed = crate::camera_util::mirror_view(&self.vehicle, c, crate::camera_util::driver_eye(self), self.mirror_offsets.get(k).copied().unwrap_or([0.0; 2]));
+            let (eye, yaw, pitch, roll) = self.vehicle.camera_world_full(&aimed);
             return Camera { position: eye, yaw, pitch, roll, fov_deg: if c.fov > 1.0 { c.fov } else { 50.0 }, near: 0.3, far: 450.0 };
         }
         let cam = match view {
