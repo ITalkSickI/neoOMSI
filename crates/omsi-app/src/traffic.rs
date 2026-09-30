@@ -2390,6 +2390,13 @@ impl Traffic {
         if let Some(b) = &bus {
             host.hof = b.hof.clone();
         }
+        // random paint scheme / advert (its variables there for the scripts' {init})
+        let scheme = match scheme {
+            Some(s) => s,
+            None if ty.paint_schemes.is_empty() => None,
+            None => Some((seed >> 8) as usize % ty.paint_schemes.len().min(AI_SCHEMES)),
+        };
+        host.paint_scheme = Some(scheme);
         let mut vehicle = VehicleInstance::new(ty.clone(), host);
         if let Some((num, reg)) = bus.as_ref().and_then(|b| b.number.clone()) {
             if let Some(i) = ty.program.str_var("number") {
@@ -2438,12 +2445,6 @@ impl Traffic {
                 surfaces: world.surfaces.clone(),
             }) as std::sync::Arc<dyn omsi_sim::rigid::Ground>
         });
-        // random paint scheme / advert
-        let scheme = match scheme {
-            Some(s) => s,
-            None if ty.paint_schemes.is_empty() => None,
-            None => Some((seed >> 8) as usize % ty.paint_schemes.len().min(AI_SCHEMES)),
-        };
         vehicle.apply_paint_vars(scheme);
         let render = world.add_vehicle_shared(renderer, scene, &ty, scheme);
         let trailer_renders =
@@ -6804,10 +6805,11 @@ impl Traffic {
     ) -> usize {
         let mut host = omsi_sim::VehicleHost::new(omsi_sim::SimClock::default());
         host.font_lib = Some(world.fonts.clone());
+        let scheme = scheme.filter(|i| *i < ty.paint_schemes.len());
+        host.paint_scheme = Some(scheme);
         let mut vehicle = VehicleInstance::new(ty.clone(), host);
         // (the host's poses say where it stands; nothing here pulls it onto the ground)
         vehicle.ground = None;
-        let scheme = scheme.filter(|i| *i < ty.paint_schemes.len());
         vehicle.apply_paint_vars(scheme);
         let render = world.add_vehicle_shared(renderer, scene, &ty, scheme);
         let trailer_renders = self.attach_trailers(world, renderer, scene, &mut vehicle, scheme);

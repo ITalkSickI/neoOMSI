@@ -2125,6 +2125,14 @@ fn new_remote(
     host.font_lib = Some(world.fonts.clone());
     let hof = crate::find_hof(args, world, &ty);
     host.hof = hof.clone();
+    let scheme = if pose.paint.is_empty() {
+        None
+    } else {
+        ty.paint_schemes
+            .iter()
+            .position(|s| s.name.eq_ignore_ascii_case(&pose.paint))
+    };
+    host.paint_scheme = Some(scheme);
     let mut vehicle = omsi_sim::VehicleInstance::new(ty.clone(), host);
     vehicle.ground = None;
     if !ty.model.text_textures.is_empty() {
@@ -2134,13 +2142,6 @@ fn new_remote(
                 .map(|i| (i.width, i.height, i.rgba))
         });
     }
-    let scheme = if pose.paint.is_empty() {
-        None
-    } else {
-        ty.paint_schemes
-            .iter()
-            .position(|s| s.name.eq_ignore_ascii_case(&pose.paint))
-    };
     vehicle.apply_paint_vars(scheme);
     let render = world.add_vehicle_shared(r, scene, &ty, scheme);
     // the coupled sections of an articulated bus

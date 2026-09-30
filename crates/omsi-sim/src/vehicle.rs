@@ -379,6 +379,18 @@ impl VehicleType {
             let d = omsi_cfg::resolve_path(&dir, &c.path);
             paint_schemes.extend(load_paint_schemes(&d));
         }
+        // the model's own items, after the `.cti` files' (their textures in the first
+        // `[CTC]` folder, as a `.cti` of that folder has them)
+        let item_dir = model.ctc.first().map(|c| omsi_cfg::resolve_path(&dir, &c.path)).unwrap_or_else(|| dir.clone());
+        for it in &model.items {
+            match paint_schemes.last_mut().filter(|s: &&mut PaintScheme| s.name.eq_ignore_ascii_case(&it.name) && s.dir == item_dir) {
+                Some(s) => {
+                    s.textures.push((it.ctc.clone(), it.texture.clone()));
+                    s.set_vars.extend(it.set_vars.iter().cloned());
+                }
+                None => paint_schemes.push(PaintScheme { name: it.name.clone(), dir: item_dir.clone(), textures: vec![(it.ctc.clone(), it.texture.clone())], set_vars: it.set_vars.clone() }),
+            }
+        }
         let texchanges = omsi_model::load_texchanges(&dir, &model.texchanges);
         let (wheel_meshes, suspension_axles) = wheel_meshes(&model, &meshes);
         let mesh_boxes: Vec<(Vec3, Vec3)> = meshes
@@ -961,6 +973,20 @@ impl VehicleInstance {
         // line list, and some IBIS scripts branch on it.
         if let (Some(i), Some(h)) = (program.str_var("yard"), host.hof.as_ref()) {
             state.str_vars[i as usize] = h.name.clone();
+        }
+        if let Some(scheme) = host.paint_scheme {
+            let scheme = scheme.filter(|i| *i < ty.paint_schemes.len());
+            let mut put = |name: &str, v: f32| {
+                if let Some(id) = var_index.get(&name.to_ascii_lowercase()) {
+                    state.vars[*id as usize] = v;
+                }
+            };
+            put("Colorscheme", scheme.map(|i| i as f32).unwrap_or(-1.0));
+            if let Some(i) = scheme {
+                for (var, v) in &ty.paint_schemes[i].set_vars {
+                    put(var, *v);
+                }
+            }
         }
         vm.run_init(&program, &mut state, &mut host);
         let mut animators: Vec<MeshAnimator> = ty
