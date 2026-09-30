@@ -14,7 +14,9 @@ use omsi_geometry::{
 };
 use omsi_map::{tile_size, GlobalCfg, Terrain};
 use omsi_model::{MaterialDef, MeshDef, Model};
-use omsi_render::{AlphaMode, MaterialExtra, MaterialId, MeshId, Renderer, Scene, TextureId};
+use omsi_render::{
+    AlphaMode, MaterialExtra, MaterialId, MeshId, RenderPhase, Renderer, Scene, TextureId,
+};
 use omsi_scenery::{SceneryObject, Spline};
 use omsi_sim::traffic::{Lane, LaneBuilder, LaneKey, LaneKind, TrafficLightController};
 use omsi_texture::{Image, TextureCache, TextureData};
@@ -402,6 +404,11 @@ struct StagedSpline {
     /// It stands clear of the ground all along (see `SPLINE_SHADOW_CLEARANCE`): it casts a
     /// sun shadow.
     casts_shadow: bool,
+    /// Start point used by OMSI's far-to-near blend sort for spline surfaces.
+    sort_origin: DVec3,
+    /// Centerline and profile width used to resolve `[surface]` height conventions.
+    support_curve: SplineCurve,
+    support_width: f64,
 }
 
 /// How far a spline has to stand clear of the ground under it, everywhere, before it casts
@@ -409,10 +416,102 @@ struct StagedSpline {
 /// terrain does not - a caster in one plane with what it falls on paints dark patches into
 /// it (the sun shadow's bias is 6 cm). Splines are surfaces and cast nothing otherwise.
 const SPLINE_SHADOW_CLEARANCE: f32 = 0.75;
+/// OMSI's metric separation for a spline or `[surface]` object's vertices.
+const OMSI_SURFACE_LIFT: f32 = 0.08;
+
+fn scenery_draw_position(authored: DVec3, surface: bool) -> DVec3 {
+    authored + if surface { DVec3::Z * OMSI_SURFACE_LIFT as f64 } else { DVec3::ZERO }
+}
 
 /// A spline whose profiles all hang this far (m) over its line - wires, catenaries, a
 /// canopy - is no ground surface: it neither cuts the terrain nor carries anything.
 const SPLINE_OVERHEAD: f32 = 2.0;
+
+fn scenery_render_phase(kind: omsi_scenery::sco::RenderType) -> RenderPhase {
+    use omsi_scenery::sco::RenderType as ScoPhase;
+    match kind {
+        ScoPhase::PreSurface => RenderPhase::PreSurface,
+        ScoPhase::Surface => RenderPhase::Surface,
+        ScoPhase::OnSurface => RenderPhase::OnSurface,
+        ScoPhase::BeforeNormal => RenderPhase::BeforeNormal,
+        ScoPhase::AfterNormal => RenderPhase::AfterNormal,
+        ScoPhase::AfterVehicles => RenderPhase::AfterVehicles,
+        ScoPhase::Normal => RenderPhase::Normal,
+    }
+}
+
+/// Whether a `[surface]` map placement uses a terrain-relative map Y value. OMSI defaults
+/// these objects to their authored height and promotes them only when nearby spline height
+/// evidence clearly supports `map_y + terrain_height`.
+fn surface_object_terrain_relative(
+    src: &HashMap<(i32, i32), Arc<StagedTile>>,
+    world_x: f64,
+    world_y: f64,
+    map_y: f64,
+    terrain_height: f64,
+) -> bool {
+    let tile_x = (world_x / tile_size()).floor() as i32;
+    let tile_y = (world_y / tile_size()).floor() as i32;
+    infer_surface_object_terrain_relative(
+        world_x,
+        world_y,
+        map_y,
+        terrain_height,
+        src.values()
+            .filter(|tile| (tile.tx - tile_x).abs() <= 1 && (tile.ty - tile_y).abs() <= 1)
+            .flat_map(|tile| tile.splines.iter()),
+    )
+}
+
+fn infer_surface_object_terrain_relative<'a>(
+    world_x: f64,
+    world_y: f64,
+    map_y: f64,
+    terrain_height: f64,
+    splines: impl IntoIterator<Item = &'a StagedSpline>,
+) -> bool {
+    const MIN_TERRAIN_DELTA: f64 = 0.75;
+    const MAX_SUPPORT_ERROR: f64 = 0.60;
+    const EVIDENCE_MARGIN: f64 = 0.35;
+    const DISTANCE_PENALTY: f64 = 0.02;
+    if terrain_height.abs() < MIN_TERRAIN_DELTA {
+        return false;
+    }
+
+    let point = glam::DVec2::new(world_x, world_y);
+    let mut best_relative = f64::MAX;
+    let mut absolute_for_best_relative = f64::MAX;
+    for spline in splines {
+        let curve = spline.support_curve;
+        let offset = point - curve.start.truncate();
+        let yaw = curve.heading_deg.to_radians();
+        let (sin_yaw, cos_yaw) = yaw.sin_cos();
+        let local_x = offset.x * cos_yaw - offset.y * sin_yaw;
+        let local_y = offset.x * sin_yaw + offset.y * cos_yaw;
+        let along = if curve.radius.abs() > 0.01 {
+            local_y.atan2(curve.radius - local_x) * curve.radius
+        } else {
+            local_y
+        }
+        .clamp(0.0, curve.length.max(0.05));
+        let center = curve.point_at(along).truncate();
+        let support_distance = (point - center).length();
+        let max_distance = (spline.support_width * 0.5 + 6.0).clamp(8.0, 18.0);
+        if support_distance > max_distance {
+            continue;
+        }
+        let support_height = curve.height_at(along);
+        let penalty = support_distance * DISTANCE_PENALTY;
+        let absolute_score = (map_y - support_height).abs() + penalty;
+        let relative_score = (map_y + terrain_height - support_height).abs() + penalty;
+        if relative_score < best_relative {
+            best_relative = relative_score;
+            absolute_for_best_relative = absolute_score;
+        }
+    }
+    best_relative <= MAX_SUPPORT_ERROR
+        && best_relative + EVIDENCE_MARGIN < absolute_for_best_relative
+}
 
 /// Does every profile of the spline hang `SPLINE_OVERHEAD` or more over its line?
 fn overhead_only(def: &omsi_scenery::sli::Spline) -> bool {
@@ -586,7 +685,7 @@ pub struct Prepared {
     water: Option<[f32; 4]>,
     /// Spline meshes are local to the tile origin.
     /// Spline meshes (local to the tile origin), their type and whether they cast a shadow.
-    splines: Vec<(Arc<MeshData>, Arc<SplineType>, bool)>,
+    splines: Vec<(Arc<MeshData>, Arc<SplineType>, bool, DVec3)>,
     objects: Vec<PlacedObject>,
     /// (type, texture, position, height, width, heading)
     trees: Vec<(Arc<ObjectType>, String, DVec3, f64, f64, f64)>,
@@ -2390,7 +2489,7 @@ impl World {
         }
         let path = omsi_cfg::resolve_path(&self.root, rel);
         let loaded = (|| -> Option<Arc<ObjectType>> {
-            let sco = SceneryObject::load(&path)
+            let mut sco = SceneryObject::load(&path)
                 .map_err(|e| log::warn!("{e}"))
                 .ok()?;
             let sco_dir = path.parent()?.to_path_buf();
@@ -2402,6 +2501,11 @@ impl World {
                 }
                 None => (sco.model.clone(), sco_dir.clone()),
             };
+            // OMSI reads these world-pass tags from a referenced model.cfg as well as from
+            // the .sco wrapper. Preserve explicit wrapper values, including an explicit
+            // Normal/false override; otherwise inherit the model definition as the C++ path
+            // does. Missing render phases leave junction geometry in Normal, after splines.
+            sco.inherit_model_tags(&model);
             let mut meshes = Vec::new();
             let mut mesh_visible = Vec::new();
             let mut mesh_def_index = Vec::new();
@@ -3341,6 +3445,12 @@ impl World {
                 // line stays out; a wall, an embankment or a waterside without paths or
                 // height profiles (Moges' `embankment.sli`) is ground all the same.
                 let cuts_terrain = !overhead_only(&st.def) || !st.def.height_profiles.is_empty() || drivable;
+                let (profile_min, profile_max) = st
+                    .def
+                    .profiles
+                    .iter()
+                    .flat_map(|profile| profile.points.iter().map(|point| point.x as f64))
+                    .fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
                 out.splines.push(StagedSpline {
                     shape,
                     ty: st,
@@ -3349,6 +3459,9 @@ impl World {
                     overlay,
                     cuts_terrain,
                     casts_shadow,
+                    sort_origin: curve.point_at(0.0),
+                    support_curve: curve,
+                    support_width: (profile_max - profile_min).max(0.0),
                 });
                 meshes.push(Arc::new(mesh));
             }
@@ -3583,7 +3696,11 @@ impl World {
 
     /// Where a staged object stands before the ground is edited: crossings are warped and
     /// the ground deformed from there.
-    fn provisional_pose(st: &StagedTile, o: &StagedObject) -> Option<Pose> {
+    fn provisional_pose(
+        st: &StagedTile,
+        o: &StagedObject,
+        src: &HashMap<(i32, i32), Arc<StagedTile>>,
+    ) -> Option<Pose> {
         match &o.place {
             Placement::Pose(p) => Some(*p),
             Placement::Ground { x, y, z, rot } => {
@@ -3591,8 +3708,16 @@ impl World {
                     (x - st.origin.x).clamp(0.0, tile_size()) as f32,
                     (y - st.origin.y).clamp(0.0, tile_size()) as f32,
                 );
+                let base_height = Self::base_ground(src, *x, *y)
+                    .unwrap_or_else(|| st.base_terrain.sample(lx, ly) as f64);
+                let terrain_relative = !o.ot.sco.surface
+                    || surface_object_terrain_relative(src, *x, *y, *z, base_height);
                 Some(Pose {
-                    pos: DVec3::new(*x, *y, z + st.base_terrain.sample(lx, ly) as f64),
+                    pos: DVec3::new(
+                        *x,
+                        *y,
+                        z + if terrain_relative { base_height } else { 0.0 },
+                    ),
                     rot: object_rotation(*rot),
                 })
             }
@@ -3641,10 +3766,24 @@ impl World {
                 // translation) - it is never leaned to the slope. Leaned by the terrain under
                 // it, a car at the kerb of a hill street stood crooked on a road that runs
                 // on a different grade from the ground beneath.
-                Placement::Ground { x, y, z, rot } => Some(Pose {
-                    pos: DVec3::new(*x, *y, z + ground_at(*x, *y)),
-                    rot: object_rotation(*rot),
-                }),
+                Placement::Ground { x, y, z, rot } => {
+                    let terrain_relative = !o.ot.sco.surface
+                        || surface_object_terrain_relative(
+                            src,
+                            *x,
+                            *y,
+                            *z,
+                            Self::base_ground(src, *x, *y).unwrap_or(0.0),
+                        );
+                    Some(Pose {
+                        pos: DVec3::new(
+                            *x,
+                            *y,
+                            z + if terrain_relative { ground_at(*x, *y) } else { 0.0 },
+                        ),
+                        rot: object_rotation(*rot),
+                    })
+                }
                 Placement::Pose(p) => Some(*p),
                 Placement::Attached { .. } => None,
             })
@@ -3747,7 +3886,7 @@ impl World {
             .objects
             .iter()
             .enumerate()
-            .filter_map(|(i, o)| Some((i, Self::provisional_pose(st, o)?, o.ot.deform.as_ref()?)))
+            .filter_map(|(i, o)| Some((i, Self::provisional_pose(st, o, src)?, o.ot.deform.as_ref()?)))
             .collect();
         if plates.is_empty() {
             return out;
@@ -3962,7 +4101,7 @@ impl World {
             for q in &order {
                 for o in &q.objects {
                     let Some(d) = &o.ot.deform else { continue };
-                    let Some(pose) = Self::provisional_pose(q, o) else {
+                    let Some(pose) = Self::provisional_pose(q, o, src) else {
                         continue;
                     };
                     let b = mesh_bounds(d, &pose.rot, pose.pos);
@@ -4503,7 +4642,7 @@ impl World {
         let splines = meshes
             .into_iter()
             .zip(st.splines.iter())
-            .map(|(m, sp)| (m, sp.ty.clone(), sp.casts_shadow))
+            .map(|(m, sp)| (m, sp.ty.clone(), sp.casts_shadow, sp.sort_origin))
             .collect();
         Some(Prepared {
             tx,
@@ -4893,7 +5032,7 @@ impl World {
                     .collect(),
                 p.splines
                     .iter()
-                    .map(|(_, st, _)| Arc::as_ptr(st) as usize)
+                    .map(|(_, st, _, _)| Arc::as_ptr(st) as usize)
                     .filter(|k| gpu.splines.contains_key(k))
                     .collect(),
                 p.trees
@@ -4948,7 +5087,7 @@ impl World {
                 }
             }
         }
-        for (_, st, _) in &p.splines {
+        for (_, st, _, _) in &p.splines {
             if have_splines.contains(&(Arc::as_ptr(st) as usize)) {
                 continue;
             }
@@ -5696,13 +5835,16 @@ impl World {
                             }
                             None => plain_terrain_mat,
                         };
-                        let _ = instance!(renderer.add_instance(
+                        let ground_instance = instance!(renderer.add_instance(
                             scene,
                             id,
                             p.origin,
                             Mat4::IDENTITY,
                             vec![mat]
                         ));
+                        if let Some(inst) = scene.instances.get_mut(ground_instance) {
+                            inst.render_phase = RenderPhase::Terrain;
+                        }
                         // (the base layer once more without the cut, when the tile has one)
                         let uncut = match (&p.cut, lm) {
                             (None, _) => mat,
@@ -5772,6 +5914,7 @@ impl World {
                             ));
                             if let Some(inst) = scene.instances.get_mut(li) {
                                 inst.ground_layer = true;
+                                inst.render_phase = RenderPhase::Terrain;
                             }
                             if omsi_cfg::env::var_os("OMSI_DEBUG_SURFACES").is_some() {
                                 log::info!("tile ({}, {}): ground layer {layer} '{}' painted on {:.1} % of the tile, mask {:?}", p.tx, p.ty, gt.texture, painted * 100.0, mask.format);
@@ -5819,7 +5962,7 @@ impl World {
                         pl.next = 0;
                         continue;
                     }
-                    let (mesh, st, casts_shadow) = &p.splines[pl.next];
+                    let (mesh, st, casts_shadow, sort_origin) = &p.splines[pl.next];
                     pl.next += 1;
                     let skey = Arc::as_ptr(st) as usize;
                     if !gpu.splines.contains_key(&skey) {
@@ -5832,16 +5975,25 @@ impl World {
                             terrain: Vec::new(),
                         };
                         for t in &st.def.textures {
-                            let tex = gpu.texture(renderer, scene, &t.file, &dirs, images).map(
-                                |(id, path)| {
-                                    sg.textures.push(path);
-                                    id
-                                },
-                            );
-                            let alpha = if t.alpha > 0 {
-                                AlphaMode::Test
-                            } else {
-                                AlphaMode::Opaque
+                            let (tex, texture_has_alpha) =
+                                match gpu.texture(renderer, scene, &t.file, &dirs, images) {
+                                    Some((id, path)) => {
+                                        let has_alpha = gpu.has_alpha(&path);
+                                        sg.textures.push(path);
+                                        (Some(id), has_alpha)
+                                    }
+                                    None => (None, false),
+                                };
+                            // OMSI spline [matl_alpha] uses 0 = opaque, 1 = alpha test,
+                            // and 2 = blend.  Like the C++ handler, a declared blend on
+                            // a texture without alpha is opaque; otherwise the surface
+                            // belongs in the blended pass, not the depth-writing cutout
+                            // pass.  Blended spline overlaps also need depth writes off,
+                            // matching the reference handler's far-to-near spline pass.
+                            let alpha = match (t.alpha, texture_has_alpha) {
+                                (1, _) => AlphaMode::Test,
+                                (mode, true) if mode >= 2 => AlphaMode::Blend,
+                                _ => AlphaMode::Opaque,
                             };
                             let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
                             let cfg = self.textures.cfg(&t.file, &dirs_ref);
@@ -5851,7 +6003,7 @@ impl World {
                             }
                             // (lit at night by the tile's light map, as OMSI lights the roads)
                             renderer.light_map_next.set(true);
-                            let m = renderer.add_material_wet(
+                            let m = renderer.add_material_extra(
                                 scene,
                                 tex,
                                 alpha,
@@ -5861,9 +6013,12 @@ impl World {
                                 None,
                                 None,
                                 None,
-                                None,
                                 [0.0; 3],
-                                if wet { 1.0 } else { 0.0 },
+                                MaterialExtra {
+                                    no_z_write: alpha == AlphaMode::Blend,
+                                    moisture: if wet { 1.0 } else { 0.0 },
+                                    ..MaterialExtra::default()
+                                },
                             );
                             let m = gpu.material(renderer, scene, m);
                             sg.materials.push(m);
@@ -5899,7 +6054,18 @@ impl World {
                         let gid = gpu.add_mesh(renderer, scene, &ground);
                         tg.meshes.push(gid);
                         for &(mat, _) in &pl.ground_mats {
-                            let _ = instance!(renderer.add_surface_instance(scene, gid, p.origin, Mat4::IDENTITY, vec![mat]));
+                            let terrain_instance = instance!(renderer.add_surface_instance(
+                                scene,
+                                gid,
+                                p.origin,
+                                Mat4::from_translation(glam::Vec3::Z * OMSI_SURFACE_LIFT),
+                                vec![mat],
+                            ));
+                            if let Some(inst) = scene.instances.get_mut(terrain_instance) {
+                                inst.render_phase = RenderPhase::Spline;
+                                inst.surface_bias = false;
+                                inst.blend_sort_origin = Some(*sort_origin);
+                            }
                         }
                         gpu.add_mesh(renderer, scene, &terrain_rest(mesh, &terrain))
                     };
@@ -5908,9 +6074,14 @@ impl World {
                         scene,
                         id,
                         p.origin,
-                        Mat4::IDENTITY,
+                        Mat4::from_translation(glam::Vec3::Z * OMSI_SURFACE_LIFT),
                         mats
                     ));
+                    if let Some(inst) = scene.instances.get_mut(si) {
+                        inst.render_phase = RenderPhase::Spline;
+                        inst.surface_bias = false;
+                        inst.blend_sort_origin = Some(*sort_origin);
+                    }
                     // a bridge deck or an elevated railway casts a sun shadow (see
                     // `SPLINE_SHADOW_CLEARANCE`)
                     if *casts_shadow {
@@ -6001,6 +6172,8 @@ impl World {
                     let surface =
                         !matches!(ot.sco.render_type, omsi_scenery::sco::RenderType::Normal)
                             || ot.sco.surface;
+                    let render_phase = scenery_render_phase(ot.sco.render_type);
+                    let draw_pos = scenery_draw_position(pos, ot.sco.surface);
                     let has_lower = !type_lods.is_empty();
                     let mut lamp_instances = Vec::new();
                     let mut all_instances = Vec::new();
@@ -6111,21 +6284,25 @@ impl World {
                             let i = instance!(renderer.add_surface_instance(
                                 scene,
                                 *mesh_id,
-                                pos,
+                                draw_pos,
                                 xf,
                                 mats.clone()
                             ));
-                            // an object lying on the road (a crossing, markings, a zebra)
-                            // goes over the splines it overlaps
-                            if let Some(x) = scene.instances.get_mut(i) {
-                                x.decal = true;
-                            }
                             i
                         } else {
-                            let i = instance!(renderer.add_instance(scene, *mesh_id, pos, xf, mats.clone()));
+                            let i = instance!(renderer.add_instance(scene, *mesh_id, draw_pos, xf, mats.clone()));
                             renderer.set_omsi_caster(scene, i, ot.mesh_casts.get(mi).copied().unwrap_or(false));
                             i
                         };
+                        if let Some(inst) = scene.instances.get_mut(inst) {
+                            inst.render_phase = render_phase;
+                            if surface {
+                                // The authored OMSI phase and fixed `[surface]` lift replace
+                                // camera-angle-sensitive bias for these road-layer meshes.
+                                inst.decal = true;
+                                inst.surface_bias = false;
+                            }
+                        }
                         // Scenery signs use [matl_freetex] with a string from the map
                         // object's [object] / [splineAttachement] record. The type's
                         // material is shared, so make a material for this placement only.
@@ -6339,13 +6516,17 @@ impl World {
                         // pulled towards the eye like the object itself
                         for &(mat, layer) in &pl.ground_mats {
                             let inst = if surface || layer {
-                                instance!(renderer.add_surface_instance(scene, ground_id, pos, xf, vec![mat]))
+                                instance!(renderer.add_surface_instance(scene, ground_id, draw_pos, xf, vec![mat]))
                             } else {
-                                instance!(renderer.add_instance(scene, ground_id, pos, xf, vec![mat]))
+                                instance!(renderer.add_instance(scene, ground_id, draw_pos, xf, vec![mat]))
                             };
                             if let Some(x) = scene.instances.get_mut(inst) {
                                 x.decal = surface;
                                 x.ground_layer = layer && !surface;
+                                x.render_phase = render_phase;
+                                if surface {
+                                    x.surface_bias = false;
+                                }
                             }
                             if let Some((lo, hi)) = range {
                                 renderer.set_lod_range(scene, inst, lo, hi);
@@ -8211,7 +8392,9 @@ impl World {
                 texture_updates.push((o.ty.clone(), selection, o.instances.clone(), switches));
             }
             for ((inst, xf), &visible) in o.instances.iter().zip(&o.inst.mesh_transforms).zip(&o.inst.mesh_visible) {
-                renderer.set_transform(scene, *inst, o.pos, o.xf * *xf);
+                // Scripted tram switches keep the same world-space lift as on upload.
+                // `o.pos` is the authored pose used by scripts/physics, not the draw pose.
+                renderer.set_transform(scene, *inst, scenery_draw_position(o.pos, o.ty.sco.surface), o.xf * *xf);
                 let p = &mut scene.instances[*inst];
                 if p.visible != visible {
                     renderer.set_params(scene, *inst, &[], visible, &[]);
@@ -11108,6 +11291,74 @@ mod tests {
             assert!((at(0, x, 1) - expect(x)).abs() <= 1.0, "row {x}");
         }
         assert!((0..n * n).all(|i| own.rgba[i * 4 + 2] == 0));
+    }
+
+    #[test]
+    fn scripted_surface_draw_pose_keeps_the_upload_lift() {
+        let authored = DVec3::new(-2165.1, -2368.8, -0.068);
+        let uploaded = scenery_draw_position(authored, true);
+        for _frame in 0..8 {
+            assert_eq!(scenery_draw_position(authored, true), uploaded);
+        }
+        assert_eq!(scenery_draw_position(authored, false), authored);
+        assert_eq!(uploaded.truncate(), authored.truncate());
+        assert!((uploaded.z - authored.z - 0.08).abs() < 1e-8);
+    }
+
+    #[test]
+    fn scenery_render_types_map_to_the_cpp_pass_order() {
+        use omsi_scenery::sco::RenderType as ScoPhase;
+        for (source, expected) in [
+            (ScoPhase::PreSurface, RenderPhase::PreSurface),
+            (ScoPhase::Surface, RenderPhase::Surface),
+            (ScoPhase::OnSurface, RenderPhase::OnSurface),
+            (ScoPhase::BeforeNormal, RenderPhase::BeforeNormal),
+            (ScoPhase::Normal, RenderPhase::Normal),
+            (ScoPhase::AfterNormal, RenderPhase::AfterNormal),
+            (ScoPhase::AfterVehicles, RenderPhase::AfterVehicles),
+        ] {
+            assert_eq!(scenery_render_phase(source), expected);
+        }
+    }
+
+    #[test]
+    fn surface_height_mode_changes_only_with_clear_spline_evidence() {
+        let curve = SplineCurve {
+            start: DVec3::new(0.0, 0.0, 10.0),
+            heading_deg: 0.0,
+            length: 100.0,
+            radius: 0.0,
+            grad_start: 0.0,
+            grad_end: 0.0,
+            delta_h: Some(0.0),
+            cant_start: 0.0,
+            cant_end: 0.0,
+            skew_start: 0.0,
+            skew_end: 0.0,
+            tex_offset: 0.0,
+            seed: 0,
+            half_cant_width: 0.0,
+        };
+        let spline = StagedSpline {
+            shape: MeshData::default(),
+            ty: Arc::new(SplineType {
+                def: Spline::default(),
+                dir: PathBuf::new(),
+            }),
+            bounds: [0.0; 4],
+            drivable: true,
+            overlay: false,
+            cuts_terrain: true,
+            casts_shadow: false,
+            sort_origin: curve.point_at(0.0),
+            support_curve: curve,
+            support_width: 10.0,
+        };
+
+        assert!(infer_surface_object_terrain_relative(10.0, 0.0, 0.0, 10.0, [&spline]));
+        assert!(!infer_surface_object_terrain_relative(10.0, 0.0, 10.0, 5.0, [&spline]));
+        assert!(!infer_surface_object_terrain_relative(10.0, 0.0, 0.0, 0.3, [&spline]));
+        assert!(!infer_surface_object_terrain_relative(20.0, 40.0, 0.0, 10.0, [&spline]));
     }
 
     /// A film modelled as a copy of the floor's faces with a slot of its own is an overlay;

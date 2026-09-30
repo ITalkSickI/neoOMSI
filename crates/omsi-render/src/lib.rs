@@ -737,6 +737,40 @@ struct MaterialMaps {
     pbr: Option<PbrMaps>,
 }
 
+/// The ordered world passes used by OMSI for ground and scenery geometry.
+///
+/// Keep these phases separate in the main pass: a later phase must be able to sit over an
+/// earlier blended surface, while depth testing still lets nearer geometry win.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum RenderPhase {
+    PreSurface = 0,
+    Terrain = 1,
+    Surface = 2,
+    Spline = 3,
+    OnSurface = 4,
+    BeforeNormal = 5,
+    #[default]
+    Normal = 6,
+    AfterNormal = 7,
+    AfterVehicles = 8,
+}
+
+impl RenderPhase {
+    const COUNT: usize = 9;
+    const DRAW_ORDER: [Self; Self::COUNT] = [
+        Self::PreSurface,
+        Self::Terrain,
+        Self::Surface,
+        Self::Spline,
+        Self::OnSurface,
+        Self::BeforeNormal,
+        Self::Normal,
+        Self::AfterNormal,
+        Self::AfterVehicles,
+    ];
+}
+
 pub struct Instance {
     pub mesh: MeshId,
     /// Transform relative to `origin` (rotation/scale plus a small translation).
@@ -765,12 +799,21 @@ pub struct Instance {
     pub interior_lamps: u32,
     /// First entry of this instance in the per-draw storage buffers (set by `prepare`).
     base: u32,
-    /// Surface geometry (roads, markings, crossings) that lies on the terrain: drawn with a
-    /// depth bias so it wins over coincident ground, like the original's render priorities.
+    /// Surface geometry classification (roads, markings, crossings), used for culling and
+    /// weather/shading. `surface_bias` independently selects the rasterizer's depth bias.
     pub surface: bool,
     /// `[rendertype] presurface`: drawn before terrain, including blended materials whose
     /// transparent texels write depth to reveal excavations below the ground.
     pub presurface: bool,
+    /// OMSI world-pass order. Most instances use `Normal`; road/surface assets are assigned
+    /// their authored phase by the scene loader.
+    pub render_phase: RenderPhase,
+    /// Apply rasterizer depth bias. Metric-lifted OMSI roads and ordered scenery phases skip
+    /// it, so their placement does not change with the camera angle.
+    pub surface_bias: bool,
+    /// OMSI sorts blended spline pieces by their placement origin (horizontal distance), not
+    /// the containing map tile's shared origin.
+    pub blend_sort_origin: Option<DVec3>,
     /// Screen-size range [min, max) in which this instance is drawn (`[LOD]` levels).
     pub lod: (f32, f32),
     /// A vehicle's flat shadow blob (`[isshadow]`, a surface). It is drawn always, as OMSI
@@ -782,9 +825,8 @@ pub struct Instance {
     /// A painted ground layer (`[groundtex]` through its brush mask): a surface that is the
     /// ground itself, so it does not get the roads' pull towards the camera (see vs_main).
     pub ground_layer: bool,
-    /// A surface object (a crossing, markings) over the road splines: pulled a little
-    /// further towards the eye than they are, so that where they lie in one plane the
-    /// object wins instead of both flickering.
+    /// A surface object (a crossing, markings) over the road splines. Legacy instances get a
+    /// small view-space pull; ordered OMSI surfaces keep the flag for shading but skip it.
     pub decal: bool,
     /// The whole object this mesh belongs to (see `set_object_culling`): the radius of a
     /// sphere about `origin` that holds all of it (0 = the mesh is judged on its own sphere),
@@ -2073,7 +2115,12 @@ impl Renderer {
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some(fs),
-                    targets: &color_targets(format, blend, wgpu::ColorWrites::ALL, true),
+                    targets: &color_targets(
+                        format,
+                        blend,
+                        if fs == "fs_surface_depth" { wgpu::ColorWrites::empty() } else { wgpu::ColorWrites::ALL },
+                        fs != "fs_surface_depth",
+                    ),
                     // only the alpha-tested pipelines keep their `discard` (see ALPHA_TEST
                     // in shader.wgsl): early depth testing for everything else
                     compilation_options: wgpu::PipelineCompilationOptions {
@@ -2099,13 +2146,14 @@ impl Renderer {
         let scene_pipelines = |f: wgpu::TextureFormat, fs: &str| -> Vec<wgpu::RenderPipeline> {
             let mut out = Vec::with_capacity(PIPE_KINDS as usize * 4);
             for kind in 0..PIPE_KINDS {
-                let blend = (kind >= PIPE_BLEND).then_some(wgpu::BlendState::ALPHA_BLENDING);
-                let depth_write = kind <= PIPE_BLEND;
+                let blend = (kind == PIPE_BLEND || kind == PIPE_BLEND_NO_WRITE)
+                    .then_some(wgpu::BlendState::ALPHA_BLENDING);
+                let depth_write = kind != PIPE_BLEND_NO_WRITE;
                 for cull in [false, true] {
                     for surface in [false, true] {
                         out.push(make(
                             f,
-                            fs,
+                            if kind == PIPE_SURFACE_DEPTH { "fs_surface_depth" } else { fs },
                             blend,
                             depth_write,
                             cull,
@@ -4496,7 +4544,11 @@ impl Renderer {
         nightmap: Option<TextureId>,
         moisture: f32,
     ) -> MaterialId {
-        self.add_material_wet(
+        // The brush mask includes fully transparent road cutouts. Those fragments must
+        // never write biased terrain depth over the splines drawn in the next phase:
+        // they contribute no colour, but would reject the road and expose the sky.
+        // The C++ handler likewise draws painted terrain with depth writes disabled.
+        self.add_material_inner(
             scene,
             texture,
             AlphaMode::Blend,
@@ -4509,6 +4561,10 @@ impl Renderer {
             None,
             [0.0; 3],
             moisture,
+            MaterialExtra {
+                no_z_write: true,
+                ..MaterialExtra::default()
+            },
         )
     }
 
@@ -5029,6 +5085,9 @@ impl Renderer {
             base: 0,
             surface: false,
             presurface: false,
+            render_phase: RenderPhase::Normal,
+            surface_bias: false,
+            blend_sort_origin: None,
             lod: (0.0, f32::MAX),
             blob: false,
             ground_layer: false,
@@ -5075,6 +5134,9 @@ impl Renderer {
             base: 0,
             surface: true,
             presurface: false,
+            render_phase: RenderPhase::Normal,
+            surface_bias: true,
+            blend_sort_origin: None,
             lod: (0.0, f32::MAX),
             blob: false,
             ground_layer: false,
@@ -5867,22 +5929,20 @@ impl Renderer {
                     i.interior.min(0.99)
                 },
                 // the surface flag: 1 ground, 2 a vehicle's shadow blob (no snow on it),
-                // 0.75 a painted ground layer (a surface for the shading, not pulled forward);
-                // below -500 a vehicle part, -(5000 + the height of its roof relative to
-                // the render origin) (see `Instance::roof` and weather_outside_n)
+                // 1.25 a legacy pulled decal, 0.9 an OMSI-ordered surface (weather
+                // classification without view-space pull), 0.75 a painted ground layer;
+                // below -500 a vehicle part, -(5000 + the roof height relative to origin)
                 if let Some(roof) = i.roof.filter(|_| !i.blob && !i.surface) {
                     let z = (i.origin - ro).z as f32 + i.transform.transform_point3(Vec3::new(0.0, 0.0, roof)).z;
                     -(5000.0 + z.clamp(-4000.0, 4000.0))
-                } else if i.blob {
-                    2.0
-                } else if i.ground_layer {
-                    0.75
-                } else if i.decal {
-                    1.25
-                } else if i.surface {
-                    1.0
                 } else {
-                    0.0
+                    surface_instance_code(
+                        i.blob,
+                        i.ground_layer,
+                        i.decal,
+                        i.surface,
+                        i.surface_bias,
+                    )
                 },
             ]);
         }
@@ -7591,6 +7651,12 @@ impl Renderer {
                     let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
                     let mat = &scene.materials[mat_id];
                     let kind = kind_of(mat.alpha);
+                    // Ground blends compose before they may occlude later scenery.
+                    // The transmap body prepass is for ordinary meshes, not these
+                    // authored surface layers (including their terrain brush masks).
+                    if kind == PIPE_BLEND && world_surface_phase(effective_render_phase(inst)) {
+                        continue;
+                    }
                     if let Some(pre_kind) = depth_prepass_kind(kind, mat, inst.presurface) {
                         // plain/alpha-tested materials use their ordinary depth pass;
                         // blended transmaps use the opaque-pixels-only pass.
@@ -7606,246 +7672,258 @@ impl Renderer {
             }
             batch_items(scene, &mut items, true, &mut list, &mut prepass_batches);
         }
-        // The main pass: presurfaces, then opaque ground/surfaces and alpha-tested
-        // ground/surfaces (`pipe` 0..3, batched in that order), then everything blended in one run,
-        // far to near (`pipe` 4..7: surface, no depth write). The blended draws must not
-        // be split into ground and surfaces: the painted ground of a tile is a blended
-        // surface and the bus's windscreen is a blended mesh, and with the surfaces
-        // drawn last the glass had already written its depth over them - the painted
-        // road ahead was there from outside the bus and gone from the driver's seat.
+        // The main pass follows the authored world phases. Each phase keeps its
+        // opaque/cutout draws followed by its blended draws, far to near. Transparent
+        // ground layers never write depth while composing: an alpha-zero junction
+        // texel otherwise blocks a later opaque grass spline and exposes the sky
+        // wherever that spline's prepass already rejected the terrain underneath.
         let mut main_batches: Vec<Batch> = Vec::new();
         let mut main_draws = [0usize; 2];
         // Keep mesh/material order here: an excavation's floor is drawn before its
         // invisible cover writes depth. Sorting its blended cover after the terrain
         // leaves the terrain's colour in place even though the cover writes depth.
-        items.clear();
-        for &(i, _, _) in &visible {
-            let inst = &scene.instances[i];
-            if !inst.presurface {
-                continue;
-            }
-            let cull = culls_back_faces(scene, inst);
-            for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
-                let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
-                let mat = &scene.materials[mat_id];
-                if exclude_texture.is_some_and(|t| mat.uses_texture(t)) {
-                    continue;
-                }
-                let kind = if mat.no_z_check || (mat.alpha == AlphaMode::Blend && mat.no_z_write) {
-                    PIPE_BLEND_NO_WRITE
-                } else {
-                    kind_of(mat.alpha)
-                };
-                items.push(DrawItem {
-                    pipe: pipe_code(
-                        kind,
-                        cull,
-                        inst.surface || mat.z_bias > 0 || mat.no_z_check,
-                    ),
-                    mesh: inst.mesh as u32,
-                    range: ri as u32,
-                    material: mat_id as u32,
-                    entry: inst.base + *slot,
-                });
-            }
-        }
-        let presurface_draws = items.len();
-        let has_presurface = presurface_draws > 0;
-        batch_items(scene, &mut items, false, &mut list, &mut main_batches);
+        let has_presurface = visible.iter().any(|&(i, _, _)| scene.instances[i].presurface);
         {
-            items.clear();
-            let mut blended: Vec<usize> = Vec::new();
-            for &(i, _, _) in &visible {
-                let inst = &scene.instances[i];
-                if inst.presurface {
-                    continue;
-                }
-                if inst.ordered {
-                    blended.push(i);
-                    continue;
-                }
-                let mut has_blend = false;
-                let cull = culls_back_faces(scene, inst);
-                for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
-                    let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
-                    let mat = &scene.materials[mat_id];
-                    let kind = kind_of(mat.alpha);
-                    if kind == PIPE_BLEND || mat.no_z_check {
-                        has_blend = true;
-                        continue;
-                    }
-                    // a render target cannot be sampled while being drawn into (mirror glass, or a reflection map of it)
-                    if exclude_texture.is_some_and(|t| mat.uses_texture(t)) {
-                        continue;
-                    }
-                    items.push(DrawItem {
-                        pipe: pipe_code(kind, cull, inst.surface || mat.z_bias > 0),
-                        mesh: inst.mesh as u32,
-                        range: ri as u32,
-                        material: mat_id as u32,
-                        entry: inst.base + *slot,
-                    });
-                }
-                if has_blend {
-                    blended.push(i);
-                }
+            let mut by_phase: [Vec<(usize, f32, bool)>; RenderPhase::COUNT] =
+                std::array::from_fn(|_| Vec::new());
+            for &entry in &visible {
+                let phase = effective_render_phase(&scene.instances[entry.0]);
+                by_phase[phase as usize].push(entry);
             }
-            main_draws[0] = presurface_draws + items.len();
-            batch_items(scene, &mut items, true, &mut list, &mut main_batches);
-            // Blended draws: objects far to near by the distance of their nearest blended
-            // mesh (see `near_by_origin` below - not the single local origin all of an
-            // object's meshes share), and within an object in creation order - the
-            // model.cfg mesh order, which is what the original relies on (windows are
-            // listed last).
-            //
-            // An object the camera is inside of (the bus seen from the driver's
-            // seat) comes after everything outside it, and the player's own vehicle
-            // last of all. By its origin alone the bus - whose origin is 4.6 m
-            // behind the driver's eye on the NL202 - sorted as farther away than a
-            // car right beside the driver's window, so the car was drawn after the
-            // bus's window layers (rain film, dirt, door glass), which write depth:
-            // its blended body failed the depth test and only the opaque wheels
-            // were left, dark behind the tinted glass, exactly while the car was
-            // half out of the picture.
-            let mut holders: Vec<DVec3> = Vec::new();
-            for &(i, _, inside) in &visible {
-                let inst = &scene.instances[i];
-                if inside && !inst.surface && !holders.contains(&inst.origin) {
-                    holders.push(inst.origin);
+            // OMSI draws each authored world phase as its own opaque/cutout pass followed
+            // by that phase's blended draws. Keeping the phase boundary here lets later
+            // surface markings compose over spline blends without changing the depth test.
+            for phase in RenderPhase::DRAW_ORDER {
+                // Finish surface composition before committing the fully covered ground
+                // pixels to depth. Doing this in the global prepass (or while blending
+                // each spline) would reject authored road overlaps and on-surface rails.
+                // Later scenery must still be occluded by the solid part of the road:
+                // otherwise cutout bushes below a bridge repaint its asphalt.
+                if phase == RenderPhase::BeforeNormal {
+                    items.clear();
+                    for &(i, _, _) in by_phase[..RenderPhase::BeforeNormal as usize].iter().flatten() {
+                        let inst = &scene.instances[i];
+                        for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
+                            let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
+                            let mat = &scene.materials[mat_id];
+                            if !surface_depth_coverage(effective_render_phase(inst), mat.alpha, mat.transmap.is_some(), mat.no_z_check)
+                                || exclude_texture.is_some_and(|t| mat.uses_texture(t))
+                            {
+                                continue;
+                            }
+                            items.push(DrawItem {
+                                pipe: pipe_code(PIPE_SURFACE_DEPTH, culls_back_faces(scene, inst), instance_depth_bias(inst, mat)),
+                                mesh: inst.mesh as u32,
+                                range: ri as u32,
+                                material: mat_id as u32,
+                                entry: inst.base + *slot,
+                            });
+                        }
+                    }
+                    batch_items(scene, &mut items, true, &mut list, &mut main_batches);
                 }
-            }
-            let player = lighting
-                .inside
-                .filter(|v| point_in_vehicle_box(camera.position, v))
-                .map(|v| v.0);
-            // An object's *nearest* blended mesh to the camera, not the single point its
-            // meshes all share (`inst.origin`): a long vehicle's own origin can sit well
-            // behind (or ahead of) its nearest window, so ranking the whole object by that
-            // one point against a much smaller nearby object - a car passing level with the
-            // middle of a stopped bus - picked the wrong order even outside the "camera is
-            // inside" case above (the bus's origin, metres behind the window nearest the
-            // car, sorted as farther away than the car itself, so the car was drawn last and
-            // painted over the window instead of being hidden behind the body between the
-            // windows). Every blended mesh of the object is a candidate; the closest one's
-            // distance, less its own bounding radius, stands for the whole object.
-            //
-            // Scope, checked systematically while chasing a report of a car showing through
-            // a stopped bus's body from outside (never reproduced, before or after this
-            // commit): this order only ever decides how mutually-*blended* draws composite
-            // where they overlap on screen (a car's own window glass in front of a bus's
-            // window + interior, say) - it cannot be why an opaque wall would fail to hide
-            // something behind it. Every pipeline the main pass uses, opaque or blended,
-            // keeps depth *testing* on (`GreaterEqual`, see the pipeline table above); only
-            // depth *writing* differs. Opaque batches are always recorded before blended ones
-            // in the same pass (`main_draws[0]` first), so by the time any blended draw runs,
-            // the depth buffer already holds every opaque surface in front of it, blend order
-            // or not. Dumping the EN92's and the O530 Facelift's per-material alpha mode
-            // (`OMSI_ONLY_MESH`) found every body panel `AlphaMode::Opaque`, as OMSI requires
-            // (diffuse alpha is a reflection mask, not transparency, unless `[matl_alpha]` 1
-            // or 2 says otherwise); an A/B render (this commit vs its parent, same seed, a
-            // parked car centred behind a stopped EN92's midsection) came back pixel-identical
-            // at the car/bus silhouette - the only measured difference was in the bus's own
-            // overlapping window/dirt/interior layers, which is exactly this sort's stated
-            // job. If the reported artefact is real, its cause is still open and elsewhere.
-            let near_by_origin: Vec<(DVec3, f32)> = if self.blend_by_origin {
-                Vec::new()
-            } else {
-                nearest_by_origin(blended.iter().filter_map(|&i| {
+                let visible = &by_phase[phase as usize];
+                items.clear();
+                let mut blended: Vec<usize> = Vec::new();
+                for &(i, _, _) in visible {
                     let inst = &scene.instances[i];
-                    if inst.surface {
-                        return None;
-                    }
-                    let (c, r) = Self::bounding_sphere(scene, inst);
-                    Some((inst.origin, (c - cam_rel).length() - r))
-                }))
-            };
-            let mut keyed: Vec<(u8, f32, usize)> = blended
-                .iter()
-                .map(|&i| {
-                    let inst = &scene.instances[i];
-                    // Surfaces are ground and go by distance alone: a tile's painted ground
-                    // shares its origin with the terrain the camera is always inside of, and
-                    // ranked with it, it was drawn after everything blended near it - over the
-                    // shadow blobs of the buses standing on it. A blob belongs to the ground
-                    // under its vehicle too, drawn before the vehicle's glass.
-                    let rank = if self.blend_by_origin || inst.surface {
-                        0
-                    } else if player == Some(inst.origin) {
-                        2
-                    } else if holders.contains(&inst.origin) {
-                        1
-                    } else {
-                        0
-                    };
-                    let dist = if self.blend_by_origin || inst.surface {
-                        ((inst.origin - ro).as_vec3() - cam_rel).length()
-                    } else {
-                        near_by_origin
-                            .iter()
-                            .find(|(o, _)| *o == inst.origin)
-                            .map(|(_, d)| *d)
-                            .unwrap_or(0.0)
-                    };
-                    (rank, dist, i)
-                })
-                .collect();
-            // (a total order even where a distance is NaN - an instance at a NaN position:
-            // partial_cmp's "equal" for it broke the sort's order, and since Rust 1.81 the
-            // sort panics on that, which ended the game)
-            keyed.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)).then(a.2.cmp(&b.2)));
-            items.clear();
-            for (_, _, i) in keyed {
-                let inst = &scene.instances[i];
-                let cull = culls_back_faces(scene, inst);
-                for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
-                    let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
-                    let mat = &scene.materials[mat_id];
-                    if (mat.alpha != AlphaMode::Blend && !mat.no_z_check && !inst.ordered)
-                        || exclude_texture.is_some_and(|t| mat.uses_texture(t))
-                    {
+                    if inst.ordered {
+                        blended.push(i);
                         continue;
                     }
-                    // A layer its script has faded out (`[alphascale]` at 0: the rain film
-                    // on a dry day, the dirt on a clean bus) shows nothing, as in the
-                    // original, whose blend takes it out whole; drawn anyway it ran the full
-                    // shading over the whole windscreen for nothing - a bus's cab view had
-                    // three or four such screen-sized layers.
-                    if mat.alpha == AlphaMode::Blend && inst.slot_alpha.get(*slot as usize).is_some_and(|a| *a < 1.0 / 512.0) {
-                        continue;
+                    let mut has_blend = false;
+                    let cull = culls_back_faces(scene, inst);
+                    for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
+                        let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
+                        let mat = &scene.materials[mat_id];
+                        let kind = kind_of(mat.alpha);
+                        if kind == PIPE_BLEND || mat.no_z_check {
+                            has_blend = true;
+                            continue;
+                        }
+                        // a render target cannot be sampled while being drawn into (mirror glass, or a reflection map of it)
+                        if exclude_texture.is_some_and(|t| mat.uses_texture(t)) {
+                            continue;
+                        }
+                        items.push(DrawItem {
+                            pipe: pipe_code(
+                                kind,
+                                cull,
+                                instance_depth_bias(inst, mat),
+                            ),
+                            mesh: inst.mesh as u32,
+                            range: ri as u32,
+                            material: mat_id as u32,
+                            entry: inst.base + *slot,
+                        });
                     }
-                    // the pipeline follows the material: a surface (the painted ground) is
-                    // drawn with the depth bias that keeps it off the terrain, and
-                    // [matl_noZwrite] (glass, rain, dirt) writes no depth.
-                    // [matl_noZcheck] marks a decal that must win over the surface it lies
-                    // on (a bus's shadow blob, the digits on a counter): the original draws
-                    // it without a depth test right after that surface, in model order. With
-                    // everything opaque drawn first here, no test at all would put it over
-                    // the whole bus (the steering wheel in front of the counter, the body over
-                    // the shadow), so it is drawn with the surfaces' depth bias instead: on
-                    // top of its base, behind whatever really stands in front of it.
-                    let kind = if mat.alpha != AlphaMode::Blend && !mat.no_z_check {
-                        // (a model drawn in order: its opaque and cut-out slots too)
-                        kind_of(mat.alpha)
-                    } else if mat.no_z_write || mat.no_z_check {
-                        PIPE_BLEND_NO_WRITE
-                    } else {
-                        PIPE_BLEND
-                    };
-                    items.push(DrawItem {
-                        pipe: pipe_code(
-                            kind,
-                            cull,
-                            inst.surface || mat.z_bias > 0 || mat.no_z_check,
-                        ),
-                        mesh: inst.mesh as u32,
-                        range: ri as u32,
-                        material: mat_id as u32,
-                        entry: inst.base + *slot,
-                    });
+                    if has_blend {
+                        blended.push(i);
+                    }
+
                 }
+                main_draws[0] += items.len();
+                batch_items(scene, &mut items, true, &mut list, &mut main_batches);
+                // Blended draws: objects far to near by the distance of their nearest blended
+                // mesh (see `near_by_origin` below - not the single local origin all of an
+                // object's meshes share), and within an object in creation order - the
+                // model.cfg mesh order, which is what the original relies on (windows are
+                // listed last).
+                //
+                // An object the camera is inside of (the bus seen from the driver's
+                // seat) comes after everything outside it, and the player's own vehicle
+                // last of all. By its origin alone the bus - whose origin is 4.6 m
+                // behind the driver's eye on the NL202 - sorted as farther away than a
+                // car right beside the driver's window, so the car was drawn after the
+                // bus's window layers (rain film, dirt, door glass), which write depth:
+                // its blended body failed the depth test and only the opaque wheels
+                // were left, dark behind the tinted glass, exactly while the car was
+                // half out of the picture.
+                let mut holders: Vec<DVec3> = Vec::new();
+                for &(i, _, inside) in visible {
+                    let inst = &scene.instances[i];
+                    if inside && !inst.surface && !holders.contains(&inst.origin) {
+                        holders.push(inst.origin);
+                    }
+                }
+                let player = lighting
+                    .inside
+                    .filter(|v| point_in_vehicle_box(camera.position, v))
+                    .map(|v| v.0);
+                // An object's *nearest* blended mesh to the camera, not the single point its
+                // meshes all share (`inst.origin`): a long vehicle's own origin can sit well
+                // behind (or ahead of) its nearest window, so ranking the whole object by that
+                // one point against a much smaller nearby object - a car passing level with the
+                // middle of a stopped bus - picked the wrong order even outside the "camera is
+                // inside" case above (the bus's origin, metres behind the window nearest the
+                // car, sorted as farther away than the car itself, so the car was drawn last and
+                // painted over the window instead of being hidden behind the body between the
+                // windows). Every blended mesh of the object is a candidate; the closest one's
+                // distance, less its own bounding radius, stands for the whole object.
+                //
+                // Scope, checked systematically while chasing a report of a car showing through
+                // a stopped bus's body from outside (never reproduced, before or after this
+                // commit): this order only ever decides how mutually-*blended* draws composite
+                // where they overlap on screen (a car's own window glass in front of a bus's
+                // window + interior, say) - it cannot be why an opaque wall would fail to hide
+                // something behind it. Every pipeline the main pass uses, opaque or blended,
+                // keeps depth *testing* on (`GreaterEqual`, see the pipeline table above); only
+                // depth *writing* differs. Opaque batches are always recorded before blended ones
+                // in the same pass (`main_draws[0]` first), so by the time any blended draw runs,
+                // the depth buffer already holds every opaque surface in front of it, blend order
+                // or not. Dumping the EN92's and the O530 Facelift's per-material alpha mode
+                // (`OMSI_ONLY_MESH`) found every body panel `AlphaMode::Opaque`, as OMSI requires
+                // (diffuse alpha is a reflection mask, not transparency, unless `[matl_alpha]` 1
+                // or 2 says otherwise); an A/B render (this commit vs its parent, same seed, a
+                // parked car centred behind a stopped EN92's midsection) came back pixel-identical
+                // at the car/bus silhouette - the only measured difference was in the bus's own
+                // overlapping window/dirt/interior layers, which is exactly this sort's stated
+                // job. If the reported artefact is real, its cause is still open and elsewhere.
+                let near_by_origin: Vec<(DVec3, f32)> = if self.blend_by_origin {
+                    Vec::new()
+                } else {
+                    nearest_by_origin(blended.iter().filter_map(|&i| {
+                        let inst = &scene.instances[i];
+                        if inst.surface {
+                            return None;
+                        }
+                        let (c, r) = Self::bounding_sphere(scene, inst);
+                        Some((inst.origin, (c - cam_rel).length() - r))
+                    }))
+                };
+                let mut keyed: Vec<(u8, f32, usize)> = blended
+                    .iter()
+                    .map(|&i| {
+                        let inst = &scene.instances[i];
+                        // Surfaces are ground and go by distance alone: a tile's painted ground
+                        // shares its origin with the terrain the camera is always inside of, and
+                        // ranked with it, it was drawn after everything blended near it - over the
+                        // shadow blobs of the buses standing on it. A blob belongs to the ground
+                        // under its vehicle too, drawn before the vehicle's glass.
+                        let rank = if self.blend_by_origin || inst.surface {
+                            0
+                        } else if player == Some(inst.origin) {
+                            2
+                        } else if holders.contains(&inst.origin) {
+                            1
+                        } else {
+                            0
+                        };
+                        let dist = if let Some(sort_origin) = inst.blend_sort_origin {
+                            // Spline surfaces use the C++ handler's placement-origin distance
+                            // in the horizontal plane (Rust's world axes are x/y horizontal,
+                            // z vertical).
+                        horizontal_sort_distance(sort_origin, ro, cam_rel)
+                        } else if self.blend_by_origin || inst.surface {
+                            ((inst.origin - ro).as_vec3() - cam_rel).length()
+                        } else {
+                            near_by_origin
+                                .iter()
+                                .find(|(o, _)| *o == inst.origin)
+                                .map(|(_, d)| *d)
+                                .unwrap_or(0.0)
+                        };
+                        (rank, dist, i)
+                    })
+                    .collect();
+                // (a total order even where a distance is NaN - an instance at a NaN position:
+                // partial_cmp's "equal" for it broke the sort's order, and since Rust 1.81 the
+                // sort panics on that, which ended the game)
+                keyed.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)).then(a.2.cmp(&b.2)));
+                items.clear();
+                for (_, _, i) in keyed {
+                    let inst = &scene.instances[i];
+                    let cull = culls_back_faces(scene, inst);
+                    for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
+                        let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
+                        let mat = &scene.materials[mat_id];
+                        if (mat.alpha != AlphaMode::Blend && !mat.no_z_check && !inst.ordered)
+                            || exclude_texture.is_some_and(|t| mat.uses_texture(t))
+                        {
+                            continue;
+                        }
+                        // A layer its script has faded out (`[alphascale]` at 0: the rain film
+                        // on a dry day, the dirt on a clean bus) shows nothing, as in the
+                        // original, whose blend takes it out whole; drawn anyway it ran the full
+                        // shading over the whole windscreen for nothing - a bus's cab view had
+                        // three or four such screen-sized layers.
+                        if mat.alpha == AlphaMode::Blend && inst.slot_alpha.get(*slot as usize).is_some_and(|a| *a < 1.0 / 512.0) {
+                            continue;
+                        }
+                        // Ground blends use the C++ handler's no-write composition;
+                        // their opaque coverage is committed after OnSurface. Other
+                        // materials retain [matl_noZwrite] (glass, rain, dirt) semantics.
+                        // [matl_noZcheck] marks a decal that must win over the surface it lies
+                        // on (a bus's shadow blob, the digits on a counter): the original draws
+                        // it without a depth test right after that surface, in model order. With
+                        // everything opaque drawn first here, no test at all would put it over
+                        // the whole bus (the steering wheel in front of the counter, the body over
+                        // the shadow), so it is drawn with the surfaces' depth bias instead: on
+                        // top of its base, behind whatever really stands in front of it.
+                        let kind = if mat.alpha != AlphaMode::Blend && !mat.no_z_check {
+                            // (a model drawn in order: its opaque and cut-out slots too)
+                            kind_of(mat.alpha)
+                        } else if mat.no_z_write || mat.no_z_check || world_surface_phase(inst.render_phase) {
+                            PIPE_BLEND_NO_WRITE
+                        } else {
+                            PIPE_BLEND
+                        };
+                        items.push(DrawItem {
+                            pipe: pipe_code(
+                                kind,
+                                cull,
+                                instance_depth_bias(inst, mat),
+                            ),
+                            mesh: inst.mesh as u32,
+                            range: ri as u32,
+                            material: mat_id as u32,
+                            entry: inst.base + *slot,
+                        });
+                    }
+                }
+                main_draws[1] += items.len();
+                batch_items(scene, &mut items, false, &mut list, &mut main_batches);
             }
-            main_draws[1] = items.len();
-            batch_items(scene, &mut items, false, &mut list, &mut main_batches);
         }
         if debug_draws {
             log::info!("  main pass: {} opaque/alpha-tested and {} blended draws in {} batches; prepass {} batches; draw list {} entries", main_draws[0], main_draws[1], main_batches.len(), prepass_batches.len(), list.len());
@@ -9440,13 +9518,32 @@ fn encode_batches_filtered<'a, E: wgpu::util::RenderEncoder<'a>>(
     }
 }
 
-/// Main pass pipeline kinds (`pipe_code`): opaque, alpha-tested, blended, and blended
-/// without depth write (`[matl_noZwrite]`, `[matl_noZcheck]`).
+/// Main pass pipeline kinds (`pipe_code`): opaque, alpha-tested, blended, blended
+/// without depth write, and the depth-only coverage of composed ground surfaces.
 const PIPE_OPAQUE: u8 = 0;
 const PIPE_ALPHA_TEST: u8 = 1;
 const PIPE_BLEND: u8 = 2;
 const PIPE_BLEND_NO_WRITE: u8 = 3;
-const PIPE_KINDS: u8 = 4;
+const PIPE_SURFACE_DEPTH: u8 = 4;
+const PIPE_KINDS: u8 = 5;
+
+fn effective_render_phase(instance: &Instance) -> RenderPhase {
+    if instance.presurface {
+        RenderPhase::PreSurface
+    } else {
+        instance.render_phase
+    }
+}
+
+fn world_surface_phase(phase: RenderPhase) -> bool {
+    matches!(phase, RenderPhase::PreSurface | RenderPhase::Surface | RenderPhase::Spline | RenderPhase::OnSurface)
+}
+
+/// Only diffuse-alpha ground coverage is committed after the surface phases. Painted
+/// terrain masks, ordinary glass, and explicit no-Z-check materials keep their semantics.
+fn surface_depth_coverage(phase: RenderPhase, alpha: AlphaMode, transmap: bool, no_z_check: bool) -> bool {
+    world_surface_phase(phase) && alpha == AlphaMode::Blend && !transmap && !no_z_check
+}
 /// Which depth-prepass variant a material contributes to. A blended material normally has
 /// no prepass because its fragments are see-through; a transmap is the useful exception:
 /// fully opaque texels are usually the vehicle body while lower-alpha texels are its windows.
@@ -9468,6 +9565,36 @@ fn depth_prepass_kind(kind: u8, material: &Material, presurface: bool) -> Option
     } else {
         None
     }
+}
+
+fn instance_depth_bias(instance: &Instance, material: &Material) -> bool {
+    instance.surface_bias || material.z_bias > 0 || (material.no_z_check && !instance.surface)
+}
+
+fn surface_instance_code(
+    blob: bool,
+    ground_layer: bool,
+    decal: bool,
+    surface: bool,
+    surface_bias: bool,
+) -> f32 {
+    if blob {
+        2.0
+    } else if ground_layer {
+        0.75
+    } else if decal {
+        if surface_bias { 1.25 } else { 0.9 }
+    } else if surface {
+        if surface_bias { 1.0 } else { 0.9 }
+    } else {
+        0.0
+    }
+}
+
+/// OMSI's spline blend sort is horizontal in the x/z ground plane; Rust's vertical axis is z.
+fn horizontal_sort_distance(origin: DVec3, render_origin: DVec3, camera_relative: Vec3) -> f32 {
+    let p = (origin - render_origin).as_vec3() - camera_relative;
+    glam::Vec2::new(p.x, p.y).length()
 }
 
 /// A main-pass draw's pipeline: the kind, whether back faces are culled, and whether the
@@ -10145,6 +10272,35 @@ mod tests {
     }
 
     #[test]
+    fn omsi_render_phases_are_monotonic_and_complete() {
+        assert_eq!(
+            RenderPhase::DRAW_ORDER.map(|phase| phase as usize),
+            [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        );
+        assert_eq!(RenderPhase::default(), RenderPhase::Normal);
+    }
+
+    #[test]
+    fn metric_lifted_surfaces_keep_shading_class_without_view_space_pull() {
+        assert_eq!(surface_instance_code(false, false, false, true, false), 0.9);
+        assert_eq!(surface_instance_code(false, false, false, true, true), 1.0);
+        assert_eq!(surface_instance_code(false, false, true, false, false), 0.9);
+        assert_eq!(surface_instance_code(false, true, false, true, false), 0.75);
+    }
+
+    #[test]
+    fn spline_blend_sort_ignores_height_and_camera_pitch() {
+        let origin = DVec3::new(120.0, 45.0, 0.0);
+        let render_origin = DVec3::new(100.0, 40.0, 0.0);
+        let level_camera = Vec3::new(3.0, 1.0, 4.0);
+        let high_camera = Vec3::new(3.0, 1.0, 80.0);
+        assert_eq!(
+            horizontal_sort_distance(origin, render_origin, level_camera),
+            horizontal_sort_distance(origin + DVec3::Z * 60.0, render_origin, high_camera)
+        );
+    }
+
+    #[test]
     fn render_scale_auto_keeps_ordinary_windows_sharp() {
         // the default window and a 2560x1080 screen are drawn at full size
         assert_eq!(scene_scale_for(0.0, 1600, 900), 1.0);
@@ -10159,6 +10315,25 @@ mod tests {
         assert_eq!(scene_scale_for(0.75, 3200, 1800), 0.75);
         assert_eq!(scene_scale_for(0.3, 1600, 900), 0.5);
         assert_eq!(scene_scale_for(1.4, 1600, 900), 1.0);
+    }
+
+    #[test]
+    fn surface_depth_coverage_excludes_glass_and_terrain_masks() {
+        assert!(surface_depth_coverage(RenderPhase::Spline, AlphaMode::Blend, false, false));
+        for phase in RenderPhase::DRAW_ORDER {
+            if !world_surface_phase(phase) {
+                assert!(!surface_depth_coverage(phase, AlphaMode::Blend, false, false));
+            } else {
+                assert!(surface_depth_coverage(phase, AlphaMode::Blend, false, false));
+            }
+        }
+        assert!(!surface_depth_coverage(RenderPhase::Spline, AlphaMode::Blend, true, false));
+        assert!(!surface_depth_coverage(RenderPhase::Spline, AlphaMode::Blend, false, true));
+        assert!(!surface_depth_coverage(RenderPhase::Spline, AlphaMode::Opaque, false, false));
+        assert!(!surface_depth_coverage(RenderPhase::Spline, AlphaMode::Test, false, false));
+        let order = RenderPhase::DRAW_ORDER;
+        assert!(order.iter().position(|p| *p == RenderPhase::OnSurface).unwrap()
+            < order.iter().position(|p| *p == RenderPhase::BeforeNormal).unwrap());
     }
 
     #[test]
