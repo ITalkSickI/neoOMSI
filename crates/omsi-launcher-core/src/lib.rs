@@ -255,7 +255,13 @@ pub fn content_dir() -> Option<PathBuf> {
             let c = load_config_raw();
             let game = find_game(&c.game)?;
             let dir = game.parent()?.to_path_buf();
-            omsi_cfg::content_folder_of(&if dir.ends_with("Contents/MacOS") { dir.parent()?.parent()?.parent()?.to_path_buf() } else { dir })
+            let beside = if dir.ends_with("Contents/MacOS") { dir.parent()?.parent()?.parent()?.to_path_buf() } else { dir };
+            let cand = omsi_cfg::content_folder_of(&beside);
+            if (cand.exists() || std::fs::create_dir_all(&cand).is_ok()) && omsi_cfg::is_writable(&cand) {
+                cand
+            } else {
+                data_dir().join("content")
+            }
         }
     };
     let _ = omsi_cfg::ensure_content_layout(&dir);
@@ -1436,12 +1442,29 @@ pub fn delete_profile(name: &str) -> Result<()> {
 // game reads that first), else the original installation's, which is never written
 
 fn keyboard_cfg_write_path() -> Result<PathBuf> {
-    Ok(content_dir().unwrap_or(root()?).join("Inputs").join("keyboard.cfg"))
+    let cand = content_dir().unwrap_or(root()?).join("Inputs").join("keyboard.cfg");
+    if let Some(p) = cand.parent() {
+        if (p.exists() || std::fs::create_dir_all(p).is_ok()) && omsi_cfg::is_writable(p) {
+            return Ok(cand);
+        }
+    }
+    let fallback = data_dir().join("Inputs").join("keyboard.cfg");
+    if let Some(p) = fallback.parent() {
+        let _ = std::fs::create_dir_all(p);
+    }
+    Ok(fallback)
 }
 
 fn keyboard_cfg_read_path() -> Result<PathBuf> {
     let own = keyboard_cfg_write_path()?;
-    Ok(if own.exists() { own } else { omsi_cfg::original_keyboard_cfg(&root()?) })
+    if own.exists() {
+        return Ok(own);
+    }
+    let fallback = data_dir().join("Inputs").join("keyboard.cfg");
+    if fallback.exists() {
+        return Ok(fallback);
+    }
+    Ok(omsi_cfg::original_keyboard_cfg(&root()?))
 }
 
 fn binding_to_json(b: &omsi_content::input::KeyBinding) -> Value {
