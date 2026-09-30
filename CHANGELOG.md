@@ -4,6 +4,49 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.238 - 2026-09-30
+
+Manual gearboxes, dashboard lamps, phones that crash or run slowly (#226, #231, #229, #225).
+
+### Manual gearboxes (#226)
+- With the automatic clutch on (the default), a gear chosen with a key, a phone's gear
+  button or a controller comes with the clutch pressed and let up again, as OMSI's clutch
+  key does, for gearbox scripts that only take a gear with the pedal right down and do not
+  work the clutch themselves (the LiAZ and PAZ KPP: `(L.L.clutch) 1 =`). Before, a player
+  without a clutch pedal - every phone - could not put such a bus in gear at all, forwards
+  or backwards. Scripts that read `AutoClutch` (the Sprinters' G32) still do it themselves.
+- The automatic clutch's pull-away help (the clutch bites as the throttle goes down, so the
+  engine does not stall) works for these scripts' `antrieb_getr_gang` too, and is left to
+  the scripts that work the clutch themselves.
+- "Automatic clutch" can be switched in the launcher (Controls) and in the game menu; with
+  it off, a phone shows its clutch pedal.
+- The phone's gear buttons light the gear engaged for either kind of script.
+
+### Dashboard lamps (#231)
+- A `[matl_change]` variant shows as Omsi.exe shows it (0x5fd6xx): the variable rounded to
+  the nearest whole number picks the `[matl_item]` (1 = the first), anything else the plain
+  material - a lamp whose variable stands at 2 with one item is dark. A variable no script
+  declares counts as 0, as the model loader registers it: the stock MANs' spare buttons
+  (switched by `*Noch nicht belegt*`, "not assigned yet") and mods' door button lamps were
+  lit all the time.
+
+### Phones (#229, #225)
+- The game's log is written on the phone too (`game.log` in the app's folder, the previous
+  run's as `game-prev.log`), with the device's maker and model. A run that closed in the
+  middle of a drive - a graphics driver taking the app down without a word - is shown by
+  the launcher at the next start, with the end of its log for "Copy report".
+- The first drive after such a closing starts with safer graphics, and on OpenGL when the
+  one that closed drew with Vulkan.
+- A phone's graphics chip always gets the light picture (no SSAO, no MSAA, small shadow
+  maps), whatever type its driver reports.
+- The automatic render scale has a fourth step, 55 %, for a chip that is still too slow at
+  70 %.
+
+### Checks
+- `OMSI_DEBUG_VARS` with `OMSI_DEBUG_VARS_EVERY=<s>` logs the variables through an
+  offscreen `--drive`; a manual gate given with `--triggers` comes with the automatic clutch
+  as from the keys.
+
 ## 0.1.237 - 2026-09-30
 
 The testers' second round: the crashes with "the graphics device was lost", weak cards and

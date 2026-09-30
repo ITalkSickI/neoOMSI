@@ -126,6 +126,7 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Camera collisions"), tr(on_off(s.camera_collision))), "camcoll".into()));
             out.push((format!("{}: {}", tr("Force feedback and vibration"), tr(on_off(s.ff_enabled))), "ff".into()));
             out.push((format!("{}: {}", tr("Keyboard brake stays on until the throttle"), tr(on_off(s.brake_hold))), "brake_hold".into()));
+            out.push((format!("{}: {}", tr("Automatic clutch"), tr(on_off(s.auto_clutch))), "auto_clutch".into()));
             out.push((format!("{} (opentrack UDP {}): {}", tr("Head tracking"), s.head_tracking_port, tr(on_off(s.head_tracking))), "headtrack".into()));
             out.push((format!("{}: x{}", tr("Throttle pedal strength"), s.pedal_throttle), "pedal_t".into()));
             out.push((format!("{}: x{}", tr("Brake pedal strength"), s.pedal_brake), "pedal_b".into()));
@@ -354,6 +355,13 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                 "brake_hold" => {
                     s.brake_hold = !s.brake_hold;
                     Some(("brake_hold", (s.brake_hold as u8).to_string()))
+                }
+                "auto_clutch" => {
+                    s.auto_clutch = !s.auto_clutch;
+                    if let Some(p) = app.player.as_mut() {
+                        p.vehicle.host.auto_clutch = if s.auto_clutch { 1.0 } else { 0.0 };
+                    }
+                    Some(("auto_clutch", (s.auto_clutch as u8).to_string()))
                 }
                 "ff" => {
                     s.ff_enabled = !s.ff_enabled;

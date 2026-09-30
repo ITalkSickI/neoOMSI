@@ -17,12 +17,14 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use winit::platform::android::activity::AndroidApp;
 use winit::platform::android::EventLoopBuilderExtAndroid;
 
+/// Whether the first drive of this run was already started (see `Shell::switch`).
+static SAFER_TRIED: AtomicBool = AtomicBool::new(false);
+
 /// Where the app keeps what a person puts on the phone for it.
 pub const SHARED: &str = "/storage/emulated/0/openOMSI";
 
 #[no_mangle]
 fn android_main(app: AndroidApp) {
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("openOMSI"));
     // an error is also written where a person finds it without a computer:
     // openOMSI/crash.log (or Android/data/org.openomsi.game/files/crash.log)
     let crash_files: Vec<PathBuf> = [Some(PathBuf::from(SHARED)), app.external_data_path()].into_iter().flatten().map(|d| d.join("crash.log")).collect();
@@ -34,6 +36,7 @@ fn android_main(app: AndroidApp) {
         }
     }));
     log::info!("openOMSI {VERSION} for Android, build {BUILD}");
+    log::info!("device: {} {} (Android {}, API {})", prop("ro.product.manufacturer"), prop("ro.product.model"), prop("ro.build.version.release"), prop("ro.build.version.sdk"));
     // the Java activity (OmsiActivity) for the calls into it: ndk_context's context is the
     // Application, which has none of the activity's methods
     ACTIVITY.store(app.activity_as_ptr(), Ordering::Relaxed);
@@ -41,6 +44,7 @@ fn android_main(app: AndroidApp) {
     if let Some(home) = app.internal_data_path() {
         std::env::set_var("HOME", &home);
     }
+    init_log();
     // the content folder (mods, archives, screenshots): on the shared storage when the
     // app may write there, else in the app's own folder on it
     let shared = PathBuf::from(SHARED);
@@ -84,6 +88,89 @@ fn android_main(app: AndroidApp) {
     lan_mods::clean_up();
     // (the activity ends with the program)
     std::process::exit(0);
+}
+
+/// The log to the system's (logcat) and to `game.log` in the app's data folder - a phone
+/// has no terminal and the launcher and the game share one process, so without the file a
+/// crash left the launcher's report empty (#229). The previous run's log is kept as
+/// `game-prev.log`: when that run closed in the middle of a drive (a crash in the graphics
+/// driver takes the process without a word), the launcher shows its end
+/// ([`previous_run_crash`]).
+fn init_log() {
+    let dir = omsi_launcher_lib::data_dir();
+    let (now, prev) = (dir.join("game.log"), dir.join("game-prev.log"));
+    let _ = std::fs::rename(&now, &prev);
+    let file = std::fs::File::create(&now).ok();
+    let logger = TeeLogger {
+        system: android_logger::AndroidLogger::new(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("openOMSI")),
+        file: std::sync::Mutex::new(file),
+    };
+    if log::set_boxed_logger(Box::new(logger)).is_ok() {
+        log::set_max_level(log::LevelFilter::Info);
+    }
+}
+
+struct TeeLogger {
+    system: android_logger::AndroidLogger,
+    file: std::sync::Mutex<Option<std::fs::File>>,
+}
+
+impl log::Log for TeeLogger {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.level() <= log::Level::Info
+    }
+
+    fn log(&self, r: &log::Record) {
+        if !self.enabled(r.metadata()) {
+            return;
+        }
+        self.system.log(r);
+        use std::io::Write;
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        if let Some(f) = self.file.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            // (the desktop's env_logger layout: the launcher's `crash_of` reads it)
+            let _ = writeln!(f, "[{secs:.3} {:<5} {}] {}", r.level(), r.target(), r.args());
+        }
+    }
+
+    fn flush(&self) {
+        if let Some(f) = self.file.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            use std::io::Write;
+            let _ = f.flush();
+        }
+    }
+}
+
+/// A system property (`ro.product.model` ...), for the log's first lines.
+fn prop(name: &str) -> String {
+    extern "C" {
+        fn __system_property_get(name: *const std::ffi::c_char, value: *mut std::ffi::c_char) -> i32;
+    }
+    let (Ok(n), mut buf) = (std::ffi::CString::new(name), [0 as std::ffi::c_char; 92]) else { return String::new() };
+    let len = unsafe { __system_property_get(n.as_ptr(), buf.as_mut_ptr()) };
+    if len <= 0 {
+        return String::new();
+    }
+    unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_string_lossy().into_owned()
+}
+
+/// When the app's previous run closed while a drive was going (a game started from the
+/// launcher, and neither "game ends" nor "session ended" after it): what it said last and
+/// the end of its log, for the launcher's crash dialog.
+pub(crate) fn previous_run_crash() -> Option<(String, String)> {
+    let p = omsi_launcher_lib::data_dir().join("game-prev.log");
+    let text = std::fs::read_to_string(&p).ok()?;
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.iter().rposition(|l| l.contains("starting the game:"))?;
+    if lines[start..].iter().any(|l| l.contains("game ends") || l.contains("session ended")) {
+        return None;
+    }
+    if let Some(c) = launcher::crash_of(&p) {
+        return Some(c);
+    }
+    let last = lines.last().map(|l| l.split_once("] ").map(|x| x.1).unwrap_or(l)).unwrap_or("");
+    let tail = lines[lines.len().saturating_sub(150)..].join("\n");
+    Some((format!("the game closed without a word while it was running (the last it said: {last})"), tail))
 }
 
 fn is_writable(dir: &Path) -> bool {
@@ -143,6 +230,18 @@ impl Shell {
             return;
         }
         let Some(line) = omsi_launcher_lib::take_in_process_launch() else { return };
+        // the first drive after a run that closed in the middle of one (a graphics driver
+        // that took the process down) starts with safer graphics, and on OpenGL when that
+        // run drew with Vulkan: a phone whose Vulkan driver fails on the game still plays
+        if !SAFER_TRIED.swap(true, Ordering::Relaxed) && previous_run_crash().is_some() {
+            let prev = std::fs::read_to_string(omsi_launcher_lib::data_dir().join("game-prev.log")).unwrap_or_default();
+            let vulkan = prev.lines().any(|l| l.contains("renderer: ") && l.contains("(Vulkan)"));
+            std::env::set_var("OMSI_SAFE_GPU", "1");
+            if vulkan && std::env::var_os("OMSI_BACKEND").is_none() {
+                std::env::set_var("OMSI_BACKEND", "gl");
+            }
+            log::warn!("the last run closed in the middle of a drive: this one starts with safer graphics{}", if vulkan { " on OpenGL" } else { "" });
+        }
         log::info!("starting the game: {}", line.join(" "));
         let argv: Vec<String> = std::iter::once("openomsi".to_string()).chain(line).collect();
         let args = match Args::try_parse_from(&argv) {
