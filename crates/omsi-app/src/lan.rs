@@ -409,6 +409,8 @@ pub struct RemoteVehicle {
     /// state, and whoever stood in it shook).
     samples: std::collections::VecDeque<(f64, Pose)>,
     offset: Option<f64>,
+    /// The moment of theirs drawn (see `PlayClock`).
+    play: crate::lan_world::PlayClock,
 }
 
 impl RemoteVehicle {
@@ -2223,6 +2225,7 @@ fn new_remote(
         driver_tried: false,
         samples: std::collections::VecDeque::new(),
         offset: None,
+        play: Default::default(),
     })
 }
 
@@ -2251,6 +2254,7 @@ impl RemoteVehicle {
                 if self.samples.back().map(|b| b.0 - sent > 30.0).unwrap_or(false) {
                     self.samples.clear();
                     self.offset = None;
+                    self.play = Default::default();
                 } else {
                     continue;
                 }
@@ -2273,7 +2277,7 @@ impl RemoteVehicle {
     /// Their state as it was `INTERP_DELAY` ago: between the two states around that moment,
     /// or carried on from the last one along its way for a short while. None without
     /// stamped states (an older game).
-    fn interpolated(&self) -> Option<Pose> {
+    fn interpolated(&mut self) -> Option<Pose> {
         // (`OMSI_NO_INTERP=1`: the old way, for comparing)
         static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *OFF.get_or_init(|| omsi_cfg::env::var_os("OMSI_NO_INTERP").is_some()) {
@@ -2290,7 +2294,11 @@ impl RemoteVehicle {
         } else {
             0.05
         };
-        let t = lan_now() - off - (gap * 2.0 + 0.02).clamp(INTERP_DELAY, 0.45);
+        // (the moment drawn follows that smoothly: set anew each frame, it went back a
+        // few hundredths of a second whenever one of their frames had taken long, and on
+        // again when that one was no longer among the last four - the bus jumped)
+        let now = lan_now();
+        let t = self.play.step(now, now - off - (gap * 2.0 + 0.02).clamp(INTERP_DELAY, 0.45), 0.5);
         let k = self.samples.iter().rposition(|(st, _)| *st <= t);
         let Some(k) = k else {
             return self.samples.front().map(|x| x.1.clone());
