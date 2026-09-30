@@ -471,6 +471,7 @@ impl Interp {
                     "textContent" | "innerText" | "innerHTML" => Val::Str(self.dom.text_of(*i)),
                     "className" => Val::Str(n.classes.join(" ")),
                     "id" => Val::Str(n.id.clone()),
+                    "src" => Val::Str(n.src.clone()),
                     "style" => Val::Style(*i),
                     "classList" => Val::ClassList(*i),
                     "parentNode" | "parentElement" => match n.parent {
@@ -510,6 +511,9 @@ impl Interp {
                 "textContent" | "innerText" => self.dom.set_text(*i, to_str(&v)),
                 "className" => self.dom.nodes[*i].classes = to_str(&v).split_whitespace().map(str::to_string).collect(),
                 "id" => self.dom.nodes[*i].id = to_str(&v),
+                "src" => self.dom.nodes[*i].src = to_str(&v),
+                "width" => self.dom.nodes[*i].attr_w = to_str(&v),
+                "height" => self.dom.nodes[*i].attr_h = to_str(&v),
                 k if k.len() > 2 && k.starts_with("on") => {
                     let ty = k[2..].to_string();
                     if matches!(v, Val::Func(_)) {
@@ -666,6 +670,9 @@ impl Interp {
                 Some(match arg_s(0).as_str() {
                     "id" => Val::Str(n.id.clone()),
                     "class" => Val::Str(n.classes.join(" ")),
+                    "src" if !n.src.is_empty() => Val::Str(n.src.clone()),
+                    "width" if !n.attr_w.is_empty() => Val::Str(n.attr_w.clone()),
+                    "height" if !n.attr_h.is_empty() => Val::Str(n.attr_h.clone()),
                     _ => Val::Null,
                 })
             }
@@ -722,6 +729,9 @@ impl Interp {
                     "class" => n.classes = v.split_whitespace().map(str::to_string).collect(),
                     "id" => n.id = v,
                     "style" => n.inline = parse_style_attr(&v),
+                    "src" => n.src = v,
+                    "width" => n.attr_w = v,
+                    "height" => n.attr_h = v,
                     _ => {}
                 }
                 Some(Val::Undef)

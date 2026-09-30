@@ -885,8 +885,10 @@ impl VehicleInstance {
             .html_textures
             .iter()
             .map(|d| {
-                let html = crate::htmltex::load_page(&[ty.model_dir.as_path(), ty.def.dir()], &d.path);
+                let dirs = [ty.model_dir.as_path(), ty.def.dir()];
+                let html = crate::htmltex::load_page(&dirs, &d.path);
                 crate::htmltex::HtmlTexture::new(d.script_index, d.width, d.height, &html)
+                    .with_asset_dirs(crate::htmltex::asset_dirs(&dirs, &d.path))
             })
             .collect();
         host.number_var = program.str_var("number");

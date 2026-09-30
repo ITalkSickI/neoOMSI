@@ -656,3 +656,198 @@ fn prefix_increment_and_decrement() {
     assert_eq!(r.text_of("a").as_deref(), Some("1,2"));
     assert_eq!(r.text_of("b").as_deref(), Some("4,4"));
 }
+// ─────────────── pictures ───────────────
+
+/// A solid 24-bit BMP.
+fn bmp(w: u32, h: u32, rgb: [u8; 3]) -> Vec<u8> {
+    let row = ((w * 3 + 3) / 4 * 4) as usize;
+    let data = row * h as usize;
+    let mut b = Vec::with_capacity(54 + data);
+    b.extend_from_slice(b"BM");
+    b.extend_from_slice(&((54 + data) as u32).to_le_bytes());
+    b.extend_from_slice(&0u32.to_le_bytes());
+    b.extend_from_slice(&54u32.to_le_bytes());
+    b.extend_from_slice(&40u32.to_le_bytes());
+    b.extend_from_slice(&(w as i32).to_le_bytes());
+    b.extend_from_slice(&(h as i32).to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&24u16.to_le_bytes());
+    b.extend_from_slice(&0u32.to_le_bytes());
+    b.extend_from_slice(&(data as u32).to_le_bytes());
+    b.extend_from_slice(&2835u32.to_le_bytes());
+    b.extend_from_slice(&2835u32.to_le_bytes());
+    b.extend_from_slice(&0u32.to_le_bytes());
+    b.extend_from_slice(&0u32.to_le_bytes());
+    for _ in 0..h {
+        for _ in 0..w {
+            b.extend_from_slice(&[rgb[2], rgb[1], rgb[0]]);
+        }
+        b.resize(b.len() + row - (w * 3) as usize, 0);
+    }
+    b
+}
+
+/// A page in a fresh folder that holds `red.bmp` (4x4 red) and `blue.bmp` (2x2 blue).
+fn picture_page(name: &str, html: &str, w: u32, h: u32) -> EngineRenderer {
+    let dir = std::env::temp_dir().join(format!("omsi_htmlimg_{}_{}", name, std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("red.bmp"), bmp(4, 4, [255, 0, 0])).unwrap();
+    std::fs::write(dir.join("blue.bmp"), bmp(2, 2, [0, 0, 255])).unwrap();
+    let mut r = EngineRenderer::new(w, h, html);
+    r.set_asset_dirs(vec![dir]);
+    r
+}
+
+#[test]
+fn img_is_drawn_at_its_own_size() {
+    let mut r = picture_page("own", "<body style='margin:0'><img src='red.bmp'></body>", 12, 12);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 12, 0, 0), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 12, 3, 3), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 12, 4, 0), [0, 0, 0, 0]);
+    assert_eq!(px(&f, 12, 0, 4), [0, 0, 0, 0]);
+}
+
+#[test]
+fn img_takes_css_and_attribute_sizes() {
+    let html = "<body style='margin:0'><div><img src='red.bmp' style='width:8px;height:6px'></div><div><img src='blue.bmp' width='4'></div></body>";
+    let mut r = picture_page("size", html, 16, 16);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 16, 7, 5), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 8, 0), [0, 0, 0, 0]);
+    assert_eq!(px(&f, 16, 0, 10), [0, 0, 0, 0]);
+    // the second picture: width 4 attribute, proportions kept (4x4)
+    assert_eq!(px(&f, 16, 3, 6 + 3), [0, 0, 255, 255]);
+    assert_eq!(px(&f, 16, 4, 6), [0, 0, 0, 0]);
+}
+
+#[test]
+fn a_missing_picture_draws_nothing_and_does_not_stop_the_page() {
+    let html = "<body style='margin:0;background:#00ff00'><img src='nope.png'><div id=t>x</div></body>";
+    let mut r = picture_page("missing", html, 8, 8);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 8, 7, 0), [0, 255, 0, 255]);
+    assert_eq!(r.text_of("t").as_deref(), Some("x"));
+}
+
+#[test]
+fn background_image_tiles_by_default() {
+    let html = "<body style='margin:0'><div style='width:10px;height:10px;background:url(red.bmp)'></div></body>";
+    let mut r = picture_page("tile", html, 16, 16);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 16, 9, 9), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 10, 5), [0, 0, 0, 0]);
+}
+
+#[test]
+fn background_no_repeat_stays_once() {
+    let html = "<body style='margin:0'><div style='width:10px;height:10px;background:url(red.bmp) no-repeat'></div></body>";
+    let mut r = picture_page("norepeat", html, 16, 16);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 16, 3, 3), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 6, 6), [0, 0, 0, 0]);
+}
+
+#[test]
+fn background_size_and_position() {
+    let cover = "<body style='margin:0'><div style='width:10px;height:6px;background-image:url(red.bmp);background-repeat:no-repeat;background-size:cover'></div></body>";
+    let mut r = picture_page("cover", cover, 16, 16);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 16, 0, 0), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 9, 5), [255, 0, 0, 255]);
+
+    let contain = "<body style='margin:0'><div style='width:10px;height:6px;background:url(red.bmp) no-repeat center / contain'></div></body>";
+    let mut r = picture_page("contain", contain, 16, 16);
+    let f = r.poll_frame().unwrap();
+    // contain: 6x6, centred in 10 wide -> x 2..8
+    assert_eq!(px(&f, 16, 1, 3), [0, 0, 0, 0]);
+    assert_eq!(px(&f, 16, 2, 3), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 7, 3), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 8, 3), [0, 0, 0, 0]);
+
+    let right = "<body style='margin:0'><div style='width:10px;height:4px;background:url(red.bmp) no-repeat right top'></div></body>";
+    let mut r = picture_page("right", right, 16, 16);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 16, 5, 1), [0, 0, 0, 0]);
+    assert_eq!(px(&f, 16, 6, 1), [255, 0, 0, 255]);
+}
+
+#[test]
+fn background_image_of_the_body_covers_the_texture() {
+    let html = "<body style='background:url(blue.bmp)'></body>";
+    let mut r = picture_page("body", html, 9, 9);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 9, 0, 8), [0, 0, 255, 255]);
+    assert_eq!(px(&f, 9, 8, 8), [0, 0, 255, 255]);
+}
+
+#[test]
+fn background_image_is_clipped_to_rounded_corners() {
+    let html = "<body style='margin:0'><div style='width:10px;height:10px;border-radius:5px;background:url(red.bmp)'></div></body>";
+    let mut r = picture_page("round", html, 16, 16);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 16, 5, 5), [255, 0, 0, 255]);
+    assert_eq!(px(&f, 16, 0, 0)[3], 0);
+}
+
+#[test]
+fn scripts_can_set_the_source_of_a_picture() {
+    let html = "<body style='margin:0'><img id=i><script>var e = document.getElementById('i'); e.src = 'blue.bmp'; e.setAttribute('width', '6');</script></body>";
+    let mut r = picture_page("js", html, 8, 8);
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 8, 5, 5), [0, 0, 255, 255]);
+    assert_eq!(px(&f, 8, 6, 0), [0, 0, 0, 0]);
+}
+
+#[test]
+fn pictures_are_resized_once_and_kept() {
+    let dir = std::env::temp_dir().join(format!("omsi_htmlimg_store_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("red.bmp"), bmp(4, 4, [255, 0, 0])).unwrap();
+    let store = ImageStore::new(vec![dir]);
+    assert_eq!(store.dims("red.bmp"), Some((4, 4)));
+    let a = store.scaled("red.bmp", 9, 3).unwrap();
+    let b = store.scaled("red.bmp", 9, 3).unwrap();
+    assert!(Arc::ptr_eq(&a, &b));
+    assert_eq!((a.w, a.h), (9, 3));
+    assert_eq!(&a.rgba[..4], &[255u8, 0, 0, 255][..]);
+    assert!(store.get("missing.png").is_none());
+    assert!(store.get("http://example.com/a.png").is_none());
+}
+
+#[test]
+fn background_values_are_split_and_read() {
+    assert_eq!(split_top("url(a b.png) rgba(0, 0, 0, .5) center/cover"), vec!["url(a b.png)", "rgba(0, 0, 0, .5)", "center", "/", "cover"]);
+    let (p, s, e) = find_url("#fff URL( 'img/a.png' ) no-repeat").unwrap();
+    assert_eq!(p, "img/a.png");
+    assert_eq!(&"#fff URL( 'img/a.png' ) no-repeat"[s..e], "URL( 'img/a.png' )");
+    assert!(find_url("#fff").is_none());
+}
+
+#[test]
+fn style_sheet_urls_are_made_relative_to_the_page() {
+    use crate::htmltex::rebase_css_urls;
+    let css = "a{background:url(../img/x.png)} b{background:url('y.png')} c{background:url(data:x)} d{background:url(/abs.png)}";
+    assert_eq!(
+        rebase_css_urls(css, "css/"),
+        "a{background:url(css/../img/x.png)} b{background:url('css/y.png')} c{background:url(data:x)} d{background:url(/abs.png)}"
+    );
+    assert_eq!(rebase_css_urls(css, ""), css);
+}
+
+#[test]
+fn linked_style_sheet_and_script_are_inlined_with_their_pictures() {
+    let dir = std::env::temp_dir().join(format!("omsi_htmlimg_page_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("css")).unwrap();
+    std::fs::create_dir_all(dir.join("img")).unwrap();
+    std::fs::write(dir.join("img").join("red.bmp"), bmp(4, 4, [255, 0, 0])).unwrap();
+    std::fs::write(dir.join("css").join("s.css"), "#a{width:6px;height:6px;background:url(../img/red.bmp)}").unwrap();
+    std::fs::write(dir.join("index.html"), "<link rel='stylesheet' href='css/s.css'><body style='margin:0'><div id=a></div></body>").unwrap();
+    let dirs = [dir.as_path()];
+    let html = crate::htmltex::load_page(&dirs, "index.html");
+    assert!(html.contains("url(css/../img/red.bmp)"));
+    let mut r = EngineRenderer::new(8, 8, &html);
+    r.set_asset_dirs(crate::htmltex::asset_dirs(&dirs, "index.html"));
+    let f = r.poll_frame().unwrap();
+    assert_eq!(px(&f, 8, 5, 5), [255, 0, 0, 255]);
+}

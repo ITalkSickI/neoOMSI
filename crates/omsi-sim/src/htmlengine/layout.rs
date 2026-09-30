@@ -98,6 +98,7 @@ pub(crate) struct Layouter<'a> {
     pub(crate) bold: &'a FontRef<'static>,
     pub(crate) vw: f32,
     pub(crate) vh: f32,
+    pub(crate) imgs: &'a ImageStore,
 }
 
 impl<'a> Layouter<'a> {
@@ -158,6 +159,7 @@ impl<'a> Layouter<'a> {
                 st.align = 1;
                 st.radius = 4.0;
             }
+            "img" => st.inline_block = true,
             "head" | "style" | "script" | "title" | "meta" | "link" => st.none = true,
             _ => {}
         }
@@ -181,8 +183,38 @@ impl<'a> Layouter<'a> {
         for (k, v) in &n.inline {
             st.apply(k, v, pf, self.vw, self.vh);
         }
+        if n.tag == "img" {
+            self.size_img(idx, &mut st);
+        }
         st.node = idx;
         st
+    }
+
+    /// The size of an `<img>`: CSS first, then its `width`/`height` attributes, then the
+    /// picture's own size; a missing side keeps the picture's proportions.
+    fn size_img(&self, idx: usize, st: &mut Style) {
+        let n = &self.dom.nodes[idx];
+        let u = Units { font: st.font_px, vw: self.vw, vh: self.vh };
+        if st.width.is_none() && !n.attr_w.is_empty() {
+            st.width = parse_len(&n.attr_w, &u);
+        }
+        if st.height.is_none() && !n.attr_h.is_empty() {
+            st.height = parse_len(&n.attr_h, &u);
+        }
+        let (nw, nh) = match self.imgs.dims(&n.src) {
+            Some((w, h)) if !n.src.is_empty() => (w as f32, h as f32),
+            _ => (0.0, 0.0),
+        };
+        match (st.width, st.height) {
+            (None, None) => {
+                st.width = Some(Len::Px(nw));
+                st.height = Some(Len::Px(nh));
+            }
+            (Some(Len::Px(w)), None) => st.height = Some(Len::Px(if nw > 0.0 { w * nh / nw } else { 0.0 })),
+            (None, Some(Len::Px(h))) => st.width = Some(Len::Px(if nh > 0.0 { h * nw / nh } else { 0.0 })),
+            (Some(Len::Pct(_)), None) if nw > 0.0 => st.aspect = nh / nw,
+            _ => {}
+        }
     }
 
     pub(crate) fn inline_runs(&self, idx: usize, st: &Style, out: &mut Vec<(String, Style)>) {
@@ -377,6 +409,7 @@ impl<'a> Layouter<'a> {
         flush(&mut runs, &mut cy, &mut items);
         let content_h = match st.height {
             Some(l) => l.px(pct_h),
+            None if st.aspect > 0.0 => content_w * st.aspect,
             None => cy - (by + pt),
         };
         // a button with a fixed height keeps its label in the middle

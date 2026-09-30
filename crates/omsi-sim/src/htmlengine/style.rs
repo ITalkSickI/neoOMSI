@@ -1,5 +1,7 @@
 //! Computed style: lengths, colours and the property table a page can set.
 
+use std::sync::Arc;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Len {
     Px(f32),
@@ -13,6 +15,16 @@ impl Len {
             Len::Pct(p) => base * p / 100.0,
         }
     }
+}
+
+/// `background-size`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum BgSize {
+    Auto,
+    Cover,
+    Contain,
+    /// Width and height; `None` is `auto` (keeps the picture's proportions).
+    Dims(Option<Len>, Option<Len>),
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +46,16 @@ pub(crate) struct Style {
     /// `display:inline-block`: a box that sits in a row with its neighbours.
     pub(crate) inline_block: bool,
     pub(crate) radius: f32,
+    /// `background-image: url(...)`: the path as written.
+    pub(crate) bg_img: Option<Arc<str>>,
+    pub(crate) bg_size: BgSize,
+    /// `background-repeat`: (horizontally, vertically).
+    pub(crate) bg_repeat: (bool, bool),
+    /// `background-position`: (x, y); a percentage places the picture's own point at the
+    /// same point of the box.
+    pub(crate) bg_pos: [Len; 2],
+    /// Height / width of an `<img>` whose width is a percentage (0: not used).
+    pub(crate) aspect: f32,
     /// The element this style was computed for (what a text run belongs to when it is hit).
     pub(crate) node: usize,
 }
@@ -57,6 +79,11 @@ impl Default for Style {
             inline: false,
             inline_block: false,
             radius: 0.0,
+            bg_img: None,
+            bg_size: BgSize::Auto,
+            bg_repeat: (true, true),
+            bg_pos: [Len::Pct(0.0), Len::Pct(0.0)],
+            aspect: 0.0,
             node: 0,
         }
     }
@@ -160,6 +187,79 @@ pub(crate) fn parse_len(v: &str, u: &Units) -> Option<Len> {
     v.parse::<f32>().ok().map(Len::Px)
 }
 
+/// Split a value at spaces and at `/`, but not inside parentheses (`rgba(0, 0, 0, .5)`,
+/// `url(a b.png)`); a `/` is a token of its own.
+pub(crate) fn split_top(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start: Option<usize> = None;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => {
+                depth += 1;
+                start.get_or_insert(i);
+            }
+            ')' => depth = (depth - 1).max(0),
+            c if depth == 0 && (c.is_whitespace() || c == '/') => {
+                if let Some(st) = start.take() {
+                    out.push(&s[st..i]);
+                }
+                if c == '/' {
+                    out.push("/");
+                }
+            }
+            _ => {
+                start.get_or_insert(i);
+            }
+        }
+    }
+    if let Some(st) = start {
+        out.push(&s[st..]);
+    }
+    out
+}
+
+/// The first `url(...)` of a value: the path (quotes removed) and the byte range of the
+/// whole `url(...)` in `val`.
+pub(crate) fn find_url(val: &str) -> Option<(String, usize, usize)> {
+    let s = val.to_ascii_lowercase().find("url(")?;
+    let inner = s + 4;
+    let e = val[inner..].find(')')? + inner;
+    let path = val[inner..e].trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string();
+    Some((path, s, e + 1))
+}
+
+pub(crate) fn parse_bg_size(t: &[&str], u: &Units) -> Option<BgSize> {
+    let len = |x: &str| if x == "auto" { Some(None) } else { parse_len(x, u).map(Some) };
+    match t {
+        ["cover"] => Some(BgSize::Cover),
+        ["contain"] => Some(BgSize::Contain),
+        [a] => Some(BgSize::Dims(len(*a)?, None)),
+        [a, b] => Some(BgSize::Dims(len(*a)?, len(*b)?)),
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_bg_pos(t: &[&str], u: &Units) -> Option<[Len; 2]> {
+    let val = |x: &str| match x {
+        "left" | "top" => Some(Len::Pct(0.0)),
+        "center" => Some(Len::Pct(50.0)),
+        "right" | "bottom" => Some(Len::Pct(100.0)),
+        _ => parse_len(x, u),
+    };
+    match t {
+        [a] => {
+            let v = val(*a)?;
+            Some(if matches!(*a, "top" | "bottom") { [Len::Pct(50.0), v] } else { [v, Len::Pct(50.0)] })
+        }
+        [a, b] => {
+            let (x, y) = (val(*a)?, val(*b)?);
+            Some(if matches!(*a, "top" | "bottom") || matches!(*b, "left" | "right") { [y, x] } else { [x, y] })
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn box_values(v: &str, u: &Units) -> ([f32; 4], bool) {
     let toks: Vec<&str> = v.split_whitespace().collect();
     let mut auto = false;
@@ -195,9 +295,67 @@ impl Style {
                     self.color = c;
                 }
             }
-            "background" | "background-color" => {
-                if let Some(c) = val.split_whitespace().find_map(parse_color) {
+            "background-color" => {
+                if let Some(c) = split_top(val).into_iter().find_map(parse_color) {
                     self.bg = c;
+                }
+            }
+            "background" => {
+                // the shorthand resets what it does not name (colour excepted, as before)
+                self.bg_img = None;
+                self.bg_size = BgSize::Auto;
+                self.bg_repeat = (true, true);
+                self.bg_pos = [Len::Pct(0.0), Len::Pct(0.0)];
+                let mut rest = val.to_string();
+                if let Some((path, s, e)) = find_url(val) {
+                    if !path.is_empty() {
+                        self.bg_img = Some(Arc::from(path.as_str()));
+                    }
+                    rest.replace_range(s..e, " ");
+                }
+                let (mut pos, mut size, mut slash) = (Vec::new(), Vec::new(), false);
+                for t in split_top(&rest) {
+                    if t == "/" {
+                        slash = true;
+                    } else if let Some(c) = parse_color(t) {
+                        self.bg = c;
+                    } else {
+                        match t {
+                            "no-repeat" => self.bg_repeat = (false, false),
+                            "repeat" => self.bg_repeat = (true, true),
+                            "repeat-x" => self.bg_repeat = (true, false),
+                            "repeat-y" => self.bg_repeat = (false, true),
+                            "none" => self.bg_img = None,
+                            _ if slash => size.push(t),
+                            _ => pos.push(t),
+                        }
+                    }
+                }
+                if let Some(p) = parse_bg_pos(&pos, &own) {
+                    self.bg_pos = p;
+                }
+                if let Some(z) = parse_bg_size(&size, &own) {
+                    self.bg_size = z;
+                }
+            }
+            "background-image" => {
+                self.bg_img = find_url(val).and_then(|(p, _, _)| if p.is_empty() { None } else { Some(Arc::from(p.as_str())) });
+            }
+            "background-size" => {
+                if let Some(z) = parse_bg_size(&split_top(val), &own) {
+                    self.bg_size = z;
+                }
+            }
+            "background-repeat" => match val {
+                "no-repeat" => self.bg_repeat = (false, false),
+                "repeat" => self.bg_repeat = (true, true),
+                "repeat-x" => self.bg_repeat = (true, false),
+                "repeat-y" => self.bg_repeat = (false, true),
+                _ => {}
+            },
+            "background-position" => {
+                if let Some(p) = parse_bg_pos(&split_top(val), &own) {
+                    self.bg_pos = p;
                 }
             }
             "font-size" => {

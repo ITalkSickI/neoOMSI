@@ -54,6 +54,9 @@ pub trait HtmlRenderer: Send {
     /// The depot file as a page sees it (`window.omsi.depot`, see [`crate::vehicle_api::depot`]).
     /// Called once, before the first update.
     fn set_depot(&mut self, _depot: &crate::vehicle_api::ApiValue) {}
+    /// The folders a page's pictures (`<img src>`, `url(...)`) are looked up in, in order.
+    /// Called once, right after the page is created. A backend without pictures leaves it.
+    fn set_asset_dirs(&mut self, _dirs: Vec<PathBuf>) {}
     /// Route, line and destination requests the page made since the last call.
     fn take_requests(&mut self) -> Vec<HtmlRequest> {
         Vec::new()
@@ -106,6 +109,63 @@ fn attr(tag: &str, name: &str) -> Option<String> {
     None
 }
 
+/// The folder part of a style sheet's `href` (`"css/"` for `"css/style.css"`), empty when
+/// the sheet lies next to the page.
+fn css_dir(href: &str) -> &str {
+    let h = href.split(['?', '#']).next().unwrap_or(href);
+    match h.rfind(['/', '\\']) {
+        Some(p) => &h[..=p],
+        None => "",
+    }
+}
+
+/// A style sheet is pasted into the page, so its `url(...)` paths, which are relative to the
+/// sheet, get the sheet's folder (`prefix`) put in front: they then read relative to the page.
+pub(crate) fn rebase_css_urls(css: &str, prefix: &str) -> String {
+    if prefix.is_empty() {
+        return css.to_string();
+    }
+    let lower = css.to_ascii_lowercase();
+    let mut out = String::with_capacity(css.len() + 64);
+    let mut i = 0;
+    while let Some(p) = lower[i..].find("url(") {
+        let inner = i + p + 4;
+        let Some(e) = css[inner..].find(')').map(|e| inner + e) else { break };
+        out.push_str(&css[i..inner]);
+        let raw = css[inner..e].trim();
+        let (quote, path) = match raw.chars().next() {
+            Some(c @ ('"' | '\'')) => (c.to_string(), raw.trim_matches(c)),
+            _ => (String::new(), raw),
+        };
+        let absolute = path.is_empty() || path.starts_with(['/', '\\', '#']) || path.starts_with("data:") || path.contains("://");
+        if absolute {
+            out.push_str(&css[inner..e]);
+        } else {
+            out.push_str(&quote);
+            out.push_str(prefix);
+            out.push_str(path);
+            out.push_str(&quote);
+        }
+        i = e;
+    }
+    out.push_str(&css[i..]);
+    out
+}
+
+/// The folders the pictures of a page are looked up in: the page's own folder, the
+/// model folder, the vehicle folder and the model folder's parent (the order of `load_page`).
+pub fn asset_dirs(dirs: &[&Path], rel: &str) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Some(d) = find_file(dirs, rel).and_then(|p| p.parent().map(Path::to_path_buf)) {
+        v.push(d);
+    }
+    v.extend(dirs.iter().map(|d| d.to_path_buf()));
+    if let Some(parent) = dirs.first().and_then(|d| d.parent()) {
+        v.push(parent.to_path_buf());
+    }
+    v
+}
+
 /// Read the page of an `[htmltexture]` and put its external style sheets and scripts
 /// (`<link rel="stylesheet" href>`, `<script src>`) into it, so the engine sees one file.
 /// A missing page gives an empty one (a blank texture, logged).
@@ -149,7 +209,8 @@ pub fn load_page(dirs: &[&Path], rel: &str) -> String {
         let is_link = lower[at..].starts_with("<link");
         if is_link {
             let sheet = attr(tag, "rel").map_or(false, |r| r.to_ascii_lowercase().contains("stylesheet"));
-            match attr(tag, "href").filter(|_| sheet).and_then(|h| read(&h)) {
+            let loaded = attr(tag, "href").filter(|_| sheet).and_then(|h| read(&h).map(|css| rebase_css_urls(&css, css_dir(&h))));
+            match loaded {
                 Some(css) => out.push_str(&format!("<style>{css}</style>")),
                 None => out.push_str(tag),
             }
@@ -202,6 +263,12 @@ impl HtmlTexture {
 }
 
 impl HtmlTexture {
+    /// Tell the page where its pictures are (see [`asset_dirs`]).
+    pub fn with_asset_dirs(mut self, dirs: Vec<PathBuf>) -> HtmlTexture {
+        self.renderer.set_asset_dirs(dirs);
+        self
+    }
+
     /// The pointer at (`u`, `v`), both 0..1 across the texture (`v` down from the top).
     pub fn pointer(&mut self, u: f32, v: f32, kind: PointerKind) {
         self.renderer.pointer(u * self.width as f32, v * self.height as f32, kind);

@@ -13,6 +13,8 @@ pub struct EngineRenderer {
     pub(crate) start: std::time::Instant,
     /// A press is on the page and its release has not come yet (a click needs both).
     pub(crate) pressed: bool,
+    /// The pictures of the page (`<img>`, `background-image`), loaded when first drawn.
+    pub(crate) imgs: Arc<ImageStore>,
 }
 
 impl EngineRenderer {
@@ -46,6 +48,7 @@ impl EngineRenderer {
             warned,
             start: std::time::Instant::now(),
             pressed: false,
+            imgs: Arc::new(ImageStore::new(Vec::new())),
         }
     }
 
@@ -97,7 +100,7 @@ impl EngineRenderer {
         let Ok(reg) = FontRef::try_from_slice(ROBOTO) else { return body };
         let mut bold = reg.clone();
         bold.set_variation(b"wght", 700.0);
-        let lay = Layouter { dom: &self.js.dom, reg: &reg, bold: &bold, vw: self.width as f32, vh: self.height as f32 };
+        let lay = Layouter { dom: &self.js.dom, reg: &reg, bold: &bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
         let root = self.root_style(&lay);
         let b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
         hit(&b, x, y).unwrap_or(body)
@@ -217,18 +220,23 @@ impl EngineRenderer {
         let Ok(reg) = FontRef::try_from_slice(ROBOTO) else { return cv.px };
         let mut bold = reg.clone();
         bold.set_variation(b"wght", 700.0);
-        let lay = Layouter { dom: &self.js.dom, reg: &reg, bold: &bold, vw: self.width as f32, vh: self.height as f32 };
+        let lay = Layouter { dom: &self.js.dom, reg: &reg, bold: &bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
         let body = self.js.dom.body;
         let root = self.root_style(&lay);
+        // the background of html and body covers the whole texture
+        let full = [0.0, 0.0, self.width as f32, self.height as f32];
         if root.bg[3] > 0 {
-            cv.fill([0.0, 0.0, self.width as f32, self.height as f32], root.bg, 0.0);
+            cv.fill(full, root.bg, 0.0);
         }
+        paint_bg(&mut cv, &self.imgs, full, 0.0, &root);
         let b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
         if b.st.bg[3] > 0 {
-            cv.fill([0.0, 0.0, self.width as f32, self.height as f32], b.st.bg, 0.0);
+            cv.fill(full, b.st.bg, 0.0);
         }
+        paint_bg(&mut cv, &self.imgs, full, 0.0, &b.st);
         let mut b = b;
         b.st.bg = [0, 0, 0, 0];
+        b.st.bg_img = None;
         paint(&mut cv, &lay, &b);
         log::debug!("htmltexture: rendered {}x{} in {:?}", self.width, self.height, started.elapsed());
         cv.px
@@ -302,6 +310,11 @@ impl HtmlRenderer for EngineRenderer {
 
     fn take_triggers(&mut self) -> Vec<String> {
         std::mem::take(&mut self.js.triggers)
+    }
+
+    fn set_asset_dirs(&mut self, dirs: Vec<std::path::PathBuf>) {
+        self.imgs = Arc::new(ImageStore::new(dirs));
+        self.dirty = true;
     }
 
     fn set_depot(&mut self, depot: &crate::vehicle_api::ApiValue) {

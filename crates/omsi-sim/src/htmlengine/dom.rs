@@ -12,6 +12,11 @@ pub(crate) struct Node {
     pub(crate) parent: Option<usize>,
     /// Inline event attributes: `onclick="..."` is stored as `("click", "...")`.
     pub(crate) on: Vec<(String, String)>,
+    /// `src` of an `<img>`.
+    pub(crate) src: String,
+    /// `width` / `height` attributes of an `<img>` (`"64"`, `"50%"`), empty when absent.
+    pub(crate) attr_w: String,
+    pub(crate) attr_h: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -176,6 +181,9 @@ impl Dom {
                         "id" => node.id = v,
                         "class" => node.classes = v.split_whitespace().map(str::to_string).collect(),
                         "style" => node.inline = parse_style_attr(&v),
+                        "src" => node.src = v,
+                        "width" => node.attr_w = v,
+                        "height" => node.attr_h = v,
                         e if e.len() > 2 && e.starts_with("on") => node.on.push((e[2..].to_string(), v)),
                         _ => {}
                     }

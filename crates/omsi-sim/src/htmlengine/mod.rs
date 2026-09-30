@@ -2,11 +2,13 @@
 //! browser and no extra dependency, so it runs the same on every desktop and on Android.
 //!
 //! What a page may use:
-//! * HTML: nested elements, `<style>`, `<script>`, inline `style=""`, `id`, `class`, entities.
+//! * HTML: nested elements, `<style>`, `<script>`, inline `style=""`, `id`, `class`, entities,
+//!   `<img src width height>` (bmp, dds, tga, jpg, png; looked up next to the page, see `images`).
 //! * CSS: selectors `tag`, `#id`, `.class`, `*`, compounds (`div.a#b`), descendant chains
 //!   and `,` lists; `color`, `background(-color)`, `font-size`, `font-weight`, `text-align`,
 //!   `line-height`, `margin*`, `padding*`, `width`, `height`, `display` (`none`, `inline`),
-//!   `visibility`, `border-radius`. Units: `px`, `%`, `em`, `rem`, `pt`, `vw`, `vh`.
+//!   `visibility`, `border-radius`, `background-image: url()`, `background-size`,
+//!   `background-repeat`, `background-position` and the `background` shorthand. Units: `px`, `%`, `em`, `rem`, `pt`, `vw`, `vh`.
 //!   Layout is block flow with wrapped inline text (no floats, no flexbox).
 //! * JavaScript (ES5 plus arrow functions): `var/let/const`, functions, `if/for/while`,
 //!   objects, arrays, `Math.*`, `parseInt/parseFloat/String/Number`,
@@ -66,6 +68,7 @@ use std::sync::{Arc, Mutex};
 mod api;
 mod canvas;
 mod dom;
+mod images;
 mod js;
 mod layout;
 mod renderer;
@@ -74,6 +77,7 @@ mod style;
 use api::*;
 use canvas::*;
 use dom::*;
+use images::*;
 use js::*;
 use layout::*;
 use style::*;
