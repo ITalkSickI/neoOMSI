@@ -420,20 +420,16 @@ fn vs_main(in: VsIn) -> VsOut {
     let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
-    // Road surfaces (splines, crossings, markings, a vehicle's shadow blob) are pulled
-    // towards the eye along the line of sight - the picture does not move, only the depth -
-    // by two centimetres near and more far away (seen from above at a slant that is a few
-    // millimetres of height: a tyre on the road does not sink into it). A road a little under the terrain
-    // otherwise lost to it: the ground's triangles came through the carriageway in teeth
-    // and flickered. A depth bias cannot do it with a floating-point depth buffer: its
-    // steps are relative to the depth, well under a millimetre at a hundred metres. The
-    // painted ground layers (0.75) are the ground and stay where they are.
+    // Legacy surfaces are pulled towards the eye along the line of sight. OMSI splines and
+    // [surface] objects use a fixed 8 cm world lift; ordered scenery phases use their authored
+    // world positions. Both use code 0.9 to keep weather classification without view-space pull.
+    // Painted ground (0.75) stays put.
     let surf = inst_params[e * 2u + 1u].w;
     var cp = wp.xyz;
     if (surf > 0.9) {
         let to = wp.xyz - camera.cam_pos.xyz;
         let d = length(to);
-        // (surface objects, 1.25, a little more than the splines under them)
+        // (legacy surface objects, 1.25, a little more than the splines under them)
         let decal = select(0.0, 0.01 + 0.001 * d, surf > 1.1 && surf < 1.5);
         let pull = min(0.02 + 0.002 * d + decal, d * 0.3);
         cp = wp.xyz - to / max(d, 1e-3) * pull;
@@ -556,6 +552,19 @@ fn fs_shadow_test(in: VsOut) {
     if (a < 0.5) {
         discard;
     }
+}
+
+// Roads with feathered alpha borders stay blended while their overlaps compose.
+// Once the surface phases are complete, only fully covered diffuse pixels occlude
+// later scenery. The transparent borders must not become invisible depth walls.
+@fragment
+fn fs_surface_depth(in: VsOut) -> @location(0) vec4<f32> {
+    let a = diffuse_border(textureSample(t_diffuse, s_diffuse, in.uv), in.uv).a
+        * material.color.a * in.params.x;
+    if (a < 0.999) {
+        discard;
+    }
+    return vec4<f32>(0.0);
 }
 
 // A vehicle body and its windows are often one mesh/material. OMSI represents that

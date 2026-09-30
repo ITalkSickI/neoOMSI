@@ -352,6 +352,11 @@ impl ParticleSystemDef {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Model {
     pub path: PathBuf,
+    /// Scenery render queue when a model.cfg supplies `[rendertype]` (inherited by its .sco
+    /// wrapper unless the wrapper explicitly overrides it).
+    pub render_type: Option<String>,
+    /// `[surface]` from model.cfg, inherited by a scenery object's .sco wrapper when absent.
+    pub surface: Option<bool>,
     pub lods: Vec<Lod>,
     /// The first level was opened by a `[mesh]` before any `[LOD]` (see "lod" below).
     pub implicit_lod: bool,
@@ -462,6 +467,11 @@ impl Model {
     /// model vocabulary (so the caller can try its own).
     pub fn handle_keyword(&mut self, k: &str, r: &mut CfgReader) -> bool {
         match k {
+            "rendertype" => self.render_type = Some(r.word().to_ascii_lowercase()),
+            "surface" => {
+                let value = r.word();
+                self.surface = Some(value != "0");
+            }
             "lod" => {
                 let min_size = r.f32();
                 // Meshes written before the first [LOD] belong to that first level: OMSI gives
