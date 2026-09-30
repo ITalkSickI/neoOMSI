@@ -116,9 +116,9 @@ pub struct DriverFigure {
     /// what it is with the hands at their places.
     lean: f32,
     base_lean: f32,
-    shown: bool,
     /// Whether hands/arms should remain visible in cab (first-person) view behind settings.
     pub show_hands_in_cab: bool,
+    shown: bool,
     /// Posed at least once (the first pose is settled, not eased in from standing).
     settled: bool,
     /// How far the seat is slid forward so that the hands reach the rim (m): a figure of
@@ -315,8 +315,8 @@ impl DriverFigure {
             sign: 0.0,
             lean: 0.0,
             base_lean: 0.0,
-            shown: true,
             show_hands_in_cab: true,
+            shown: true,
             settled: false,
             slide: 0.0,
             hands: [Hand::default(); 2],
@@ -406,15 +406,14 @@ impl DriverFigure {
             }
             self.shown = show;
         }
-        for (k, (_, inst)) in self.meshes.iter().enumerate() {
-            let is_hand_mesh = self.hand_of.get(k).map_or(false, |m| m.iter().any(|&side| side >= 0));
-            let mesh_mirror_only = if mirror_only && self.show_hands_in_cab && is_hand_mesh {
-                false
-            } else {
-                mirror_only
-            };
-            renderer.set_mirror_only(scene, *inst, mesh_mirror_only);
+
+        // Se estivermos na cabine (mirror_only) e show_hands_in_cab for true,
+        // forçamos a malha a ficar ativa para a câmara principal para podermos renderizar os vértices das mãos.
+        let force_visible_in_cab = mirror_only && self.show_hands_in_cab;
+        for (_, inst) in &self.meshes {
+            renderer.set_mirror_only(scene, *inst, if force_visible_in_cab { false } else { mirror_only });
         }
+
         if !show {
             return;
         }
@@ -544,6 +543,17 @@ impl DriverFigure {
             } else {
                 skin_from(m, &self.curled[k], &posed.bones, pos, nrm);
             }
+
+            // --- FILTRAGEM DE VÉRTICES NA CABINE ---
+            // Se estivermos na câmara de 1ª pessoa (cabine), colapsamos todos os vértices que NÃO pertencem às mãos/braços.
+            if mirror_only && self.show_hands_in_cab {
+                for (i, side) in self.hand_of[k].iter().enumerate() {
+                    if *side < 0 {
+                        pos[i] = Vec3::ZERO;
+                    }
+                }
+            }
+
             renderer.update_mesh(scene, self.meshes[k].0, pos, nrm, &m.data.uvs);
         }
         let body = v.body_rotation();
