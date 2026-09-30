@@ -63,6 +63,10 @@ pub(crate) struct Player {
     pub(crate) steer_look: f32,
     /// The driver's seat moved (Settings → seat position; bus frame, m).
     pub(crate) seat: Vec3,
+    /// The interior camera's pose as it glides between viewpoints (vehicle frame): the
+    /// position, yaw (degrees), pitch and field of view of the chosen `[campos]`, eased
+    /// every frame (`driverview_smooth`, omsi-next's `CameraRig::update_vehicle_interior`).
+    pub(crate) smooth_cam: std::cell::Cell<Option<SmoothCam>>,
     /// The player's turn of each mirror (yaw, pitch degrees; Ctrl+Alt+arrows in the cab).
     pub(crate) mirror_offsets: Vec<[f32; 2]>,
     /// A mirror was turned and is not saved yet.
@@ -1504,6 +1508,15 @@ pub(crate) struct AutoDrag {
     t: f32,
 }
 
+/// The interior camera's pose in the vehicle frame, as it glides between viewpoints.
+#[derive(Clone, Copy)]
+pub(crate) struct SmoothCam {
+    pos: Vec3,
+    yaw: f32,
+    pitch: f32,
+    fov: f32,
+}
+
 impl Player {
     /// Drag a clicked drag-only control (see `auto_drag`) a step towards its other end.
     pub(crate) fn tick_auto_drag(&mut self, dt: f32) {
@@ -1561,7 +1574,7 @@ impl Player {
     }
 
     pub(crate) fn camera(&self, view: &str, fallback: &Camera) -> Camera {
-        self.camera_look(view, fallback, (0.0, 0.0), ORBIT_DEFAULT)
+        self.camera_look(view, fallback, (0.0, 0.0), ORBIT_DEFAULT, 0.0, false)
     }
 
     /// The outside camera must not go through walls or under the road: it stands short of
@@ -1615,8 +1628,11 @@ impl Player {
     }
 
     /// `look`: yaw/pitch the player has turned the head (or the orbit) by; `dist`: how far
-    /// the outside camera sits from the vehicle.
-    pub(crate) fn camera_look(&self, view: &str, fallback: &Camera, look: (f32, f32), dist: f32) -> Camera {
+    /// the outside camera sits from the vehicle. `dt` 0 (a single picture) or `smooth`
+    /// false snaps the interior camera straight to its viewpoint; with `smooth` on it
+    /// glides there instead (omsi-next's `driverview_smooth`, easing rate 10: about 63 %
+    /// of the way in 100 ms), yaw along the shorter arc.
+    pub(crate) fn camera_look(&self, view: &str, fallback: &Camera, look: (f32, f32), dist: f32, dt: f32, smooth: bool) -> Camera {
         let def = &self.vehicle.ty.def;
         // `mirror<n>`: what the n-th mirror's camera sees, as it is drawn into the mirror's
         // picture (a check of the mirrors against OMSI's own `reflexion<n>.bmp`)
@@ -1667,7 +1683,33 @@ impl Player {
                 // 0x7edfd0, the vehicle's own matrix): it pitches and rolls with the bus, the
                 // look turned in the bus's frame. Kept level, the view stood still while the
                 // cab rocked about it - the "boat" (the body's own motion matches Omsi's).
-                let turned = omsi_vehicle::Camera { yaw: c.yaw + look.0 + if view == "driver" { self.steer_look } else { 0.0 }, pitch: (c.pitch + look.1).clamp(-89.0, 89.0), ..c.clone() };
+                // The viewpoint's own pose glides: the smoothed pose eases toward the chosen
+                // `[campos]` every frame, the look and the steering lean move on top of it
+                // unsmoothed - exactly omsi-next's `update_vehicle_interior`. `dt` 0 or the
+                // setting off snaps straight there.
+                let alpha = if smooth && dt > 0.0 { 1.0 - (-dt.min(0.1) * 10.0).exp() } else { 1.0 };
+                let s = {
+                    let mut s = self.smooth_cam.get().unwrap_or(SmoothCam {
+                        pos: Vec3::new(c.pos[0], c.pos[1], c.pos[2]),
+                        yaw: c.yaw,
+                        pitch: c.pitch,
+                        fov: c.fov,
+                    });
+                    if s.pos.distance_squared(Vec3::new(c.pos[0], c.pos[1], c.pos[2])) > 400.0 {
+                        // a different bus or a teleport: no glide across the map
+                        s = SmoothCam { pos: Vec3::new(c.pos[0], c.pos[1], c.pos[2]), yaw: c.yaw, pitch: c.pitch, fov: c.fov };
+                    }
+                    s.pos += (Vec3::new(c.pos[0], c.pos[1], c.pos[2]) - s.pos) * alpha;
+                    let mut dy = c.yaw - s.yaw;
+                    while dy > 180.0 { dy -= 360.0; }
+                    while dy < -180.0 { dy += 360.0; }
+                    s.yaw += dy * alpha;
+                    s.pitch += (c.pitch - s.pitch) * alpha;
+                    s.fov += (c.fov - s.fov) * alpha;
+                    self.smooth_cam.set(Some(s));
+                    s
+                };
+                let turned = omsi_vehicle::Camera { pos: [s.pos.x, s.pos.y, s.pos.z], yaw: s.yaw + look.0 + if view == "driver" { self.steer_look } else { 0.0 }, pitch: (s.pitch + look.1).clamp(-89.0, 89.0), ..c.clone() };
                 let (eye, yaw, pitch, roll) = self.vehicle.camera_world_full(&turned);
                 let eye = if view == "driver" { eye + self.vehicle.body_rotation().transform_vector3(self.head + self.seat).as_dvec3() } else { eye };
                 // near 0.25 rather than 0.1: the depth buffer has to reach 6 km, and the
@@ -1678,7 +1720,7 @@ impl Player {
                     yaw,
                     pitch: pitch.clamp(-89.0, 89.0),
                     roll,
-                    fov_deg: c.fov,
+                    fov_deg: s.fov,
                     near: 0.25,
                     far: 6000.0,
                 }
