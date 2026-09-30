@@ -56,6 +56,9 @@ pub(crate) struct Player {
     /// Where the driver's head is thrown by the bus's accelerations (vehicle frame, m):
     /// OMSI's `[driverview_moving]`.
     pub(crate) head: Vec3,
+    /// Its speed (m/s) and the body's turning rates of the frame before (see `move_head`).
+    pub(crate) head_vel: Vec3,
+    pub(crate) head_omega: Vec3,
     /// The driver's seat moved (Settings → seat position; bus frame, m).
     pub(crate) seat: Vec3,
     /// The player's turn of each mirror (yaw, pitch degrees; Ctrl+Alt+arrows in the cab).
@@ -895,15 +898,57 @@ impl Player {
 
     /// The driver's head follows the bus's accelerations a little late, as a body does:
     /// forward when braking, out of a bend, down over a bump (OMSI's head movement).
+    /// The driver's head on its neck, as Omsi.exe moves the driver's view (0x7e2110): a mass
+    /// on a spring, thrown by what the body does where the eye is - up and down always
+    /// (spring 3000/150, damper 2000/150 per second, a kick of the heave's acceleration and
+    /// of the pitch and roll rates' change times the eye's lever), sideways and fore and aft
+    /// with `[driverview_moving]` (3000/100 and 2000/100, and only once the bus is moving),
+    /// never further than 10 cm up or down (0x7e2256). (A lag of our own towards a point a
+    /// hundredth of the acceleration off - a third of what the original throws the head -
+    /// stood in for it.)
     pub(crate) fn move_head(&mut self, dt: f32, enabled: bool) {
+        let dt = dt.clamp(0.0, 0.1);
         let a = self.vehicle.physics.accel;
-        let target = if enabled {
-            Vec3::new(-a.x * 0.010, -a.y * 0.012, -(a.z - 9.81) * 0.006).clamp(Vec3::splat(-0.07), Vec3::splat(0.07))
-        } else {
-            Vec3::ZERO
+        let omega = self.vehicle.rigid.as_ref().map(|rb| rb.omega).unwrap_or(Vec3::ZERO);
+        let dw = omega - self.head_omega;
+        self.head_omega = omega;
+        if dt <= 0.0 {
+            return;
+        }
+        let def = &self.vehicle.ty.def;
+        let n = def.cameras_driver.len().max(1);
+        let eye = def.cameras_driver.get((def.camera_std + self.cam_choice.0) % n).map(|c| Vec3::new(c.pos[0], c.pos[1], c.pos[2])).unwrap_or(Vec3::ZERO);
+        // (1 unless a frame is longer than 1/15 s)
+        let stab = (1.0 / (15.0 * dt)).min(1.0);
+        let spring = |p: f32, v: f32, kick: f32, k: f32, c: f32| -> (f32, f32) {
+            let v = v + kick + (-k * p - c * v) * stab * dt;
+            (p + v * dt, v)
         };
-        let k = 1.0 - (-dt.max(0.0) * 7.0).exp();
-        self.head += (target - self.head) * k;
+        // up and down: the heave's acceleration, and the roll and pitch rates' change at the eye
+        let kick = -(a.z - 9.81) * dt + dw.y * eye.x + dw.x * eye.y;
+        let (mut p, mut v) = spring(self.head.z, self.head_vel.z, kick, 3000.0 / 150.0, 2000.0 / 150.0);
+        if p.abs() > 0.1 {
+            p = p.clamp(-0.1, 0.1);
+            v = 0.0;
+        }
+        self.head.z = p;
+        self.head_vel.z = v;
+        if enabled {
+            let moving = self.vehicle.physics.speed.abs().min(1.0);
+            let kx = (-a.x * dt + dw.y * eye.z - dw.z * eye.y) * moving;
+            let ky = (-a.y * dt - dw.x * eye.z + dw.z * eye.x) * moving;
+            let (px, vx) = spring(self.head.x, self.head_vel.x, kx, 3000.0 / 100.0, 2000.0 / 100.0);
+            let (py, vy) = spring(self.head.y, self.head_vel.y, ky, 3000.0 / 100.0, 2000.0 / 100.0);
+            self.head.x = px;
+            self.head_vel.x = vx;
+            self.head.y = py;
+            self.head_vel.y = vy;
+        } else {
+            self.head.x = 0.0;
+            self.head.y = 0.0;
+            self.head_vel.x = 0.0;
+            self.head_vel.y = 0.0;
+        }
     }
 
     pub(crate) fn tick(&mut self, dt: f32, audio: Option<&omsi_audio::AudioEngine>, inside: bool) {
