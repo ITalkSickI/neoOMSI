@@ -1301,6 +1301,16 @@ impl VehicleInstance {
             .iter()
             .flat_map(|a| a.iter().map(|w| self.get(w[4]).max(0.0) + shared))
             .collect();
+        // Read, the brake forces go back to 0, as Omsi.exe clears them every frame before
+        // the scripts run (0x7e58d9..0x7e5930): a script sets them each frame it brakes. Kept,
+        // a mod that brakes only inside an {if} (a retarder, a stop brake, its own physics)
+        // stayed braked for good, and one that adds to its own value kept on growing.
+        self.put(self.v_brakeforce, 0.0);
+        for a in self.v_wheels.clone() {
+            for w in a {
+                self.put(w[4], 0.0);
+            }
+        }
         if self.rigid.is_some() {
             self.step_rigid(dt, m_wheel, &brakes, c.steering);
             return;

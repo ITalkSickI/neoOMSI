@@ -99,8 +99,10 @@ const EARLY_WAIT: f64 = 40.0;
 const LAYOVER_WAIT: f64 = 1800.0;
 /// On a layover, the doors open this long before the departure.
 const LAYOVER_BOARDING: f64 = 45.0;
-/// Pull into the bay over this distance before the stop.
-const BAY_REACH: f32 = 60.0;
+/// Pull into the bay over this distance before the stop: the stop's docking distance,
+/// 30 m unless its object strings say otherwise (Omsi.exe 0x620058, string 4; the bus
+/// moves over once it is that near, 0x7dac5e).
+const BAY_REACH: f32 = 30.0;
 /// Pulling out: at least this long after the doors were told to close (s), at most this
 /// long waiting for the script to say they are shut.
 const CLOSE_MIN: f32 = 1.5;

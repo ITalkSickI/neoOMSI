@@ -264,8 +264,37 @@ fn shift_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize,
     }
 }
 
-fn bay_offset(_lat: f32) -> f32 {
-    0.0
+fn bay_offset(lat: f32) -> f32 {
+    lat
+}
+
+/// Where a timetable bus stands across its lane at a stop, as Omsi.exe puts it
+/// (0x7dac5e..0x7dae81): its kerb-side flank 0.3 m past the `[busstop]` box's centre -
+/// `lat` less half its `[boundingbox]` width plus 0.3 on the right (the other way round
+/// where traffic keeps left), from the box's offset `lat` off the path (right positive);
+/// a railway vehicle keeps to its track. OMSI clamps it only to the room beside other
+/// vehicles, not to a kerb: the bus pulls into the bay whether or not a path leads there
+/// (#241). (openOMSI kept it on its path before - a map whose box stood behind the
+/// pavement had its buses on the pavement - but OMSI does the same there.)
+fn bay_for(lat: f32, ty: &omsi_sim::VehicleType, rail: bool, left_hand: bool) -> f32 {
+    if rail || !lat.is_finite() {
+        return 0.0;
+    }
+    let hw = ty.def.bounding_box.map(|b| b[0] * 0.5).unwrap_or(1.25);
+    if left_hand {
+        lat + hw - 0.3
+    } else {
+        lat - hw + 0.3
+    }
+}
+
+/// The stops' raw box offsets (see `bay_offset`) made the vehicle's bay offsets, and the
+/// stops moved to where its origin comes to rest (`shift_stops`).
+fn place_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize, f32, f32, f64, i64)], ty: &omsi_sim::VehicleType, rail: bool) {
+    for st in stops.iter_mut() {
+        st.2 = bay_for(st.2, ty, rail, net.left_hand);
+    }
+    shift_stops(net, route, base, stops, crate::bus_service::stop_shift(ty, rail));
 }
 
 /// Where on `route` the bus stop at `pos` is: (route index, distance along that lane, lateral
@@ -1901,8 +1930,8 @@ impl Schedule {
                         run.served[si] = true;
                     }
                 }
-                let shift = crate::bus_service::stop_shift(&traffic.cars[ci].vehicle.ty, traffic.cars[ci].is_rail());
-                shift_stops(&traffic.net, &lanes, base, &mut stops, shift);
+                let (ty, rail) = (traffic.cars[ci].vehicle.ty.clone(), traffic.cars[ci].is_rail());
+                place_stops(&traffic.net, &lanes, base, &mut stops, &ty, rail);
                 stops.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
                 log::debug!(
                     "scheduled bus {}: route carried on by {} lanes, {} more stops",
@@ -2132,8 +2161,8 @@ impl Schedule {
                     }
                 }
             }
-            let shift = crate::bus_service::stop_shift(&traffic.cars[ci].vehicle.ty, traffic.cars[ci].is_rail());
-            shift_stops(&traffic.net, &section, 0, &mut stops, shift);
+            let (ty, rail) = (traffic.cars[ci].vehicle.ty.clone(), traffic.cars[ci].is_rail());
+            place_stops(&traffic.net, &section, 0, &mut stops, &ty, rail);
             // the tour's bus that has just finished its trip takes this one on from where
             // it stands: the section itself when it stands on it, else the shortest way
             // from its lane onto one of the section's first lanes (round a terminal loop)
@@ -2253,7 +2282,7 @@ impl Schedule {
             });
         // where the one that leads comes to rest at a station
         let lead_ty = turned.as_ref().map(|t| t[0].0.clone()).unwrap_or_else(|| ty.clone());
-        shift_stops(&traffic.net, &section, 0, &mut stops, crate::bus_service::stop_shift(&lead_ty, rail));
+        place_stops(&traffic.net, &section, 0, &mut stops, &lead_ty, rail);
         log::debug!("spawn trip {trip_name}: departure {:.2} min, now {:.2} min, leg {leg} at {:.0} %, step {at} of {}, start {s:.0} m into its lane", departure / 60.0, day_time / 60.0, frac * 100.0, steps.len());
         // the bus starts on its step's lane; the stops behind it are dropped
         let mut start_index = start_index;
@@ -4489,9 +4518,9 @@ mod tests {
 
     #[test]
     fn bays() {
-        // a timetable bus never leaves its path for a stop
-        for lat in [2.0, 4.0, 5.0, 9.0] {
-            assert_eq!(bay_offset(lat), 0.0);
+        // the stop's box offset is kept as it is until the vehicle is known
+        for lat in [0.0, 2.0, -4.0] {
+            assert_eq!(bay_offset(lat), lat);
         }
     }
 }
