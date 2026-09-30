@@ -1123,6 +1123,8 @@ pub struct Renderer {
     /// frame: all its meshes and LOD levels take the same one, so exactly one level of an
     /// object is drawn and it does not flip between levels with the view's jitter.
     object_sizes: std::cell::RefCell<HashMap<[u64; 4], f32>>,
+    /// Cleared and reused as the next main view's object-size history.
+    object_sizes_scratch: std::cell::RefCell<HashMap<[u64; 4], f32>>,
     /// The far shadow cascade as last drawn: its light matrix, frames since, the render
     /// origin and the sun it was drawn for.
     shadow_far_cache: std::cell::Cell<(Mat4, u32, DVec3, Vec3)>,
@@ -3458,6 +3460,7 @@ impl Renderer {
             flicker: std::cell::RefCell::new(HashMap::new()),
             cull_drawn: std::cell::RefCell::new(Vec::new()),
             object_sizes: std::cell::RefCell::new(HashMap::new()),
+            object_sizes_scratch: std::cell::RefCell::new(HashMap::new()),
             shadow_far_cache: std::cell::Cell::new((Mat4::IDENTITY, 0, DVec3::ZERO, Vec3::ZERO)),
             shadow_near_cache: std::cell::Cell::new((Mat4::IDENTITY, 0, DVec3::ZERO, Vec3::ZERO)),
             shadow_clear_pipeline,
@@ -7113,10 +7116,20 @@ impl Renderer {
         // hand-over cost more than the work (5 ms a frame for 8 500 instances while the
         // traffic's scripts kept the workers busy).
         // (the main view's last picture, for the hysteresis)
-        let drawn_before = if with_overlays { std::mem::take(&mut *self.cull_drawn.borrow_mut()) } else { Vec::new() };
+        let mut drawn_before = if with_overlays {
+            std::mem::take(&mut *self.cull_drawn.borrow_mut())
+        } else {
+            Vec::new()
+        };
         let was_drawn = |i: usize| drawn_before.get(i / 64).is_some_and(|w| w & (1u64 << (i % 64)) != 0);
-        let sizes_before = if with_overlays { std::mem::take(&mut *self.object_sizes.borrow_mut()) } else { HashMap::new() };
-        let sizes_now: std::cell::RefCell<HashMap<[u64; 4], f32>> = Default::default();
+        let (mut sizes_before, mut sizes_now) = if with_overlays {
+            let sizes_before = std::mem::take(&mut *self.object_sizes.borrow_mut());
+            let mut sizes_now = std::mem::take(&mut *self.object_sizes_scratch.borrow_mut());
+            sizes_now.clear();
+            (sizes_before, sizes_now)
+        } else {
+            (HashMap::new(), HashMap::new())
+        };
         let visible: Vec<(usize, f32, bool)> = {
             (0..scene.instances.len())
                 .filter_map(|i| {
@@ -7188,7 +7201,7 @@ impl Renderer {
                                 _ => fresh,
                             };
                             if with_overlays {
-                                sizes_now.borrow_mut().insert(key, size);
+                                sizes_now.insert(key, size);
                             }
                             size
                         }
@@ -7223,14 +7236,17 @@ impl Renderer {
                 .collect()
         };
         if with_overlays {
-            *self.object_sizes.borrow_mut() = sizes_now.into_inner();
+            *self.object_sizes.borrow_mut() = sizes_now;
+            sizes_before.clear();
+            *self.object_sizes_scratch.borrow_mut() = sizes_before;
         }
         if with_overlays {
-            let mut bits = vec![0u64; scene.instances.len().div_ceil(64)];
+            drawn_before.resize(scene.instances.len().div_ceil(64), 0);
+            drawn_before.fill(0);
             for &(i, _, _) in &visible {
-                bits[i / 64] |= 1u64 << (i % 64);
+                drawn_before[i / 64] |= 1u64 << (i % 64);
             }
-            *self.cull_drawn.borrow_mut() = bits;
+            *self.cull_drawn.borrow_mut() = drawn_before;
         }
         // OMSI_DEBUG_FLICKER: a near instance in view in two frames running that is drawn in
         // one and not in the other - the objects blinking in and out as the view moves
