@@ -489,7 +489,7 @@ fn uvg_density(rules: &[(u16, f32)], defaults: &[i32], u: usize) -> f32 {
 }
 
 fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
-    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.001 && l.length() >= 8.0)
+    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.0 && l.length() >= 8.0)
         .then(|| l.length() as f64 * l.density.clamp(0.05, 4.0) as f64)
 }
 
@@ -1395,7 +1395,7 @@ impl Traffic {
     /// for the group, else the group's default (see `uvg_defaults`).
     fn lane_group_density(&self, lane: &omsi_sim::traffic::Lane, g: usize) -> f32 {
         match self.group_uvg.get(g).copied().flatten() {
-            Some(u) => uvg_density(&lane.group_density, &self.uvg_defaults, u),
+            Some(u) => lane.pool_density(&self.uvg_defaults, u),
             None => lane.density,
         }
     }
@@ -1993,7 +1993,7 @@ impl Traffic {
                 // lanes the map keeps clear of cars, and those whose [rule] trafficdensity is
                 // zero, are not spawned on at all; a lower density makes a lane that much less
                 // likely to be picked
-                .filter(|(_, l)| !l.no_cars && l.density > 0.001)
+                .filter(|(_, l)| !l.no_cars && l.density > 0.0)
                 // nor, where there are others, lanes that end the network just ahead (the car
                 // would only drive into the end and wait there to be taken away)
                 .filter(|(i, _)| {
@@ -2139,7 +2139,11 @@ impl Traffic {
                         .copied()
                         .filter(|&n| {
                             let nl = &self.net.lanes[n];
-                            nl.kind == d.kind && !nl.no_cars && nl.density > 0.001
+                            nl.kind == d.kind && !nl.no_cars && self.types.iter().find(|t| Arc::ptr_eq(&t.0, &d.ty))
+                                .map(|t| match self.group_uvg[t.3] {
+                                    Some(pool) => nl.pool_density(&self.uvg_defaults, pool),
+                                    None => nl.density,
+                                }).unwrap_or(nl.density) > 0.0
                         })
                         .collect();
                     if options.is_empty() {
@@ -2345,6 +2349,11 @@ impl Traffic {
             });
         }
         let mut state = AiState::new(lane, s, seed);
+        if bus.is_none() {
+            state.traffic_pool = self.types.iter().find(|t| Arc::ptr_eq(&t.0, &ty))
+                .and_then(|t| self.group_uvg[t.3])
+                .map(|pool| (pool, Arc::new(self.uvg_defaults.clone())));
+        }
         state.plan_next(&self.net);
         // heavy vehicles (trucks, vans) cruise slower, which is what gets them overtaken
         let heavy = ty.def.mass > 6.0 || bus.is_some();
@@ -3617,7 +3626,7 @@ impl Traffic {
         self.net
             .lanes
             .get(lane)
-            .map(|l| !l.no_cars && l.density > 0.001)
+            .map(|l| !l.no_cars && l.density > 0.0)
             .unwrap_or(false)
     }
 
