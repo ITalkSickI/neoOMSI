@@ -2010,7 +2010,7 @@ pub fn model_lights_owned(
             // either side of the lamp)
             out.push(omsi_render::Corona {
                 position: p,
-                size: (l.size * 0.5).max(0.025),
+                size: (l.size * 0.5).max(0.0),
                 color: [l.color[0] / 255.0, l.color[1] / 255.0, l.color[2] / 255.0],
                 brightness: b,
                 direction: glam::Vec3::ZERO,
@@ -2049,7 +2049,7 @@ pub fn model_lights_owned(
             // with the glow's strength (corona.wgsl, flag bit 8)
             let glow = omsi_render::Corona {
                 position: p,
-                size: (l.size * 0.5).max(0.025),
+                size: (l.size * 0.5).max(0.0),
                 color,
                 brightness: b,
                 direction: dir,
@@ -11880,6 +11880,15 @@ mod tests {
             "points down: {:?}",
             coronas[0].direction
         );
+    }
+
+    #[test]
+    fn small_instrument_lights_keep_their_small_size() {
+        let text = "[mesh]\ndash.o3d\n[light_enh]\n0\n0\n0\n255\n0\n0\n0.01\nspeedo_warn\n0\n";
+        let model = Model::parse(&omsi_cfg::CfgFile::from_str("bus.cfg", text));
+        let coronas = model_lights_faded(&model, &|_| Mat4::IDENTITY, DVec3::ZERO, &|_| 1.0, &[]);
+        assert_eq!(coronas.len(), 1);
+        assert!((coronas[0].size - 0.005).abs() < 1e-6);
     }
 
     #[test]
