@@ -1,808 +1,996 @@
-//! The user's settings: graphics and gameplay switches, kept as `key=value` lines in
-//! `~/.openomsi/settings.cfg` (the launcher writes the same file). Anything missing
-//! keeps its default, so an old file never breaks a new build.
+//! The driver of the player's bus: a person on the bus's `[drivpos]` with both hands on the
+//! steering wheel, turning it as the wheel turns - seen from outside, from the passengers'
+//! places and in the mirrors, left out of the driver's own view (the cab view shows him
+//! only in the mirrors, as OMSI does).
+//!
+//! OMSI keeps driver figures of its own among the people (`Humans/*/..._driver.hum`, which
+//! the passenger crowd leaves out). The wheel is the mesh the model turns with
+//! `Axle_Steering_*` by a large factor (the LiAZ's -1680, the MANs' 1450); its turning axis
+//! is its `[newanim]` origin frame, its rim the farthest ring of its vertices round that
+//! axis and its centre the middle of that ring on the axis (the origin is often the foot of
+//! the column: the Urbino's lies 12 cm under the hub, and the hands held the air under and
+//! past the rim). Both hands hold the rim at ten to two, closed round it in fists whose
+//! wrists continue the forearms (the hand turned onto a fixed frame on the rim bent the
+//! wrists sharply), and turn with it, the wheel's angle read from its own animation
+//! variable. Turned out of its reach a hand lets go and takes the rim again further back
+//! while the other holds on, as drivers shuffle a bus's wheel through their hands; held
+//! still, the wheel gets the hands back at their rest. (Before, the hands stopped at the
+//! end of a small range and the rim slid on through them: the wheel seemed to turn by
+//! itself under hands frozen in the air.)
 
-use std::path::PathBuf;
+use glam::{Mat4, Vec3};
+use omsi_render::{AlphaMode, MeshId, Renderer, Scene};
+use omsi_sim::human::{curl_hands, grip_centres, hand_slot, skin_from, Activity, HumanType, Pose, PoseInput};
+use omsi_sim::VehicleInstance;
+use std::sync::Arc;
 
-/// Version of the settings file (`version=`); files without it are version 1.
-pub const SETTINGS_VERSION: u32 = 2;
+/// Where the hands rest on the rim, from the top, clockwise seen by the driver (degrees):
+/// a little above the sides, ten to two as bus drivers hold a flat wheel.
+const REST: [f32; 2] = [-70.0, 70.0];
+/// Where each hand can hold the rim (degrees from the top): the hands turn with the wheel
+/// within it; a hand turned out of it lets go and takes the rim again further back (the
+/// other hand holding on meanwhile), as a driver shuffles the wheel through his hands. (The
+/// figure used to keep its hands still and let the rim slide through them past a small
+/// range: the wheel seemed to turn by itself under hands frozen in the air.)
+const RANGE: [(f32, f32); 2] = [(-150.0, -20.0), (20.0, 150.0)];
+/// A hand lets go this far (degrees) past its range at most before the rim slides.
+const SLIP: f32 = 25.0;
+/// How far a fist rolls round the rim (degrees, see `hand_targets`) and the time constant
+/// (s) it rolls with.
+const ROLL: (f32, f32) = (-30.0, 120.0);
+/// The roll where the forearm says nothing about it.
+const ROLL_PLAIN: f32 = 30.0;
+const ROLL_EASE: f32 = 0.12;
+/// How fast the wrists' targets are moved so that the fists hold the rim (time constant, s)
+/// and the most they move for it in a frame (m).
+const FIX_EASE: f32 = 0.25;
+const FIX_STEP: f32 = 0.002;
+/// Time constant (s) a hand turns into the frame its hold asks for.
+const FRAME_EASE: f32 = 0.07;
+/// How far a hand that lets go reaches back (degrees short of the far end of its range).
+const REGRIP_BACK: f32 = 40.0;
+/// Lifted off the rim while moving to its new hold (m).
+const LIFT: f32 = 0.06;
+/// The wheel held still this long (s): the hands go back to their rest one after the other.
+const SETTLE_AFTER: f32 = 0.6;
+/// The rim does not run exactly across the fist where the forearm comes along it: the hand
+/// holds it diagonally (the rim from the base of the forefinger to the heel of the hand)
+/// with up to this angle (degrees) between the rim and the knuckles, the wrist straight.
+const DIAGONAL: f32 = 40.0;
+/// A hip over the seat point stands this far in front of it (the feet under the knees).
+const SEAT_FRONT: f32 = 0.34;
+/// Radius the fingers close round: the rim's own (measured, see `find_wheel`; this one when
+/// there is no wheel) and the fingers' half thickness.
+const GRIP_RADIUS: f32 = 0.026;
+const FINGER_HALF: f32 = 0.009;
+/// The most the seat is slid forward to bring the hands to the wheel (m); what is still
+/// missing is made up by leaning forward. Slid further, the driver sat in front of his seat
+/// (the interior mirror showed the seat empty).
+const SLIDE_MAX: f32 = 0.16;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Settings {
-    /// Samples per pixel: 1, 2, 4 or 8.
-    pub msaa: u32,
-    /// Anisotropic filtering 1..16.
-    pub anisotropy: u16,
-    pub ssao: bool,
-    pub shadows: bool,
-    pub shadow_size: u32,
-    /// The route navigator in the lower right corner.
-    pub navigator: bool,
-    /// Navigator opacity 0..1 (it has no background; this scales the whole thing).
-    pub navigator_opacity: f32,
-    /// Which corner the navigator sits in: `bottom-left` (default), `bottom-right`,
-    /// `top-left` or `top-right`.
-    pub navigator_corner: String,
-    /// How passengers board: `auto` - they pay at the cash desk and take the ticket
-    /// themselves; `pay` - they wait at the desk for the driver to sell the ticket (the
-    /// ticket key or the printer); `walk` - they just walk into the saloon (a flat-fare
-    /// or ticket-machine service).
-    pub boarding: String,
-    /// Procedural detail (fractal) texturing of the ground and large walls when close.
-    pub detail_textures: bool,
-    /// Passengers pay the exact fare (no change to give at the cash desk).
-    pub exact_fare: bool,
-    /// Enhanced graphics: the physically based renderer (its own lighting, sky, exposure).
-    pub enhanced: bool,
-    /// The graphics: `vanilla` (as OMSI 2 draws it: no sun shadows, no ambient occlusion,
-    /// no detail grain, no snow cover or rain drops of our own), `vanilla_plus` (the same
-    /// renderer with those extras, the default) or `enhanced` (`enhanced` follows it).
-    pub graphics: String,
-    /// Start a PC OpenXR headset session when the game starts (Windows only).
-    pub vr: bool,
-    /// Fraction of the OpenXR runtime's recommended eye resolution.
-    pub vr_scale: f32,
-    /// Optional VR head pose smoothing time in milliseconds; zero uses raw tracking.
-    pub vr_head_smoothing_ms: f32,
-    /// Total bus mirror redraws per second in VR; zero freezes them.
-    pub vr_mirror_rate: f32,
-    /// Copy the left eye to the desktop while VR is active.
-    pub vr_desktop_mirror: bool,
-    pub fullscreen: bool,
-    pub vsync: bool,
-    /// Master volume 0..1.
-    pub volume: f32,
-    /// Control preset: "simple", "wasd", "arrows" or "omsi".
-    pub drive_keys: String,
-    /// Anti-aliasing of the enhanced picture after tone mapping: `fxaa` (default) or `off`.
-    pub post_aa: String,
-    /// OMSI's maintenance condition (`[wear_lifespan]`): 0 infinite (no wear), 1 very bad,
-    /// 2 bad, 3 normal, 4 good - the player's bus's `wearlifespan` 1.5e6, 0.01, 0.1, 1, 10
-    ///; AI vehicles never wear.
-    pub maintenance: u8,
-    /// `[AIUnschedFactor]`: the share of the random traffic (percent of the map's density).
-    pub ai_unsched_factor: f32,
-    /// `[AIMaxCountScheduled]`: timetable vehicles on the road at once (0 = no limit).
-    pub ai_max_scheduled: u32,
-    /// `[AIMaxCountParked]`: parked cars placed in the loaded tiles (0 = every space).
-    pub ai_max_parked: u32,
-    /// `[no_collision_vehToVeh]` off: the player's bus collides with the traffic.
-    pub collision_vehicles: bool,
-    /// `[no_collision]` off: the player's bus collides with the map's solid objects.
-    pub collision_objects: bool,
-    /// `[no_collision_pedastrians]` off: people are knocked down.
-    pub collision_pedestrians: bool,
-    /// `[driverview_moving]`: the driver's head moves with the bus (braking, bends, bumps).
-    pub head_movement: bool,
-    /// The 3D picture drawn at this fraction of the window's size and scaled up (0.5..1),
-    /// 0 = automatic (full size unless the window has more pixels than a 2560x1080 screen,
-    /// as a Retina window does). The HUD is always drawn at full size.
-    pub render_scale: f32,
-    /// Language of the texts the game shows about the cockpit: `ENG` (default), `DEU` or
-    /// `FRA` - OMSI's own language file codes.
-    pub language: String,
-    /// What passengers say: `all`, `tickets` (only what they ask for) or `off`.
-    pub pax_voices: String,
-    /// OMSI 2's route arrows over the road (as well as or instead of the navigator).
-    pub nav_arrows: bool,
-    /// The driver may get up from the seat and walk about (Ctrl+Shift+G).
-    pub get_up: bool,
-    /// Uncompressed texture files are compressed on loading where that leaves the picture
-    /// close (DXT files always stay compressed on a GPU that takes them).
-    pub texture_compression: bool,
-    /// Texture memory the scenery may take (MB) before far textures lose their finest mip
-    /// levels, like OMSI's `[texmemlimit]`; 0 = automatic (a share of the machine's memory).
-    pub texture_memory: u32,
-    /// OMSI's automatic clutch (`AutoClutch`, on unless `[no_automaticClutch]`): the
-    /// manual-gearbox scripts work the clutch themselves while it is on.
-    pub auto_clutch: bool,
-    /// The original's `performance_minObjSize`: objects smaller on the screen than this are
-    /// not drawn (its presets say 0.013; 0.020 for slow machines, smaller keeps more).
-    pub min_obj_size: f32,
-    /// The original's `performance_maxObjDist` (m): objects farther away are not drawn
-    /// (0 = no limit). `auto` (-1) takes `view_distance` when the file sets one, else 900 m
-    /// (the original's high presets).
-    pub max_obj_dist: f32,
-    /// Frames a second at most (the original's `[maxFPS]`); 0 = no limit. The frame waits
-    /// asleep, so a limit also saves power and heat, and the CPU time for the rest.
-    pub max_fps: u32,
-    /// The chat of a LAN session (V shows and hides it, / types); off leaves it out altogether.
-    pub chat: bool,
-    /// The name of what the cursor points at, shown next to the cursor.
-    pub tooltips: bool,
-    /// The other players' names above their buses.
-    pub name_tags: bool,
-    /// The driver sits in the player's bus, turning the wheel, seen from outside and the
-    /// passengers' seats and in the mirrors (`driver`), never in the driver's own view.
-    pub driver: bool,
-    /// The frame rate in the HUD.
-    pub show_fps: bool,
-    /// Clouds in the sky (volumetric with enhanced graphics, OMSI's cloud layer without).
-    pub clouds: bool,
-    /// How many people wait and ride, against the map's own numbers (OMSI's `AIPassFactor`,
-    /// 1 = 100 %).
-    pub pax_density: f32,
-    /// Volume of the AI vehicles and of the scenery's sounds (OMSI's `sound_ai`,
-    /// `sound_scenery`), 0..1.
-    pub vol_ai: f32,
-    pub vol_scenery: f32,
-    /// Edge of the mirrors' pictures in pixels (OMSI's `performance_reflTexSize`, 2^n).
-    pub mirror_size: u32,
-    /// OMSI's `sound_doppler`: approaching sounds higher, receding ones lower.
-    pub doppler: bool,
-    /// How fast the clock runs (1 real time .. 30); in LAN play the host's decides.
-    pub time_speed: f64,
-    /// Texts the interface has no translation of are translated on this machine by a
-    /// neural translation model (downloaded once, ~620 MB), for the languages OMSI has no
-    /// language files of.
-    pub machine_translation: bool,
-    /// Which meshes cast sun shadows: "all" solid ones, or "omsi" - only those the models
-    /// mark `[shadow]`, as OMSI 2's shadows do.
-    pub shadow_casters: String,
-    /// Dead zone round the centre of a set-up game controller's axes (0..0.3).
-    pub ctrl_deadzone: f32,
-    /// Game controllers switched off, by name (`|` between them).
-    pub ctrl_off: String,
-    /// Keyboard steering at OMSI's steady pace (`KeyboardAxes::linear`).
-    pub steering_linear: bool,
-    /// The wheel stays where the keys left it (`KeyboardAxes::old_steering`).
-    pub old_steering: bool,
-    /// The materials' reflection maps (`RenderOptions::reflections`).
-    pub reflections: bool,
-    /// Mouse steering: how far the wheel turns for the same hand movement (1 = OMSI's: the
-    /// window's width is the full lock).
-    pub mouse_sens: f32,
-    /// The graphics interface: `auto` (Vulkan, else DirectX 12, else OpenGL), `vulkan`,
-    /// `dx12` or `gl` (see `startup::graphics_instance`).
-    pub graphics_api: String,
-    /// Force feedback pushes the other way (a Logitech G29 on some drivers).
-    pub ff_invert: bool,
-    /// Force feedback and rumble at all (off: the controller neither pushes nor shakes).
-    pub ff_enabled: bool,
-    /// OMSI's held brake on the keyboard (see `KeyboardAxes::pedal_hold`); `brake_hold` in
-    /// the file - the old `pedal_hold` (off unless set, and holding the throttle as well)
-    /// is left behind.
-    pub brake_hold: bool,
-    /// The steering wheel's own rotation, lock to lock (degrees; a G29 turns 900).
-    pub wheel_range: f32,
-    /// How far the wheel is turned, lock to lock, for the bus's full lock (degrees); 0 = the
-    /// whole of the wheel's rotation, as OMSI.
-    pub wheel_lock: f32,
-    /// Field of view of the views from the bus (degrees; 0 = the bus's own cameras).
-    pub fov: f32,
-    /// The outside camera is pulled in in front of what stands between it and the bus
-    /// (off: it goes through everything, as in OMSI).
-    pub camera_collision: bool,
-    /// How strongly the analog throttle and brake pedals act: the response curve's
-    /// strength (1 = linear, below 1 softer at the start, above 1 stronger).
-    pub pedal_throttle: f32,
-    pub pedal_brake: f32,
-    /// The driver's eye moved from the bus's own camera (m, bus frame: right, forward, up).
-    pub seat: [f32; 3],
-    /// Head tracking through opentrack's UDP output (TrackIR, webcams, phones), and its port.
-    pub head_tracking: bool,
-    pub head_tracking_port: u16,
-    /// Axes of the tracker turned the other way (`yaw,pitch,roll`): trackers disagree.
-    pub head_tracking_invert: String,
-    /// Discord's "Playing" status (Rich Presence) and the Discord application it shows as.
-    pub discord_status: bool,
-    pub discord_app_id: String,
+struct Wheel {
+    /// The steering wheel mesh (index into the vehicle's meshes).
+    mesh: usize,
+    /// Its `[newanim]` variable and factor: the wheel's angle in degrees is their product.
+    var: String,
+    factor: f32,
+    /// The turning axis, pointing at the driver.
+    axis: Vec3,
+    /// Centre, axis (towards the driver) and the rim's up and right in the wheel's plane,
+    /// at rest, in the model frame; the rim radius the hands hold.
+    centre: Vec3,
+    up: Vec3,
+    right: Vec3,
+    radius: f32,
+    /// The rim's own thickness (its tube's radius, m).
+    tube: f32,
 }
 
-/// A pedal as the settings shape it: `v` 0..1 through the response curve of `strength`.
-pub fn pedal_curve(v: f32, strength: f32) -> f32 {
-    let g = strength.clamp(0.25, 4.0);
-    v.clamp(0.0, 1.0).powf(1.0 / g)
+pub(crate) struct DriverFigure {
+    ty: Arc<HumanType>,
+    /// The figure's meshes with the fingers closed round the rim (`curl_hands`).
+    curled: Vec<(Vec<Vec3>, Vec<Vec3>)>,
+    /// Wrist to knuckles (m).
+    knuckles: f32,
+    /// Where the closed fingers hold their bar, rest frame (see `grip_centres`), and how far
+    /// the wrists' targets are moved (person frame) so that the bar they hold is the rim:
+    /// the hand does not always turn as far as the grip asks (its bend at the wrist is
+    /// limited), and the fingers closed round the air beside the rim.
+    grip_rest: [Option<Vec3>; 2],
+    grip_fix: [Vec3; 2],
+    /// The radius the fingers are closed round (the rim's tube and the fingers' half
+    /// thickness) that `curled` and `grip_rest` are made for.
+    grip_radius: f32,
+    pose: Pose,
+    meshes: Vec<(MeshId, usize)>,
+    skins: Vec<(Vec<Vec3>, Vec<Vec3>)>,
+    /// Hip point, floor point in front of the seat, heading (model frame).
+    hip: Vec3,
+    floor: Vec3,
+    heading: f32,
+    wheel: Option<Wheel>,
+    /// The sign that turns the wheel variable's angle into the angle seen from the seat
+    /// (found by comparing it with the mesh as turned; 0 until then).
+    sign: f32,
+    /// Extra forward lean that brings the hands to the rim (degrees, see SLIDE_MAX), and
+    /// what it is with the hands at their places.
+    lean: f32,
+    base_lean: f32,
+    shown: bool,
+    /// Posed at least once (the first pose is settled, not eased in from standing).
+    settled: bool,
+    /// How far the seat is slid forward so that the hands reach the rim (m): a figure of
+    /// the stock size on the LiAZ's `[drivpos]` sat 0.7 m behind its wheel with its arms
+    /// stretched out in the air.
+    slide: f32,
+    /// Where each hand holds the rim, or is on its way to (see `steer_hands`).
+    hands: [Hand; 2],
+    hands_placed: bool,
+    /// The wheel's angle seen from the seat (degrees, clockwise) now and a frame ago, and
+    /// how long it has been held still (s).
+    theta: f32,
+    last_theta: f32,
+    still: f32,
+    /// How fast the wheel turns (degrees/s, smoothed).
+    rate: f32,
+    /// The elbows as last posed (model frame): the forearms the hands continue.
+    elbows: Option<[Vec3; 2]>,
+    /// How each hand lies now (wrist to knuckles, palm; model frame), eased.
+    frames: [Option<(Vec3, Vec3)>; 2],
+    /// How far each fist is rolled round the rim (degrees), eased.
+    rolls: [Option<f32>; 2],
+    /// Per mesh and vertex, the hand it belongs to (0 left, 1 right, -1 none), and a
+    /// scratch copy of a mesh with a hand opening.
+    hand_of: Vec<Vec<i8>>,
+    blend: (Vec<Vec3>, Vec<Vec3>),
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        if crate::platform::MOBILE {
-            // a phone's graphics chip and battery: 2x MSAA (cheap on a tiled GPU), no
-            // ambient occlusion, a smaller shadow map and mirrors, a shorter view
-            return Self {
-                msaa: 2,
-                anisotropy: 4,
-                ssao: false,
-                shadow_size: 1024,
-                mirror_size: 128,
-                max_fps: 60,
-                max_obj_dist: 900.0,
-                pax_density: 0.7,
-                navigator_corner: "top-center".into(),
-                ..Self::desktop()
-            };
-        }
-        Self::desktop()
+/// A hand on the rim: the point it holds, as an angle on the wheel (the angle seen from the
+/// seat less the wheel's), or its way to a new hold.
+#[derive(Clone, Copy, Default)]
+struct Hand {
+    on_rim: f32,
+    mv: Option<Regrip>,
+}
+
+/// A hand let go of the rim and moving to hold it again: from and to angles seen from the
+/// seat (degrees), progress 0..1 and duration (s).
+#[derive(Clone, Copy)]
+struct Regrip {
+    from: f32,
+    to: f32,
+    t: f32,
+    dur: f32,
+    /// How fast the hand moves along the rim as it lets go and as it takes hold (degrees
+    /// over the whole move): it leaves the rim moving with it and meets it the same way,
+    /// not stopping dead in one frame.
+    v0: f32,
+    v1: f32,
+}
+
+impl Regrip {
+    fn new(from: f32, to: f32, dur: f32, rate: f32) -> Regrip {
+        let v = (rate * dur).clamp(-60.0, 60.0);
+        Regrip { from, to, t: 0.0, dur, v0: v, v1: v }
     }
 }
 
-impl Settings {
-    /// The defaults of a computer.
-    fn desktop() -> Self {
-        Self {
-            msaa: 4,
-            anisotropy: 8,
-            ssao: true,
-            shadows: true,
-            shadow_size: 2048,
-            navigator: true,
-            navigator_opacity: 0.85,
-            navigator_corner: "bottom-left".into(),
-            boarding: "auto".into(),
-            detail_textures: true,
-            exact_fare: true,
-            enhanced: false,
-            graphics: "vanilla_plus".into(),
-            vr: false,
-            vr_scale: 0.65,
-            vr_head_smoothing_ms: 0.0,
-            vr_mirror_rate: 16.0,
-            vr_desktop_mirror: true,
-            fullscreen: false,
-            vsync: true,
-            volume: 0.6,
-            drive_keys: "simple".into(),
-            post_aa: "fxaa".into(),
-            render_scale: 0.0,
-            language: "ENG".into(),
-            pax_voices: "all".into(),
-            nav_arrows: false,
-            get_up: false,
-            texture_compression: true,
-            texture_memory: 0,
-            auto_clutch: true,
-            min_obj_size: 0.013,
-            max_obj_dist: -1.0,
-            max_fps: 0,
-            chat: true,
-            tooltips: true,
-            name_tags: true,
-            show_fps: false,
-            clouds: true,
-            pax_density: 1.0,
-            vol_ai: 1.0,
-            vol_scenery: 1.0,
-            mirror_size: 256,
-            doppler: true,
-            driver: true,
-            maintenance: 0,
-            ai_unsched_factor: 1.0,
-            ai_max_scheduled: 0,
-            ai_max_parked: 0,
-            collision_vehicles: true,
-            collision_objects: true,
-            collision_pedestrians: true,
-            head_movement: true,
-            time_speed: 1.0,
-            machine_translation: false,
-            shadow_casters: "all".into(),
-            ctrl_deadzone: 0.0,
-            ctrl_off: String::new(),
-            steering_linear: false,
-            old_steering: false,
-            reflections: true,
-            mouse_sens: 1.0,
-            graphics_api: "auto".into(),
-            ff_invert: false,
-            ff_enabled: true,
-            brake_hold: true,
-            wheel_range: 900.0,
-            wheel_lock: 0.0,
-            fov: 0.0,
-            camera_collision: true,
-            pedal_throttle: 1.0,
-            pedal_brake: 1.0,
-            seat: [0.0; 3],
-            head_tracking: false,
-            head_tracking_port: 4242,
-            head_tracking_invert: String::new(),
-            discord_status: true,
-            discord_app_id: String::new(),
+impl Hand {
+    /// The angle the hand is at, seen from the seat, and how far it is lifted off the rim
+    /// (0..1).
+    fn seen(&self, theta: f32) -> (f32, f32) {
+        match self.mv {
+            Some(m) => {
+                // a Hermite curve: from and to, leaving and arriving with the rim's speed
+                let t = m.t.clamp(0.0, 1.0);
+                let (t2, t3) = (t * t, t * t * t);
+                let a = m.from * (2.0 * t3 - 3.0 * t2 + 1.0) + m.v0 * (t3 - 2.0 * t2 + t) + m.to * (3.0 * t2 - 2.0 * t3) + m.v1 * (t3 - t2);
+                (a, (t * std::f32::consts::PI).sin().powi(2))
+            }
+            None => (self.on_rim + theta, 0.0),
         }
+    }
+
+    /// How far its fingers are open (0 closed round the rim).
+    fn open(&self) -> f32 {
+        self.mv.map(|m| (m.t * std::f32::consts::PI).sin().powi(2) * 0.45).unwrap_or(0.0)
     }
 }
 
-impl Settings {
-    /// The launcher setting, with the old environment switch kept for existing VR runs.
-    pub fn vr_requested(&self) -> bool {
-        cfg!(windows) && (self.vr || omsi_cfg::env::var_os("OMSI_OPENXR").is_some())
+/// Ease in and out with no jolt at either end (smootherstep).
+fn smooth(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+/// Where the hands go this frame (model frame): the wrists, how each hand lies (wrist to
+/// knuckles, the way the palm faces) and the points of the rim they hold.
+struct Targets {
+    grips: [Vec3; 2],
+    frames: [(Vec3, Vec3); 2],
+    tubes: [Vec3; 2],
+}
+
+impl DriverFigure {
+    /// The driver for the player's bus, when it has a `[drivpos]` and a driver figure is
+    /// installed.
+    /// `pick` chooses among the map's drivers (`drivers.txt`): 0 for the player, a vehicle's
+    /// own number for the traffic.
+    pub(crate) fn new(
+        world: &crate::scene::World,
+        renderer: &Renderer,
+        scene: &mut Scene,
+        v: &VehicleInstance,
+        pick: u64,
+    ) -> Option<DriverFigure> {
+        let ty = driver_type(world, pick)?;
+        Self::new_with(world, renderer, scene, v, ty)
     }
 
-    /// `~/.openomsi/settings.cfg` (or `%USERPROFILE%` on Windows).
-    pub fn path() -> Option<PathBuf> {
-        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-        Some(PathBuf::from(home).join(".openomsi").join("settings.cfg"))
+    /// The driver as another game has them (LAN): the figure it names by its `.hum` file
+    /// (relative to the installation), else one of the map's as `new` picks.
+    pub(crate) fn new_named(
+        world: &crate::scene::World,
+        renderer: &Renderer,
+        scene: &mut Scene,
+        v: &VehicleInstance,
+        hum: &str,
+        pick: u64,
+    ) -> Option<DriverFigure> {
+        let named = omsi_net::human_path(hum)
+            .map(|rel| omsi_cfg::resolve_path(&world.root, &rel))
+            .filter(|p| omsi_cfg::vfs::exists(p))
+            .and_then(|p| cached_type(&p));
+        let ty = named.or_else(|| driver_type(world, pick))?;
+        Self::new_with(world, renderer, scene, v, ty)
     }
 
-    pub fn load() -> Settings {
-        let Some(p) = Self::path() else { return Settings::default() };
-        let mut text = std::fs::read_to_string(&p).unwrap_or_default();
-        // OMSI_GRAPHICS=vanilla|vanilla_plus|enhanced: another renderer for one run
-        if let Ok(g) = omsi_cfg::env::var("OMSI_GRAPHICS") {
-            text.push_str(&format!("\ngraphics={g}\n"));
+    fn new_with(
+        world: &crate::scene::World,
+        renderer: &Renderer,
+        scene: &mut Scene,
+        v: &VehicleInstance,
+        ty: Arc<HumanType>,
+    ) -> Option<DriverFigure> {
+        let seat = seat_of(v)?;
+        let mut meshes = Vec::new();
+        let dirs = ty.texture_dirs(&world.root);
+        for hm in &ty.meshes {
+            let mut mats = Vec::new();
+            for (k, m) in hm.materials.iter().enumerate() {
+                let look: Vec<&std::path::Path> = dirs.iter().map(|p| p.as_path()).collect();
+                let tex = omsi_texture::find_texture(&m.texture, &look).and_then(|path| {
+                    let t = world
+                        .textures
+                        .get_gpu_fast(&path)
+                        .map(|(img, _)| renderer.add_texture_data(scene, &img));
+                    world.textures.release(&path);
+                    t
+                });
+                let alpha = match hm.alpha.get(k).copied().unwrap_or(0) {
+                    1 => AlphaMode::Test,
+                    2 => AlphaMode::Blend,
+                    _ => AlphaMode::Opaque,
+                };
+                mats.push(renderer.add_material(scene, tex, alpha, [1.0; 4], false));
+            }
+            let id = renderer.add_mesh(scene, &hm.data);
+            let inst = renderer.add_instance(scene, id, v.position, Mat4::IDENTITY, mats);
+            meshes.push((id, inst));
         }
-        let mut s = Self::from_text(&text);
-        // OMSI_SAFE_GPU=<n>: the game was started again after its graphics device was lost
-        // (see `App::restart_after_device_loss`): lighter on the card each time
-        if let Some(n) = omsi_cfg::env::var("OMSI_SAFE_GPU").ok().and_then(|v| v.parse::<u32>().ok()).filter(|n| *n > 0) {
-            s.apply_safe_gpu(n);
-        }
-        log::info!("settings from {}: msaa {} af {} ssao {} shadows {} ({}) navigator {} graphics {} post aa {} vsync {} render scale {} boarding {} min object size {} max object distance {} max fps {}", p.display(), s.msaa, s.anisotropy, s.ssao, s.shadows, s.shadow_size, s.navigator, s.graphics, s.post_aa, s.vsync, s.render_scale_text(), s.boarding, s.min_obj_size, s.object_distance(), s.max_fps);
-        s
+        let curled = curl_hands(&ty, GRIP_RADIUS);
+        let knuckles = (ty.joints.finger - ty.joints.hand).length().clamp(0.12, 0.3) * 0.58;
+        let hand_of = ty
+            .meshes
+            .iter()
+            .map(|m| {
+                m.skin
+                    .iter()
+                    .map(|inf| {
+                        (0..2)
+                            .find(|&side| (0..inf.n as usize).any(|j| inf.slot[j] as usize == hand_slot(side) && inf.weight[j] > 0.5))
+                            .map(|side| side as i8)
+                            .unwrap_or(-1)
+                    })
+                    .collect()
+            })
+            .collect();
+        let grip_rest = grip_centres(&ty, GRIP_RADIUS);
+        let mut f = DriverFigure {
+            ty,
+            curled,
+            knuckles,
+            grip_rest,
+            grip_fix: [Vec3::ZERO; 2],
+            grip_radius: GRIP_RADIUS,
+            pose: Pose::new(0x5eed_d71e),
+            meshes,
+            skins: Vec::new(),
+            hip: Vec3::ZERO,
+            floor: Vec3::ZERO,
+            heading: 0.0,
+            wheel: None,
+            sign: 0.0,
+            lean: 0.0,
+            base_lean: 0.0,
+            shown: true,
+            settled: false,
+            slide: 0.0,
+            hands: [Hand::default(); 2],
+            hands_placed: false,
+            theta: 0.0,
+            last_theta: 0.0,
+            still: 0.0,
+            rate: 0.0,
+            elbows: None,
+            frames: [None; 2],
+            rolls: [None; 2],
+            hand_of,
+            blend: Default::default(),
+        };
+        f.seat_in(v, seat);
+        Some(f)
     }
 
-    /// The settings a `settings.cfg` text describes (anything missing keeps its default).
-    pub fn from_text(text: &str) -> Settings {
-        let mut s = Settings::default();
-        let mut version = 0u32;
-        let mut graphics: Option<String> = None;
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+    /// Put the figure into (another) vehicle's driver's seat: `false` when it has none.
+    /// The traffic keeps a few figures and moves them from bus to bus.
+    pub(crate) fn attach(&mut self, v: &VehicleInstance) -> bool {
+        match seat_of(v) {
+            Some(seat) => {
+                self.seat_in(v, seat);
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn seat_in(&mut self, v: &VehicleInstance, seat: omsi_vehicle::cabin::PassPos) {
+        let hip = Vec3::from(seat.pos);
+        let r = seat.rot.to_radians();
+        self.hip = hip;
+        self.floor = Vec3::new(
+            hip.x + r.sin() * SEAT_FRONT,
+            hip.y + r.cos() * SEAT_FRONT,
+            hip.z - seat.height.max(0.3),
+        );
+        self.heading = seat.rot;
+        self.wheel = find_wheel(v, hip);
+        let r = self.wheel.as_ref().map(|w| w.tube + FINGER_HALF).unwrap_or(GRIP_RADIUS);
+        if (r - self.grip_radius).abs() > 1e-4 {
+            self.curled = curl_hands(&self.ty, r);
+            self.grip_rest = grip_centres(&self.ty, r);
+            self.grip_radius = r;
+        }
+        self.sign = 0.0;
+        self.grip_fix = [Vec3::ZERO; 2];
+        self.pose = Pose::new(0x5eed_d71e);
+        self.settled = false;
+        self.slide = 0.0;
+        self.lean = 0.0;
+        self.base_lean = 0.0;
+        self.hands_placed = false;
+        self.elbows = None;
+        self.frames = [None; 2];
+        self.rolls = [None; 2];
+        log::debug!(
+            "driver: {} on [drivpos] ({:.2}, {:.2}, {:.2}){}",
+            self.ty.def.path.file_name().unwrap_or_default().to_string_lossy(),
+            hip.x,
+            hip.y,
+            hip.z,
+            self.wheel
+                .as_ref()
+                .map(|w| format!(", hands on the wheel (rim {:.2} m at ({:.2}, {:.2}, {:.2}))", w.radius, w.centre.x, w.centre.y, w.centre.z))
+                .unwrap_or_else(|| ", no steering wheel found: hands on the lap".into())
+        );
+    }
+
+    /// Hide the figure (kept for another bus).
+    pub(crate) fn hide(&mut self, renderer: &Renderer, scene: &mut Scene) {
+        for (_, inst) in &self.meshes {
+            renderer.set_params(scene, *inst, &[], false, &[]);
+        }
+        self.shown = false;
+    }
+
+    /// Turn the hands with the wheel, pose, skin and place the figure; `show` false hides it,
+    /// `mirror_only` keeps it out of the window's picture but in the mirrors (the driver's
+    /// own view: OMSI shows the driver in the mirrors while one looks from his seat).
+    pub(crate) fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, dt: f32, show: bool, mirror_only: bool) {
+        if show != self.shown {
+            for (_, inst) in &self.meshes {
+                renderer.set_params(scene, *inst, &[], show, &[]);
+            }
+            self.shown = show;
+        }
+        for (_, inst) in &self.meshes {
+            renderer.set_mirror_only(scene, *inst, mirror_only);
+        }
+        if !show {
+            return;
+        }
+        if let Some(theta) = self.wheel_angle(v) {
+            self.steer_hands(theta, if self.settled { dt } else { 0.0 });
+        }
+        // the person's own frame: feet at `floor` (slid forward by `slide`), facing `heading`
+        let h = self.heading.to_radians();
+        let fwd = Vec3::new(h.sin(), h.cos(), 0.0);
+        if !self.settled {
+            // sat down already when first seen (an offscreen picture is one frame), the
+            // seat slid up until the hands reach the rim
+            for round in 0..20 {
+                let mut p = Pose::new(0x5eed_d71e);
+                let targets = self.hand_targets(v, 0.0);
+                let try_input = self.pose_input(targets.as_ref(), fwd);
+                for _ in 0..90 {
+                    p.advance(&self.ty.rig, &try_input, 1.0 / 30.0);
+                }
+                let posed = p.bones(&self.ty.rig);
+                let miss = match (try_input.grips, posed.ok) {
+                    (Some(g), true) => (0..2).map(|k| (posed.wrist[k] - g[k]).length()).fold(0.0f32, f32::max),
+                    _ => 0.0,
+                };
+                if omsi_cfg::env::var_os("OMSI_DEBUG_DRIVER").is_some() {
+                    log::info!("driver settle {round}: slide {:.2} grips {:?} wrists {:?} elbows {:?} neck {:?} hip {:?}", self.slide, try_input.grips, posed.wrist, posed.elbow, posed.neck, posed.hip);
+                }
+                // the hand's frame follows the forearm: pose again until both settle
+                let moved = if posed.ok { self.keep_elbows(&posed.elbow) } else { 0.0 };
+                let off = match (&targets, posed.ok) {
+                    (Some(t), true) => {
+                        let tubes = t.tubes.map(|q| self.to_person(q));
+                        self.correct_grips(&posed.bones, tubes, 1.0, [true; 2])
+                    }
+                    _ => 0.0,
+                };
+                if (miss < 0.02 && off < 0.01 && moved < 0.01) || (self.slide >= SLIDE_MAX && self.lean >= 30.0) || round == 19 {
+                    self.pose = p;
+                    break;
+                }
+                if miss < 0.02 {
+                    // only the fingers' hold or the forearm moved: pose again
+                } else if self.slide < SLIDE_MAX {
+                    self.slide = (self.slide + miss * 0.8).min(SLIDE_MAX);
+                } else {
+                    // about 1.1 cm of reach per degree of lean for a seated adult
+                    self.lean = (self.lean + (miss / 0.011).max(2.0)).min(30.0);
+                }
+            }
+            self.settled = true;
+            self.base_lean = self.lean;
+            log::debug!("driver: seat slid {:.2} m forward and {:.0} deg of lean to reach the wheel", self.slide, self.lean);
+            return self.update(renderer, scene, v, dt, show, mirror_only);
+        }
+        let targets = self.hand_targets(v, dt);
+        if let (Some(t), true) = (&targets, omsi_cfg::env::var_os("OMSI_DEBUG_DRIVER").is_some()) {
+            log::info!("HANDT {dt:.4} {:?} {:?} {:?} {:?} seen {:.1} {}", t.grips[0].to_array(), t.frames[0].0.to_array(), t.frames[0].1.to_array(), t.grips[1].to_array(), self.hands[0].seen(self.theta).0, self.hands[0].mv.is_some());
+        }
+        let input = self.pose_input(targets.as_ref(), fwd);
+        let floor = self.floor + fwd * self.slide;
+        self.pose.advance(&self.ty.rig, &input, dt);
+        let posed = self.pose.bones(&self.ty.rig);
+        if posed.ok {
+            self.keep_elbows(&posed.elbow);
+        }
+        if omsi_cfg::env::var_os("OMSI_DEBUG_DRIVER").is_some() {
+            log::info!("HANDP {dt:.4} {:?} {:?} {:?} lean {:.2}", posed.wrist[0].to_array(), posed.elbow[0].to_array(), self.grip_fix[0].to_array(), self.lean);
+        }
+        if let (Some(t), true) = (&targets, posed.ok) {
+            // (drawn this frame as posed; the next frame holds the rim) - a hand on its way
+            // to a new hold keeps the correction it had
+            let tubes = t.tubes.map(|q| self.to_person(q));
+            let holding = [0, 1].map(|k| self.hands[k].mv.is_none());
+            let off = self.correct_grips(&posed.bones, tubes, 1.0 - (-dt / FIX_EASE).exp(), holding);
+            if omsi_cfg::env::var_os("OMSI_DEBUG_DRIVER").is_some() {
+                log::info!("driver: grip off the rim {off:.3} m, fix {:?}", self.grip_fix);
+            }
+        }
+        // a hold the arms do not quite reach (the top of a tilted wheel is further off than
+        // its sides): lean towards it, and back again when the hands are nearer
+        if let (Some(g), true) = (input.grips, posed.ok && dt > 0.0) {
+            let miss = (0..2)
+                .map(|k| (posed.wrist[k] - g[k]).length())
+                .fold(0.0f32, f32::max);
+            if miss > 0.015 {
+                self.lean = (self.lean + (miss / 0.011) * dt * 4.0).min(34.0).min(self.base_lean + 6.0);
+            } else if miss < 0.006 {
+                self.lean = (self.lean - 4.0 * dt).max(self.base_lean);
+            }
+        }
+        if omsi_cfg::env::var_os("OMSI_DEBUG_DRIVER").is_some() {
+            if let Some(g) = input.grips {
+                log::info!(
+                    "driver: wheel {:.0} deg (sign {}), hands at {:.0} {:.0}{}{}, lean {:.1}, miss {:.3} {:.3}",
+                    self.theta,
+                    self.sign,
+                    self.hands[0].seen(self.theta).0,
+                    self.hands[1].seen(self.theta).0,
+                    if self.hands[0].mv.is_some() { " (left regrips)" } else { "" },
+                    if self.hands[1].mv.is_some() { " (right regrips)" } else { "" },
+                    self.lean,
+                    (posed.wrist[0] - g[0]).length(),
+                    (posed.wrist[1] - g[1]).length()
+                );
+            }
+        }
+        if !posed.ok && !self.skins.is_empty() {
+            return;
+        }
+        self.skins.resize_with(self.ty.meshes.len(), Default::default);
+        let open = [0, 1].map(|k| self.hands[k].open());
+        for (k, m) in self.ty.meshes.iter().enumerate() {
+            let (pos, nrm) = &mut self.skins[k];
+            if open.iter().any(|&o| o > 0.01) {
+                // a hand on its way to a new hold opens its fingers
+                let blend = &mut self.blend;
+                blend.0.clone_from(&self.curled[k].0);
+                blend.1.clone_from(&self.curled[k].1);
+                for (i, side) in self.hand_of[k].iter().enumerate() {
+                    if *side >= 0 && open[*side as usize] > 0.01 {
+                        let o = open[*side as usize];
+                        blend.0[i] = blend.0[i].lerp(m.data.positions[i], o);
+                        blend.1[i] = blend.1[i].lerp(m.data.normals[i], o).normalize_or_zero();
+                    }
+                }
+                skin_from(m, blend, &posed.bones, pos, nrm);
+            } else {
+                skin_from(m, &self.curled[k], &posed.bones, pos, nrm);
+            }
+            renderer.update_mesh(scene, self.meshes[k].0, pos, nrm, &m.data.uvs);
+        }
+        let body = v.body_rotation();
+        let at = v.position + body.transform_point3(floor).as_dvec3();
+        let xf = body * Mat4::from_rotation_z(-h);
+        // lit by the lamps near the seat as they are (the driver's lamp, the saloon lamps
+        // over the front door), not by the brightest lamp anywhere in the bus: taken as the
+        // saloon's strongest light at full strength the driver glowed evenly all night as
+        // soon as any circuit was on, twice as bright as the passengers (who get half)
+        let interior = v.interior_light_at(self.hip + Vec3::new(0.0, 0.0, 0.55)) * 0.5;
+        for (_, inst) in &self.meshes {
+            renderer.set_transform(scene, *inst, at, xf);
+            renderer.set_interior(scene, *inst, interior);
+        }
+    }
+
+}
+
+impl DriverFigure {
+    /// The wheel's frame as it stands now (model frame): centre, axis towards the driver, up
+    /// and right in its plane. An adjustable column (the SD202's) tilts the whole wheel, and
+    /// holds reckoned in the resting frame put the fists beside the tilted rim.
+    fn wheel_frame(w: &Wheel, v: &VehicleInstance) -> (Mat4, Vec3, Vec3, Vec3, Vec3) {
+        let turn = v.mesh_transforms.get(w.mesh).copied().unwrap_or(Mat4::IDENTITY);
+        let centre = turn.transform_point3(w.centre);
+        let axis = turn.transform_vector3(w.axis).normalize_or(w.axis);
+        let mut up = (Vec3::Z - axis * axis.dot(Vec3::Z)).normalize_or_zero();
+        if up.length_squared() < 0.5 {
+            up = w.up;
+        }
+        let right = up.cross(axis).normalize_or(w.right);
+        let right = if right.dot(w.right) < 0.0 { -right } else { right };
+        (turn, centre, axis, up, right)
+    }
+
+    /// How far the wheel is turned, seen from the driver (degrees clockwise): from its
+    /// variable (all the turns of a lock to lock), its sign found from the mesh as turned now
+    /// (within one turn).
+    fn wheel_angle(&mut self, v: &VehicleInstance) -> Option<f32> {
+        let w = self.wheel.as_ref()?;
+        let (turn, _, _, up, right) = Self::wheel_frame(w, v);
+        let up_now = turn.transform_vector3(w.up).normalize_or(w.up);
+        let seen = up_now.dot(right).atan2(up_now.dot(up)).to_degrees();
+        let by_var = v.var(&w.var).unwrap_or(0.0) * w.factor;
+        if seen.abs() > 10.0 && seen.abs() < 170.0 {
+            self.sign = if wrap(by_var - seen).abs() <= wrap(-by_var - seen).abs() { 1.0 } else { -1.0 };
+        }
+        let theta = if self.sign != 0.0 { by_var * self.sign } else { seen };
+        self.theta = theta.clamp(-3600.0, 3600.0);
+        Some(self.theta)
+    }
+
+    /// Move the hands with the wheel turned to `theta`: each turns with the rim while it
+    /// stays within its range; one turned out of it lets go and takes the rim again further
+    /// back while the other holds on (the rim slides through a hand only while the other is
+    /// off it); held still a while, the wheel gets its hands back at their rest.
+    fn steer_hands(&mut self, theta: f32, dt: f32) {
+        // OMSI_DRIVER_HANDS=<left>,<right>: both hands held at these angles (grip close-ups)
+        if let Some(a) = omsi_cfg::env::var("OMSI_DRIVER_HANDS").ok().and_then(|s| {
+            let v: Vec<f32> = s.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+            (v.len() == 2).then(|| [v[0], v[1]])
+        }) {
+            self.hands = [0, 1].map(|k| Hand { on_rim: a[k] - theta, mv: None });
+            self.hands_placed = true;
+            return;
+        }
+        if !self.hands_placed {
+            for k in 0..2 {
+                self.hands[k] = Hand { on_rim: REST[k] - theta, mv: None };
+            }
+            self.hands_placed = true;
+            self.last_theta = theta;
+            self.still = 0.0;
+            return;
+        }
+        let turned = theta - self.last_theta;
+        self.last_theta = theta;
+        if dt > 0.0 {
+            self.rate += (turned / dt - self.rate) * (dt / 0.15).min(1.0);
+        }
+        if turned.abs() < 12.0 * dt.max(1e-3) {
+            self.still += dt;
+        } else {
+            self.still = 0.0;
+        }
+        for k in 0..2 {
+            if let Some(m) = &mut self.hands[k].mv {
+                m.t += dt / m.dur;
+                if m.t >= 1.0 {
+                    self.hands[k] = Hand { on_rim: m.to - theta, mv: None };
+                }
+            }
+        }
+        let inside = |k: usize, a: f32| a >= RANGE[k].0 && a <= RANGE[k].1;
+        // the hand furthest out of its range goes first
+        let mut order = [0usize, 1];
+        let out_by = |h: &Hand, k: usize| {
+            let a = h.on_rim + theta;
+            (RANGE[k].0 - a).max(a - RANGE[k].1)
+        };
+        if out_by(&self.hands[1], 1) > out_by(&self.hands[0], 0) {
+            order = [1, 0];
+        }
+        for k in order {
+            if self.hands[k].mv.is_some() {
                 continue;
             }
-            let Some((k, v)) = line.split_once('=') else { continue };
-            let (k, v) = (k.trim().to_ascii_lowercase(), v.trim());
-            let b = |v: &str| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes");
-            match k.as_str() {
-                "version" => version = v.parse().unwrap_or(0),
-                "msaa" => s.msaa = v.parse().unwrap_or(s.msaa),
-                "anisotropy" | "af" => s.anisotropy = v.parse().unwrap_or(s.anisotropy),
-                "ssao" | "ambient_occlusion" => s.ssao = b(v),
-                "shadows" => s.shadows = b(v),
-                "shadow_size" => s.shadow_size = v.parse().unwrap_or(s.shadow_size),
-                "navigator" => s.navigator = b(v),
-                "navigator_opacity" => s.navigator_opacity = v.parse().unwrap_or(s.navigator_opacity),
-                "navigator_corner" => s.navigator_corner = v.to_ascii_lowercase(),
-                "boarding" => s.boarding = v.to_ascii_lowercase(),
-                "detail_textures" | "fractal" => s.detail_textures = b(v),
-                "exact_fare" => s.exact_fare = b(v),
-                "enhanced" => s.enhanced = b(v),
-                "graphics" | "renderer" => graphics = Some(graphics_mode(v).to_string()),
-                "vr" => s.vr = b(v),
-                "vr_scale" => s.vr_scale = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.5, 1.0)).unwrap_or(s.vr_scale),
-                "vr_head_smoothing_ms" => s.vr_head_smoothing_ms = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 30.0)).unwrap_or(s.vr_head_smoothing_ms),
-                "vr_mirror_rate" => s.vr_mirror_rate = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 60.0)).unwrap_or(s.vr_mirror_rate),
-                "vr_desktop_mirror" => s.vr_desktop_mirror = b(v),
-                "fullscreen" => s.fullscreen = b(v),
-                "vsync" => s.vsync = b(v),
-                "volume" => s.volume = v.parse().unwrap_or(s.volume),
-                // "auto", a fraction (0.75) or a percentage (75)
-                "render_scale" => {
-                    s.render_scale = if v.eq_ignore_ascii_case("auto") {
-                        0.0
-                    } else {
-                        match v.trim_end_matches('%').parse::<f32>() {
-                            Ok(x) if x > 1.5 => (x / 100.0).clamp(0.5, 1.0),
-                            Ok(x) if x > 0.0 => x.clamp(0.5, 1.0),
-                            Ok(_) => 0.0,
-                            Err(_) => s.render_scale,
-                        }
-                    }
-                }
-                "language" | "lang" => s.language = crate::describe::language_code(v),
-                "pax_voices" => s.pax_voices = match v.to_ascii_lowercase().as_str() { "tickets" => "tickets".into(), "off" | "0" | "none" => "off".into(), _ => "all".into() },
-                "nav_arrows" => s.nav_arrows = b(v),
-                "get_up" => s.get_up = b(v),
-                "texture_compression" => s.texture_compression = b(v),
-                "auto_clutch" | "automatic_clutch" => s.auto_clutch = b(v),
-                "min_obj_size" | "performance_minobjsize" => s.min_obj_size = v.parse::<f32>().map(|x| x.clamp(0.0, 0.2)).unwrap_or(s.min_obj_size),
-                "max_obj_dist" | "performance_maxobjdist" => s.max_obj_dist = if v.eq_ignore_ascii_case("off") { 0.0 } else if v.eq_ignore_ascii_case("auto") { -1.0 } else { v.parse::<f32>().map(|x| x.max(0.0)).unwrap_or(s.max_obj_dist) },
-                "max_fps" | "maxfps" => {
-                    s.max_fps = v.parse::<f32>().map(|x| x.max(0.0) as u32).unwrap_or(s.max_fps);
-                    // a phone given the PC OMSI's 30 by the settings import: 60
-                    if cfg!(target_os = "android") && s.max_fps == 30 {
-                        s.max_fps = 60;
-                    }
-                }
-                "chat" => s.chat = b(v),
-                "tooltips" | "mouseover" => s.tooltips = b(v),
-                "name_tags" | "nametags" => s.name_tags = b(v),
-                "driver" => s.driver = b(v),
-                "show_fps" | "fps" => s.show_fps = b(v),
-                "clouds" => s.clouds = b(v),
-                "pax_density" | "aipassfactor" => s.pax_density = v.trim_end_matches('%').parse::<f32>().map(|x| if x > 5.0 { x / 100.0 } else { x }).map(|x| x.clamp(0.0, 3.0)).unwrap_or(s.pax_density),
-                "vol_ai" => s.vol_ai = v.parse::<f32>().map(|x| x.clamp(0.0, 1.0)).unwrap_or(s.vol_ai),
-                "vol_scenery" => s.vol_scenery = v.parse::<f32>().map(|x| x.clamp(0.0, 1.0)).unwrap_or(s.vol_scenery),
-                "doppler" | "sound_doppler" => s.doppler = b(v),
-                "mirror_size" => s.mirror_size = v.parse::<u32>().map(|x| x.clamp(64, 2048).next_power_of_two()).unwrap_or(s.mirror_size),
-                "texture_memory" | "texmemlimit" => s.texture_memory = v.parse::<f32>().map(|x| x.max(0.0) as u32).unwrap_or(s.texture_memory),
-                "maintenance" | "wear_lifespan" => s.maintenance = v.parse::<u8>().map(|x| x.min(4)).unwrap_or(s.maintenance),
-                "ai_unsched_factor" | "aiunschedfactor" => s.ai_unsched_factor = v.trim_end_matches('%').parse::<f32>().map(|x| (x / 100.0).clamp(0.0, 3.0)).unwrap_or(s.ai_unsched_factor),
-                "ai_max_scheduled" | "aimaxcountscheduled" => s.ai_max_scheduled = v.parse().unwrap_or(s.ai_max_scheduled),
-                "ai_max_parked" | "aimaxcountparked" => s.ai_max_parked = v.parse().unwrap_or(s.ai_max_parked),
-                "collision_vehicles" => s.collision_vehicles = b(v),
-                "collision_objects" => s.collision_objects = b(v),
-                "collision_pedestrians" => s.collision_pedestrians = b(v),
-                "head_movement" | "driverview_moving" => s.head_movement = b(v),
-                "time_speed" => s.time_speed = v.trim_start_matches(['x', 'X']).parse::<f64>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(1.0, 30.0)).unwrap_or(s.time_speed),
-                "machine_translation" => s.machine_translation = b(v),
-                "ctrl_deadzone" => s.ctrl_deadzone = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 0.3)).unwrap_or(s.ctrl_deadzone),
-                "reflections" | "envmap" => s.reflections = b(v),
-                "graphics_api" => s.graphics_api = v.trim().to_ascii_lowercase(),
-                "ctrl_off" => s.ctrl_off = v.trim().to_string(),
-                "steering_linear" => s.steering_linear = b(v),
-                "old_steering" => s.old_steering = b(v),
-                "ff_invert" => s.ff_invert = b(v),
-                "ff_enabled" => s.ff_enabled = b(v),
-                "brake_hold" => s.brake_hold = b(v),
-                "wheel_range" => s.wheel_range = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(90.0, 2880.0)).unwrap_or(s.wheel_range),
-                "wheel_lock" => s.wheel_lock = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| if x < 45.0 { 0.0 } else { x.min(2880.0) }).unwrap_or(s.wheel_lock),
-                "camera_collision" => s.camera_collision = b(v),
-                "head_tracking" => s.head_tracking = b(v),
-                "head_tracking_invert" => s.head_tracking_invert = v.to_ascii_lowercase(),
-                "discord_status" => s.discord_status = b(v),
-                "discord_app_id" => s.discord_app_id = v.trim().to_string(),
-                "head_tracking_port" => s.head_tracking_port = v.parse::<u16>().ok().filter(|p| *p > 0).unwrap_or(s.head_tracking_port),
-                "pedal_throttle" => s.pedal_throttle = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 4.0)).unwrap_or(s.pedal_throttle),
-                "pedal_brake" => s.pedal_brake = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 4.0)).unwrap_or(s.pedal_brake),
-                "seat_x" | "seat_y" | "seat_z" => {
-                    let k = (k.as_bytes()[5] - b'x') as usize;
-                    s.seat[k] = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(-1.5, 1.5)).unwrap_or(0.0);
-                }
-                "fov" => s.fov = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| if x < 20.0 { 0.0 } else { x.min(120.0) }).unwrap_or(s.fov),
-                "mouse_sens" => s.mouse_sens = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.25, 2.0)).unwrap_or(s.mouse_sens),
-                "shadow_casters" => s.shadow_casters = if v.eq_ignore_ascii_case("omsi") { "omsi".into() } else { "all".into() },
-                "post_aa" => s.post_aa = if matches!(v.to_ascii_lowercase().as_str(), "off" | "0" | "none" | "false") { "off".into() } else { "fxaa".into() },
-                "drive_keys" => s.drive_keys = match v.to_ascii_lowercase().as_str() { "wasd" | "arrows" | "omsi" | "simple" => v.to_ascii_lowercase(), _ => s.drive_keys },
-                _ => {}
+            let a = self.hands[k].on_rim + theta;
+            if inside(k, a) {
+                continue;
+            }
+            // (the other hand keeps hold meanwhile, sliding if it has to)
+            if self.hands[1 - k].mv.is_none() {
+                // back against the turn, towards the other end of the range
+                let (lo, hi) = RANGE[k];
+                let to = if a > hi { lo + REGRIP_BACK } else { hi - REGRIP_BACK };
+                let to = if (to - REST[k]).abs() > 90.0 { REST[k] } else { to };
+                // (from where the hand is now: a hand that slid is already past the range)
+                let from = a;
+                // an unhurried reach back, only a little quicker the faster the wheel turns
+                // (at a tenth of a second a hand flew back to its hold)
+                let dur = (0.38 + (to - from).abs() / 350.0) / (1.0 + self.rate.abs() / 2000.0);
+                self.hands[k] = Hand { on_rim: self.hands[k].on_rim, mv: Some(Regrip::new(from, to, dur.max(0.32), self.rate)) };
+            } else {
+                // the rim slides through the hand past its range: the hand goes on with it
+                // less and less over SLIP degrees (stopped dead at a limit, it jumped)
+                let (lo, hi) = RANGE[k];
+                let before = self.hands[k].on_rim + theta - turned;
+                let over = (lo - before).max(before - hi).max(0.0);
+                let outward = (before > hi && turned > 0.0) || (before < lo && turned < 0.0);
+                let follow = if outward { 1.0 - smooth(over / SLIP) } else { 1.0 };
+                let now = (before + turned * follow).clamp(lo - SLIP, hi + SLIP);
+                self.hands[k].on_rim = now - theta;
             }
         }
-        // `graphics` decides; a file without it (older builds) says only `enhanced`, and
-        // its vanilla renderer is what is now called Vanilla+
-        s.graphics = graphics.unwrap_or_else(|| if s.enhanced { "enhanced" } else { "vanilla_plus" }.to_string());
-        s.enhanced = s.graphics == "enhanced";
-        if s.classic() {
-            s.shadows = false;
-            s.ssao = false;
-            s.detail_textures = false;
-        }
-        // Files older than version 2 say `boarding=pay` because that was the launcher's
-        // default, not because anybody chose it: passengers then stood at the cash desk
-        // waiting for a driver who did not know he had to sell them a ticket.
-        if version < SETTINGS_VERSION && s.boarding == "pay" {
-            log::info!("settings: boarding=pay from an old settings file taken as auto (choose pay again in the launcher to keep it)");
-            s.boarding = "auto".into();
-        }
-        s
-    }
-
-    /// The settings as the file holds them. The game only ever reads the file - the
-    /// launcher's settings page writes it - so this is here for the round-trip test that
-    /// every key read is written back.
-    #[cfg(test)]
-    pub fn to_text(&self) -> String {
-        format!(
-            "# openOMSI settings\n\
-            version={}\n\
-            msaa={}\n\
-            anisotropy={}\n\
-            ssao={}\n\
-            shadows={}\n\
-            shadow_size={}\n\
-            navigator={}\n\
-            navigator_opacity={}\n\
-            navigator_corner={}\n\
-            boarding={}\n\
-            detail_textures={}\n\
-            exact_fare={}\n\
-            enhanced={}\n\
-            graphics={}\n\
-            vr={}\n\
-            vr_scale={}\n\
-            vr_head_smoothing_ms={}\n\
-            vr_mirror_rate={}\n\
-            vr_desktop_mirror={}\n\
-            fullscreen={}\n\
-            vsync={}\n\
-            volume={}\n\
-            drive_keys={}\n\
-            post_aa={}\n\
-            render_scale={}\n\
-            language={}\n\
-            pax_voices={}\n\
-            nav_arrows={}\n\
-            get_up={}\n\
-            texture_compression={}\n\
-            texture_memory={}\n\
-            auto_clutch={}\n\
-            min_obj_size={}\n\
-            max_obj_dist={}\n\
-            max_fps={}\n\
-            chat={}\n\
-            tooltips={}\n\
-            name_tags={}\n\
-            show_fps={}\n\
-            clouds={}\n\
-            pax_density={}\n\
-            vol_ai={}\n\
-            vol_scenery={}\n\
-            mirror_size={}\n\
-            doppler={}\n\
-            driver={}\n\
-            maintenance={}\n\
-            ai_unsched_factor={}\n\
-            ai_max_scheduled={}\n\
-            ai_max_parked={}\n\
-            collision_vehicles={}\n\
-            collision_objects={}\n\
-            collision_pedestrians={}\n\
-            head_movement={}\n\
-            time_speed={}\n\
-            machine_translation={}\n\
-            shadow_casters={}\n\
-            ctrl_deadzone={}\n\
-            ctrl_off={}\n\
-            steering_linear={}\n\
-            old_steering={}\n\
-            reflections={}\n\
-            mouse_sens={}\n\
-            graphics_api={}\n\
-            ff_invert={}\n\
-            ff_enabled={}\n\
-            brake_hold={}\n\
-            wheel_range={}\n\
-            wheel_lock={}\n\
-            fov={}\n\
-            camera_collision={}\n\
-            pedal_throttle={}\n\
-            pedal_brake={}\n\
-            seat_x={}\n\
-            seat_y={}\n\
-            seat_z={}\n\
-            head_tracking={}\n\
-            head_tracking_port={}\n\
-            head_tracking_invert={}\n\
-            discord_status={}\n\
-            discord_app_id={}\n",
-            SETTINGS_VERSION,
-            self.msaa,
-            self.anisotropy,
-            self.ssao as u8,
-            self.shadows as u8,
-            self.shadow_size,
-            self.navigator as u8,
-            self.navigator_opacity,
-            self.navigator_corner,
-            self.boarding,
-            self.detail_textures as u8,
-            self.exact_fare as u8,
-            self.enhanced as u8,
-            self.graphics,
-            self.vr as u8,
-            self.vr_scale,
-            self.vr_head_smoothing_ms,
-            self.vr_mirror_rate,
-            self.vr_desktop_mirror as u8,
-            self.fullscreen as u8,
-            self.vsync as u8,
-            self.volume,
-            self.drive_keys,
-            self.post_aa,
-            self.render_scale_text(),
-            self.language,
-            self.pax_voices,
-            self.nav_arrows as u8,
-            self.get_up as u8,
-            self.texture_compression as u8,
-            self.texture_memory,
-            self.auto_clutch as u8,
-            self.min_obj_size,
-            if self.max_obj_dist < 0.0 { "auto".to_string() } else { self.max_obj_dist.to_string() },
-            self.max_fps,
-            self.chat as u8,
-            self.tooltips as u8,
-            self.name_tags as u8,
-            self.show_fps as u8,
-            self.clouds as u8,
-            self.pax_density,
-            self.vol_ai,
-            self.vol_scenery,
-            self.mirror_size,
-            self.doppler as u8,
-            self.driver as u8,
-            self.maintenance,
-            self.ai_unsched_factor,
-            self.ai_max_scheduled,
-            self.ai_max_parked,
-            self.collision_vehicles as u8,
-            self.collision_objects as u8,
-            self.collision_pedestrians as u8,
-            self.head_movement as u8,
-            self.time_speed,
-            self.machine_translation as u8,
-            self.shadow_casters,
-            self.ctrl_deadzone,
-            self.ctrl_off,
-            self.steering_linear as u8,
-            self.old_steering as u8,
-            self.reflections as u8,
-            self.mouse_sens,
-            self.graphics_api,
-            self.ff_invert as u8,
-            self.ff_enabled as u8,
-            self.brake_hold as u8,
-            self.wheel_range,
-            self.wheel_lock,
-            self.fov,
-            self.camera_collision as u8,
-            self.pedal_throttle,
-            self.pedal_brake,
-            self.seat[0],
-            self.seat[1],
-            self.seat[2],
-            self.head_tracking as u8,
-            self.head_tracking_port,
-            self.head_tracking_invert,
-            self.discord_status as u8,
-            self.discord_app_id
-        )
-    }
-
-    /// Vanilla graphics: the picture as OMSI 2 draws it.
-    pub fn classic(&self) -> bool {
-        self.graphics == "vanilla"
-    }
-
-    /// How far objects are drawn (m, 0 = no limit): `max_obj_dist`, or when that is `auto`
-    /// the visible distance the launcher sets, else the original's 900 m.
-    pub fn object_distance(&self) -> f32 {
-        if self.max_obj_dist >= 0.0 {
-            self.max_obj_dist
-        } else {
-            view_distance().map(|v| v as f32).unwrap_or(900.0)
+        if self.still > SETTLE_AFTER && self.hands.iter().all(|h| h.mv.is_none()) {
+            let far = |k: usize| (self.hands[k].on_rim + theta - REST[k]).abs();
+            let k = if far(0) >= far(1) { 0 } else { 1 };
+            if far(k) > 22.0 {
+                let from = self.hands[k].on_rim + theta;
+                self.hands[k].mv = Some(Regrip::new(from, REST[k], 0.45 + (REST[k] - from).abs() / 300.0, 0.0));
+                self.still = 0.0;
+            }
         }
     }
 
-    /// `auto` or the fraction, as the file and the log write it.
-    pub fn render_scale_text(&self) -> String {
-        if self.render_scale > 0.0 { format!("{}", self.render_scale) } else { "auto".into() }
+    /// Where the wrists go and how the hands lie: each fist closed round the rim at the angle
+    /// its hand is at, the wrist continuing the forearm; a hand on its way to a new hold
+    /// lifted off the rim towards the driver.
+    /// `dt` eases each hand's frame towards the one its hold asks for (0 takes it at once).
+    fn hand_targets(&mut self, v: &VehicleInstance, dt: f32) -> Option<Targets> {
+        let w = self.wheel.as_ref()?;
+        let (_, centre, axis, up, right) = Self::wheel_frame(w, v);
+        let h = self.heading.to_radians();
+        let fwd = Vec3::new(h.sin(), h.cos(), 0.0);
+        let mut t = Targets { grips: [Vec3::ZERO; 2], frames: [(Vec3::ZERO, Vec3::ZERO); 2], tubes: [Vec3::ZERO; 2] };
+        for k in 0..2 {
+            let (seen, lift) = self.hands[k].seen(self.theta);
+            let a = seen.to_radians();
+            let radial = (up * a.cos() + right * a.sin()).normalize_or(up);
+            let along = (right * a.cos() - up * a.sin()).normalize_or(right);
+            let tube = centre + radial * w.radius + (axis * 0.85 + radial * 0.3) * (LIFT * lift);
+            // the forearm: from the elbow as last posed, else from about where it will be
+            let elbow = self.elbows.map(|e| e[k]).unwrap_or(self.hip + Vec3::Z * 0.2 - fwd * 0.05 + (tube - centre).with_z(0.0) * 0.5);
+            let fore = (tube - elbow).normalize_or(fwd);
+            // How far the fist is rolled round the rim (0: the fingers out over the rim's
+            // outer edge, the palm on it from the driver's side; 90: the knuckles turned away
+            // from the driver, the palm towards the wheel's middle, as round an upright
+            // wheel's sides): as near the forearm's line as it goes, within what a wrist does.
+            // Where the forearm runs along the rim (the sides of a flat wheel) its line says
+            // nothing about the roll and the fist keeps to the plain grip over the outer edge
+            // (taken from the line alone, the palm flipped over there from frame to frame).
+            let (e1, e2) = (radial, -axis);
+            let proj = fore - along * along.dot(fore);
+            let want = proj.dot(e2).atan2(proj.dot(e1)).to_degrees().clamp(ROLL.0, ROLL.1);
+            let want = ROLL_PLAIN + (want - ROLL_PLAIN) * smooth((proj.length() - 0.2) / 0.4);
+            let roll = match self.rolls[k] {
+                Some(r) if dt > 0.0 => r + (want - r) * (1.0 - (-dt / ROLL_EASE).exp()),
+                _ => want,
+            };
+            self.rolls[k] = Some(roll);
+            let (sr, cr) = roll.to_radians().sin_cos();
+            let across = (e1 * cr + e2 * sr).normalize_or(e1);
+            // the rim held diagonally, the knuckles turned towards the forearm's line
+            let dir = turn_towards(across, fore, DIAGONAL.to_radians());
+            // a right hand's thumb lies towards the top of the wheel on its right side, a
+            // left hand's likewise on its left: the fingers close round the rim the way that
+            // puts it there (the other way round was a mirrored hand, the thumb pointing down
+            // the rim and the fingers held in over the top)
+            let palm = dir.cross(along).normalize_or(-axis);
+            let palm = (palm - dir * dir.dot(palm)).normalize_or(palm);
+            // the hand turns into its new frame over a moment, not in one frame
+            let (dir, palm) = match self.frames[k] {
+                Some((d0, p0)) if dt > 0.0 => {
+                    let q0 = glam::Quat::from_mat3(&glam::Mat3::from_cols(d0, p0, d0.cross(p0)));
+                    let q1 = glam::Quat::from_mat3(&glam::Mat3::from_cols(dir, palm, dir.cross(palm)));
+                    let q = q0.slerp(q1, 1.0 - (-dt / FRAME_EASE).exp()).normalize();
+                    (q * Vec3::X, q * Vec3::Y)
+                }
+                _ => (dir, palm),
+            };
+            self.frames[k] = Some((dir, palm));
+            let knuckle = tube - palm * self.grip_radius;
+            t.grips[k] = knuckle - dir * self.knuckles;
+            t.frames[k] = (dir, palm);
+            t.tubes[k] = tube;
+        }
+        Some(t)
     }
 
-    /// Lighter graphics after the graphics device was lost `n` times this session: no
-    /// multisampling, no SSAO, smaller shadow and mirror maps, fewer textures kept; a second
-    /// loss also a smaller picture and no shadows.
-    pub fn apply_safe_gpu(&mut self, n: u32) {
-        self.msaa = 1;
-        self.ssao = false;
-        self.shadow_size = self.shadow_size.min(2048);
-        self.mirror_size = self.mirror_size.min(256);
-        let budget = if self.texture_memory > 0 { self.texture_memory } else { 1200 };
-        self.texture_memory = (budget * 2 / 3).max(400);
-        if n >= 2 {
-            self.shadows = false;
-            self.shadow_size = 1024;
-            self.render_scale = if self.render_scale > 0.0 { self.render_scale.min(0.75) } else { 0.75 };
-            self.texture_memory = self.texture_memory.min(700);
-            self.mirror_size = 128;
+    /// The pose input of the driver at the wheel (the grips in the person's frame).
+    fn pose_input(&self, targets: Option<&Targets>, fwd: Vec3) -> PoseInput<'static> {
+        let h = self.heading.to_radians();
+        let turn_person = move |d: Vec3| Vec3::new(d.x * h.cos() - d.y * h.sin(), d.x * h.sin() + d.y * h.cos(), d.z);
+        let floor = self.floor + fwd * self.slide;
+        let hip = self.hip + fwd * self.slide;
+        PoseInput {
+            activity: Activity::Sit,
+            origin: floor.as_dvec3(),
+            heading: self.heading as f64,
+            frame: 1,
+            seat: Some(self.to_person(hip)),
+            look: Some(self.to_person(hip + fwd * 20.0 + Vec3::Z * 0.4)),
+            grips: targets.map(|t| [0, 1].map(|k| self.to_person(t.grips[k]) + self.grip_fix[k])),
+            grip_frames: targets.map(|t| t.frames.map(|(d, p)| (turn_person(d), turn_person(p)))),
+            grip_lean: self.lean,
+            ..Default::default()
         }
-        log::warn!("safer graphics after a lost graphics device ({n}): msaa 1, SSAO off, shadows {} ({}), textures {} MB, render scale {}", self.shadows, self.shadow_size, self.texture_memory, self.render_scale_text());
     }
 
-    pub fn render_options(&self) -> omsi_render::RenderOptions {
-        omsi_render::RenderOptions {
-            msaa: self.msaa,
-            anisotropy: self.anisotropy,
-            shadow_size: self.shadow_size,
-            ssao: self.ssao,
-            render_scale: self.render_scale,
-            compress_textures: self.texture_compression,
-            fxaa: self.post_aa != "off",
-            min_obj_size: self.min_obj_size,
-            max_obj_dist: self.object_distance(),
-            omsi_shadow_casters: self.shadow_casters == "omsi",
-            reflections: self.reflections,
+    /// A model-frame point in the person's frame (feet at the slid floor point, facing the
+    /// seat's heading), and back.
+    fn to_person(&self, q: Vec3) -> Vec3 {
+        let h = self.heading.to_radians();
+        let d = q - (self.floor + Vec3::new(h.sin(), h.cos(), 0.0) * self.slide);
+        Vec3::new(d.x * h.cos() - d.y * h.sin(), d.x * h.sin() + d.y * h.cos(), d.z)
+    }
+
+    fn from_person(&self, d: Vec3) -> Vec3 {
+        let h = self.heading.to_radians();
+        let floor = self.floor + Vec3::new(h.sin(), h.cos(), 0.0) * self.slide;
+        floor + Vec3::new(d.x * h.cos() + d.y * h.sin(), -d.x * h.sin() + d.y * h.cos(), d.z)
+    }
+
+    /// Keep the posed elbows (person frame) for the next hands' frames; how far they moved.
+    fn keep_elbows(&mut self, posed: &[Vec3; 2]) -> f32 {
+        let now = posed.map(|e| self.from_person(e));
+        let moved = self.elbows.map(|e| (0..2).map(|k| (e[k] - now[k]).length()).fold(0.0, f32::max)).unwrap_or(1.0);
+        self.elbows = Some(now);
+        moved
+    }
+
+    /// Move the wrists' targets by `gain` of what separates the bar the posed fingers hold
+    /// from the rim (`tubes`, person frame); the largest distance left.
+    fn correct_grips(&mut self, bones: &[glam::Affine3A], tubes: [Vec3; 2], gain: f32, which: [bool; 2]) -> f32 {
+        let mut worst = 0.0f32;
+        for k in (0..2).filter(|&k| which[k]) {
+            let Some(rest) = self.grip_rest[k] else { continue };
+            let Some(b) = bones.get(hand_slot(k)) else { continue };
+            let held = Vec3::from(b.transform_point3a(rest.into()));
+            let err = tubes[k] - held;
+            worst = worst.max(err.length());
+            // (a few millimetres a frame at most: a larger step read as the hand jumping)
+            let step = err * gain;
+            let step = if gain < 1.0 { step.clamp_length_max(FIX_STEP) } else { step };
+            let fix = self.grip_fix[k] + step;
+            self.grip_fix[k] = fix.clamp_length_max(0.15);
         }
+        worst
     }
 }
 
-/// `vanilla`, `vanilla_plus` or `enhanced` from the ways a file may spell them.
-pub fn graphics_mode(v: &str) -> &'static str {
-    match v.trim().to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
-        "enhanced" | "1" => "enhanced",
-        "vanilla" | "classic" | "original" | "omsi" | "omsi2" | "omsi_2" => "vanilla",
-        _ => "vanilla_plus",
+/// The vehicle's first `[drivpos]` (its passenger cabin is read once per type).
+fn seat_of(v: &VehicleInstance) -> Option<omsi_vehicle::cabin::PassPos> {
+    static SEATS: std::sync::Mutex<Option<std::collections::HashMap<std::path::PathBuf, Option<omsi_vehicle::cabin::PassPos>>>> =
+        std::sync::Mutex::new(None);
+    let key = v.ty.def.path.clone();
+    let mut seats = SEATS.lock().unwrap_or_else(|e| e.into_inner());
+    seats
+        .get_or_insert_with(Default::default)
+        .entry(key)
+        .or_insert_with(|| {
+            let rel = v.ty.def.passenger_cabin.as_ref()?;
+            let cabin = omsi_vehicle::PassengerCabin::load(&omsi_cfg::resolve_path(v.ty.def.dir(), rel))
+                .map_err(|e| log::warn!("driver: {e}"))
+                .ok()?;
+            cabin.driver_positions.first().cloned()
+        })
+        .clone()
+}
+
+/// `a` turned towards `b` by `max` radians at most (both unit vectors).
+fn turn_towards(a: Vec3, b: Vec3, max: f32) -> Vec3 {
+    let angle = a.angle_between(b);
+    if angle <= max || !angle.is_finite() {
+        return b;
+    }
+    let axis = a.cross(b).normalize_or_zero();
+    if axis == Vec3::ZERO {
+        return a;
+    }
+    glam::Quat::from_axis_angle(axis, max) * a
+}
+
+impl DriverFigure {
+    /// The figure at the wheel (the player's own when getting up).
+    pub fn human_type(&self) -> Arc<HumanType> {
+        self.ty.clone()
     }
 }
 
-/// `view_distance=<metres>` of the settings file: how far around the camera the map's tiles
-/// are kept loaded (OMSI's "visible distance"). None when the file does not say.
-pub fn view_distance() -> Option<f64> {
-    let text = std::fs::read_to_string(Settings::path()?).ok()?;
-    text.lines().filter_map(|l| l.trim().split_once('=')).find(|(k, _)| k.trim().eq_ignore_ascii_case("view_distance")).and_then(|(_, v)| v.trim().parse::<f64>().ok()).filter(|v| *v > 0.0)
+fn wrap(a: f32) -> f32 {
+    (a + 540.0).rem_euclid(360.0) - 180.0
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn old_files_board_automatically() {
-        // the launcher's old default, written without a version
-        assert_eq!(Settings::from_text("msaa=1\nboarding=pay\n").boarding, "auto");
-        // chosen again in a current file, it stays
-        assert_eq!(Settings::from_text("version=2\nboarding=pay\n").boarding, "pay");
-        assert_eq!(Settings::from_text("boarding=walk\n").boarding, "walk");
-        // what we write reads back the same
-        let s = Settings { boarding: "pay".into(), ..Default::default() };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-        let s = Settings { texture_compression: false, texture_memory: 1500, ..Default::default() };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-        assert_eq!(Settings::from_text("texmemlimit=401.0\n").texture_memory, 401);
-    }
-
-    #[test]
-    fn graphics_modes() {
-        // an old file: its vanilla renderer is Vanilla+ now, enhanced stays enhanced
-        assert_eq!(Settings::from_text("enhanced=0\n").graphics, "vanilla_plus");
-        assert_eq!(Settings::from_text("enhanced=1\n").graphics, "enhanced");
-        let v = Settings::from_text("graphics=vanilla\nshadows=1\nssao=1\n");
-        assert!(v.classic() && !v.shadows && !v.ssao && !v.detail_textures && !v.enhanced);
-        assert!(Settings::from_text("graphics=enhanced\nenhanced=0\n").enhanced);
-        assert_eq!(graphics_mode("Vanilla+"), "vanilla_plus");
-        assert_eq!(graphics_mode("OMSI 2"), "vanilla");
-        let s = Settings { graphics: "enhanced".into(), enhanced: true, ..Default::default() };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-    }
-
-    #[test]
-    fn post_aa_is_read_and_written() {
-        assert_eq!(Settings::from_text("enhanced=1\n").post_aa, "fxaa");
-        let off = Settings::from_text("enhanced=1\npost_aa=off\n");
-        assert_eq!(off.post_aa, "off");
-        assert!(!off.render_options().fxaa);
-        assert!(Settings::from_text("post_aa=FXAA").render_options().fxaa);
-        assert_eq!(Settings::from_text(&off.to_text()), off);
-    }
-}
-
-impl Settings {
-    /// The player's bus's `wearlifespan` for the maintenance condition (OMSI's table).
-    pub fn wear_lifespan(&self) -> f32 {
-        [1.5e6, 0.01, 0.1, 1.0, 10.0][self.maintenance.min(4) as usize]
-    }
-}
-
-/// The player's own turn of a bus's mirrors (degrees yaw, pitch per `[add_camera_reflexion]`),
-/// kept per `.bus` file in `~/.openomsi/mirrors.cfg` as `<bus file>|<mirror>=<yaw>,<pitch>`.
-pub fn mirror_offsets(bus: &std::path::Path) -> Vec<[f32; 2]> {
-    let key = bus.to_string_lossy().to_ascii_lowercase();
-    let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return Vec::new() };
-    let text = std::fs::read_to_string(p).unwrap_or_default();
-    let mut out: Vec<[f32; 2]> = Vec::new();
-    for line in text.lines() {
-        let Some((k, v)) = line.rsplit_once('=') else { continue };
-        let Some((file, i)) = k.rsplit_once('|') else { continue };
-        let (Ok(i), Some((y, p))) = (i.trim().parse::<usize>(), v.split_once(',')) else { continue };
-        if file.trim().to_ascii_lowercase() != key || i > 64 {
-            continue;
-        }
-        if out.len() <= i {
-            out.resize(i + 1, [0.0; 2]);
-        }
-        out[i] = [y.trim().parse().unwrap_or(0.0), p.trim().parse().unwrap_or(0.0)];
-    }
-    out
-}
-
-/// Keep a bus's mirror turns (see [`mirror_offsets`]).
-pub fn save_mirror_offsets(bus: &std::path::Path, offsets: &[[f32; 2]]) {
-    let key = bus.to_string_lossy().to_ascii_lowercase();
-    let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return };
-    let text = std::fs::read_to_string(&p).unwrap_or_default();
-    let mut lines: Vec<String> = text
-        .lines()
-        .filter(|l| l.rsplit_once('=').and_then(|(k, _)| k.rsplit_once('|')).is_none_or(|(f, _)| f.trim().to_ascii_lowercase() != key))
-        .map(str::to_string)
+/// The driver figure: one of the map's `drivers.txt` (the human files OMSI draws at the
+/// wheel of its buses - Spandau and Grundorf name `humans\\axyz\\man01.hum`; OMSI
+/// reads the list with the map, the original), chosen by `pick`; without the list OMSI's own
+/// driver figure `Humans/*/DBC_man04_driver.hum`. Each file is read once.
+fn driver_type(world: &crate::scene::World, pick: u64) -> Option<Arc<HumanType>> {
+    let listed: Vec<std::path::PathBuf> = omsi_map::ailists::load_list(&world.map_dir.join("drivers.txt"))
+        .iter()
+        .map(|l| omsi_cfg::resolve_path(&world.root, l))
         .collect();
-    for (i, o) in offsets.iter().enumerate() {
-        if o[0].abs() > 0.01 || o[1].abs() > 0.01 {
-            lines.push(format!("{}|{i}={:.1},{:.1}", bus.to_string_lossy(), o[0], o[1]));
+    let path = if listed.is_empty() {
+        let mut found: Vec<std::path::PathBuf> = Vec::new();
+        for r in omsi_cfg::content_dirs("Humans") {
+            for (group, is_dir) in omsi_cfg::vfs::list_dir(&r).unwrap_or_default() {
+                if !is_dir {
+                    continue;
+                }
+                let d = r.join(&group);
+                for (n, _) in omsi_cfg::vfs::list_dir(&d).unwrap_or_default() {
+                    let lower = n.to_string_lossy().to_ascii_lowercase();
+                    if lower.ends_with(".hum") && lower.contains("driver") {
+                        found.push(d.join(&n));
+                    }
+                }
+            }
+        }
+        found.sort_by_key(|p| {
+            let n = p.file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase();
+            (!n.starts_with("dbc_man04"), n)
+        });
+        found.into_iter().next()?
+    } else {
+        listed[(pick % listed.len() as u64) as usize].clone()
+    };
+    cached_type(&path)
+}
+
+/// A driver figure's type, read once per file.
+pub(crate) fn cached_type(path: &std::path::Path) -> Option<Arc<HumanType>> {
+    static TYPES: std::sync::Mutex<Option<std::collections::HashMap<std::path::PathBuf, Option<Arc<HumanType>>>>> =
+        std::sync::Mutex::new(None);
+    let path = path.to_path_buf();
+    let mut types = TYPES.lock().unwrap_or_else(|e| e.into_inner());
+    types
+        .get_or_insert_with(Default::default)
+        .entry(path.clone())
+        .or_insert_with(|| {
+            HumanType::load(&path)
+                .map_err(|e| log::warn!("driver {}: {e:#}", path.display()))
+                .ok()
+                .map(Arc::new)
+        })
+        .clone()
+}
+
+/// The steering wheel: the mesh turned by `Axle_Steering_*` with the largest factor (a
+/// road wheel turns by the steering angle itself, a steering wheel by 15-20 times it) that
+/// lies within arm's reach of the seat.
+fn find_wheel(v: &VehicleInstance, hip: Vec3) -> Option<Wheel> {
+    let mut best: Option<(f32, usize, Mat4, String, f32)> = None;
+    for (i, vm) in v.ty.meshes.iter().enumerate() {
+        let def = &v.ty.model.meshes[vm.def_index];
+        for a in &def.animations {
+            if !a.variable.to_ascii_lowercase().starts_with("axle_steering")
+                || a.factor.abs() < 200.0
+                || a.kind != Some(omsi_model::AnimKind::Rot)
+            {
+                continue;
+            }
+            let origin = omsi_sim::anim::origin_matrix(&a.origins, vm.pivot);
+            let c = origin.transform_point3(Vec3::ZERO);
+            if (c - hip).length() > 1.2 {
+                continue;
+            }
+            if best.as_ref().map(|b| a.factor.abs() > b.0).unwrap_or(true) {
+                best = Some((a.factor.abs(), i, origin, a.variable.clone(), a.factor));
+            }
         }
     }
-    if let Some(d) = p.parent() {
-        let _ = std::fs::create_dir_all(d);
+    let (_, mesh, origin, var, factor) = best?;
+    let origin_point = origin.transform_point3(Vec3::ZERO);
+    let centre = origin_point;
+    let mut axis = origin.transform_vector3(Vec3::X).normalize_or_zero();
+    // the axis points at the driver: at his shoulders, not his hips - a bus's wheel lies
+    // nearly flat at the height of the hips, whose direction then says nothing (the SD202's
+    // axis came out pointing down and the hands held the air under the rim); a wheel that
+    // lies anywhere near flat faces up
+    let shoulders = hip + Vec3::Z * 0.5;
+    if (axis.z.abs() > 0.4 && axis.z < 0.0) || (axis.z.abs() <= 0.4 && axis.dot(shoulders - centre) < 0.0) {
+        axis = -axis;
     }
-    let _ = std::fs::write(&p, lines.join("\n") + "\n");
+    let mut up = (Vec3::Z - axis * axis.dot(Vec3::Z)).normalize_or_zero();
+    if up.length_squared() < 0.5 {
+        up = (Vec3::Y - axis * axis.dot(Vec3::Y)).normalize_or_zero();
+    }
+    // right as the driver sees it: facing the wheel along -axis
+    let right = up.cross(axis).normalize_or_zero();
+    let right = if right.x < 0.0 { -right } else { right };
+    // the rim: the ring the farthest vertices form round the axis (a spoke or the hub is
+    // nearer; a few stray vertices are left out). An AI copy of a bus keeps no vertices on
+    // the CPU: its wheel is read from the file (a guessed size left the AI drivers' hands
+    // floating over the rim).
+    let vm = &v.ty.meshes[mesh];
+    let loaded;
+    let positions: &[Vec3] = if vm.data.positions.len() >= 12 {
+        &vm.data.positions
+    } else {
+        loaded = omsi_o3d::load_mesh(&vm.file)
+            .ok()
+            .map(|m| omsi_geometry::mesh_from_o3d(&m).positions)
+            .unwrap_or_default();
+        &loaded
+    };
+    let radius_of = |p: &Vec3| {
+        let d = *p - centre;
+        (d - axis * axis.dot(d)).length()
+    };
+    let mut radii: Vec<f32> = positions.iter().map(radius_of).collect();
+    radii.sort_by(|a, b| a.total_cmp(b));
+    // (an AI copy of a bus keeps no vertices on the CPU: a bus wheel's size then)
+    let rim = if radii.len() < 12 { 0.26 } else { radii[(radii.len() as f32 * 0.93) as usize] };
+    // The rim's cross-section, from the ring of its vertices (a spoke or the hub is nearer
+    // the axis): the middle of the tube across and along the axis, and how thick it is. The
+    // animation's origin may be anywhere on the axis, the foot of the column as often as the
+    // hub; and a guessed tube - a fixed 93 % of the outer radius, 8 mm over the ring's mean
+    // height - put the fingers' fist 2-3 cm beside the SD202's rim, closed round the air.
+    let pct = |v: &mut Vec<f32>, f: f32| {
+        v.sort_by(|a, b| a.total_cmp(b));
+        v[((v.len() - 1) as f32 * f) as usize]
+    };
+    let ring: Vec<&Vec3> = positions.iter().filter(|p| radius_of(p) > rim * 0.8).collect();
+    let (radius, along, tube) = if ring.len() >= 8 {
+        let mut rs: Vec<f32> = ring.iter().map(|p| radius_of(p)).collect();
+        let mut zs: Vec<f32> = ring.iter().map(|p| axis.dot(**p - origin_point)).collect();
+        let (r0, r1) = (pct(&mut rs, 0.02), pct(&mut rs, 0.98));
+        let (z0, z1) = (pct(&mut zs, 0.02), pct(&mut zs, 0.98));
+        ((r0 + r1) * 0.5, (z0 + z1) * 0.5, ((r1 - r0).max(z1 - z0) * 0.5).clamp(0.01, 0.03))
+    } else {
+        (rim * 0.93, 0.0, 0.017)
+    };
+    let centre = origin_point + axis * along.clamp(-0.3, 0.3);
+    let radius = radius.clamp(0.14, 0.32);
+    log::debug!("driver: steering wheel rim {radius:.3} m round the axis, tube {tube:.3} m thick (radius)");
+    Some(Wheel { mesh, var, factor, axis, centre, up, right, radius, tube })
 }
