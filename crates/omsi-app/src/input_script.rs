@@ -757,6 +757,7 @@ impl App {
             self.cursor.1 += y - previous.1;
         }
         self.vr_cursor_physical = Some((x, y));
+        self.html_move();
         let Some((width, height)) = self.surface.as_ref().map(|s|
             (s.config.width as f32, s.config.height as f32)) else { return };
         if self.window_focused && !self.mouse_look
