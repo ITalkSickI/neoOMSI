@@ -1225,7 +1225,7 @@ impl Traffic {
         let c = &mut self.cars[car];
         for (t, rev) in cars {
             c.trailer_renders
-                .push(world.add_vehicle_shared(renderer, scene, t, None));
+                .push(world.add_vehicle_shared(renderer, scene, t, None, Some(&c.render)));
             c.vehicle.attach_trailer_ex(t.clone(), *rev);
         }
     }
@@ -1377,6 +1377,7 @@ impl Traffic {
         scene: &mut Scene,
         vehicle: &mut VehicleInstance,
         scheme: Option<usize>,
+        lead: &VehicleRender,
     ) -> Vec<VehicleRender> {
         let mut renders = Vec::new();
         let ty = vehicle.ty.clone();
@@ -1386,6 +1387,7 @@ impl Traffic {
                 scene,
                 &t,
                 scheme.filter(|i| *i < t.paint_schemes.len()),
+                Some(lead),
             ));
             vehicle.attach_trailer_ex(t, rev);
         }
@@ -2431,11 +2433,21 @@ impl Traffic {
             }) as std::sync::Arc<dyn omsi_sim::rigid::Ground>
         });
         vehicle.apply_paint_vars(scheme);
-        let render = world.add_vehicle_shared(renderer, scene, &ty, scheme);
+        let render = world.add_vehicle_shared(renderer, scene, &ty, scheme, None);
         let trailer_renders =
-            self.attach_trailers(world, renderer, scene, &mut vehicle, scheme);
+            self.attach_trailers(world, renderer, scene, &mut vehicle, scheme, &render);
         if !ty.model.text_textures.is_empty() || bus.is_some() {
             vehicle.init_text_textures(&mut world.fonts.lock(), &|p| {
+                omsi_texture::decode_file(p)
+                    .ok()
+                    .map(|i| (i.width, i.height, i.rgba))
+            });
+        }
+        // a rear section's plates and numbers are `[texttexture]`s of its own reading the
+        // leading vehicle's strings (`TrailerPart::update_text_textures`), so they need the
+        // same fonts the front's do
+        for t in vehicle.trailers.iter_mut() {
+            t.init_text_textures(&mut world.fonts.lock(), &|p| {
                 omsi_texture::decode_file(p)
                     .ok()
                     .map(|i| (i.width, i.height, i.rgba))
@@ -6547,6 +6559,17 @@ impl Traffic {
             }
             crate::scene::sync_vehicle_textures(renderer, scene, &mut c.vehicle, &c.render);
             crate::scene::sync_vehicle_materials(renderer, scene, &c.vehicle, &mut c.render);
+            // a coupled part runs no scripts of its own: its plates, its displays and its
+            // switched materials follow the leading vehicle's, as the player's own rear
+            // sections do (without this an AI bus's rear section kept the blank textures and
+            // the unswitched materials it was built with)
+            {
+                let mut trailers = std::mem::take(&mut c.vehicle.trailers);
+                for (t, r) in trailers.iter_mut().zip(c.trailer_renders.iter_mut()) {
+                    crate::scene::sync_vehicle_part(renderer, scene, &c.vehicle, t, r);
+                }
+                c.vehicle.trailers = trailers;
+            }
             // an articulated AI bus (timetable or random traffic) bends its bellows like the
             // player's while it is near enough for the fold to show; farther out its shape
             // just stays as it was, which nobody can tell from still following the road
@@ -6801,8 +6824,9 @@ impl Traffic {
         // (the host's poses say where it stands; nothing here pulls it onto the ground)
         vehicle.ground = None;
         vehicle.apply_paint_vars(scheme);
-        let render = world.add_vehicle_shared(renderer, scene, &ty, scheme);
-        let trailer_renders = self.attach_trailers(world, renderer, scene, &mut vehicle, scheme);
+        let render = world.add_vehicle_shared(renderer, scene, &ty, scheme, None);
+        let trailer_renders =
+            self.attach_trailers(world, renderer, scene, &mut vehicle, scheme, &render);
         if !ty.model.text_textures.is_empty() {
             vehicle.init_text_textures(&mut world.fonts.lock(), &|p| {
                 omsi_texture::decode_file(p)

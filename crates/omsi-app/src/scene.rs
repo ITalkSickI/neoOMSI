@@ -9659,13 +9659,22 @@ impl World {
     /// Like `add_vehicle`, but meshes and static materials uploaded for the same vehicle
     /// type and scheme are shared between instances (AI traffic). Give the render back with
     /// [`World::release_vehicle`].
+    /// `lead` is the vehicle this one is coupled behind, if any: a rear section takes the
+    /// leading vehicle's script textures (`[scriptshare]`, its `[matl_transmap] \S:n`
+    /// displays), which its own model declares none of. Built without them its matrix slot
+    /// had no mask and drew the lit panel's own picture instead of the dots the leading
+    /// vehicle's scripts put there.
     pub fn add_vehicle_shared(
         &self,
         renderer: &Renderer,
         scene: &mut Scene,
         vt: &omsi_sim::VehicleType,
         scheme: Option<usize>,
+        lead: Option<&VehicleRender>,
     ) -> VehicleRender {
+        let shared = lead.and_then(|l| {
+            (vt.def.script_share || vt.model.script_textures.is_empty()).then(|| l.script_textures.as_slice())
+        });
         let key = (vt.def.path.clone(), scheme);
         let cached = self.vehicle_gpu.lock().get(&key).cloned();
         let set = match cached {
@@ -9680,7 +9689,7 @@ impl World {
             s.users += 1;
             s.idle_since = None;
         }
-        let mut render = self.instantiate_vehicle(renderer, scene, vt, &set, Some(key), None);
+        let mut render = self.instantiate_vehicle(renderer, scene, vt, &set, Some(key), shared);
         // an articulated AI bus (timetable or random traffic, and its coupled rear section)
         // bends its own bellows too, from a mesh copy of its own (freed again in
         // `release_vehicle`) - the shared set's copy has to stay in the rest pose, since
