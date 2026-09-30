@@ -257,16 +257,25 @@ impl SyncTable {
                 }
             }
         }
-        let mut value_names: Vec<String> = Vec::new();
-        for cfg in sounds.iter().map(|s| &s.0).chain(part_sounds.iter().map(|s| &s.1)) {
-            for e in &cfg.sounds {
-                value_names.extend(e.vol_curves.iter().map(|c| c.variable.clone()));
-                value_names.extend(e.conditions.iter().map(|c| c.variable.clone()));
-                if !e.pitch_variable.is_empty() {
-                    value_names.push(e.pitch_variable.clone());
+        // the variables the outside sounds follow: the leading vehicle's, then the rear
+        // sections' (whatever of the capped list those leave)
+        let sound_vars = |cfgs: &mut dyn Iterator<Item = &Arc<omsi_vehicle::SoundCfg>>| -> Vec<String> {
+            let mut out = Vec::new();
+            for cfg in cfgs {
+                for e in &cfg.sounds {
+                    out.extend(e.vol_curves.iter().map(|c| c.variable.clone()));
+                    out.extend(e.conditions.iter().map(|c| c.variable.clone()));
+                    if !e.pitch_variable.is_empty() {
+                        out.push(e.pitch_variable.clone());
+                    }
                 }
             }
-        }
+            out
+        };
+        let sound_names = sound_vars(&mut sounds.iter().map(|s| &s.0));
+        let part_sound_names = sound_vars(&mut part_sounds.iter().map(|s| &s.1));
+        // what moves where it can be seen
+        let mut value_names: Vec<String> = Vec::new();
         // the parts that move where they can be seen (not the cockpit's switches)
         // - and the doors opened by hand, whose meshes are clickable: the W906's cab and rear
         // doors (`[mouseevent] cp_kryshka1_opn`, "kryshka" a Russian mod's word for a
@@ -300,11 +309,20 @@ impl SyncTable {
             value_names.extend(m.materials.iter().flat_map(|mat| mat.texcoord_trans_x.iter().chain(mat.texcoord_trans_y.iter()).cloned()));
         }
         let taken: Vec<VarId> = lamps.iter().chain(&switches).map(|l| l.1).collect();
-        let values = collect(
-            &mut value_names.into_iter(),
-            &|n| (engine_fed(n) && !rain_film(n)) || var(n).map(|id| taken.contains(&id)).unwrap_or(true),
-            omsi_net::wire::MAX_VALUES,
-        );
+        // What is seen first, then the leading vehicle's sounds, then the rear sections',
+        // each sorted by name: the list is capped, and taken as one list in name order the
+        // rear sections' sound variables pushed what is seen out of it.
+        let skip = |n: &str| (engine_fed(n) && !rain_film(n)) || var(n).map(|id| taken.contains(&id)).unwrap_or(true);
+        let mut values = collect(&mut value_names.into_iter(), &skip, omsi_net::wire::MAX_VALUES);
+        for names in [sound_names, part_sound_names] {
+            let had: Vec<VarId> = values.iter().map(|v| v.1).collect();
+            let more = collect(
+                &mut names.into_iter(),
+                &|n| skip(n) || var(n).is_some_and(|id| had.contains(&id)),
+                omsi_net::wire::MAX_VALUES - values.len(),
+            );
+            values.extend(more);
+        }
         let doors: Vec<VarId> = (0..omsi_net::wire::MAX_DOORS)
             .map_while(|i| program.var(&format!("door_{i}")))
             .collect();
