@@ -10642,7 +10642,11 @@ impl World {
                         // `[matl_item]` inherits the base alpha mode. A transmap only supplies
                         // the mask; it must not turn an otherwise opaque body variant into a
                         // blended mesh (which makes the whole shared slot look like glass).
-                        let it_alpha = if repair_body_depth { AlphaMode::Opaque } else { ov_item.first().map(|o| alpha_mode(o.alpha)).unwrap_or(alpha) };
+                        // (An item block that never set `[matl_alpha]` carries OMSI's 0, not an
+                        // alpha of its own: read as one, a K++ panel's item - the half the
+                        // busbar switches to - was opaque, its `\S:n` mask cut nothing, and the
+                        // whole matrix was lit.)
+                        let it_alpha = if repair_body_depth { AlphaMode::Opaque } else { ov_item.iter().find(|o| o.alpha_set).map(|o| alpha_mode(o.alpha)).unwrap_or(alpha) };
                         let (it_color, it_emissive, it_specular) = d3d_material(m, ov_item.iter().find_map(|o| o.allcolor).or(ov.iter().find_map(|o| o.allcolor)), textured);
                         let mut it_extra = material_extra(&ov_item, env_mask, bump, it_specular);
                         it_extra.night_switched = ov_item.iter().any(|o| o.nightmap.is_some());
