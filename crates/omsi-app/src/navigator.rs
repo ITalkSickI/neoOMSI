@@ -248,6 +248,9 @@ pub struct Navigator {
     /// Seconds of delay the jams ahead on the route cost.
     jam_cost: f32,
     first: bool,
+    /// The corner widget's picture is drawn every other frame (`true` next): the uploads
+    /// and the encoder of every frame cost real frame time on the integrated chip.
+    draw_flip: bool,
 }
 
 /// The duty as the navigator shows it: line, terminus, the stops from the next one on,
@@ -332,6 +335,7 @@ impl Navigator {
             dist_t: 0.0,
             jam_cost: 0.0,
             first: true,
+            draw_flip: true,
         }
     }
 
@@ -823,7 +827,7 @@ impl Navigator {
         let y0 = if top { margin } else { sh - margin - ph };
 
         if self.gpu.is_none() {
-            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 4, self.atlas.size));
+            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 1, self.atlas.size));
         }
         if self.target.map(|t| (t.1, t.2) != (w, h)).unwrap_or(true) {
             if let Some((t, _, _)) = self.target.take() {
@@ -836,7 +840,11 @@ impl Navigator {
         }
         let (tex, _, _) = self.target.unwrap();
         let Some(view) = renderer.texture_view(scene, tex) else { return };
-        self.draw(renderer, &view, (w, h), map_h, f);
+        // (every other frame: the picture is one frame stale, the uploads are half)
+        self.draw_flip = !self.draw_flip;
+        if self.draw_flip {
+            self.draw(renderer, &view, (w, h), map_h, f);
+        }
         // (the small navigator steps aside while the city map is open)
         if !self.city.open {
             scene.overlays.push((tex, [x0, y0, x0 + pw, y0 + ph]));
@@ -1896,7 +1904,7 @@ impl Navigator {
         self.city.rect = [x0, y0, x0 + w, y0 + h];
         let (tw, th) = (w as u32, h as u32);
         if self.gpu.is_none() {
-            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 4, self.atlas.size));
+            self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 1, self.atlas.size));
         }
         if self.city.target.map(|t| (t.1, t.2) != (tw, th)).unwrap_or(true) {
             if let Some((t, _, _)) = self.city.target.take() {
