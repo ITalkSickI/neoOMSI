@@ -952,8 +952,9 @@ position, message) is `PluginIo`'s new default methods. Tests: `crates/omsi-plug
   TRIGGER_HAPPY, the WGI index); they used to be the rank among buttons pressed so far. Force
   feedback on a DirectInput wheel is one constant force set each frame: centring
   -x (0.25 + 0.5 min(1, v/50)), drag -dx/dt 0.05 (1 + 2 max(0, 1 - v/20)), the scripts'
-  `FF_Vib_Amp`/`FF_Vib_Period` as a sine, scaled by the device's `[FFScale]`; the wheel's own
-  autocentre is switched off (as OMSI does). The set-up assistant (`launcher/pages.rs`,
+  `FF_Vib_Amp`/`FF_Vib_Period` as a sine; the first `[FFScale]` value scales centring and drag,
+  the second scales vibration for that device. The wheel's own autocentre is switched off
+  (as OMSI does). The set-up assistant (`launcher/pages.rs`,
   `wizard_result`) records rest, left lock and each pedal and picks the axis that moved most.
 * **Multiplayer** (`omsi-net::bridge`, `lan.rs`): UPnP forwardings are asked for an hour and
   renewed every 20 minutes (they were asked once for 7200 s); the ntfy.sh rendezvous is polled

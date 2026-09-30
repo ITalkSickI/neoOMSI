@@ -1029,6 +1029,17 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         let x0 = v.x + 6.0;
         let w = v.w - 16.0;
         let mut y = v.y;
+        let (mut steering_force, mut vibration) = d.ff_scale.unwrap_or((1.0, 1.0));
+        if ui.slider("pad-ff-steering", Rect::new(x0, y, w, ROW), &mut steering_force, 0.0, 2.0, 0.05, "Steering force", &|v| format!("{:.0}%", v * 100.0)) {
+            d.ff_scale = Some((steering_force, vibration));
+            dirty = true;
+        }
+        y += ROW + 6.0;
+        if ui.slider("pad-ff-vibration", Rect::new(x0, y, w, ROW), &mut vibration, 0.0, 2.0, 0.05, "Vibration", &|v| format!("{:.0}%", v * 100.0)) {
+            d.ff_scale = Some((steering_force, vibration));
+            dirty = true;
+        }
+        y += ROW + 20.0;
         let lab_w = if w < 520.0 { 84.0 } else { 110.0 };
         let inv_w = 110.0;
         let sel_w = (w - lab_w - inv_w - 60.0 - 3.0 * GAP).clamp(120.0, 200.0);

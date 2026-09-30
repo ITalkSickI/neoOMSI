@@ -61,7 +61,7 @@ pub(crate) struct DeviceCfg {
     pub(crate) axis_flags: [i32; 8],
     /// Per button: the key action (empty: none) and the number after it.
     pub(crate) buttons: Vec<(String, String)>,
-    /// `[FFScale]`: the force feedback's strength (two factors).
+    /// `[FFScale]`: steering forces (centering and drag), then vibration strength.
     pub(crate) ff_scale: Option<(f32, f32)>,
 }
 
@@ -518,7 +518,7 @@ impl Controllers {
         let on = self.enabled && f.on && self.ff_enabled;
         #[cfg(windows)]
         if let (Some((name, x, x0, true)), Some(di)) = (self.steer.clone(), self.devices.di.as_mut()) {
-            // (the file's [FFScale] of the device: springs and drag, the effects)
+            // (the file's [FFScale] of the device: steering forces, then vibration)
             let (k_s, k_e) = self.cfg.iter().find(|d| names_match(&d.name, &name)).and_then(|d| d.ff_scale).unwrap_or((1.0, 1.0));
             let force = if on { wheel_force(&f, x, x0, &mut self.ff_t, k_s, k_e) } else { 0.0 };
             let force = if self.ff_invert { -force } else { force };
@@ -809,6 +809,17 @@ mod slot_tests {
 
 #[cfg(test)]
 mod cfg_tests {
+    #[test]
+    fn force_feedback_scales_are_saved_per_controller() {
+        let devices = vec![
+            super::DeviceCfg { name: "Wheel A".into(), ff_scale: Some((2.0, 0.5)), ..Default::default() },
+            super::DeviceCfg { name: "Wheel B".into(), ff_scale: Some((0.75, 1.25)), ..Default::default() },
+        ];
+        let saved = super::parse_cfg(&super::cfg_text(&devices));
+        assert_eq!(saved[0].ff_scale, Some((2.0, 0.5)));
+        assert_eq!(saved[1].ff_scale, Some((0.75, 1.25)));
+    }
+
     #[test]
     fn the_stock_file_round_trips() {
         let Ok(bytes) = std::fs::read("../../../OMSI 2 Original/Inputs/gamectrler.cfg") else { return };

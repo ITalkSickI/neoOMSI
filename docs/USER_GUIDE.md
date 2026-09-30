@@ -147,7 +147,10 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   bus standing still and the scripts' shaking, `FF_Vib_Amp`); a wheel nobody has set up
   steers with its X axis. A wheel that a community controller mapping also makes a gamepad (a
   Logitech G29) is listed once, and *Use this device* switches any device off
-  (it is then neither read nor listed as steering).
+  (it is then neither read nor listed as steering). Select a device to adjust *Steering force*
+  (centering and resistance) and *Vibration* separately, then press **Save**. The values are stored
+  for that device in the content folder's `Inputs/gamectrler.cfg`; restart a running game to use
+  the new values. *Force feedback and vibration* in Settings remains the global on/off switch.
 * **Sessions** - every game started from the launcher, with its log, a **Stop** that lets
   it save its run (SIGTERM, up to 8 s, and only a stuck game is killed) and, for a LAN
   session, the code to copy, who is playing and the chat.
