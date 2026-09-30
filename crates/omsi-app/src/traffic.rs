@@ -1506,7 +1506,7 @@ impl Traffic {
     /// for the group, else the group's default (see `uvg_defaults`).
     fn lane_group_density(&self, lane: &omsi_sim::traffic::Lane, g: usize) -> f32 {
         match self.group_uvg.get(g).copied().flatten() {
-            Some(u) => uvg_density(&lane.group_density, &self.uvg_defaults, u),
+            Some(u) => lane.pool_density(&self.uvg_defaults, u),
             None => lane.density,
         }
     }
@@ -2250,7 +2250,11 @@ impl Traffic {
                         .copied()
                         .filter(|&n| {
                             let nl = &self.net.lanes[n];
-                            nl.kind == d.kind && !nl.no_cars && nl.density > 0.0
+                            nl.kind == d.kind && !nl.no_cars && self.types.iter().find(|t| Arc::ptr_eq(&t.0, &d.ty))
+                                .map(|t| match self.group_uvg[t.3] {
+                                    Some(pool) => nl.pool_density(&self.uvg_defaults, pool),
+                                    None => nl.density,
+                                }).unwrap_or(nl.density) > 0.0
                         })
                         .collect();
                     if options.is_empty() {
@@ -2457,6 +2461,11 @@ impl Traffic {
             });
         }
         let mut state = AiState::new(lane, s, seed);
+        if bus.is_none() {
+            state.traffic_pool = self.types.iter().find(|t| Arc::ptr_eq(&t.0, &ty))
+                .and_then(|t| self.group_uvg[t.3])
+                .map(|pool| (pool, Arc::new(self.uvg_defaults.clone())));
+        }
         state.plan_next(&self.net);
         // heavy vehicles (trucks, vans) cruise slower, which is what gets them overtaken
         let heavy = ty.def.mass > 6.0 || bus.is_some();
