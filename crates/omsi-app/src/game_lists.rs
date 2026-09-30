@@ -119,6 +119,7 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Navigator"), tr(on_off(app.navigator.as_ref().is_some_and(|n| n.enabled)))), "navigator".into()));
             out.push((format!("{}: {}", tr("Sun shadows"), tr(on_off(s.shadows))), "shadows".into()));
             out.push((format!("{}: {}", tr("Head movement"), tr(on_off(s.head_movement))), "head".into()));
+            out.push((format!("{}: {}", tr("Camera glides between viewpoints"), tr(on_off(s.driverview_smooth))), "cam_smooth".into()));
             out.push((format!("{}: {}", tr("Collisions with objects"), tr(on_off(s.collision_objects))), "coll_objects".into()));
             out.push((format!("{}: {}", tr("Collisions with vehicles"), tr(on_off(s.collision_vehicles))), "coll_vehicles".into()));
             out.push((format!("{}: {}", tr("Steering with the mouse"), tr(on_off(app.mouse_drive))), "mouse".into()));
@@ -301,6 +302,10 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                 "head" => {
                     s.head_movement = !s.head_movement;
                     Some(("head_movement", (s.head_movement as u8).to_string()))
+                }
+                "cam_smooth" => {
+                    s.driverview_smooth = !s.driverview_smooth;
+                    Some(("driverview_smooth", (s.driverview_smooth as u8).to_string()))
                 }
                 // (at once: stuck under a bridge a map made too low, the bus drives on)
                 "coll_objects" => {
