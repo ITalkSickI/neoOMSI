@@ -59,6 +59,8 @@ pub(crate) struct Player {
     /// Its speed (m/s) and the body's turning rates of the frame before (see `move_head`).
     pub(crate) head_vel: Vec3,
     pub(crate) head_omega: Vec3,
+    /// How far the driver's view is turned into the steering (degrees of yaw; see `move_head`).
+    pub(crate) steer_look: f32,
     /// The driver's seat moved (Settings → seat position; bus frame, m).
     pub(crate) seat: Vec3,
     /// The player's turn of each mirror (yaw, pitch degrees; Ctrl+Alt+arrows in the cab).
@@ -1033,8 +1035,12 @@ impl Player {
     /// never further than 10 cm up or down (0x7e2256). (A lag of our own towards a point a
     /// hundredth of the acceleration off - a third of what the original throws the head -
     /// stood in for it.)
-    pub(crate) fn move_head(&mut self, dt: f32, enabled: bool) {
+    pub(crate) fn move_head(&mut self, dt: f32, enabled: bool, steer_look: bool) {
         let dt = dt.clamp(0.0, 0.1);
+        // (a driver looks into the bend he steers: up to 12 degrees at full lock, eased so
+        // the view does not snap with the wheel)
+        let steer_want = if steer_look { self.vehicle.physics.controls.steering.clamp(-1.0, 1.0) * 12.0 } else { 0.0 };
+        self.steer_look += (steer_want - self.steer_look) * (1.0 - (-4.0 * dt).exp());
         let a = self.vehicle.physics.accel;
         let omega = self.vehicle.rigid.as_ref().map(|rb| rb.omega).unwrap_or(Vec3::ZERO);
         let dw = omega - self.head_omega;
@@ -1664,7 +1670,7 @@ impl Player {
                 // the road and the ground at a distance is that precision running out
                 Camera {
                     position: eye,
-                    yaw: yaw + look.0,
+                    yaw: yaw + look.0 + if view == "driver" { self.steer_look } else { 0.0 },
                     pitch: (pitch + look.1).clamp(-89.0, 89.0),
                     roll: 0.0,
                     fov_deg: c.fov,
