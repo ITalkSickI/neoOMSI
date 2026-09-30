@@ -178,7 +178,7 @@
 
     // ---- doors and boarding: rebuilt only when their number changes ----
     var doorEls = [];
-    var paxKey = '';
+    var paxKey;
     function buildDoors(n) {
         $('doors').innerHTML = '';
         doorEls = [];
@@ -290,7 +290,12 @@
 
     function footer() {
         var n = 0;
-        if (O.vars && O.vars.num) { n = Object.keys(O.vars.num).length; }
+        if (O.vars && O.vars.num) {
+            // a variable is stored under its lower-case name and as sent: count it once
+            var seen = {};
+            Object.keys(O.vars.num).forEach(function (k) { seen[k.toLowerCase()] = 1; });
+            n = Object.keys(seen).length;
+        }
         var probe = O.getVar ? O.getVar('Engine_N') : undefined;
         txt('foot', (DEMO ? 'DEMO | ' : '') + 'api ' + (O.apiVersion === undefined ? '-' : O.apiVersion) +
             ' | updates ' + updates + ' | vars ' + n + ' | Engine_N ' + (probe === undefined ? 'n/a' : probe) +
