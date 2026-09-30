@@ -375,3 +375,16 @@ version.
 What the engine itself understands is listed at the top of
 `crates/omsi-sim/src/htmlengine/mod.rs`. If you add a feature there, add it to the "What the
 HTML engine supports" section here as well.
+
+### Benchmark
+
+`bench_htmlengine` times the engine (parse + scripts, cold and warm render, an update with a
+frame, the pointer hit test) at 512x256, 1024x512 and 2048x1024. It is ignored in the normal
+test run; start it in release mode, debug numbers mean nothing:
+
+```
+cargo test -p omsi-sim --release --lib bench_htmlengine -- --ignored --nocapture
+```
+
+`HTMLBENCH_PAGE=path/to/page.html` measures your own page instead of `demo.html`, and
+`HTMLBENCH_RUNS=n` sets the number of timed runs (default 200).
