@@ -154,7 +154,8 @@ inspected. This is a different camera, so it is not an outside-view A/B result.
 
 ## Integration with current main
 
-Upstream `main` at `97b2519` was integrated before opening the PR. Preserve its
+Upstream `main` at `97b2519` was integrated, followed by the newly published
+`200336e` (0.1.328), before opening the PR. Preserve its
 ordered world passes, alpha-test/blend distinction and metric surface lift.
 Opaque/cutout spline cells may merge; declared blended segments keep their own
 placement origins and individual meshes for far-to-near composition. The grouping
@@ -165,6 +166,24 @@ The performance tables above describe the pre-integration executable; they are
 not a claim that current main reproduces the identical baseline. After integration,
 18 geometry unit tests, 21 renderer unit tests (including shader validation),
 13 app scene tests and both GPU integration tests passed.
+
+A live sanity run of the first integrated build (`9f3afc7`, main `97b2519`)
+measured **35.5 FPS** median (30 final one-second samples, range 30.7-36.5),
+5,744 main batches and 3,027 prepass batches. Main render CPU averaged 10.1 ms,
+mirrors 5.8 ms and encoder finishing 3.44 ms. Its screenshot was inspected.
+These are different upstream implementations and the merge also preserves the
+new transparent-spline behavior, so the pre-integration 43.2 FPS is not presented
+as the integrated build's FPS or as a current-main A/B measurement.
+Artifacts: `target/performance-284/main-integrated-final.*`.
+
+The final build (`be8e7f0`, upstream `200336e` / 0.1.328) was rebuilt and checked
+with the same 110-second live procedure: **36.0 FPS** median (last 30 intervals,
+range 31.7-38.8), 5,744 main batches and 3,027 prepass batches. Main render CPU
+averaged 9.5 ms, mirrors 5.7 ms and encoder finishing 3.01 ms. Its screenshot was
+inspected. All 54 executed unit/integration tests and the release build passed
+on this final upstream snapshot. No current-main disabled-optimization run was
+performed, so this remains a sanity measurement rather than a current-main A/B.
+Artifacts: `target/performance-284/main-328-final.*`.
 
 ## Repeat
 
