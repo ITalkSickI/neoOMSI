@@ -9159,6 +9159,7 @@ fn material_extra(
             .find(|o| o.tex_address != omsi_model::TexAddress::Wrap)
             .filter(|o| o.tex_address == omsi_model::TexAddress::Border)
             .map(|o| o.border_color.map(|c| (c / 255.0).clamp(0.0, 1.0))),
+        metal_ok: false,
     }
 }
 
@@ -10952,6 +10953,9 @@ impl World {
                     if dirt_overlay {
                         extra.no_z_write = true;
                     }
+                    // (chrome: a small opaque part with a sphere map, not the body - see
+                    // `MaterialExtra::metal_ok`)
+                    extra.metal_ok = envmap.is_some() && alpha == AlphaMode::Opaque && !named_body && !material_has_vehicle_volume(&vm.data, slot);
                     // A few stock vehicles leave noZwrite off on window/dirt materials even
                     // though their alpha mode is Blend. They are transparent colour layers,
                     // not solid shadow casters; letting them into the shadow map paints the

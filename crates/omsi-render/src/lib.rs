@@ -727,6 +727,11 @@ pub struct MaterialExtra {
     /// as Direct3D's border addressing does: a roller blind's band that has scrolled away
     /// vanishes in a transparent border.
     pub border: Option<[f32; 4]>,
+    /// An opaque, sphere-mapped part of a vehicle that is not its body (a handrail, a
+    /// bumper, a wheel trim): the enhanced picture may make it metal by its `[matl_envmap]`
+    /// factor alone, as the vanilla one shows the sphere map on it - chrome read as a
+    /// faint clear coat there. A body needs a mask of its own for that (a Golf's bonnet).
+    pub metal_ok: bool,
 }
 
 /// The textures a material's bind group samples.
@@ -4730,9 +4735,11 @@ impl Renderer {
                 if lightmap.is_some() { 1.0 } else { 0.0 },
                 envmap.map(|e| e.1).unwrap_or(0.0),
                 moisture,
-                // bit 1: a [matl_envmap_mask]; bit 2: a [matl_transmap] (see the shaders)
+                // bit 1: a [matl_envmap_mask]; bit 2: a [matl_transmap]; bit 4: a vehicle's
+                // part that may be metal (see the shaders)
                 (if env_mask.is_some() { 1.0 } else { 0.0 })
-                    + if extra.transmap_declared || transmap.is_some() { 2.0 } else { 0.0 },
+                    + if extra.transmap_declared || transmap.is_some() { 2.0 } else { 0.0 }
+                    + if extra.metal_ok { 4.0 } else { 0.0 },
             ],
             emissive: [emissive[0], emissive[1], emissive[2], if extra.rain_film { 2.0 } else if extra.glass { 1.0 } else if extra.display { -1.0 } else { 0.0 }],
             specular: extra.specular,

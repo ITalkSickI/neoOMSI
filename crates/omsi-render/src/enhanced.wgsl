@@ -454,9 +454,10 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         // read as metalness it made a Golf's bonnet a mirror, in which the envmap photo's
         // trees stood as contour lines across the paint at close range.
         let masked = (u32(material.params2.w + 0.5) & 1u) != 0u;
-        metal = select(0.0, smoothstep(0.3, 0.85, refl), masked);
+        let metal_ok = (u32(material.params2.w + 0.5) & 4u) != 0u;
+        metal = select(0.0, smoothstep(0.3, 0.85, refl), masked || metal_ok);
         f0 = mix(vec3<f32>(clamp(refl, 0.02, 0.08)), mix(albedo, vec3<f32>(1.0), 0.4) * refl, metal);
-        rough = mix(max(0.3 - 0.12 * smoothstep(0.0, 0.25, refl), select(0.22, 0.0, masked)), 0.14, metal);
+        rough = mix(max(0.3 - 0.12 * smoothstep(0.0, 0.25, refl), select(0.22, 0.0, masked || metal_ok)), 0.14, metal);
     } else if (!thin && material.specular.w > 0.0 && dot(material.specular.rgb, vec3<f32>(1.0)) > 0.05) {
         // the o3d material's Blinn-Phong power as GGX roughness
         rough = clamp(sqrt(sqrt(2.0 / (material.specular.w + 2.0))), 0.4, 0.9);
