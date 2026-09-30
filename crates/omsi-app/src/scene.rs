@@ -9975,7 +9975,11 @@ fn spline_lanes(
                 .map(|r| r.value as f32)
                 .last()
         };
-        let density = rule_of("trafficdensity").unwrap_or(1.0);
+        let pool_densities: Vec<(usize, f32)> = s.rules.iter()
+            .filter(|r| r.path_index == pi as i32 && r.kind.eq_ignore_ascii_case("trafficdensity") && !r.kill && r.extra >= 0.0)
+            .map(|r| (r.extra as usize, (r.value as f32).max(0.0))).collect();
+        // Group zero is the baseline; other pools must not overwrite it.
+        let density = pool_densities.iter().rev().find(|(p, _)| *p == 0).map(|(_, d)| *d).unwrap_or(1.0);
         let no_cars = s.rules.iter().any(|r| {
             r.path_index == pi as i32 && r.kind.eq_ignore_ascii_case("no_cars") && !r.kill
         });
@@ -9994,6 +9998,7 @@ fn spline_lanes(
                 l.speed_limit_kmh = v;
             }
             l.density = density.max(0.0);
+            l.pool_densities = pool_densities.clone();
             l.no_cars = no_cars || bus_only;
             l.no_trucks = no_trucks;
             l.source = 1;
@@ -10086,7 +10091,10 @@ fn object_lanes(
             })
             .map(|r| r.value as f32)
             .last();
-        let density = rule_of("trafficdensity").unwrap_or(1.0);
+        let pool_densities: Vec<(usize, f32)> = rules.iter()
+            .filter(|r| r.path_index == pi as i32 && r.kind.eq_ignore_ascii_case("trafficdensity") && !r.kill && r.extra >= 0.0)
+            .map(|r| (r.extra as usize, (r.value as f32).max(0.0))).collect();
+        let density = pool_densities.iter().rev().find(|(p, _)| *p == 0).map(|(_, d)| *d).unwrap_or(1.0);
         let no_cars = rules.iter().any(|r| {
             r.path_index == pi as i32
                 && (r.kind.eq_ignore_ascii_case("no_cars") || r.kind.eq_ignore_ascii_case("bus"))
@@ -10105,6 +10113,7 @@ fn object_lanes(
                 l.speed_limit_kmh = v;
             }
             l.density = density.max(0.0);
+            l.pool_densities = pool_densities.clone();
             l.no_cars = no_cars;
             l.no_trucks = no_trucks;
             l.turn = turn;
