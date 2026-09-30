@@ -511,9 +511,12 @@ fn natural(a: &str, b: &str) -> std::cmp::Ordering {
 fn remember_setting(key: &str, value: &str) {
     let Ok(mut v) = omsi_launcher_lib::get_settings() else { return };
     let parsed: serde_json::Value = value.parse::<f64>().map(serde_json::Value::from).unwrap_or_else(|_| serde_json::Value::from(value));
-    let parsed = match (key, &parsed) {
-        ("navigator" | "shadows" | "head_movement" | "show_fps", serde_json::Value::Number(n)) => serde_json::Value::Bool(n.as_f64().unwrap_or(0.0) > 0.5),
-        ("time_speed", _) => serde_json::Value::from(value),
+    // a switch goes in as true/false, as the launcher's own values are: written as 1 it
+    // was read as not set and saved back as its default (the pause menu's options were
+    // lost with the next game)
+    let parsed = match (&v[key], &parsed) {
+        (serde_json::Value::Bool(_), serde_json::Value::Number(n)) => serde_json::Value::Bool(n.as_f64().unwrap_or(0.0) > 0.5),
+        _ if key == "time_speed" => serde_json::Value::from(value),
         _ => parsed,
     };
     v[key] = parsed;

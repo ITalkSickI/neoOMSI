@@ -4,6 +4,20 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.380 - 2026-09-30
+
+### Game menu
+- The pause menu's Options are kept: most switches (collisions, camera collisions, view
+  turning with the steering, force feedback, keyboard brake hold, automatic clutch, head
+  tracking) were written in a form the settings file read as "not set" and came back at
+  their defaults, and LED glow and LED mipmaps were not saved at all.
+- The launcher takes over the settings a game changed instead of writing its older copy back
+  over them when it saved something of its own.
+
+### Passengers
+- Somebody at the front of a queue whom a railing, pole or shelter wall holds off the door
+  boards from where they stand; they stood a metre from the open door until the bus left.
+
 ## 0.1.378 - 2026-09-30
 
 ### Performance
