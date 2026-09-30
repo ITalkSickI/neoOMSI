@@ -237,8 +237,8 @@ impl App {
                         self.game_action("view_interiorcam_plus");
                         return;
                     }
-                    // OMSI's `screenshot` (Ctrl+Alt+P), and F12 as most games have it
-                    KeyCode::KeyP if ctrl && alt => {
+                    // OMSI's `screenshot` (Ctrl+Shift+P: 25 / 6), and F12 as most games have it
+                    KeyCode::KeyP if ctrl && shift_now => {
                         self.take_screenshot();
                         return;
                     }
@@ -273,12 +273,13 @@ impl App {
                         return;
                     }
                     // OMSI's `view_toggle_informationdisplay` (Ctrl+Y)
-                    KeyCode::KeyY if ctrl => {
+                    // OMSI's `view_toggle_informationdisplay` (Shift+Y: 21 / 2)
+                    KeyCode::KeyY if shift_now && !ctrl => {
                         self.info_bar = !self.info_bar;
                         return;
                     }
-                    // OMSI's `view_set_schedule` (Shift+Insert)
-                    KeyCode::Insert if shift_now => {
+                    // OMSI's `view_set_schedule` (Insert: 210 / 1, the key's state every frame)
+                    KeyCode::Insert if !shift_now && !ctrl => {
                         self.timetable = !self.timetable;
                         return;
                     }

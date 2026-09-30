@@ -638,7 +638,9 @@ onlytypes end types_prefered number_tour.
   random part lifetime the stock scripts draw is 0, which makes the SD200's rear door
   reopen by itself for ever.
 * Input: keyboard.cfg `[game]/[vehicles]` + `[entry] name scancode modifier` (the modifier
-  is a mask: 1 shift, 2 ctrl, 4 alt - OMSI's own driving keys are Shift + numpad);
+  is a mask, as Omsi.exe reads it (0x6478d0): 1 the action is told the key's state every
+  frame - the throttle, brake and steering keys, " *" in OMSI's key list - 2 Shift, 4 Ctrl;
+  Omsi.exe has no Alt, openOMSI's own Alt is 8, which OMSI leaves alone);
   gamectrler.cfg ctrl axis buttons FFScale.
 * Startup order (logfile.txt) documents the manager creation sequence, mirrored in `omsi-sim`.
 

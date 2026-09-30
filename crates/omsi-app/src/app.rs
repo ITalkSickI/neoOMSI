@@ -71,7 +71,9 @@ pub(crate) struct App {
     pub(crate) ambience: Option<ambience::Ambience>,
     pub(crate) cursor: (f32, f32),
     /// Last Windows mouse position used for the unbounded VR cockpit pointer.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) vr_cursor_physical: Option<(f32, f32)>,
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) vr_cursor_warp_pending: Option<(f32, f32)>,
     pub(crate) window_focused: bool,
     pub(crate) keys: hashbrown::HashSet<KeyCode>,
@@ -82,6 +84,7 @@ pub(crate) struct App {
     pub(crate) speed: f32,
     pub(crate) mouse_look: bool,
     /// Right mouse button toggles the headset picture zoom.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) vr_zoom_active: bool,
     /// The cockpit switch the cursor is over, shown in the HUD.
     pub(crate) hover: Option<String>,
@@ -185,7 +188,7 @@ pub(crate) struct App {
     pub(crate) pending_time: Option<f64>,
     /// The play time (`clock.run_time`) the last situation was saved at.
     pub(crate) autosave_t: f64,
-    /// OMSI's timetable window (`view_set_schedule`, Shift+Insert).
+    /// OMSI's timetable window (`view_set_schedule`, Insert).
     pub(crate) timetable: bool,
     /// The left button is held on a switch: mouse movement turns it.
     pub(crate) dragging: bool,

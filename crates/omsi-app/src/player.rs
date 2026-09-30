@@ -1121,6 +1121,7 @@ impl Player {
 
     /// Exact surface under a VR pointer, including meshes without a mouse event.
     /// This runs when the mouse moves, not for every headset frame.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn surface_hit(&self, origin: DVec3, dir: Vec3) -> Option<DVec3> {
         let mut nearest = f32::INFINITY;
         let mut nearest_control = f32::INFINITY;
