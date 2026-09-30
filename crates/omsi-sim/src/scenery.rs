@@ -67,6 +67,7 @@ pub struct SceneryInstance {
     v_approach: Option<omsi_script::VarId>,
     v_switch: Option<omsi_script::VarId>,
     v_refresh: Option<omsi_script::VarId>,
+    pub html_textures: Vec<crate::htmltex::HtmlTexture>,
 }
 
 impl SceneryInstance {
@@ -106,6 +107,7 @@ impl SceneryInstance {
             visible_conds,
             mesh_transforms: vec![Mat4::IDENTITY; n],
             mesh_visible: vec![true; n],
+            html_textures: Vec::new(),
         }
     }
 
@@ -180,6 +182,52 @@ impl SceneryInstance {
         match self.v_refresh {
             Some(i) => std::mem::replace(&mut self.state.vars[i as usize], 0.0) != 0.0,
             None => false,
+        }
+    }
+
+    /// Start the `[htmltexture]` pages of the object's model. `model_dir` is the folder of
+    /// the model config, `object_dir` the folder of the `.sco`.
+    pub fn init_html_textures(&mut self, defs: &[omsi_model::HtmlTextureDef], model_dir: &Path, object_dir: &Path) {
+        self.html_textures = crate::htmltex::scenery_pages(defs, model_dir, object_dir);
+    }
+
+    /// Give the pages the object's variables and time, apply what they did (variables,
+    /// triggers) and return their new pictures: (script texture index, width, height, RGBA).
+    pub fn update_html_textures(&mut self) -> Vec<(usize, u32, u32, Vec<u8>)> {
+        if self.html_textures.is_empty() {
+            return Vec::new();
+        }
+        let num: Vec<(String, f32)> = self.program.var_names.iter().enumerate().map(|(i, n)| (n.clone(), self.state.vars[i])).collect();
+        let strs: Vec<(String, String)> = self.program.str_var_names.iter().enumerate().map(|(i, n)| (n.clone(), self.state.str_vars[i].clone())).collect();
+        // (the basic API only: no vehicle, no depot)
+        let env = crate::vehicle_api::environment(&self.host.clock, &crate::vehicle_api::locale());
+        let out = crate::htmltex::drive_pages(&mut self.html_textures, &num, &strs, None, &env, None);
+        self.apply_page_output(out.events, out.triggers);
+        out.frames
+    }
+
+    /// A press, release or move on page `script_index` (`u`/`v` 0..1 across it, `v` down
+    /// from the top). False when the object has no such page.
+    pub fn html_pointer(&mut self, script_index: usize, u: f32, v: f32, kind: crate::htmltex::PointerKind) -> bool {
+        match crate::htmltex::pointer_on(&mut self.html_textures, script_index, u, v, kind) {
+            Some((events, triggers)) => {
+                self.apply_page_output(events, triggers);
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn apply_page_output(&mut self, events: Vec<(String, f32)>, triggers: Vec<String>) {
+        for (name, value) in events {
+            if !self.set_var(&name, value) {
+                log::debug!("htmltexture: the page sets {name}, which the object does not have");
+            }
+        }
+        for name in triggers {
+            if !self.trigger(&name) {
+                log::debug!("htmltexture: the page presses {name}, which the object does not have");
+            }
         }
     }
 

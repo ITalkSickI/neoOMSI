@@ -629,6 +629,20 @@ fn time_date_and_locale_reach_the_page() {
 }
 
 #[test]
+fn a_scenery_page_has_only_the_basic_api() {
+    let mut r = EngineRenderer::with_api(
+        200,
+        100,
+        "<div id='a'></div><div id='b'></div>         <script>          document.getElementById('a').textContent = [typeof omsi.vehicle, typeof omsi.depot, typeof omsi.setRoute, typeof omsi.setNextStop].join(',');          omsi.update = function (d) {            document.getElementById('b').textContent = [typeof d.vehicle, typeof omsi.setVar, typeof omsi.trigger, typeof omsi.time, omsi.locale].join(',');          };         </script>",
+        crate::htmltex::PageApi::Scenery,
+    );
+    r.set_env(&crate::vehicle_api::environment(&crate::SimClock::default(), "de"));
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("a").as_deref(), Some("undefined,undefined,undefined,undefined"));
+    assert_eq!(r.text_of("b").as_deref(), Some("undefined,function,function,object,de"));
+}
+
+#[test]
 fn the_english_date_is_month_first() {
     use crate::vehicle_api::{environment, ApiValue};
     let mut c = crate::SimClock::default();

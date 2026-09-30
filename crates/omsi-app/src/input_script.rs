@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// How far (m) a click reaches a page (`[htmltexture]`) on a scenery object.
+const HTML_OBJECT_REACH: f32 = 4.0;
+
 impl App {
     /// Save the personnel file and the session summary (once: every caller ends the game,
     /// and the frames the loop still runs before it stops count no more time).
@@ -722,9 +725,17 @@ impl App {
     }
 
     fn html_move(&mut self) {
+        if let Some((id, page, ..)) = self.html_object_pressed {
+            let Some((o, d, _)) = self.cursor_ray_now() else { return };
+            let Some(w) = self.world.clone() else { return };
+            if let Some(h) = w.html_object_hit(o, d, HTML_OBJECT_REACH).filter(|h| h.map_id == id && h.page == page) {
+                w.html_object_pointer(id, page, h.u, h.v, omsi_sim::htmltex::PointerKind::Move);
+                self.html_object_pressed = Some((id, page, h.u, h.v));
+            }
+            return;
+        }
         let Some((page, ..)) = self.html_pressed else { return };
-        let Some((o, d, _)) = self.camera.as_ref().zip(self.surface.as_ref())
-            .map(|(cam, s)| self.cockpit_cursor_ray(cam, (s.config.width, s.config.height))) else { return };
+        let Some((o, d, _)) = self.cursor_ray_now() else { return };
         let Some(p) = self.player.as_mut() else { return };
         if let Some((pg, u, v)) = p.html_hit(o, d).filter(|h| h.0 == page) {
             p.html_pointer(pg, u, v, omsi_sim::htmltex::PointerKind::Move);
@@ -893,6 +904,10 @@ impl App {
         if self.view == "foot" && self.inside_remote.is_some() {
             return;
         }
+        // a page (`[htmltexture]`) on a scenery object: pressed and released like the bus's own
+        if self.html_object_click(pressed) {
+            return;
+        }
         // on foot: the own bus's switches, doors and flaps from inside it or standing by it
         if self.view == "foot" && !self.foot_reaches_bus() {
             return;
@@ -935,6 +950,48 @@ impl App {
                 self.dragging = false;
             }
         }
+    }
+
+    /// A click on a page of a scenery object (`[htmltexture]` in its model). True when the
+    /// click was the page's: the press lands on it, the release goes to it wherever the
+    /// pointer is by then.
+    fn html_object_click(&mut self, pressed: bool) -> bool {
+        let Some(w) = self.world.clone() else { return false };
+        if !pressed {
+            let Some((id, page, u, v)) = self.html_object_pressed.take() else { return false };
+            let (u, v) = self
+                .cursor_ray_now()
+                .and_then(|(o, d, _)| w.html_object_hit(o, d, HTML_OBJECT_REACH))
+                .filter(|h| h.map_id == id && h.page == page)
+                .map_or((u, v), |h| (h.u, h.v));
+            w.html_object_pointer(id, page, u, v, omsi_sim::htmltex::PointerKind::Up);
+            self.dragging = false;
+            return true;
+        }
+        // (driving with the VR pointer: the clicks are the bus's)
+        #[cfg(windows)]
+        if self.vr.is_some() && self.mouse_drive && self.game_menu.is_none() && matches!(self.view.as_str(), "driver" | "pax") {
+            return false;
+        }
+        let Some((o, d, _)) = self.cursor_ray_now() else { return false };
+        let Some(h) = w.html_object_hit(o, d, HTML_OBJECT_REACH) else { return false };
+        // the bus in front of the page (a switch, a window, its own page) takes the click
+        if self.player.as_ref().and_then(|p| p.body_hit(o, d)).is_some_and(|t| t < h.t) {
+            return false;
+        }
+        if let Some(p) = self.player.as_mut() {
+            p.release();
+        }
+        w.html_object_pointer(h.map_id, h.page, h.u, h.v, omsi_sim::htmltex::PointerKind::Down);
+        self.html_object_pressed = Some((h.map_id, h.page, h.u, h.v));
+        self.dragging = false;
+        true
+    }
+
+    /// The ray under the cursor now (see [`Self::cockpit_cursor_ray`]).
+    fn cursor_ray_now(&self) -> Option<(glam::DVec3, glam::Vec3, f32)> {
+        let (cam, s) = self.camera.as_ref().zip(self.surface.as_ref())?;
+        Some(self.cockpit_cursor_ray(cam, (s.config.width, s.config.height)))
     }
 
     /// A switch held with the mouse: OMSI runs its `<event>_drag` trigger every frame the
