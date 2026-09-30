@@ -636,6 +636,9 @@ impl Vr {
         };
         let mut vr_base = *base;
         vr_base.roll = 0.0;
+        // Driver cameras may look down at the dashboard by default. In VR the
+        // headset supplies the player's pitch, so start from a level view.
+        vr_base.pitch = 0.0;
         let zoom = self.animated_zoom(zoom_active);
         let targets = [0, 1].map(|eye| {
             self.images[index].create_view(&wgpu::TextureViewDescriptor {

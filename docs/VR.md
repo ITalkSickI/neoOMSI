@@ -31,6 +31,12 @@ The default bindings are:
 | Toggle the monitor preview | F7 |
 | Switch between VR and desktop | F8 |
 
+Adjust your seating position while driving through **Esc → Options** using
+**Seat forward**, **Seat back**, **Seat up**, **Seat down**, **Seat right**, or **Seat left**.
+**Reset the seat position** restores the bus camera's default position. The launcher
+also has seat-position sliders under **Settings**; those changes apply when the next
+drive starts.
+
 **Esc** opens the menu in front of the headset. Move the mouse to point at cockpit
 controls and left-click to use them. The pointer fades after ten seconds without
 mouse movement and returns in the centre when moved again. When mouse steering is
