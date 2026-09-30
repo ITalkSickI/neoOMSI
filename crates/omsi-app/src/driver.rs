@@ -18,7 +18,7 @@ pub enum DriverArmState {
     ReturningToSteering,   // Retornando a mão para o volante
 }
 
-/// Gerenciador da visibilidade e animação em primeira pessoa
+/// Gerenciador da animação em primeira pessoa
 pub struct FirstPersonDriver {
     pub is_first_person: bool,
     pub arm_state: DriverArmState,
@@ -35,27 +35,13 @@ impl FirstPersonDriver {
             arm_state: DriverArmState::Steering,
             anim_timer: 0.0,
             anim_duration: 0.35,
-            right_hand_target: Vec3::new(0.25, -0.25, 0.35), // Posição padrão do câmbio no cockpit
+            right_hand_target: Vec3::new(0.25, -0.25, 0.35),
             current_gear: 0,
         }
     }
 
-    /// Atualiza visibilidade dos ossos mantendo braços visíveis na câmera do motorista
-    pub fn update_bone_visibility(&self, figure: &mut DriverFigure) {
-        if self.is_first_person {
-            // Em 1ª pessoa: oculta apenas a cabeça e pescoço para não tapar a câmera
-            figure.set_bone_visibility("head", false);
-            figure.set_bone_visibility("neck", false);
-        } else {
-            // Câmera externa / espelhos: mostra corpo completo
-            figure.set_bone_visibility("head", true);
-            figure.set_bone_visibility("neck", true);
-        }
-    }
-
     /// Processa a animação do braço direito de acordo com as variáveis de câmbio
-    pub fn update(&mut self, delta_time: f32, script_gear: i32, steering_angle: f32) {
-        // Detecta quando uma nova marcha é engatada
+    pub fn update(&mut self, delta_time: f32, script_gear: i32) {
         if script_gear != self.current_gear && self.arm_state == DriverArmState::Steering {
             self.current_gear = script_gear;
             self.arm_state = DriverArmState::MovingToShifter;
@@ -89,7 +75,6 @@ impl FirstPersonDriver {
     }
 }
 
-/// Constants for driver figures on steering wheel
 const REST: [f32; 2] = [-70.0, 70.0];
 const RANGE: [(f32, f32); 2] = [(-150.0, -20.0), (20.0, 150.0)];
 const SLIP: f32 = 25.0;
@@ -322,10 +307,6 @@ impl DriverFigure {
         Some(f)
     }
 
-    pub(crate) fn set_bone_visibility(&mut self, _bone: &str, _visible: bool) {
-        // Método utilitário para ajustar a visibilidade de ossos específicos
-    }
-
     pub(crate) fn attach(&mut self, v: &VehicleInstance) -> bool {
         match seat_of(v) {
             Some(seat) => {
@@ -374,12 +355,9 @@ impl DriverFigure {
     }
 
     pub(crate) fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, dt: f32, show: bool, mirror_only: bool) {
-        // Atualiza a visibilidade do modelo na visão em 1ª pessoa
-        self.fp_driver.update_bone_visibility(self);
-
-        // Atualiza animações do braço lendo o estado atual da marcha
+        // Atualiza a animação do braço com base nas marchas
         let gear = v.var("antrieb_getriebe_gang").map(|g| g as i32).unwrap_or(0);
-        self.fp_driver.update(dt, gear, self.theta);
+        self.fp_driver.update(dt, gear);
 
         let effective_show = show || mirror_only;
         if effective_show != self.shown {
@@ -399,7 +377,42 @@ impl DriverFigure {
         }
         let h = self.heading.to_radians();
         let fwd = Vec3::new(h.sin(), h.cos(), 0.0);
-        
+        if !self.settled {
+            for round in 0..20 {
+                let mut p = Pose::new(0x5eed_d71e);
+                let targets = self.hand_targets(v, 0.0);
+                let try_input = self.pose_input(targets.as_ref(), fwd);
+                for _ in 0..90 {
+                    p.advance(&self.ty.rig, &try_input, 1.0 / 30.0);
+                }
+                let posed = p.bones(&self.ty.rig);
+                let miss = match (try_input.grips, posed.ok) {
+                    (Some(g), true) => (0..2).map(|k| (posed.wrist[k] - g[k]).length()).fold(0.0f32, f32::max),
+                    _ => 0.0,
+                };
+                let moved = if posed.ok { self.keep_elbows(&posed.elbow) } else { 0.0 };
+                let off = match (&targets, posed.ok) {
+                    (Some(t), true) => {
+                        let tubes = t.tubes.map(|q| self.to_person(q));
+                        self.correct_grips(&posed.bones, tubes, 1.0, [true; 2])
+                    }
+                    _ => 0.0,
+                };
+                if (miss < 0.02 && off < 0.01 && moved < 0.01) || (self.slide >= SLIDE_MAX && self.lean >= 30.0) || round == 19 {
+                    self.pose = p;
+                    break;
+                }
+                if miss < 0.02 {
+                } else if self.slide < SLIDE_MAX {
+                    self.slide = (self.slide + miss * 0.8).min(SLIDE_MAX);
+                } else {
+                    self.lean = (self.lean + (miss / 0.011).max(2.0)).min(30.0);
+                }
+            }
+            self.settled = true;
+            self.base_lean = self.lean;
+            return self.update(renderer, scene, v, dt, show, mirror_only);
+        }
         let targets = self.hand_targets(v, dt);
         let input = self.pose_input(targets.as_ref(), fwd);
         let floor = self.floor + fwd * self.slide;
@@ -408,7 +421,21 @@ impl DriverFigure {
         if posed.ok {
             self.keep_elbows(&posed.elbow);
         }
-
+        if let (Some(t), true) = (&targets, posed.ok) {
+            let tubes = t.tubes.map(|q| self.to_person(q));
+            let holding = [0, 1].map(|k| self.hands[k].mv.is_none());
+            self.correct_grips(&posed.bones, tubes, 1.0 - (-dt / FIX_EASE).exp(), holding);
+        }
+        if let (Some(g), true) = (input.grips, posed.ok && dt > 0.0) {
+            let miss = (0..2)
+                .map(|k| (posed.wrist[k] - g[k]).length())
+                .fold(0.0f32, f32::max);
+            if miss > 0.015 {
+                self.lean = (self.lean + (miss / 0.011) * dt * 4.0).min(34.0).min(self.base_lean + 6.0);
+            } else if miss < 0.006 {
+                self.lean = (self.lean - 4.0 * dt).max(self.base_lean);
+            }
+        }
         if !posed.ok && !self.skins.is_empty() {
             return;
         }
@@ -595,7 +622,6 @@ impl DriverFigure {
             self.frames[k] = Some((dir, palm));
             let knuckle = tube - palm * self.grip_radius;
 
-            // Se for a mão direita e estiver trocando de marcha, ajusta a posição do target em direção ao câmbio
             let mut grip_pos = knuckle - dir * self.knuckles;
             if k == 1 && self.fp_driver.arm_state != DriverArmState::Steering {
                 let progress = (self.fp_driver.anim_timer / self.fp_driver.anim_duration).clamp(0.0, 1.0);
@@ -657,6 +683,22 @@ impl DriverFigure {
         let h = self.heading.to_radians();
         let floor = self.floor + Vec3::new(h.sin(), h.cos(), 0.0) * self.slide;
         floor + Vec3::new(d.x * h.cos() + d.y * h.sin(), -d.x * h.sin() + d.y * h.cos(), d.z)
+    }
+
+    fn correct_grips(&mut self, bones: &[glam::Affine3A], tubes: [Vec3; 2], gain: f32, which: [bool; 2]) -> f32 {
+        let mut worst = 0.0f32;
+        for k in (0..2).filter(|&k| which[k]) {
+            let Some(rest) = self.grip_rest[k] else { continue };
+            let Some(b) = bones.get(hand_slot(k)) else { continue };
+            let held = Vec3::from(b.transform_point3a(rest.into()));
+            let err = tubes[k] - held;
+            worst = worst.max(err.length());
+            let step = err * gain;
+            let step = if gain < 1.0 { step.clamp_length_max(FIX_STEP) } else { step };
+            let fix = self.grip_fix[k] + step;
+            self.grip_fix[k] = fix.clamp_length_max(0.15);
+        }
+        worst
     }
 }
 
