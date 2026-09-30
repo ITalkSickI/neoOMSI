@@ -114,6 +114,11 @@ impl Program {
         self.blocks.iter().any(|b| b.ops.iter().any(|op| matches!(op, Op::Store(v) if *v == var)))
     }
 
+    /// Whether any block of the program reads the system variable `sys` (`(L.S.name)`).
+    pub fn reads_sys(&self, sys: SysVar) -> bool {
+        self.blocks.iter().any(|b| b.ops.iter().any(|op| matches!(op, Op::LoadSys(v) if *v == sys)))
+    }
+
     /// Whether running `block` (with the macros it calls) can write variable `var` with
     /// anything but a literal 0 (`0 (S.L.a) (S.L.b)` only ever clears them).
     pub fn block_sets(&self, block: BlockId, var: VarId) -> bool {

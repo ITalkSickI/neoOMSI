@@ -595,6 +595,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     }
     toggle_setting(ui, s, dirty, row(&mut y), "Force feedback and vibration", "ff_enabled");
     toggle_setting(ui, s, dirty, row(&mut y), "The keyboard brake stays on until the throttle (as in OMSI)", "brake_hold");
+    toggle_setting(ui, s, dirty, row(&mut y), "Automatic clutch (manual gearboxes)", "auto_clutch");
     toggle_setting(ui, s, dirty, row(&mut y), "Invert force feedback", "ff_invert");
     if ui.button("s-wreset", row(&mut y), "Reset wheel settings", Some("restart_alt"), ButtonKind::Normal) {
         s["wheel_range"] = json!(900.0);

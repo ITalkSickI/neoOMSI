@@ -6502,8 +6502,7 @@ impl World {
                                                     .parse::<f32>()
                                                     .ok()
                                                     .or_else(|| inst.var(&v.4))
-                                                    .unwrap_or(1.0)
-                                                    > 0.5
+                                                    .is_some_and(change_picks_item)
                                             })
                                             .unwrap_or(false);
                                         renderer.set_material(
@@ -8149,9 +8148,9 @@ impl World {
                         .parse()
                         .ok()
                         .or_else(|| o.inst.var(var))
-                        .unwrap_or(1.0)
+                        .unwrap_or(0.0)
                 };
-                renderer.set_material(scene, *inst, *slot, if x > 0.5 { *item } else { *base });
+                renderer.set_material(scene, *inst, *slot, if change_picks_item(x) { *item } else { *base });
             }
             if !o.ty.dynamic_textures.is_empty() {
                 let selection = scenery_texture_selection(&o.ty, &o.inst);
@@ -8166,9 +8165,9 @@ impl World {
                                 .parse::<f32>()
                                 .ok()
                                 .or_else(|| o.inst.var(var))
-                                .unwrap_or(1.0)
+                                .unwrap_or(0.0)
                         };
-                        ((*inst, *slot), value > 0.5)
+                        ((*inst, *slot), change_picks_item(value))
                     })
                     .collect();
                 texture_updates.push((o.ty.clone(), selection, o.instances.clone(), switches));
@@ -9053,6 +9052,16 @@ pub struct DynSlot {
     pub emissive: [f32; 3],
 }
 
+/// Whether a `[matl_change]` variable at `x` shows the slot's `[matl_item]`: Omsi.exe
+/// (0x5fd6xx) rounds the variable (to the nearest, ties to even) and shows item `n` for
+/// 1 <= n <= the items there are, the plain material otherwise - a lamp's variable at 2
+/// with one item is dark. A variable no script declares is registered by the model loader
+/// at 0 (the stock MANs' spare buttons, `*Noch nicht belegt*`, and a mod's door lamps
+/// were lit for good when it was taken as on, #231).
+pub(crate) fn change_picks_item(x: f32) -> bool {
+    x.is_finite() && x.round_ties_even() == 1.0
+}
+
 /// A material variant switched by a variable.
 #[derive(Clone)]
 pub struct VariantSlot {
@@ -9060,7 +9069,7 @@ pub struct VariantSlot {
     pub slot: usize,
     pub base: MaterialId,
     pub item: MaterialId,
-    /// `[matl_change]` variable: above 0.5 the item variant shows.
+    /// `[matl_change]` variable: at 1 (rounded) the item variant shows.
     pub var: String,
     /// The variables of the slot's further `[matl_change]`s: the item shows while any of
     /// them is on as well (Omsi.exe sub_7c2d80: each record picks its item by its own
@@ -9184,14 +9193,8 @@ impl VariantSlot {
             let i = if v.is_finite() { v.trunc() as i64 } else { 0 };
             self.entries[i.clamp(0, self.entries.len() as i64 - 1) as usize]
         };
-        let x = self
-            .var
-            .trim()
-            .parse()
-            .ok()
-            .or_else(|| var(&self.var))
-            .unwrap_or(1.0);
-        if x > 0.5 || self.more_vars.iter().any(|v| var(v).is_some_and(|x| x > 0.5)) {
+        let x = self.var.trim().parse().ok().or_else(|| var(&self.var)).unwrap_or(0.0);
+        if change_picks_item(x) || self.more_vars.iter().any(|v| var(v).is_some_and(change_picks_item)) {
             item
         } else {
             base

@@ -839,8 +839,13 @@ of a dirt overlay material. `veh_wash` clears them.
 
 `[matl_change] texture index variable` followed by one `[matl_item]` block (every stock
 file has exactly one): the block's `[matl_nightmap]`, `[matl_lightmap]`, `[matl_allcolor]` …
-describe the material *variant* that is active while the variable is set (≥ 0.5); with the
-variable at 0 the plain material applies. The item's `[matl_nightmap]` glows at full strength while the
+describe the material *variant*. Omsi.exe (0x5fd6xx) rounds the variable to the nearest
+whole number (ties to even) and shows item n for 1 ≤ n ≤ the number of items, the plain
+material for anything else - a variable at 2 with one item is dark. A variable no script
+declares is registered by the model loader at 0 (the stock MANs' spare buttons are switched
+by `*Noch nicht belegt*`, "not assigned yet", and stay dark). The `[matl_change]` block
+itself changes the plain material; each `[matl_item]` starts as a copy of the plain
+material as it is at that point (openOMSI draws the first item). The item's `[matl_nightmap]` glows at full strength while the
 variable is on, by day as well - warning lamps (`lights_blinkgeber`, `cockpit_light_*`,
 `haltewunschlampe`) and dashboard screens drawn only in the night map (the Procity's pressure
 screen, switched by `elec_busbar_main`) depend on it; a plain `[matl_nightmap]` fades in with

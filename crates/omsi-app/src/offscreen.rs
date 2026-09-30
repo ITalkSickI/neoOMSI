@@ -517,9 +517,13 @@ pub(crate) fn run_offscreen(
             if i < drive_frames {
                 for (name, at) in &timed {
                     if *at > t_s - dt && *at <= t_s {
+                        // (a gate of a manual gearbox comes with the automatic clutch, as
+                        // from the keys)
+                        player.clutch_for_gate(name);
                         player.vehicle.trigger(name);
                     }
                 }
+                player.axes.clutch = (player.axes.clutch - 0.7 * dt).max(0.0);
                 // --drive test profile: full throttle, steering from --setvar drive_steer, brake after drive_brake_at
                 let steer = args
                     .setvar
@@ -629,6 +633,8 @@ pub(crate) fn run_offscreen(
                         controls.brake = ((speed - kmh - 3.0) / 10.0).clamp(0.0, 1.0);
                     }
                 }
+                player.auto_clutch_bite(controls.throttle);
+                controls.clutch = controls.clutch.max(player.axes.clutch);
                 player.vehicle.set_controls(controls);
                 if i == 0 {
                     if let Some(v0) = drive_v0 {
@@ -636,6 +642,13 @@ pub(crate) fn run_offscreen(
                     }
                 }
                 player.vehicle.update(dt);
+                // OMSI_DEBUG_VARS with OMSI_DEBUG_VARS_EVERY=<s>: the variables through the drive
+                if let (Ok(list), Some(every)) = (omsi_cfg::env::var("OMSI_DEBUG_VARS"), omsi_cfg::env::var("OMSI_DEBUG_VARS_EVERY").ok().and_then(|v| v.parse::<f32>().ok())) {
+                    if (t_s / every).floor() != ((t_s - dt) / every).floor() {
+                        let vals: Vec<String> = list.split(',').map(str::trim).map(|v| format!("{v}={:.2}", player.vehicle.var(v).unwrap_or(f32::NAN))).collect();
+                        log::info!("t={t_s:.1}: {}", vals.join(" "));
+                    }
+                }
                 // OMSI_JOINT_ANGLE=degrees: the rear section held at that angle to the front
                 // one (the joint and its bellows seen bent, without driving a curve)
                 if let Some(a) = omsi_cfg::env::var("OMSI_JOINT_ANGLE").ok().and_then(|v| v.trim().parse::<f64>().ok()) {

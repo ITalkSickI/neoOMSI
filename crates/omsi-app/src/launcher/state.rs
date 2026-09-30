@@ -266,6 +266,12 @@ impl State {
         s.load_content();
         s.load_profiles();
         s.poll_now();
+        // (a phone runs the game in the launcher's process: a crash took both, and the
+        // launcher learns of it from the previous run's log)
+        #[cfg(target_os = "android")]
+        {
+            s.crash = crate::android::previous_run_crash();
+        }
         s
     }
 

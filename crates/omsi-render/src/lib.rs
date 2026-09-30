@@ -1394,6 +1394,8 @@ impl Renderer {
         let full = omsi_cfg::env::var_os("OMSI_FULL_GPU").is_some();
         let weak = !full
             && (info.backend == wgpu::Backend::Gl
+                // (a phone's chip, whatever type its driver reports: some say "other")
+                || cfg!(target_os = "android")
                 || (info.device_type == wgpu::DeviceType::IntegratedGpu && info.backend != wgpu::Backend::Metal)
                 || vram.is_some_and(|v| v <= 2560));
         let modest = !full && !weak && vram.is_some_and(|v| v <= 4200);
@@ -3646,9 +3648,10 @@ impl Renderer {
     /// it again when there is room. Steps of a twentieth, so that the few sizes it takes
     /// keep their render targets.
     pub fn set_dynamic_scale(&self, s: f32) {
-        // (1, 0.85 or 0.7: see the game's governor)
-        let s = s.clamp(0.7, 1.0);
-        let level = [1.0f32, 0.85, 0.7].into_iter().min_by(|a, b| (a - s).abs().total_cmp(&(b - s).abs())).unwrap_or(1.0);
+        // (1, 0.85, 0.7 or 0.55 - the last for a phone's chip that is still too slow: see
+        // the game's governor)
+        let s = s.clamp(0.55, 1.0);
+        let level = [1.0f32, 0.85, 0.7, 0.55].into_iter().min_by(|a, b| (a - s).abs().total_cmp(&(b - s).abs())).unwrap_or(1.0);
         self.dynamic_scale.set(level);
     }
 

@@ -309,7 +309,7 @@ impl App {
             let gy;
             if manual && gears.len() > 3 {
                 // the gear engaged, as the lever's script has it
-                let engaged = p.vehicle.var("antrieb_getr_aktugang").map(|g| g.round() as i32);
+                let engaged = p.vehicle.var("antrieb_getr_aktugang").or_else(|| p.vehicle.var("antrieb_getr_gang")).map(|g| g.round() as i32);
                 let label_of = |g: i32| match g {
                     -1 => "R",
                     0 => "N",

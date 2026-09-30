@@ -482,6 +482,9 @@ impl Player {
             self.vehicle.trigger(&format!("{name}{suffix}"));
             return true;
         }
+        if pressed {
+            self.clutch_for_gate(name);
+        }
         let headlights = pressed && name.eq_ignore_ascii_case("kw_scheinwerfer_toggle");
         let lamps_before = if headlights { self.outside_lamps_lit() } else { 0 };
         if self.vehicle.trigger(&format!("{name}{suffix}")) {
@@ -504,6 +507,24 @@ impl Player {
             }
         }
         self.toggle_as_steps(name, pressed)
+    }
+
+    /// OMSI's automatic clutch for a gear lever whose scripts only take a gear with the
+    /// clutch pedal right down (`(L.L.clutch) 1 =`, the LiAZ and PAZ KPP) and do not read
+    /// `AutoClutch` themselves: a gate chosen with a key, a phone's gear button or a
+    /// controller comes with the clutch pressed, let up again as the key lets it (and held
+    /// while the bus stands, see [`Player::tick`]). Without it a player with no clutch
+    /// pedal - every phone, with the automatic clutch on - could not put a gear in at all
+    /// (#226). Scripts that read `AutoClutch` (the Sprinters' G32) work it themselves.
+    pub(crate) fn clutch_for_gate(&mut self, name: &str) {
+        let Some(gate) = name.get(..5).filter(|p| p.eq_ignore_ascii_case("kw_s_")).map(|_| &name[5..]) else { return };
+        let is_gate = gate.eq_ignore_ascii_case("r") || gate.eq_ignore_ascii_case("n") || gate.parse::<u32>().is_ok();
+        let program = &self.vehicle.ty.program;
+        if !is_gate || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+            return;
+        }
+        self.vehicle.set_var("Clutch", 1.0);
+        self.axes.clutch = 1.0;
     }
 
     /// The I key: all saloon light circuits on, or all off. OMSI binds one key to each
@@ -951,6 +972,28 @@ impl Player {
         }
     }
 
+    /// The automatic clutch of the settings for a gear lever whose scripts do not read
+    /// OMSI's `AutoClutch` (the LiAZ MKPP): with a gear in and the bus slow, the clutch
+    /// bites as the throttle goes down, as a driver lets it up - without it every start
+    /// from a stop stalled the engine unless a clutch pedal was worked.
+    pub(crate) fn auto_clutch_bite(&mut self, throttle: f32) {
+        let program = &self.vehicle.ty.program;
+        if self.vehicle.host.auto_clutch < 0.5 || program.trigger("kw_s_1").is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+            return;
+        }
+        let gear = self.vehicle.var("antrieb_getr_aktugang").or_else(|| self.vehicle.var("antrieb_getr_gang")).unwrap_or(0.0);
+        let kmh = self.vehicle.physics.velocity_kmh().abs();
+        if gear.abs() > 0.5 && kmh < 12.0 {
+            // it bites as the throttle goes down and only as far as the engine keeps its
+            // revs (a clutch let go at once under full throttle stalled it all the same)
+            let n = self.vehicle.var("engine_n").unwrap_or(0.0);
+            let bite = ((throttle - 0.05) / 0.45).clamp(0.0, 1.0).min(((n - 850.0) / 700.0).clamp(0.0, 1.0));
+            let bite = bite * bite * (3.0 - 2.0 * bite);
+            let want = (1.0 - bite) * (1.0 - kmh / 12.0);
+            self.axes.clutch = self.axes.clutch.max(want);
+        }
+    }
+
     pub(crate) fn tick(&mut self, dt: f32, audio: Option<&omsi_audio::AudioEngine>, inside: bool, listener_follows_bus: bool) {
         self.tick_startup(dt);
         self.tick_auto_drag(dt);
@@ -958,24 +1001,7 @@ impl Player {
         self.axes.lock_curvature = self.vehicle.ty.def.inv_min_turn_radius;
         self.axes.update(dt);
         let a = self.analog;
-        // The automatic clutch of the settings for a gear lever whose scripts do not read
-        // OMSI's `AutoClutch` (the LiAZ MKPP): with a gear in and the bus slow, the clutch
-        // bites as the throttle goes down, as a driver lets it up - without it every start
-        // from a stop stalled the engine unless a clutch pedal was worked.
-        if self.vehicle.host.auto_clutch > 0.5 && self.vehicle.ty.program.trigger("kw_s_1").is_some() {
-            let gear = self.vehicle.var("antrieb_getr_aktugang").unwrap_or(0.0);
-            let kmh = self.axes.speed_kmh.abs();
-            if gear.abs() > 0.5 && kmh < 12.0 {
-                let throttle = a.throttle.unwrap_or(0.0).max(self.axes.throttle);
-                // it bites as the throttle goes down and only as far as the engine keeps its
-                // revs (a clutch let go at once under full throttle stalled it all the same)
-                let n = self.vehicle.var("engine_n").unwrap_or(0.0);
-                let bite = ((throttle - 0.05) / 0.45).clamp(0.0, 1.0).min(((n - 850.0) / 700.0).clamp(0.0, 1.0));
-                let bite = bite * bite * (3.0 - 2.0 * bite);
-                let want = (1.0 - bite) * (1.0 - kmh / 12.0);
-                self.axes.clutch = self.axes.clutch.max(want);
-            }
-        }
+        self.auto_clutch_bite(a.throttle.unwrap_or(0.0).max(self.axes.throttle));
         self.vehicle.set_controls(omsi_sim::Controls {
             throttle: a.throttle.unwrap_or(self.axes.throttle).max(self.axes.throttle),
             brake: a.brake.unwrap_or(self.axes.brake).max(self.axes.brake),
