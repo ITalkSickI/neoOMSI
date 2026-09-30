@@ -62,15 +62,19 @@ pub struct SplineCurve {
     pub half_cant_width: f64,
 }
 
-/// The half cant width OMSI uses for a spline type: the .sli's
-/// `[halfcantwidth]`, else as far as its profile reaches either side.
+/// The half cant width OMSI uses for a spline type: the .sli's `[halfcantwidth]`, else as
+/// far as its `[heightprofile]`s reach either side (Omsi.exe 0x5adb3c: the width starts at
+/// -1 and becomes the larger of -min(0, x0) and max(0, x1) over the height profiles, 0x5ac727
+/// / 0x5ac78d) - not the drawn profile. A type without height profiles (the grass and
+/// pavement pieces of a crossing kit) has none at all, and a cant the map gives it does
+/// nothing: taken over the drawn width, Westcountry's crossings' `-70` tipped their pieces
+/// metres into the ground and the sky, pointed spikes at every corner.
 pub fn half_cant_width(def: &Spline) -> f64 {
     if let Some(w) = def.half_cant_width.filter(|w| w.is_finite() && *w >= 0.0) {
         return w as f64;
     }
-    let xs = def.profiles.iter().flat_map(|p| p.points.iter().map(|q| q.x as f64));
-    let (lo, hi) = xs.fold((0.0f64, 0.0f64), |(lo, hi), x| (lo.min(x), hi.max(x)));
-    (-lo).max(hi)
+    let (lo, hi) = def.height_profiles.iter().fold((0.0f64, 0.0f64), |(lo, hi), h| (lo.min(h.x0 as f64), hi.max(h.x1 as f64)));
+    (-lo).max(hi).max(-1.0)
 }
 
 /// The half cant width of a spline without a .sli object (OMSI: 10 m).
@@ -923,11 +927,18 @@ mod tests {
         assert_eq!(ts.hole_height(k(12.0, 20.0)), None);
         assert!(ts.cut_at(115.0, 115.0, 0.0, 0.12));
         assert!(!ts.cut_at(200.0, 200.0, 0.0, 0.12));
-        // the ground at 1.95 m is cut under the plate (flush), at 0.2 m under the road (a
-        // sunken road still shows)
-        assert!(ts.cut_at(12.0, 20.0, 1.95, 0.12));
+        // a surface alone takes no ground away (only the map's holes do, as in Omsi.exe)
+        // unless OMSI_ROAD_CUT asks for it
+        assert_eq!(ts.cut_at(12.0, 20.0, 1.95, 0.12), road_cut());
         assert!(!ts.cut_at(12.0, 20.0, 1.5, 0.12));
-        assert!(ts.cut_at(25.0, 20.0, 1.5, 0.12));
+        // an aligned spline's outline cuts exactly along it, whatever the heights
+        ts.add_outline(&[DVec2::new(50.0, 50.0), DVec2::new(60.0, 50.0), DVec2::new(60.0, 51.0), DVec2::new(50.0, 51.0)], 0, 0);
+        assert!(ts.cut_at(55.0, 50.5, 40.0, 0.12));
+        assert!(!ts.cut_at(55.0, 51.3, 0.0, 0.12));
+        let mask = ts.mask_image(&|_, _| 0.0, 0.12);
+        let n = ts.size;
+        let a = |x: f32, y: f32| mask[((y / tile_size() as f32 * n as f32) as usize * n + (x / tile_size() as f32 * n as f32) as usize) * 4 + 3];
+        assert!(a(55.0, 50.5) < 128 && a(55.0, 53.0) == 255);
         // only the touched blocks hold memory: a few kilobytes, not the 5 MB of a dense raster
         assert!(ts.heap_bytes().0 < 200_000, "{}", ts.heap_bytes().0);
         let _ = cell;

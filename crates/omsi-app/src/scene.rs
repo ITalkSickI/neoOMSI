@@ -3756,6 +3756,7 @@ impl World {
             let corners: Vec<glam::Vec3> = base.positions.clone();
             let mut meshes = Vec::with_capacity(ot.meshes.len());
             let mut moved = 0usize;
+            let mut biggest = 0f32;
             for (mesh, _, _) in &ot.meshes {
                 let mut m = mesh.clone();
                 for v in m.positions.iter_mut() {
@@ -3773,9 +3774,14 @@ impl World {
                     if d.abs() > 0.001 {
                         v.z += d;
                         moved += 1;
+                        biggest = biggest.max(d.abs());
                     }
                 }
                 meshes.push(m);
+            }
+            if biggest > 1.0 && omsi_cfg::env::var_os("OMSI_DEBUG_WARP").is_some() {
+                let (lo, hi) = base.positions.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p.z), a.1.max(p.z)));
+                log::info!("crossing {} at ({:.1}, {:.1}, {:.1}) moved up to {biggest:.2} m (field {lo:.2}..{hi:.2}, {} points)", ot.sco.path.display(), pos.x, pos.y, pos.z, base.positions.len());
             }
             if moved > 0 {
                 log::debug!(
