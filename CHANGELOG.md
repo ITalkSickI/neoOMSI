@@ -4,6 +4,27 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.433 - 2026-10-01
+
+### Graphics
+- Enhanced graphics are there again on every device and graphics API (0.1.402 left them
+  out on phones and OpenGL). They are built whenever Enhanced is chosen; only a phone or
+  OpenGL device not set to Enhanced skips compiling them, as it never draws them - that
+  compile is what killed Mali and Adreno drivers at the start.
+
+### Driving and view
+- Scripts: a trigger starts with 1 on its stack, as in OMSI - a trigger guarded by a bare
+  `{if}` did nothing (the S315 UL-GT's ticket printer switch) (#388, by hannsadrian).
+- The interior camera glides between viewpoints (OMSI's `driverview_smooth`, a setting)
+  (#388).
+- The driver's hands are seen in the cab view, the rest of the figure folded away (#376, by
+  Neblina666).
+
+### Displays and translations
+- The Atron ticket machine shows its stop text and keeps its sales screen (#390, by
+  TruckiHD).
+- Brazilian Portuguese improved, European Portuguese added (#396, by isaacsa2).
+
 ## 0.1.402 - 2026-09-30
 
 ### Graphics

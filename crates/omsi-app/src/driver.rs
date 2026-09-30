@@ -407,8 +407,8 @@ impl DriverFigure {
             self.shown = show;
         }
 
-        // Se estivermos na cabine (mirror_only) e show_hands_in_cab for true,
-        // forçamos a malha a ficar ativa para a câmara principal para podermos renderizar os vértices das mãos.
+        // (in the cab with the hands shown: the figure is drawn in the window's picture too,
+        // with everything but the hands folded away, see the skinning below)
         let force_visible_in_cab = mirror_only && self.show_hands_in_cab;
         for (_, inst) in &self.meshes {
             renderer.set_mirror_only(scene, *inst, if force_visible_in_cab { false } else { mirror_only });
@@ -544,12 +544,24 @@ impl DriverFigure {
                 skin_from(m, &self.curled[k], &posed.bones, pos, nrm);
             }
 
-            // --- FILTRAGEM DE VÉRTICES NA CABINE ---
-            // Se estivermos na câmara de 1ª pessoa (cabine), colapsamos todos os vértices que NÃO pertencem às mãos/braços.
+            // In the cab view only the hands show: every other vertex is folded onto the
+            // nearer wrist (the middle of that hand's vertices), so that the body's triangles
+            // shrink to nothing and those joining a hand close it at the wrist. (Folded onto
+            // the figure's origin, the triangles from the wrists stretched to the seat.)
             if mirror_only && self.show_hands_in_cab {
+                let mut sum = [Vec3::ZERO; 2];
+                let mut n = [0.0f32; 2];
                 for (i, side) in self.hand_of[k].iter().enumerate() {
-                    if *side < 0 {
-                        pos[i] = Vec3::ZERO;
+                    if *side >= 0 && i < pos.len() {
+                        sum[*side as usize] += pos[i];
+                        n[*side as usize] += 1.0;
+                    }
+                }
+                let wrist: Vec<Vec3> = (0..2).filter(|h| n[*h] > 0.0).map(|h| sum[h] / n[h]).collect();
+                let fold = wrist.first().copied().or_else(|| pos.first().copied()).unwrap_or(Vec3::ZERO);
+                for (i, side) in self.hand_of[k].iter().enumerate() {
+                    if *side < 0 && i < pos.len() {
+                        pos[i] = wrist.iter().copied().min_by(|a, b| a.distance_squared(pos[i]).total_cmp(&b.distance_squared(pos[i]))).unwrap_or(fold);
                     }
                 }
             }

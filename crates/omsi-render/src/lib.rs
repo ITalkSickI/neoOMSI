@@ -1088,6 +1088,9 @@ struct PassPipelines {
 /// `Renderer::new`.
 pub static ADAPTER_TEXTURE_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// The device runs on OpenGL (set in `Renderer::new`).
+static GL_BACKEND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The card's own memory in MB where the system tells it: Windows, through DXGI, for
 /// whichever backend draws (wgpu does not say).
 fn dedicated_vram_mb(info: &wgpu::AdapterInfo) -> Option<u64> {
@@ -1348,9 +1351,10 @@ pub struct RenderOptions {
     /// The materials' reflection maps (`[matl_envmap]`: the shine of paint, chrome and
     /// glass). Off, nothing mirrors the sky photo - some players find it too strong.
     pub reflections: bool,
-    /// Leave out the Enhanced path's pipelines (a phone, OpenGL): they are never drawn
-    /// there, and compiling the ray-marched clouds' sky killed Mali and Adreno drivers
-    /// before the first frame (#364, #333, #316, #371).
+    /// Enhanced graphics are not asked for: a phone or OpenGL then leaves their pipelines
+    /// out (they would never be drawn, and compiling the ray-marched clouds' sky killed
+    /// Mali and Adreno drivers before the first frame, #364, #333, #316, #371). Asked for,
+    /// they are built on every device and graphics API; a computer always builds them.
     pub no_enhanced: bool,
 }
 
@@ -1532,6 +1536,7 @@ impl Renderer {
         // 4 GB no SSAO and at most 2x. (The settings' "High" on such a machine ran out of
         // memory or at a dozen frames a second.) OMSI_FULL_GPU=1 asks for the settings as
         // they are.
+        GL_BACKEND.store(info.backend == wgpu::Backend::Gl, std::sync::atomic::Ordering::Relaxed);
         let full = omsi_cfg::env::var_os("OMSI_FULL_GPU").is_some();
         let weak = !full
             && (info.backend == wgpu::Backend::Gl
@@ -1542,7 +1547,7 @@ impl Renderer {
         let modest = !full && !weak && vram.is_some_and(|v| v <= 4200);
         let options = if weak {
             log::warn!("{}: a small or shared graphics chip - no SSAO, no MSAA, shadow maps of at most 1024 (OMSI_FULL_GPU=1 keeps the settings)", info.name);
-            RenderOptions { msaa: 1, ssao: false, shadow_size: options.shadow_size.min(1024), no_enhanced: cfg!(target_os = "android") || info.backend == wgpu::Backend::Gl, ..options }
+            RenderOptions { msaa: 1, ssao: false, shadow_size: options.shadow_size.min(1024), ..options }
         } else if modest {
             log::info!("{}: {} MB of its own - no SSAO, at most 2x MSAA and 2048 shadow maps (OMSI_FULL_GPU=1 keeps the settings)", info.name, vram.unwrap_or(0));
             RenderOptions { msaa: options.msaa.min(2), ssao: false, shadow_size: options.shadow_size.min(2048), ..options }
@@ -2716,7 +2721,8 @@ impl Renderer {
             sky_pipeline: sky_pipeline_for(format, "fs_main"),
         };
         // the enhanced path: its own lighting in all three
-        let hdr_pass = (!options.no_enhanced).then(|| PassPipelines {
+        let leave_out_enhanced = options.no_enhanced && (cfg!(target_os = "android") || adapter_name.to_ascii_lowercase().contains("opengl") || GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed));
+        let hdr_pass = (!leave_out_enhanced).then(|| PassPipelines {
             pipelines: scene_pipelines(hdr_format, "fs_enhanced"),
             corona_pipeline: corona_pipeline_for(hdr_format, "fs_enhanced", additive),
             smoke_pipeline: corona_pipeline_for(hdr_format, "fs_smoke_enhanced", alpha_blend),
