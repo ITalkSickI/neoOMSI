@@ -56,15 +56,6 @@ impl App {
 
     /// A key of the window, or of an `OMSI_INPUT` script.
     pub(crate) fn on_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, pressed: bool, repeat: bool) {
-        // An arrow key let go inside its tap time: the camera switch it stood for (see
-        // `arrow_tap`); held longer, the head turned and nothing is left to do.
-        if !pressed && self.arrow_tap.as_ref().is_some_and(|t| t.0 == code) {
-            if let Some((_, action, at)) = self.arrow_tap.take() {
-                if at.elapsed().as_secs_f32() < crate::app::ARROW_HOLD_SECS {
-                    self.game_action(&action);
-                }
-            }
-        }
         // Escape closes the city map first (it would end the session)
         if pressed && code == KeyCode::Escape {
             if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
@@ -226,21 +217,15 @@ impl App {
                     && !own
                     && (fallback_action(code, &self.args.drive_keys).is_some()
                     || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
+                // the arrows are never the camera keys without Ctrl (they move: drive, or turn the
+                // head when held, with any other modifier and in every layout); only Ctrl+Left/Right
+                // switch the interior camera, below.
+                let plain_arrow = matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight) && !ctrl;
                 if let Some(scan) = keys::dik_code(code).filter(|_| !ours) {
                     let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.matches(m)
-                        && !b.action.starts_with("vr_")).map(|b| b.action.clone());
+                        && !b.action.starts_with("vr_")
+                        && !(plain_arrow && b.action.starts_with("view_interiorcam_"))).map(|b| b.action.clone());
                     if let Some(a) = action {
-                        // Left/Right that turn the head when held (a wheel steering: the arrows are
-                        // free for it) switch the camera only as a tap: wait for the key to be let go
-                        if matches!(a.as_str(), "view_interiorcam_minus" | "view_interiorcam_plus")
-                            && matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight)
-                            && self.player.is_some()
-                            && self.view != "free"
-                            && self.controllers.as_ref().is_some_and(|c| c.wheel_steering())
-                        {
-                            self.arrow_tap = Some((code, a, Instant::now()));
-                            return;
-                        }
                         if self.game_action(&a) {
                             return;
                         }

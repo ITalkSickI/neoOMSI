@@ -476,7 +476,6 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         clock_hold: 0.0,
         pad_look: [false; 4],
         arrow_glance: false,
-        arrow_tap: None,
         teleport_pick: false,
         discord: None,
         discord_t: 0.0,
