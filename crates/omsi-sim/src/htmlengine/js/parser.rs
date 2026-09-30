@@ -279,6 +279,16 @@ impl Parser {
                 return Ok(Expr::Un(p, Box::new(self.unary()?)));
             }
         }
+        if self.is_p("++") || self.is_p("--") {
+            // prefix `++x` / `--x`: the same as `x += 1` / `x -= 1`, which yields the new value
+            let op = if self.is_p("++") { "+=" } else { "-=" };
+            self.i += 1;
+            let target = self.unary()?;
+            if !matches!(target, Expr::Ident(_) | Expr::Member(..)) {
+                return Err("invalid increment target".into());
+            }
+            return Ok(Expr::Assign(op.into(), Box::new(target), Box::new(Expr::Num(1.0))));
+        }
         if self.is_id("typeof") {
             self.i += 1;
             return Ok(Expr::Un("typeof".into(), Box::new(self.unary()?)));
