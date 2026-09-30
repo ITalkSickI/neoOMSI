@@ -43,7 +43,8 @@
 //!
 //! `window.omsi.depot` (see [`depot`]) lists what the depot file offers: `lines[]` (each with
 //! its `routes[]`), `routes[]`, `destinations[]`. The page acts on it with
-//! `omsi.setRoute(index)`, `omsi.setLine(text)` and `omsi.setDestination(index)`.
+//! `omsi.setRoute(index)`, `omsi.setLine(text)` and `omsi.setDestination(index)`; with a
+//! timetable `omsi.setNextStop(index)` skips to that stop.
 
 use crate::vehicle::VehicleInstance;
 use omsi_vehicle::hof::Hof;

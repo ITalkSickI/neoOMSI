@@ -42,6 +42,8 @@
 //!   and `destinations[]`; the page sets the IBIS with `omsi.setRoute(index)` (line, route and
 //!   destination of `depot.routes[index]`), `omsi.setLine(text)` (the first route of that
 //!   line) and `omsi.setDestination(index)` (only the destination sign, `depot.destinations`).
+//!   `omsi.setNextStop(index)` moves the duty on to stop `index` of its trip (`route.stops[index]`;
+//!   the stops before it are skipped, backwards is ignored).
 //! * More JavaScript for such pages: `setTimeout`/`setInterval`/`clear*`, `classList`,
 //!   `createElement`/`appendChild`/`removeChild`/`remove`, `innerHTML` with markup, `getAttribute`,
 //!   `parentNode`, `Object.keys`, `Array.forEach/map/filter/indexOf/includes/pop/shift/slice`,

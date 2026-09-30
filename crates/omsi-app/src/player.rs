@@ -78,6 +78,9 @@ pub(crate) struct Player {
     /// The duty is typed into the IBIS by itself (after Shift+U or `--autostart`): a new
     /// trip of the duty is typed too.
     pub(crate) duty_typed: bool,
+    /// The stop a page asked the duty to go on with (`omsi.setNextStop`), for the game to
+    /// hand to the duty.
+    pub(crate) html_next_stop: Option<usize>,
     /// The IBIS typing looks for its keys on a worker thread (in the window: the trials
     /// would hold a frame up to a second and a half; an offscreen run waits for them).
     pub(crate) ibis_background: bool,
@@ -895,10 +898,17 @@ impl Player {
     }
 
     /// What the bus's HTML pages asked of the IBIS (`omsi.setRoute`, `omsi.setLine`,
-    /// `omsi.setDestination`): a route is typed as a driver does (line, route, destination),
+    /// `omsi.setDestination`, `omsi.setNextStop`): a route is typed as a driver does (line, route, destination),
     /// a destination alone is written to the sign.
     pub(crate) fn apply_html_requests(&mut self) {
         let requests = self.vehicle.take_html_requests();
+        if requests.is_empty() {
+            return;
+        }
+        let (stops, requests): (Vec<_>, Vec<_>) = requests.into_iter().partition(|r| matches!(r, omsi_sim::htmltex::HtmlRequest::SetNextStop(_)));
+        if let Some(omsi_sim::htmltex::HtmlRequest::SetNextStop(i)) = stops.last() {
+            self.html_next_stop = Some(*i);
+        }
         if requests.is_empty() {
             return;
         }
@@ -922,6 +932,7 @@ impl Player {
                         None => log::info!("HTML page: depot file {} has no line '{wanted}'", hof.name),
                     }
                 }
+                omsi_sim::htmltex::HtmlRequest::SetNextStop(_) => {}
                 omsi_sim::htmltex::HtmlRequest::ClearLine => {
                     if let Some((mut old, ..)) = self.ibis_typist.take() {
                         old.abandon(&mut self.vehicle);

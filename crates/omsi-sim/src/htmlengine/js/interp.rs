@@ -34,7 +34,7 @@ pub(crate) struct Interp {
     pub(crate) now: f64,
     /// An error inside a callback of a built-in method (`forEach` ...), raised by the caller.
     pub(crate) pending_err: Option<String>,
-    /// Route, line and destination requests of the page (`omsi.setRoute(...)` ...).
+    /// Route, line, destination and next-stop requests of the page (`omsi.setRoute(...)` ...).
     pub(crate) requests: Vec<crate::htmltex::HtmlRequest>,
 }
 
@@ -49,6 +49,7 @@ impl Interp {
             ("setLine", Val::Nat(Nat::SetLine)),
             ("setDestination", Val::Nat(Nat::SetDestination)),
             ("clearLine", Val::Nat(Nat::ClearLine)),
+            ("setNextStop", Val::Nat(Nat::SetNextStop)),
             (
                 "depot",
                 Val::Obj(obj_of(&[
@@ -817,6 +818,15 @@ impl Interp {
             }
             Nat::ClearLine => {
                 self.requests.push(crate::htmltex::HtmlRequest::ClearLine);
+                Val::Undef
+            }
+            Nat::SetNextStop => {
+                let v = a(0);
+                if v.is_finite() && v >= 0.0 {
+                    self.requests.push(crate::htmltex::HtmlRequest::SetNextStop(v as usize));
+                } else {
+                    log::debug!("htmltexture: SetNextStop ignored, the index is not a number");
+                }
                 Val::Undef
             }
             Nat::SetLine => {

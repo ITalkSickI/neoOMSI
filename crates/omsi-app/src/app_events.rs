@@ -903,6 +903,9 @@ impl ApplicationHandler for App {
                 *self.profile.entry("humans").or_default() += __t.elapsed().as_secs_f64();
                 self.foot_after_humans();
                 if let (Some(d), Some(p), false) = (self.duty.as_mut(), self.player.as_mut(), self.paused) {
+                    if let Some(stop) = p.html_next_stop.take() {
+                        d.skip_to(stop);
+                    }
                     if let Some((arrival, departure)) = d.update(&mut p.vehicle, self.clock.time) {
                         self.career.stop_served(arrival, departure);
                     }

@@ -24,6 +24,9 @@ pub enum HtmlRequest {
     SetDestination(usize),
     /// `omsi.clearLine()`: the IBIS shows no line (before a route is started).
     ClearLine,
+    /// `omsi.setNextStop(index)`: the duty goes on with stop `index` of its trip (stops
+    /// before it are skipped).
+    SetNextStop(usize),
 }
 
 /// Most requests kept for the game between two of its frames (a page that asks in a loop).
