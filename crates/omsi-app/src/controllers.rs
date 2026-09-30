@@ -315,7 +315,11 @@ impl Devices {
                         axes = a.clone();
                     }
                 }
-                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), buttons: 0 });
+                #[cfg(target_os = "linux")]
+                let buttons = declared_button_count(pad.name());
+                #[cfg(not(target_os = "linux"))]
+                let buttons = 0;
+                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), buttons });
             }
         }
         // (and a wheel gilrs does not list at all: one whose only axes are the simulation
@@ -778,14 +782,28 @@ pub(crate) fn button_number(pad: &gilrs::Gamepad, code: gilrs::ev::Code) -> usiz
 }
 
 #[cfg(target_os = "linux")]
-fn declared_button_index(name: &str, code: u32) -> Option<usize> {
+fn with_declared<R>(name: &str, f: impl FnOnce(&[u32]) -> R) -> Option<R> {
     static DECLARED: std::sync::Mutex<Vec<(String, Option<Vec<u32>>)>> = std::sync::Mutex::new(Vec::new());
     let mut cache = DECLARED.lock().unwrap_or_else(|e| e.into_inner());
     if !cache.iter().any(|(n, _)| n == name) {
         cache.push((name.to_string(), declared_buttons(name)));
     }
-    let codes = cache.iter().find(|(n, _)| n == name)?.1.as_ref()?;
-    button_index(codes, code & 0xFFFF)
+    cache.iter().find(|(n, _)| n == name)?.1.as_deref().map(f)
+}
+
+#[cfg(target_os = "linux")]
+fn declared_button_index(name: &str, code: u32) -> Option<usize> {
+    with_declared(name, |codes| button_index(codes, code & 0xFFFF)).flatten()
+}
+
+#[cfg(target_os = "linux")]
+fn declared_button_count(name: &str) -> usize {
+    with_declared(name, button_count).unwrap_or(0)
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn button_count(declared: &[u32]) -> usize {
+    declared.iter().filter_map(|c| button_index(declared, *c).or_else(|| code_button(*c))).map(|n| n + 1).max().unwrap_or(0).min(128)
 }
 
 #[cfg(target_os = "linux")]
@@ -915,6 +933,16 @@ mod button_tests {
             let pad: Vec<u32> = vec![0x130, 0x131, 0x133, 0x134];
             assert_eq!(super::button_index(&pad, 0x133), None);
         }
+    }
+
+    #[test]
+    fn a_device_lists_as_many_buttons_as_its_highest_number() {
+        let moza = super::key_bitmap_buttons("ffffffff ffffffffffffffff ffff000000000000 0 0 0 0 ffff00000000 0 0 0 0");
+        assert_eq!(super::button_count(&moza), 128);
+        if cfg!(target_os = "linux") {
+            assert_eq!(super::button_count(&[0x130, 0x131, 0x133, 0x134]), 5);
+        }
+        assert_eq!(super::button_count(&[]), 0);
     }
 
     #[test]
