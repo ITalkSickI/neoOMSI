@@ -497,7 +497,7 @@ fn uvg_density(rules: &[(u16, f32)], defaults: &[i32], u: usize) -> f32 {
 }
 
 fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
-    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.001 && l.length() >= 8.0)
+    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.0 && l.length() >= 8.0)
         .then(|| l.length() as f64 * l.density.clamp(0.05, 4.0) as f64)
 }
 
@@ -2104,7 +2104,7 @@ impl Traffic {
                 // lanes the map keeps clear of cars, and those whose [rule] trafficdensity is
                 // zero, are not spawned on at all; a lower density makes a lane that much less
                 // likely to be picked
-                .filter(|(_, l)| !l.no_cars && l.density > 0.001)
+                .filter(|(_, l)| !l.no_cars && l.density > 0.0)
                 // nor, where there are others, lanes that end the network just ahead (the car
                 // would only drive into the end and wait there to be taken away)
                 .filter(|(i, _)| {
@@ -2250,7 +2250,7 @@ impl Traffic {
                         .copied()
                         .filter(|&n| {
                             let nl = &self.net.lanes[n];
-                            nl.kind == d.kind && !nl.no_cars && nl.density > 0.001
+                            nl.kind == d.kind && !nl.no_cars && nl.density > 0.0
                         })
                         .collect();
                     if options.is_empty() {
@@ -3730,7 +3730,7 @@ impl Traffic {
         self.net
             .lanes
             .get(lane)
-            .map(|l| !l.no_cars && l.density > 0.001)
+            .map(|l| !l.no_cars && l.density > 0.0)
             .unwrap_or(false)
     }
 
