@@ -617,7 +617,7 @@ impl ApplicationHandler for App {
                 // switching the camera leaves the mouse steering on; not on foot or flying)
                 let bus_view = matches!(self.view.as_str(), "driver" | "outside" | "pax");
                 if let (true, Some(s)) = (self.mouse_drive && bus_view && !self.mouse_look
-                    && self.game_menu.is_none(), self.surface.as_ref()) {
+                                              && self.game_menu.is_none(), self.surface.as_ref()) {
                     let (w, h) = (s.config.width as f32, s.config.height as f32);
                     // (the speed the divisor takes, smoothed over 0.4 s: the bus's own speed
                     // trembles by fractions of a km/h from frame to frame on its springs and
@@ -754,7 +754,7 @@ impl ApplicationHandler for App {
                         let vr_on = self.vr.is_some();
                         #[cfg(not(windows))]
                         let vr_on = false;
-                        p.move_head(dt, self.settings.head_movement && !vr_on);
+                        p.move_head(dt, self.settings.head_movement && !vr_on, self.settings.steer_look && !vr_on);
                         if let Some(w) = self.world.as_ref() {
                             crate::rail_drive::frame(p, self.traffic.as_ref().map(|t| &t.net), w, dt);
                         }

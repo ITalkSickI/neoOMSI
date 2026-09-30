@@ -638,6 +638,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
         *dirty = 0.3;
     }
     toggle_setting(ui, s, dirty, row(&mut y), "Camera collisions (outside view)", "camera_collision");
+    toggle_setting(ui, s, dirty, row(&mut y), "Driver's view turns with the steering", "steer_look");
     toggle_setting(ui, s, dirty, row(&mut y), "Head tracking (TrackIR and others through opentrack, UDP 4242)", "head_tracking");
     let mut fov = get(s, "fov").as_f64().unwrap_or(0.0) as f32;
     if ui.slider("s-fov", row(&mut y), &mut fov, 0.0, 120.0, 1.0, "Field of view", &|v| if v < 20.0 { "Default".to_string() } else { format!("{v:.0}°") }) {
