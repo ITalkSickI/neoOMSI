@@ -409,6 +409,7 @@ pub(crate) fn spawn_player(
         head_omega: Vec3::ZERO,
         steer_look: 0.0,
         seat: Vec3::ZERO,
+        smooth_cam: std::cell::Cell::new(None),
         mirror_offsets: crate::settings::mirror_offsets(&vt.def.path),
         mirrors_dirty: false,
         take_change: false,

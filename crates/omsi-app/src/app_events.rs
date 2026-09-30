@@ -838,7 +838,7 @@ impl ApplicationHandler for App {
                             // zoom was applied on top of itself and ran off to its narrowest
                             // or widest at once)
                             let base = omsi_render::Camera { fov_deg: 60.0, ..*cam };
-                            let mut cam = p.camera_look(&self.view, &base, self.look, self.orbit);
+                            let mut cam = p.camera_look(&self.view, &base, self.look, self.orbit, dt, self.settings.driverview_smooth);
                             if let Some(mut t) = tracked {
                                 for (k, axis) in ["yaw", "pitch", "roll"].iter().enumerate() {
                                     if self.settings.head_tracking_invert.contains(axis) {
