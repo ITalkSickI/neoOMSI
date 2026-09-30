@@ -732,6 +732,7 @@ impl ApplicationHandler for App {
                             dt,
                             self.audio.as_ref(),
                             self.in_cab,
+                            !matches!(self.view.as_str(), "free" | "foot"),
                         );
                         // (not in the headset: the player's own head moves there, and a head
                         // thrown about by the bus on top of it made the whole cab sway and
@@ -1472,6 +1473,7 @@ impl ApplicationHandler for App {
                                             pitch: 1.0,
                                             looping: false,
                                             position: Some(line.position.as_vec3()),
+                                            doppler: true,
                                             range: 3.0,
                                             lowpass_hz: 0.0,
                                         },
