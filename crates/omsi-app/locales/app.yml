@@ -5848,6 +5848,14 @@ _version: 2
   id: "Kepala bergerak mengikuti bus"
   ms: "Kepala bergerak ikut bas"
   tl: "Ulo ay gumagalaw kasabay ng bus"
+"Driver's hands in the cab view":
+  ru: "Руки водителя в виде из кабины"
+  de: "Hände des Fahrers in der Fahrersicht"
+  uk: "Руки водія у вигляді з кабіни"
+  pl: "Dłonie kierowcy w widoku z kabiny"
+  pt: "Mãos do motorista na vista da cabine"
+  es: "Manos del conductor en la vista de cabina"
+  fr: "Mains du conducteur dans la vue cabine"
 "Camera glides between viewpoints":
   ru: "Плавный переход между обзорами"
   de: "Weiche Übergänge in Fahrersicht"
