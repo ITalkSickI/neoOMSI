@@ -4,6 +4,60 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.307 - 2026-09-30
+
+Passengers, bus physics and light maps checked against Omsi.exe once more, and ten pull
+requests.
+
+### Passengers
+- A bus that is not in service (no valid destination, or a "$allexit$" one such as
+  Betriebsfahrt) or that stands at its own terminus empties there and takes nobody on, as
+  Omsi.exe does (0x61f3e3). People boarded buses showing nothing; nobody got out at the
+  last stop of a late trip (its stop index started again at 0 with the next trip - riders
+  now go by the stop itself as well).
+- Riders get up as the bus pulls in to their stop, not once it stands.
+- Everyone on the way out holds the door request the whole way, as in OMSI: the automatic
+  rear door no longer shuts on the next person walking up and opens again ("the door
+  doesn't know whether people are getting off"). The requests are pulses, cleared after the
+  vehicle's scripts each frame (0x7d6214): a timetable bus out of the passengers' reach no
+  longer keeps its door open for good.
+- The front of a queue stands aside while people get off: both used the same spot at the
+  door and each waited for the other (#253).
+
+### Physics
+- `[momentofintertia]` on Omsi.exe's axes: roll is the third value, yaw the second (the
+  SD202 rolled on 80 t m² instead of 300 - twice as fast, rocking over every uneven patch:
+  the "boat").
+- Speed bumps, cushions, manhole covers, lowered kerbs and slab edges are felt again: only
+  faces under 2 cm over the road count as paint (4.5 cm took them away, and the bottom of
+  every bump's ramp).
+- When nothing is found under a wheel the ground is looked for up to 3 m above, as
+  Omsi.exe's ground query does - a bus no longer falls through where it sank into a joint.
+- An articulated bus's rear section rides on springs: a bump under its axle is a jolt.
+
+### Light maps
+- A light-mapped material is lit as D3D lights it: the material's own light and colour
+  times every light - the saloon lamps included - clamped, then the light map laid on with
+  ADDSMOOTH. The saloon lamps are no longer counted twice (flat white where both were on).
+- Enhanced lays the light maps the same way: little by day, fully at night.
+- Several maps on a slot chain as ADDSMOOTH and switch on at 0.5.
+
+### Duties and traffic
+- On a circular or turn-back route the duty no longer jumps to the stop over the road:
+  stops are told apart by the direction the trip runs through them (#254).
+- AI cars follow bends tighter than their model's lock instead of running wide through
+  kerbs and corner houses (#249: 851 → 301 moments of a car over 1.5 m off its path in
+  150 s of Spandau traffic).
+- The view reset restores the zoom and the outside camera's distance (#244, with #281).
+
+### Pull requests
+- Merged: #237 (own number plate), #240 (HTML textures, by shloooo), #257 and #263 (AI
+  bus displays and rear sections, by NACHN), #281 (H-pattern `kw_s_*_fest` gates, tour
+  start and end in the chooser, by isaacsa2; #280 is the same), #282 (road markings and
+  rails near the camera, by TruckiHD), #287 (tile light maps on their middle third, by
+  Sulamufor), #288 (issue templates, by shloooo), #290 (mouse throttle reaches full, so
+  automatic gearboxes kick down, by Sulamufor - taken without its build folder).
+
 ## 0.1.238 - 2026-09-30
 
 Manual gearboxes, dashboard lamps, phones that crash or run slowly (#226, #231, #229, #225).
