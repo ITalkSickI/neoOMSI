@@ -99,7 +99,9 @@ pub use wire::{
 /// 5: the tour a player drives in `INFO` (the host's timetable leaves it out), riders of
 /// the players' buses in the world frames (`world::PLAYER_BUS`), and the players' people
 /// passed on to the other players.
-pub const PROTOCOL: u32 = 5;
+/// 6: up to 63 sound and moving-part values in a state (a 6-bit count: the AA-FR Agora's
+/// sound variables alone filled the 31 there was room for).
+pub const PROTOCOL: u32 = 6;
 pub const DEFAULT_PORT: u16 = 27015;
 /// Ports a host tries after the default one when that is taken (a second session on the
 /// same machine).
