@@ -4,7 +4,7 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
-## 0.1.371 - 2026-09-30
+## 0.1.373 - 2026-09-30
 
 ### Graphics
 - Vanilla lights textures through the sRGB curve instead of a plain power of 2.2, so dark
@@ -30,6 +30,11 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
   what is seen first come first, and INFO messages are sent at most four times a second
   (#353, with the updated #338 and #334, by Jaja80330). Players and servers need this
   version together.
+
+### Displays
+- A character a font lacks is left out, as Omsi.exe does (its glyph lookup gives none),
+  instead of being drawn as the font's first glyph; spaces keep their width. The MAN Lion's
+  City's odometer and trip meter lose the `|` in front of them (#370, by no-felix; #360).
 
 ### Website
 - Download: the Windows button downloaded the dedicated server (its zip ends the same way).

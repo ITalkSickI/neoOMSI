@@ -75,8 +75,11 @@ impl Font {
     /// character read in another code page: a font and the text it shows need not have
     /// been read in the same one - a Russian font's `Л` is the byte 0xCB, which a font file
     /// without other Cyrillic reads as `Ë`), else for a small Latin letter a-z its capital,
-    /// else for whitespace a space glyph (never a visible non-space first glyph), else the
-    /// font's first character.
+    /// else nothing: its lookup (0x5d660c) gives -1 and the text is drawn and measured
+    /// without it (its callers skip a negative index), only the font's gap moves on.
+    /// Whitespace the font lacks is still given a width ([`Font::space_width`]) so words
+    /// keep their gaps - the font's first glyph, drawn in its place before, put a `|` in
+    /// front of the MAN Lion's City's odometer (#360).
     pub fn glyph(&self, c: char) -> Option<&FontChar> {
         if c.is_whitespace() {
             return self.exact_glyph(' ').or_else(|| {
@@ -87,8 +90,6 @@ impl Font {
         }
         self.exact_glyph(c)
             .or_else(|| c.is_ascii_lowercase().then(|| self.exact_glyph(c.to_ascii_uppercase())).flatten())
-            .or_else(|| self.exact_glyph(' '))
-            .or_else(|| self.chars.first())
     }
 
     /// Whether the font has a glyph of its own for `c`.
