@@ -1037,9 +1037,9 @@ impl Player {
     /// stood in for it.)
     pub(crate) fn move_head(&mut self, dt: f32, enabled: bool, steer_look: bool) {
         let dt = dt.clamp(0.0, 0.1);
-        // (a driver looks into the bend he steers: up to 12 degrees at full lock, eased so
+        // (a driver looks into the bend he steers: up to 30 degrees at full lock, eased so
         // the view does not snap with the wheel)
-        let steer_want = if steer_look { self.vehicle.physics.controls.steering.clamp(-1.0, 1.0) * 12.0 } else { 0.0 };
+        let steer_want = if steer_look { self.vehicle.physics.controls.steering.clamp(-1.0, 1.0) * 30.0 } else { 0.0 };
         self.steer_look += (steer_want - self.steer_look) * (1.0 - (-4.0 * dt).exp());
         let a = self.vehicle.physics.accel;
         let omega = self.vehicle.rigid.as_ref().map(|rb| rb.omega).unwrap_or(Vec3::ZERO);
