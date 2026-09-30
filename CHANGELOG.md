@@ -4,6 +4,19 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.378 - 2026-09-30
+
+### Performance
+- Busy maps run much faster: the frame's render preparation (culling, shadow casters, draw
+  lists, bundle recording) is spread over the render threads instead of one core, mirrors
+  are drawn only when in view and at most 30 times a second, the navigator's map is redrawn
+  at most 30 times a second, and the cab's hover pick tests only the triangles near the
+  cursor. On St-Servan with traffic and passengers: 37 to 60 fps (#369, by ThiBot77).
+
+### Website
+- Download: the "Your system" badge no longer breaks across the card title, and the
+  Download buttons line up.
+
 ## 0.1.374 - 2026-09-30
 
 ### Graphics
