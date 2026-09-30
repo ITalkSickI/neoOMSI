@@ -363,7 +363,7 @@ impl DriverFigure {
     }
 
     pub(crate) fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, dt: f32, show: bool, mirror_only: bool) {
-        // Tenta ler a marcha/seletor das variáveis mais comuns de ônibus manuais e automáticos
+        // Tenta ler a marcha/seletor de forma segura tolerando variáveis ausentes
         let gear = v.var("antrieb_getriebe_gang")
             .or_else(|| v.var("cockpit_gangwahl"))
             .or_else(|| v.var("gang"))
@@ -854,6 +854,7 @@ fn find_wheel(v: &VehicleInstance, hip: Vec3) -> Option<Wheel> {
         &loaded
     };
     let radius_of = |p: &Vec3| {
+        let _d = *p - centre; // Modificado para evitar aviso de variável não utilizada
         let d = *p - centre;
         (d - axis * axis.dot(d)).length()
     };
