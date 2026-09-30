@@ -2302,18 +2302,58 @@ impl App {
         }
         // the game menu takes the clicks while it is open
         if self.game_menu.is_some() {
+            // Releasing the mouse button finishes scrollbar dragging.
+            if state == ElementState::Released {
+                if self.menu_scroll_drag {
+                    self.menu_scroll_drag = false;
+                    self.menu_top = self.menu_top.map(f32::round);
+                }
+                return;
+            }
+
+            // Pressing the mouse button on the scrollbar thumb starts dragging.
             if state == ElementState::Pressed {
+                if let Some(thumb) = self
+                    .ui
+                    .as_ref()
+                    .and_then(|u| u.menu_scroll_thumb)
+                {
+                    if self.cursor.0 >= thumb[0]
+                        && self.cursor.0 <= thumb[2]
+                        && self.cursor.1 >= thumb[1]
+                        && self.cursor.1 <= thumb[3]
+                    {
+                        self.menu_scroll_drag = true;
+                        return;
+                    }
+                }
+
+                // Otherwise check whether a menu row was clicked.
                 let hit = self.ui.as_ref().and_then(|u| {
-                    u.menu_rects.iter().position(|r| self.cursor.0 >= r[0] && self.cursor.0 <= r[2] && self.cursor.1 >= r[1] && self.cursor.1 <= r[3])
+                    u.menu_rects.iter().position(|r| {
+                        self.cursor.0 >= r[0]
+                            && self.cursor.0 <= r[2]
+                            && self.cursor.1 >= r[1]
+                            && self.cursor.1 <= r[3]
+                    })
                 });
+
                 if let Some(k) = hit {
-                    let k = k + self.ui.as_ref().map(|u| u.menu_start).unwrap_or(0);
+                    let k = k
+                        + self
+                            .ui
+                            .as_ref()
+                            .map(|u| u.menu_start)
+                            .unwrap_or(0);
+
                     if self.chooser.is_none() {
                         self.game_menu = Some(k);
                     }
+
                     self.menu_choose(event_loop, k);
                 }
             }
+
             return;
         }
         self.on_left(state == ElementState::Pressed)
