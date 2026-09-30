@@ -85,6 +85,8 @@ pub struct SyncTable {
     /// The outside sounds: `[sound_ai]` (or `[sound]`), and the horn and indicator relay
     /// entries of `[sound]` - with the folder their files are in.
     sounds: Vec<(Arc<omsi_vehicle::SoundCfg>, PathBuf)>,
+    /// The whole `[sound]` set, heard from inside by whoever rides in the bus.
+    interior: Option<(Arc<omsi_vehicle::SoundCfg>, PathBuf)>,
 }
 
 /// Engine variables every copy works out for itself (or that come in the pose).
@@ -214,6 +216,7 @@ impl SyncTable {
             }
         };
         let mut sounds = Vec::new();
+        let interior = def.sound.as_deref().and_then(|rel| load(rel));
         if let Some(rel) = def.sound_ai.as_deref().or(def.sound.as_deref()) {
             sounds.extend(load(rel));
         }
@@ -332,6 +335,7 @@ impl SyncTable {
             throttle: var("Throttle"),
             brake: var("Brake"),
             sounds,
+            interior,
         }
     }
 
@@ -378,6 +382,8 @@ pub struct RemoteVehicle {
     pub name: String,
     table: Arc<SyncTable>,
     sounds: Vec<omsi_audio::SoundSet>,
+    /// Its `[sound]` heard from inside, while we ride in it (`SyncTable::interior`).
+    inside_sounds: Option<omsi_audio::SoundSet>,
     /// Where the latest pose puts the bus and its rear sections, for smoothing between
     /// network updates.
     target: (DVec3, f64),
@@ -2211,6 +2217,7 @@ fn new_remote(
         name: pose.name.clone(),
         table,
         sounds: Vec::new(),
+        inside_sounds: None,
         target: (DVec3::new(pose.x, pose.y, pose.z), pose.heading as f64),
         rear,
         pose_seen: (DVec3::new(pose.x, pose.y, pose.z), Instant::now()),
@@ -2578,6 +2585,7 @@ fn sound_remote(
     audio: Option<&omsi_audio::AudioEngine>,
     listener: Option<DVec3>,
     muffled: bool,
+    inside: bool,
 ) {
     let fired: Vec<String> = std::mem::take(&mut rv.vehicle.host.fired_triggers);
     let fired_files: Vec<(String, String)> =
@@ -2585,6 +2593,34 @@ fn sound_remote(
     let (Some(audio), Some(at)) = (audio, listener) else {
         return;
     };
+    // Riding in it: its whole `[sound]` heard from inside, as our own bus is heard from its
+    // cab - not its outside sounds muffled, which a passenger heard as if standing in the
+    // street beside it (the exterior engine, the tyres, the doors from outside).
+    let interior = inside.then_some(()).and(rv.table.interior.clone());
+    if let Some((cfg, dir)) = interior {
+        for mut s in rv.sounds.drain(..) {
+            s.stop_all(audio);
+        }
+        if rv.inside_sounds.is_none() && audio.clips_ready(&omsi_audio::SoundSet::clip_paths(&cfg, &dir)) {
+            let number = rv.vehicle.number();
+            rv.inside_sounds = Some(omsi_audio::SoundSet::new(audio, &cfg.chosen_for(&number), &dir));
+        }
+        if let Some(ss) = rv.inside_sounds.as_mut() {
+            let xf = rv.vehicle.world_transform();
+            let v = &rv.vehicle;
+            ss.set_inside(true);
+            ss.set_muffled(true);
+            ss.set_listener_vehicle(true);
+            ss.update(audio, &|n| v.var(n), &xf, &fired);
+            for (t, f) in &fired_files {
+                ss.play_file_trigger(audio, t, f, &|n| v.var(n), &xf);
+            }
+        }
+        return;
+    }
+    if let Some(mut s) = rv.inside_sounds.take() {
+        s.stop_all(audio);
+    }
     let d = (rv.vehicle.position - at).length();
     if d > HEAR_RANGE * 1.2 {
         for mut s in rv.sounds.drain(..) {
@@ -2874,7 +2910,8 @@ pub fn tick(
             None => drive_remote(rv, &pose, dt, false),
         }
         show_display_texts(&mut rv.vehicle, &pose.texts);
-        sound_remote(rv, frame.audio, frame.listener, frame.muffled);
+        let inside = frame.inside_of == Some(pose.id);
+        sound_remote(rv, frame.audio, frame.listener, frame.muffled, inside);
     }
     // draw them like AI traffic
     for (id, rv) in game.remotes.iter_mut() {
