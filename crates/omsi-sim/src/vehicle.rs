@@ -79,10 +79,12 @@ pub fn builtin_str_vars(root: &Path) -> Vec<String> {
 /// A bone of a `[smoothskin]` mesh: the model mesh whose animation moves it (`[setbone]
 /// name id`, the id counting the meshes of the model's first level of detail - the GN92's and
 /// the O530G's joint dummies `Gelenk_A`-`D` are its first four) and the weights of the o3d
-/// bone of that name.
+/// bone of that name. `None`: an o3d bone no `[setbone]` names, which keeps its weights and
+/// stays with the mesh itself (the root bone of an armature: the Agora's bellows hang half of
+/// many a vertex on `Armature1_Bone`, its retarder lever on `Bone`).
 #[derive(Debug, Clone, Default)]
 pub struct SkinBone {
-    pub def_index: usize,
+    pub def_index: Option<usize>,
     pub weights: Vec<(u32, f32)>,
 }
 
@@ -296,30 +298,33 @@ impl VehicleType {
                 let p = mesh_path(root, &dir, &model_dir, &md.file);
                 match omsi_o3d::load_mesh(&p) {
                     Ok(m) => {
-                        let skin = if md.smooth_skin {
+                        let skin: Vec<SkinBone> = if md.smooth_skin {
                             m.bones
                                 .iter()
-                                .filter_map(|b| {
+                                .map(|b| {
                                     let id = md
                                         .bones
                                         .iter()
                                         .find(|(n, _)| {
                                             n.trim().eq_ignore_ascii_case(b.name.trim())
-                                        })?
-                                        .1;
-                                    (id >= 0).then(|| SkinBone {
-                                        def_index: start + id as usize,
+                                        })
+                                        .map(|(_, id)| *id)
+                                        .filter(|id| *id >= 0);
+                                    SkinBone {
+                                        def_index: id.map(|id| start + id as usize),
                                         weights: b
                                             .weights
                                             .iter()
                                             .map(|w| (w.vertex, w.weight))
                                             .collect(),
-                                    })
+                                    }
                                 })
                                 .collect()
                         } else {
                             Vec::new()
                         };
+                        // (a mesh none of whose bones is bound moves as a rigid one)
+                        let skin = if skin.iter().any(|b| b.def_index.is_some()) { skin } else { Vec::new() };
                         meshes.push(VehicleMesh {
                             def_index: start + i,
                             data: mesh_from_o3d(&m),
@@ -3364,7 +3369,7 @@ fn skin_key(ty: &VehicleType, i: usize, transforms: &[Mat4]) -> Vec<Mat4> {
     };
     let mut key = vec![transforms.get(i).copied().unwrap_or(Mat4::IDENTITY)];
     for b in &vm.skin {
-        if let Some(k) = ty.meshes.iter().position(|m| m.def_index == b.def_index) {
+        if let Some(k) = ty.meshes.iter().position(|m| Some(m.def_index) == b.def_index) {
             key.push(transforms.get(k).copied().unwrap_or(Mat4::IDENTITY));
         }
     }
@@ -3392,7 +3397,10 @@ fn rest_transforms(animators: &[MeshAnimator], n_vars: usize) -> Vec<Mat4> {
 /// The vertices (positions, normals) of `[smoothskin]` mesh `i` with its bones where
 /// `transforms` has them, in the mesh's own frame (the renderer puts `transforms[i]` on
 /// top); `rest` are the transforms of the modelled pose. None for a mesh without bones or
-/// vertices. A vertex no bone holds stays with the mesh.
+/// vertices. A vertex no bone holds stays with the mesh, and so does the share of a vertex
+/// that an unbound bone holds: dropping that share and making up the rest to 1, a vertex
+/// hung half on the armature's fixed root moved all the way with the other bone - the
+/// Agora's bellows and its retarder lever bent out of shape.
 pub fn skin_vertices(
     ty: &VehicleType,
     i: usize,
@@ -3410,11 +3418,19 @@ pub fn skin_vertices(
     }
     let mut sum = vec![Mat4::ZERO; n];
     let mut total = vec![0.0f32; n];
+    // (the mesh's own motion: with it, `own_inv * bone * own_rest` below leaves a vertex where
+    // it was modelled)
+    let own = transforms[i] * rest[i].inverse();
     for b in &vm.skin {
-        let Some(k) = ty.meshes.iter().position(|m| m.def_index == b.def_index) else {
-            continue;
+        let bone = match b.def_index {
+            None => own,
+            Some(d) => {
+                let Some(k) = ty.meshes.iter().position(|m| m.def_index == d) else {
+                    continue;
+                };
+                transforms[k] * rest[k].inverse()
+            }
         };
-        let bone = transforms[k] * rest[k].inverse();
         for &(v, w) in &b.weights {
             let v = v as usize;
             if v < n && w.is_finite() && w > 0.0 {
@@ -3848,5 +3864,57 @@ mod grip_tests {
         assert!((road_grip(2.0, -5.0) - 0.3).abs() < 1e-6);
         assert!(road_grip(1.0, -3.0) < 0.2, "black ice");
         assert_eq!(road_grip(0.0, -10.0), 0.85, "a dry road does not freeze");
+    }
+
+    /// A `[smoothskin]` vertex hung partly on an o3d bone no `[setbone]` names keeps that
+    /// share where it was modelled: the AA-FR Agora's retarder lever (`retarderhebel_2.o3d`)
+    /// splits its vertices between `Bone` (unbound) and `Bone.001` (the animated dummy), and
+    /// with the unbound share dropped the lever bent out of shape as it moved.
+    #[test]
+    fn unbound_bones_keep_their_share_of_a_vertex() {
+        use super::*;
+        use std::sync::Arc;
+        let root = omsi_cfg::env::var_os("OMSI_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+        let bus = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_S_2d.bus");
+        if !bus.exists() {
+            eprintln!("skipped: no {}", bus.display());
+            return;
+        }
+        let ty = Arc::new(VehicleType::load(&root, &bus).expect("Agora S"));
+        let i = (0..ty.meshes.len())
+            .find(|&i| ty.model.meshes[ty.meshes[i].def_index].file.to_ascii_lowercase().contains("retarderhebel_2"))
+            .expect("the Agora's retarder lever");
+        let vm = &ty.meshes[i];
+        let bound = vm.skin.iter().find(|b| b.def_index.is_some()).expect("Bone.001");
+        assert!(vm.skin.iter().any(|b| b.def_index.is_none()), "the unbound Bone is kept");
+        let k = ty.meshes.iter().position(|m| Some(m.def_index) == bound.def_index).unwrap();
+        let mut v = VehicleInstance::new(ty.clone(), VehicleHost::new(crate::SimClock::default()));
+        v.update_visuals(0.02);
+        let rest = v.mesh_transforms.clone();
+        assert!(v.set_var("cp_retarder_hebel", 4.0));
+        for _ in 0..200 {
+            v.update_visuals(0.05);
+        }
+        let bone = v.mesh_transforms[k] * rest[k].inverse();
+        assert!(bone.abs_diff_eq(Mat4::IDENTITY, 1e-3) == false, "the lever's dummy did not move");
+        let (pos, _) = v.skinned(i).expect("skinned lever");
+        let own = v.mesh_transforms[i] * rest[i].inverse();
+        let mut checked = 0;
+        for &(vi, w) in &bound.weights {
+            let vi = vi as usize;
+            if !(0.2..0.8).contains(&w) {
+                continue;
+            }
+            let p = vm.data.positions[vi];
+            // (1 - w) with the mesh, w with the bone, in the mesh's own frame
+            let want = v.mesh_transforms[i].inverse()
+                * ((own * (1.0 - w) + bone * w) * rest[i]);
+            let want = want.transform_point3(p);
+            assert!((pos[vi] - want).length() < 1e-4, "vertex {vi} (weight {w}): {:?} for {:?}", pos[vi], want);
+            checked += 1;
+        }
+        assert!(checked > 0, "no vertex shared between the two bones");
     }
 }
