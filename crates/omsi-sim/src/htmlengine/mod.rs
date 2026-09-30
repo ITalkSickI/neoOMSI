@@ -85,6 +85,20 @@ use style::*;
 pub use renderer::EngineRenderer;
 
 pub(crate) const ROBOTO: &[u8] = include_bytes!("../../../../assets/fonts/Roboto-VariableFont_wdth,wght.ttf");
+thread_local! {
+    /// The regular and the bold face, parsed once per thread instead of once per frame.
+    static FONTS: Option<(FontRef<'static>, FontRef<'static>)> = FontRef::try_from_slice(ROBOTO).ok().map(|reg| {
+        let mut bold = reg.clone();
+        bold.set_variation(b"wght", 700.0);
+        (reg, bold)
+    });
+}
+
+/// Run `f` with the regular and the bold face; `None` when the font does not parse.
+pub(crate) fn with_fonts<R>(f: impl FnOnce(&FontRef<'static>, &FontRef<'static>) -> R) -> Option<R> {
+    FONTS.with(|p| p.as_ref().map(|(reg, bold)| f(reg, bold)))
+}
+
 pub(crate) const STEP_LIMIT: u32 = 400_000;
 pub(crate) const DEPTH_LIMIT: u32 = 48;
 

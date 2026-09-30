@@ -272,7 +272,8 @@ impl<'a> Layouter<'a> {
             }
             for tok in text.split_inclusive(' ') {
                 let full = self.tw(tok, st.font_px, st.bold);
-                let trimmed = self.tw(tok.trim_end(), st.font_px, st.bold);
+                let t = tok.trim_end();
+                let trimmed = if t.len() == tok.len() { full } else { self.tw(t, st.font_px, st.bold) };
                 if !items.is_empty() && lw + trimmed > w + 0.01 {
                     self.finish_line(&mut items, &mut lw, &mut lh, &mut out, &mut cy, x, w, align);
                 }

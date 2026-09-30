@@ -97,13 +97,14 @@ impl EngineRenderer {
     /// The element at a point of the texture (pixels); the body when nothing is there.
     pub(crate) fn hit_node(&self, x: f32, y: f32) -> usize {
         let body = self.js.dom.body;
-        let Ok(reg) = FontRef::try_from_slice(ROBOTO) else { return body };
-        let mut bold = reg.clone();
-        bold.set_variation(b"wght", 700.0);
-        let lay = Layouter { dom: &self.js.dom, reg: &reg, bold: &bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
-        let root = self.root_style(&lay);
-        let b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
-        hit(&b, x, y).unwrap_or(body)
+        with_fonts(|reg, bold| {
+            let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
+            let root = self.root_style(&lay);
+            let b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
+            hit(&b, x, y)
+        })
+            .flatten()
+            .unwrap_or(body)
     }
 
     /// Fire `ty` on `node` and let it bubble up through its parents.
@@ -217,27 +218,25 @@ impl EngineRenderer {
     pub(crate) fn render(&self) -> Vec<u8> {
         let started = std::time::Instant::now();
         let mut cv = Canvas { w: self.width, h: self.height, px: vec![0; (self.width * self.height * 4) as usize] };
-        let Ok(reg) = FontRef::try_from_slice(ROBOTO) else { return cv.px };
-        let mut bold = reg.clone();
-        bold.set_variation(b"wght", 700.0);
-        let lay = Layouter { dom: &self.js.dom, reg: &reg, bold: &bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
-        let body = self.js.dom.body;
-        let root = self.root_style(&lay);
-        // the background of html and body covers the whole texture
-        let full = [0.0, 0.0, self.width as f32, self.height as f32];
-        if root.bg[3] > 0 {
-            cv.fill(full, root.bg, 0.0);
-        }
-        paint_bg(&mut cv, &self.imgs, full, 0.0, &root);
-        let b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
-        if b.st.bg[3] > 0 {
-            cv.fill(full, b.st.bg, 0.0);
-        }
-        paint_bg(&mut cv, &self.imgs, full, 0.0, &b.st);
-        let mut b = b;
-        b.st.bg = [0, 0, 0, 0];
-        b.st.bg_img = None;
-        paint(&mut cv, &lay, &b);
+        with_fonts(|reg, bold| {
+            let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
+            let body = self.js.dom.body;
+            let root = self.root_style(&lay);
+            // the background of html and body covers the whole texture
+            let full = [0.0, 0.0, self.width as f32, self.height as f32];
+            if root.bg[3] > 0 {
+                cv.fill(full, root.bg, 0.0);
+            }
+            paint_bg(&mut cv, &self.imgs, full, 0.0, &root);
+            let mut b = lay.build(body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
+            if b.st.bg[3] > 0 {
+                cv.fill(full, b.st.bg, 0.0);
+            }
+            paint_bg(&mut cv, &self.imgs, full, 0.0, &b.st);
+            b.st.bg = [0, 0, 0, 0];
+            b.st.bg_img = None;
+            paint(&mut cv, &lay, &b);
+        });
         log::debug!("htmltexture: rendered {}x{} in {:?}", self.width, self.height, started.elapsed());
         cv.px
     }

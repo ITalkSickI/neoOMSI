@@ -9,22 +9,45 @@ pub(crate) struct Canvas {
 }
 
 impl Canvas {
+    #[inline]
     pub(crate) fn blend(&mut self, x: i32, y: i32, c: [u8; 4], cov: f32) {
         if x < 0 || y < 0 || x >= self.w as i32 || y >= self.h as i32 {
             return;
         }
         let i = ((y as u32 * self.w + x as u32) * 4) as usize;
+        // opaque colour over full coverage: a plain copy
+        if c[3] == 255 && cov >= 0.999 {
+            self.px[i..i + 4].copy_from_slice(&c);
+            return;
+        }
         let sa = c[3] as f32 / 255.0 * cov.clamp(0.0, 1.0);
         if sa <= 0.0 {
             return;
         }
-        let da = self.px[i + 3] as f32 / 255.0;
-        let oa = sa + da * (1.0 - sa);
-        for k in 0..3 {
-            let v = (c[k] as f32 * sa + self.px[i + k] as f32 * da * (1.0 - sa)) / oa;
-            self.px[i + k] = v.round().clamp(0.0, 255.0) as u8;
+        let d = &mut self.px[i..i + 4];
+        match d[3] {
+            // nothing below: the colour with the source alpha
+            0 => {
+                d[..3].copy_from_slice(&c[..3]);
+                d[3] = (sa * 255.0).round().clamp(0.0, 255.0) as u8;
+            }
+            // opaque below: stays opaque, no division needed
+            255 => {
+                let inv = 1.0 - sa;
+                for k in 0..3 {
+                    d[k] = (c[k] as f32 * sa + d[k] as f32 * inv + 0.5) as u8;
+                }
+            }
+            da8 => {
+                let da = da8 as f32 / 255.0;
+                let oa = sa + da * (1.0 - sa);
+                for k in 0..3 {
+                    let v = (c[k] as f32 * sa + d[k] as f32 * da * (1.0 - sa)) / oa;
+                    d[k] = v.round().clamp(0.0, 255.0) as u8;
+                }
+                d[3] = (oa * 255.0).round().clamp(0.0, 255.0) as u8;
+            }
         }
-        self.px[i + 3] = (oa * 255.0).round().clamp(0.0, 255.0) as u8;
     }
 
     /// Put one picture pixel `s` (RGBA, straight alpha) at an in-bounds position, `cov`
@@ -43,45 +66,115 @@ impl Canvas {
         self.blend(x, y, [s[0], s[1], s[2], a], cov);
     }
 
+    /// A horizontal run of `x0..x1` on row `y` in one colour, full coverage, in bounds.
+    #[inline]
+    fn span(&mut self, y: i32, x0: i32, x1: i32, c: [u8; 4]) {
+        if x0 >= x1 {
+            return;
+        }
+        if c[3] == 255 {
+            let row = y as usize * self.w as usize * 4;
+            for p in self.px[row + x0 as usize * 4..row + x1 as usize * 4].chunks_exact_mut(4) {
+                p.copy_from_slice(&c);
+            }
+        } else if c[3] > 0 {
+            for x in x0..x1 {
+                self.blend(x, y, c, 1.0);
+            }
+        }
+    }
+
     pub(crate) fn fill(&mut self, r: [f32; 4], c: [u8; 4], radius: f32) {
         if !r.iter().all(|v| v.is_finite()) || !radius.is_finite() {
             return;
         }
         let (x0, y0) = (r[0].round() as i32, r[1].round() as i32);
         let (x1, y1) = ((r[0] + r[2]).round() as i32, (r[1] + r[3]).round() as i32);
+        let (x0, x1) = (x0.max(0), x1.min(self.w as i32));
         let rad = radius.min(r[2] / 2.0).min(r[3] / 2.0).max(0.0);
+        let round = rad > 0.5;
+        // the corner zones: only there the coverage is below 1
+        let (cl, cr) = {
+            let (a, b) = (r[0] + rad, r[0] + r[2] - rad);
+            (a.min(b), a.max(b))
+        };
+        let (ct, cb) = {
+            let (a, b) = (r[1] + rad, r[1] + r[3] - rad);
+            (a.min(b), a.max(b))
+        };
+        let mid_lo = ((cl.ceil() as i32).max(x0)).min(x1);
+        let mid_hi = ((cr.floor() as i32).max(mid_lo)).min(x1);
         for y in y0.max(0)..y1.min(self.h as i32) {
-            for x in x0.max(0)..x1.min(self.w as i32) {
-                let mut cov = 1.0;
-                if rad > 0.5 {
-                    let px = x as f32 + 0.5;
-                    let py = y as f32 + 0.5;
-                    let (cx_lo, cx_hi) = {
-                        let a = r[0] + rad;
-                        let b = r[0] + r[2] - rad;
-                        (a.min(b), a.max(b))
-                    };
-                    let (cy_lo, cy_hi) = {
-                        let a = r[1] + rad;
-                        let b = r[1] + r[3] - rad;
-                        (a.min(b), a.max(b))
-                    };
-                    let cx = px.clamp(cx_lo, cx_hi);
-                    let cy = py.clamp(cy_lo, cy_hi);
-                    let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-                    cov = (rad - d + 0.5).clamp(0.0, 1.0);
-                }
-                self.blend(x, y, c, cov);
+            let ycorner = round && ((y as f32) < ct || (y as f32 + 1.0) > cb);
+            if !ycorner {
+                self.span(y, x0, x1, c);
+                continue;
+            }
+            for x in x0..mid_lo {
+                self.blend(x, y, c, corner_cov(r, rad, x, y));
+            }
+            self.span(y, mid_lo, mid_hi, c);
+            for x in mid_hi..x1 {
+                self.blend(x, y, c, corner_cov(r, rad, x, y));
             }
         }
     }
 }
 
-pub(crate) fn draw_text(cv: &mut Canvas, font: &FontRef<'static>, px: f32, x: f32, base_y: f32, color: [u8; 4], s: &str) {
+/// A rasterised glyph: coverage bytes and where its top-left lies relative to the pen.
+struct GlyphBmp {
+    w: u32,
+    h: u32,
+    ox: i32,
+    oy: i32,
+    cov: Vec<u8>,
+}
+
+/// Glyphs are drawn at a quarter pixel in both axes, so a page that repaints the same text
+/// every frame rasterises each glyph once.
+const SUB: f32 = 4.0;
+
+type GlyphKey = (u16, u32, bool, u8, u8);
+
+thread_local! {
+    static GLYPHS: std::cell::RefCell<HashMap<GlyphKey, Option<Arc<GlyphBmp>>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn glyph_bmp(font: &FontRef<'static>, bold: bool, id: ab_glyph::GlyphId, px: f32, sx: u8, sy: u8) -> Option<Arc<GlyphBmp>> {
+    let key = (id.0, px.to_bits(), bold, sx, sy);
+    GLYPHS.with(|g| {
+        let mut g = g.borrow_mut();
+        if let Some(e) = g.get(&key) {
+            return e.clone();
+        }
+        if g.len() > 8192 {
+            g.clear();
+        }
+        let sc = PxScale::from(px);
+        let glyph = id.with_scale_and_position(sc, point(sx as f32 / SUB, sy as f32 / SUB));
+        let bmp = font.outline_glyph(glyph).map(|o| {
+            let b = o.px_bounds();
+            let (w, h) = (b.width().ceil() as u32 + 1, b.height().ceil() as u32 + 1);
+            let mut cov = vec![0u8; (w * h) as usize];
+            o.draw(|gx, gy, c| {
+                if gx < w && gy < h {
+                    cov[(gy * w + gx) as usize] = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+                }
+            });
+            Arc::new(GlyphBmp { w, h, ox: b.min.x.floor() as i32, oy: b.min.y.floor() as i32, cov })
+        });
+        g.insert(key, bmp.clone());
+        bmp
+    })
+}
+
+pub(crate) fn draw_text(cv: &mut Canvas, font: &FontRef<'static>, bold: bool, px: f32, x: f32, base_y: f32, color: [u8; 4], s: &str) {
     let sc = PxScale::from(px);
     let sf = font.as_scaled(sc);
     let mut cx = x;
     let mut prev = None;
+    let fy = base_y.floor();
+    let sy = (((base_y - fy) * SUB) as u8).min(SUB as u8 - 1);
     for ch in s.chars() {
         if ch == '\n' {
             continue;
@@ -90,11 +183,22 @@ pub(crate) fn draw_text(cv: &mut Canvas, font: &FontRef<'static>, px: f32, x: f3
         if let Some(p) = prev {
             cx += sf.kern(p, id);
         }
-        let g = id.with_scale_and_position(sc, point(cx, base_y));
-        if let Some(o) = font.outline_glyph(g) {
-            let b = o.px_bounds();
-            let (bx, by) = (b.min.x as i32, b.min.y as i32);
-            o.draw(|gx, gy, cov| cv.blend(bx + gx as i32, by + gy as i32, color, cov));
+        let fx = cx.floor();
+        let sx = (((cx - fx) * SUB) as u8).min(SUB as u8 - 1);
+        if let Some(g) = glyph_bmp(font, bold, id, px, sx, sy) {
+            let (bx, by) = (fx as i32 + g.ox, fy as i32 + g.oy);
+            for gy in 0..g.h {
+                let y = by + gy as i32;
+                if y < 0 || y >= cv.h as i32 {
+                    continue;
+                }
+                let row = &g.cov[(gy * g.w) as usize..((gy + 1) * g.w) as usize];
+                for (gx, &v) in row.iter().enumerate() {
+                    if v != 0 {
+                        cv.blend(bx + gx as i32, y, color, v as f32 * (1.0 / 255.0));
+                    }
+                }
+            }
         }
         cx += sf.h_advance(id);
         prev = Some(id);
@@ -231,7 +335,7 @@ pub(crate) fn paint(cv: &mut Canvas, lay: &Layouter, b: &LBox) {
                     let font = if li.bold { lay.bold } else { lay.reg };
                     let sf = font.as_scaled(PxScale::from(li.px));
                     let base = l.y + (l.h - (sf.ascent() - sf.descent())) / 2.0 + sf.ascent();
-                    draw_text(cv, font, li.px, l.x + li.dx, base, li.color, &li.text);
+                    draw_text(cv, font, li.bold, li.px, l.x + li.dx, base, li.color, &li.text);
                 }
             }
         }
