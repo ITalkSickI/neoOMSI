@@ -768,6 +768,9 @@ pub struct Instance {
     /// Surface geometry (roads, markings, crossings) that lies on the terrain: drawn with a
     /// depth bias so it wins over coincident ground, like the original's render priorities.
     pub surface: bool,
+    /// `[rendertype] presurface`: drawn before terrain, including blended materials whose
+    /// transparent texels write depth to reveal excavations below the ground.
+    pub presurface: bool,
     /// Screen-size range [min, max) in which this instance is drawn (`[LOD]` levels).
     pub lod: (f32, f32),
     /// A vehicle's flat shadow blob (`[isshadow]`, a surface). It is drawn always, as OMSI
@@ -4974,6 +4977,7 @@ impl Renderer {
             interior_lamps: 0,
             base: 0,
             surface: false,
+            presurface: false,
             lod: (0.0, f32::MAX),
             blob: false,
             ground_layer: false,
@@ -5019,6 +5023,7 @@ impl Renderer {
             interior_lamps: 0,
             base: 0,
             surface: true,
+            presurface: false,
             lod: (0.0, f32::MAX),
             blob: false,
             ground_layer: false,
@@ -7523,7 +7528,7 @@ impl Renderer {
                     let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
                     let mat = &scene.materials[mat_id];
                     let kind = kind_of(mat.alpha);
-                    if let Some(pre_kind) = depth_prepass_kind(kind, mat) {
+                    if let Some(pre_kind) = depth_prepass_kind(kind, mat, inst.presurface) {
                         // plain/alpha-tested materials use their ordinary depth pass;
                         // blended transmaps use the opaque-pixels-only pass.
                         items.push(DrawItem {
@@ -7538,8 +7543,8 @@ impl Renderer {
             }
             batch_items(scene, &mut items, true, &mut list, &mut prepass_batches);
         }
-        // The main pass: opaque ground, opaque surfaces, alpha-tested ground, alpha-tested
-        // surfaces (`pipe` 0..3, batched in that order), then everything blended in one run,
+        // The main pass: presurfaces, then opaque ground/surfaces and alpha-tested
+        // ground/surfaces (`pipe` 0..3, batched in that order), then everything blended in one run,
         // far to near (`pipe` 4..7: surface, no depth write). The blended draws must not
         // be split into ground and surfaces: the painted ground of a tile is a blended
         // surface and the bus's windscreen is a blended mesh, and with the surfaces
@@ -7547,11 +7552,51 @@ impl Renderer {
         // road ahead was there from outside the bus and gone from the driver's seat.
         let mut main_batches: Vec<Batch> = Vec::new();
         let mut main_draws = [0usize; 2];
+        // Keep mesh/material order here: an excavation's floor is drawn before its
+        // invisible cover writes depth. Sorting its blended cover after the terrain
+        // leaves the terrain's colour in place even though the cover writes depth.
+        items.clear();
+        for &(i, _, _) in &visible {
+            let inst = &scene.instances[i];
+            if !inst.presurface {
+                continue;
+            }
+            let cull = culls_back_faces(scene, inst);
+            for (ri, (_, _, slot)) in scene.meshes[inst.mesh].ranges.iter().enumerate() {
+                let mat_id = inst.materials.get(*slot as usize).copied().unwrap_or(0);
+                let mat = &scene.materials[mat_id];
+                if exclude_texture.is_some_and(|t| mat.uses_texture(t)) {
+                    continue;
+                }
+                let kind = if mat.no_z_check || (mat.alpha == AlphaMode::Blend && mat.no_z_write) {
+                    PIPE_BLEND_NO_WRITE
+                } else {
+                    kind_of(mat.alpha)
+                };
+                items.push(DrawItem {
+                    pipe: pipe_code(
+                        kind,
+                        cull,
+                        inst.surface || mat.z_bias > 0 || mat.no_z_check,
+                    ),
+                    mesh: inst.mesh as u32,
+                    range: ri as u32,
+                    material: mat_id as u32,
+                    entry: inst.base + *slot,
+                });
+            }
+        }
+        let presurface_draws = items.len();
+        let has_presurface = presurface_draws > 0;
+        batch_items(scene, &mut items, false, &mut list, &mut main_batches);
         {
             items.clear();
             let mut blended: Vec<usize> = Vec::new();
             for &(i, _, _) in &visible {
                 let inst = &scene.instances[i];
+                if inst.presurface {
+                    continue;
+                }
                 if inst.ordered {
                     blended.push(i);
                     continue;
@@ -7582,7 +7627,7 @@ impl Renderer {
                     blended.push(i);
                 }
             }
-            main_draws[0] = items.len();
+            main_draws[0] = presurface_draws + items.len();
             batch_items(scene, &mut items, true, &mut list, &mut main_batches);
             // Blended draws: objects far to near by the distance of their nearest blended
             // mesh (see `near_by_origin` below - not the single local origin all of an
@@ -8035,7 +8080,10 @@ impl Renderer {
         // done once per pixel for the surface that is seen, not for every tree and wall
         // hidden behind it.
         let single = self.options.msaa <= 1;
-        let share_depth = prepass_on && single && self.ao.is_some();
+        // A presurface must colour its below-ground faces before its invisible cover
+        // seals them. Reusing prepass depth would reject those faces (or let terrain
+        // reject them first). The prepass still supplies AO; colour rebuilds its depth.
+        let share_depth = prepass_on && single && self.ao.is_some() && !has_presurface;
         let targets = if share_depth {
             None
         } else {
@@ -8047,6 +8095,7 @@ impl Renderer {
         // the one in front ran the whole enhanced shading (11 ms of a 1080p frame in
         // central Spandau with 4x MSAA).
         let msaa_prepass = enhanced
+            && !has_presurface
             && with_overlays
             && !single
             && prepass_on
@@ -9338,14 +9387,19 @@ const PIPE_KINDS: u8 = 4;
 /// Which depth-prepass variant a material contributes to. A blended material normally has
 /// no prepass because its fragments are see-through; a transmap is the useful exception:
 /// fully opaque texels are usually the vehicle body while lower-alpha texels are its windows.
+/// Presurfaces also contribute fully transparent blended texels, which seal the ground.
 /// Materials explicitly marked no-Z-write/no-Z-check remain excluded, just as they are from
 /// the ordinary prepass.
-fn depth_prepass_kind(kind: u8, material: &Material) -> Option<u8> {
+fn depth_prepass_kind(kind: u8, material: &Material, presurface: bool) -> Option<u8> {
     if material.no_z_check {
         return None;
     }
     if kind < PIPE_BLEND {
         Some(kind)
+    } else if presurface && !material.no_z_write {
+        // Alpha blending preserves colour, but even fully transparent cover texels
+        // occlude later ground. AO must see the same cover as the colour pass.
+        Some(PIPE_OPAQUE)
     } else if kind == PIPE_BLEND && material.transmap.is_some() && !material.no_z_write {
         Some(2)
     } else {
@@ -9821,6 +9875,197 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a graphics adapter; run with --ignored on a GPU host"]
+    fn presurface_reveals_excavation_before_terrain_is_drawn() {
+        fn quad(renderer: &Renderer, scene: &mut Scene, y: f32, half: f32) -> MeshId {
+            renderer.add_mesh(
+                scene,
+                &MeshData {
+                    positions: vec![
+                        Vec3::new(-half, y, -half),
+                        Vec3::new(half, y, -half),
+                        Vec3::new(half, y, half),
+                        Vec3::new(-half, y, half),
+                    ],
+                    normals: vec![-Vec3::Y; 4],
+                    uvs: vec![glam::Vec2::ZERO; 4],
+                    ranges: vec![(0, 6, 0)],
+                    indices: vec![0, 1, 2, 0, 2, 3],
+                    one_sided: false,
+                },
+            )
+        }
+        let camera = Camera {
+            position: DVec3::ZERO,
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov_deg: 90.0,
+            near: 0.1,
+            far: 100.0,
+        };
+        for (msaa, ssao, enhanced) in [
+            (1, false, false),
+            (1, true, false),
+            (1, true, true),
+            (4, true, true),
+        ] {
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            let mut renderer = pollster::block_on(Renderer::new_with(
+                &instance,
+                None,
+                Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+                RenderOptions {
+                    msaa,
+                    ssao,
+                    shadow_size: 1024,
+                    fxaa: false,
+                    render_scale: 1.0,
+                    ..Default::default()
+                },
+            ))
+            .expect("test renderer");
+            let mut scene = renderer.new_scene();
+            let green = renderer.add_material(
+                &mut scene,
+                None,
+                AlphaMode::Opaque,
+                [0.0, 1.0, 0.0, 1.0],
+                true,
+            );
+            let blue = renderer.add_material(
+                &mut scene,
+                None,
+                AlphaMode::Opaque,
+                [0.0, 0.0, 1.0, 1.0],
+                true,
+            );
+            let red = renderer.add_material(
+                &mut scene,
+                None,
+                AlphaMode::Opaque,
+                [1.0, 0.0, 0.0, 1.0],
+                true,
+            );
+            let texture = renderer.add_texture(
+                &mut scene,
+                &omsi_texture::Image {
+                    width: 1,
+                    height: 1,
+                    rgba: vec![255, 255, 255, 0],
+                    has_alpha: true,
+                },
+                false,
+            );
+            let transparent =
+                renderer.add_material(&mut scene, Some(texture), AlphaMode::Blend, [1.0; 4], true);
+            let cutout =
+                renderer.add_material(&mut scene, Some(texture), AlphaMode::Test, [1.0; 4], true);
+            // Put terrain first in the scene to catch reliance on insertion order. The
+            // excavation floor is behind it, with a transparent cover in front of both.
+            let terrain = quad(&renderer, &mut scene, 6.0, 10.0);
+            renderer.add_instance(
+                &mut scene,
+                terrain,
+                DVec3::ZERO,
+                Mat4::IDENTITY,
+                vec![green],
+            );
+            let floor = quad(&renderer, &mut scene, 8.0, 10.0);
+            let floor = renderer.add_surface_instance(
+                &mut scene,
+                floor,
+                DVec3::ZERO,
+                Mat4::IDENTITY,
+                vec![blue],
+            );
+            scene.instances[floor].presurface = true;
+            let cover_mesh = quad(&renderer, &mut scene, 4.0, 1.5);
+            let cover = renderer.add_surface_instance(
+                &mut scene,
+                cover_mesh,
+                DVec3::ZERO,
+                Mat4::IDENTITY,
+                vec![transparent],
+            );
+            scene.instances[cover].presurface = true;
+            let foreground_mesh = quad(&renderer, &mut scene, 2.0, 0.25);
+            let foreground = renderer.add_instance(
+                &mut scene,
+                foreground_mesh,
+                DVec3::ZERO,
+                Mat4::IDENTITY,
+                vec![red],
+            );
+            scene.instances[foreground].visible = false;
+            let lighting = Lighting {
+                enhanced,
+                shadows: false,
+                fog_density: 0.0,
+                ..Default::default()
+            };
+            let pixel = |rgba: &[u8], x: usize| -> [u8; 3] {
+                rgba[(32 * 64 + x) * 4..(32 * 64 + x) * 4 + 3]
+                    .try_into()
+                    .unwrap()
+            };
+            let rgba = renderer
+                .render_to_image(&mut scene, 64, 64, &camera, &lighting)
+                .unwrap();
+            let centre = pixel(&rgba, 32);
+            assert!(
+                centre[2] > centre[1] + 40,
+                "floor must show through cover: {centre:?}; {msaa}/{ssao}/{enhanced}"
+            );
+            let outside = pixel(&rgba, 4);
+            assert!(
+                outside[1] > outside[2] + 40,
+                "terrain outside cover: {outside:?}"
+            );
+            scene.instances[foreground].visible = true;
+            Renderer::mark_changed(&mut scene, foreground);
+            let rgba = renderer
+                .render_to_image(&mut scene, 64, 64, &camera, &lighting)
+                .unwrap();
+            let centre = pixel(&rgba, 32);
+            assert!(
+                centre[0] > centre[2] + 40,
+                "foreground stays visible: {centre:?}"
+            );
+            scene.instances[foreground].visible = false;
+            Renderer::mark_changed(&mut scene, foreground);
+            // Ordinary blended surfaces must keep showing the terrain, as must covers
+            // whose material explicitly disables depth writes or uses alpha testing.
+            for (presurface, alpha, no_z_write) in [
+                (false, AlphaMode::Blend, false),
+                (true, AlphaMode::Blend, true),
+                (true, AlphaMode::Test, false),
+            ] {
+                scene.instances[cover].presurface = presurface;
+                scene.materials[transparent].no_z_write = no_z_write;
+                renderer.set_material(
+                    &mut scene,
+                    cover,
+                    0,
+                    if alpha == AlphaMode::Test {
+                        cutout
+                    } else {
+                        transparent
+                    },
+                );
+                let rgba = renderer
+                    .render_to_image(&mut scene, 64, 64, &camera, &lighting)
+                    .unwrap();
+                let centre = pixel(&rgba, 32);
+                assert!(
+                    centre[1] > centre[2] + 40,
+                    "terrain should show: {centre:?}; {presurface}/{alpha:?}/{no_z_write}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn render_scale_auto_keeps_ordinary_windows_sharp() {

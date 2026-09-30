@@ -387,6 +387,11 @@ add_camera_reflexion(_2) mass momentofintertia cog boundingbox crashmode_pole ne
 (attach_trans attach_rot_x/y/z) maplight rail_enh third_rail triggerbox_new triggerbox_setreverb
 plus the whole model.cfg vocabulary inline.
 
+`[rendertype] presurface` draws the object before terrain and ordinary scenery, keeping
+its mesh/material order. Alpha-blended materials still write depth at transparent texels:
+an invisible cover can keep terrain from hiding an excavation already drawn below it.
+Alpha-tested materials retain their cutouts, and `[matl_noZwrite]` disables blended depth writes.
+
 ## Model (.cfg) - unit `mc_complobj`
 
 LOD VFDmaxmin detail_factor tex_detail_factor noDistanceCheck terrainhole CTC CTCTexture
