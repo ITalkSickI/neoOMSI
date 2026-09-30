@@ -524,7 +524,7 @@ impl Controllers {
                             _ => ((v + 1.0 - 2.0 * dz).max(0.0) / (1.0 - dz)) - 1.0,
                         };
                         // a pedal travels the whole range, -1 up to 1 down
-                        let pedal = ((v + 1.0) * 0.5).clamp(0.0, 1.0);
+                        let pedal = crate::settings::pedal_ends(((v + 1.0) * 0.5).clamp(0.0, 1.0));
                         match f {
                             Func::Steering => {
                                 let v = v * self.steer_gain;

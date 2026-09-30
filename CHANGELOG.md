@@ -4,6 +4,34 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.394 - 2026-09-30
+
+### Graphics
+- Rain drops on the windows are smaller again (the big ones of 0.1.381 were far too big and
+  lumpy), and a drop running down leaves only a cleared track and a few beads - no more
+  thin tail drawn behind it.
+
+### Driving
+- A clutch pedal pushed to the floor is fully in: a wheel's pedal reads 0.93-0.99 there, and
+  the LiAZ/PAZ gearboxes part the engine from the wheels only above 0.95 and take a gear only
+  at 1 - holding the clutch at a stop still stalled the engine. All pedals' last few per
+  cent count as their ends; the phone's clutch is in from three quarters down.
+
+### Passengers
+- Riders who stood up as the bus pulled in get off at their stop: they lost "this is my
+  stop" as the bus came to a stand and stayed at the door (#336).
+- Riders of timetable buses no longer lose their stop whenever the player's bus stops
+  somewhere (#317); somebody held off the exit by a pole gets off from there.
+
+### Controllers and launcher
+- Controller buttons can pause, take a screenshot, quicksave and switch mouse steering or the
+  controllers (#380, by isaacsa2); DirectInput devices with unusual layouts (button boxes
+  without axes) are taken (#379, by isaacsa2).
+- Text fields in the launcher can be clicked into, selected and overwritten (#373, by XiZyno).
+- The dedicated server starts on machines without a graphics card again (#375, by no-felix;
+  #368).
+- Translations completed and corrected, Traditional Chinese in full (#383, by EFour4).
+
 ## 0.1.381 - 2026-09-30
 
 ### Graphics

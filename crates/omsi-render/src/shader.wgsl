@@ -1115,8 +1115,8 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
             + sin(qr.y * 23.0 + lk.y * 6.3) * 0.005 + sin(qr.y * 67.0 + lane) * 0.0015;
         let dx = qr.x - path_x;
         // the head: a teardrop 4-8 mm across, drawn out upwards
-        let rh = 0.002 + 0.0018 * lk.y;
-        let dd = vec2<f32>(dx, select(-above, -above / 1.9, above > 0.0));
+        let rh = 0.0011 + 0.0007 * lk.y;
+        let dd = vec2<f32>(dx, -above);
         let head = rain_dome(dd, rh, px);
         if (head.z > best) {
             best = head.z;
@@ -1126,14 +1126,6 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
         let trail_len = 0.08 + 0.3 * lh.y;
         let hw = rh * 0.75;
         track = (1.0 - smoothstep(hw * 0.6, hw, abs(dx))) * step(rh, above) * (1.0 - smoothstep(trail_len * 0.5, trail_len, above));
-        // the water the head leaves behind: a thin stream down the middle of its track,
-        // rounded across like a pipe lying on the glass, narrowing as it runs dry
-        let sw = hw * 0.45 * (1.0 - 0.6 * smoothstep(0.0, trail_len, above));
-        let stream = (1.0 - smoothstep(sw * 0.7, sw, abs(dx))) * step(rh * 0.8, above) * (1.0 - smoothstep(trail_len * 0.6, trail_len, above));
-        if (stream * 0.9 > best) {
-            best = stream * 0.9;
-            slope = rain_turn(vec2<f32>(clamp(dx / max(sw, 1e-5), -1.0, 1.0) * 0.8, 0.0), -fa);
-        }
         // ...and a string of small beads left behind in it
         let bc = floor(above / 0.006);
         let bh = rain_hash(vec2<f32>(lane * 3.1 + bc, 41.0));
@@ -1154,7 +1146,7 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
     // fourth the few big ones, a centimetre and more, grown from drops that ran together)
     for (var layer = 0; layer < 4; layer = layer + 1) {
         let fl = f32(layer);
-        let cellsz = select(select(select(0.0045, 0.0075, layer == 1), 0.012, layer == 0), 0.021, layer == 3);
+        let cellsz = select(select(select(0.0045, 0.0075, layer == 1), 0.012, layer == 0), 0.015, layer == 3);
         let turn = 0.61 + fl * 1.37;
         let g2 = rain_turn(q, turn) / cellsz + vec2<f32>(fl * 17.3, fl * 5.1);
         let c = floor(g2);
@@ -1164,12 +1156,12 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
         let ph = fract(t / life + h2.x);
         // landed, grown, drying: a drop comes and goes; more of them the wetter the pane,
         // and the big ones only on a wet pane
-        let dens = wet * wetter * select(select(select(0.45, 0.36, layer == 2), 0.42 * smoothstep(0.15, 0.6, wet), layer == 0), 0.2 * smoothstep(0.3, 0.8, wet), layer == 3);
+        let dens = wet * wetter * select(select(select(0.45, 0.36, layer == 2), 0.42 * smoothstep(0.15, 0.6, wet), layer == 0), 0.1 * smoothstep(0.3, 0.8, wet), layer == 3);
         let present = step(h.x, dens) * smoothstep(0.0, 0.04, ph) * (1.0 - smoothstep(0.85, 1.0, ph)) * (1.0 - track);
         if (present <= 0.0) {
             continue;
         }
-        let r = select(0.12 + 0.24 * h.y * h.y, 0.16 + 0.24 * h.y, layer == 3) * mix(0.75, 1.0, smoothstep(0.0, 0.5, ph)) * mix(0.8, 1.1, wet);
+        let r = select(0.1 + 0.2 * h.y * h.y, 0.14 + 0.16 * h.y, layer == 3) * mix(0.75, 1.0, smoothstep(0.0, 0.5, ph)) * mix(0.8, 1.1, wet);
         // (anywhere in the cell it still fits in)
         let room = min(r * 1.12, 0.48);
         let centre = c + vec2<f32>(room) + rain_hash(c + 9.1) * (1.0 - 2.0 * room);
@@ -1197,9 +1189,9 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, wet: f32, t: f32, o
         let p2 = h3 * 2.0 - 1.0;
         let p3 = h2.yx * 2.0 - 1.0;
         let wave = (s2 * p2.x + c2 * p2.y) * h3.y + 0.55 * (s3 * p3.x + c3 * p3.y) + 0.3 * (s4 * p2.y - c4 * p3.x);
-        let wob = 1.0 + (0.07 + 0.16 * h.y) * wave;
+        let wob = 1.0 + (0.03 + 0.06 * h.y) * wave;
         d = d / max(wob, 0.4);
-        d.y = d.y * mix(1.0, 0.72, h.y * h.y * h3.x);
+        d.y = d.y * mix(1.0, 0.88, h.y * h.y * h3.x);
         let drop = rain_dome(d, r * cellsz, px);
         let cover = drop.z * present;
         if (cover > best) {
