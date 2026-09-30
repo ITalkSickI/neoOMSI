@@ -2,6 +2,18 @@
 
 use super::*;
 
+
+/// Global actions a controller button should send to the game instead of to the bus script.
+pub(crate) fn is_game_action(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.starts_with("view_")
+        || matches!(
+            name.as_str(),
+            "sim_pause" | "screenshot" | "quicksave" | "toggel_mouse_ctrl" | "toggel_ctrler"
+        )
+}
+
+
 /// How far (m) a click reaches a page (`[htmltexture]`) on a scenery object.
 const HTML_OBJECT_REACH: f32 = 4.0;
 
