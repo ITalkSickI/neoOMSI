@@ -583,6 +583,52 @@ pub(crate) fn run_offscreen(
                         ..Default::default()
                     };
                 }
+                // OMSI_AUTOPILOT=<km/h>: the player's bus follows the road network's lanes at
+                // that speed (a steering wheel on a pure-pursuit point 12 m ahead, a throttle
+                // and brake on the speed) - to drive it round a map's roundabouts and bends
+                // and see where it falls through or leaves the road; each lane taken is the
+                // straightest on
+                if let (Some(kmh), Some(net)) = (omsi_cfg::env::var("OMSI_AUTOPILOT").ok().and_then(|v| v.parse::<f32>().ok()), traffic.as_ref().map(|t| &t.net)) {
+                    let v = &player.vehicle;
+                    let h = v.heading.to_radians();
+                    let fwd = DVec3::new(h.sin(), h.cos(), 0.0);
+                    let probe = v.position + fwd * 3.0;
+                    if let Some((mut lane, mut s, _)) = net.nearest_lane(probe, omsi_sim::traffic::LaneKind::Street) {
+                        // (the lane that runs our way)
+                        let lh = net.lanes[lane].at(s).1 as f64;
+                        let dh = (lh - v.heading + 540.0).rem_euclid(360.0) - 180.0;
+                        if dh.abs() > 100.0 {
+                            if let Some((l2, s2, _)) = (0..net.lanes.len()).filter(|&k| net.lanes[k].kind == omsi_sim::traffic::LaneKind::Street).filter_map(|k| net.lanes[k].nearest_point(probe).map(|(s, d)| (k, s, d))).filter(|(k, s, d)| *d < 6.0 && ((net.lanes[*k].at(*s).1 as f64 - v.heading + 540.0).rem_euclid(360.0) - 180.0).abs() < 80.0).min_by(|a, b| a.2.total_cmp(&b.2)) {
+                                lane = l2;
+                                s = s2;
+                            }
+                        }
+                        let mut ahead = 12.0f32;
+                        loop {
+                            let len = net.lanes[lane].length();
+                            if s + ahead <= len || net.lanes[lane].next.is_empty() {
+                                s = (s + ahead).min(len);
+                                break;
+                            }
+                            ahead -= len - s;
+                            let here = net.lanes[lane].at(len).1;
+                            lane = *net.lanes[lane].next.iter().min_by(|a, b| {
+                                let da = (net.lanes[**a].at(0.0).1 - here + 540.0).rem_euclid(360.0) - 180.0;
+                                let db = (net.lanes[**b].at(0.0).1 - here + 540.0).rem_euclid(360.0) - 180.0;
+                                da.abs().total_cmp(&db.abs())
+                            }).unwrap();
+                            s = 0.0;
+                        }
+                        let target = net.lanes[lane].at(s).0;
+                        let d = (target - v.position).truncate();
+                        let want = d.x.atan2(d.y).to_degrees();
+                        let alpha = ((want - v.heading + 540.0).rem_euclid(360.0) - 180.0) as f32;
+                        let speed = v.physics.velocity_kmh();
+                        controls.steering = (alpha / 30.0).clamp(-1.0, 1.0);
+                        controls.throttle = ((kmh - speed) / 10.0).clamp(0.0, 1.0);
+                        controls.brake = ((speed - kmh - 3.0) / 10.0).clamp(0.0, 1.0);
+                    }
+                }
                 player.vehicle.set_controls(controls);
                 if i == 0 {
                     if let Some(v0) = drive_v0 {
@@ -602,6 +648,16 @@ pub(crate) fn run_offscreen(
                     }
                 }
                 crate::rail_drive::frame(player, traffic.as_ref().map(|t| &t.net), &world, dt);
+                // (the autopilot's log: where the bus is against the ground under it, twice a
+                // second, and at once when the ground is not under it any more)
+                if omsi_cfg::env::var_os("OMSI_AUTOPILOT").is_some() {
+                    let at = player.vehicle.position;
+                    let under = crate::scene::drive_probe(&world.terrains, &world.surfaces, at.x, at.y, at.z + 1.5).below;
+                    let lost = under.is_none_or(|g| at.z < g - 0.6);
+                    if i % 15 == 0 || lost {
+                        log::info!("autopilot t={t_s:.1} at ({:.1}, {:.1}, {:.2}) heading {:.0} {:.0} km/h, ground under {:?}{}", at.x, at.y, at.z, player.vehicle.heading, player.vehicle.physics.velocity_kmh(), under.map(|g| (g * 100.0).round() / 100.0), if lost { " FELL" } else { "" });
+                    }
+                }
                 // the driver's hands follow the wheel frame by frame (as in the window), so
                 // that the snapshots show them where the hand-over-hand has got to
                 if settings.driver && !snapshot_times.is_empty() {
@@ -2566,9 +2622,13 @@ pub(crate) fn run_offscreen(
     }
     let pixels = renderer.render_to_image(&mut scene, w, h, &camera, &lighting)?;
     log::info!(
-        "rendered {} instances in {:.1} ms",
+        "rendered {} instances in {:.1} ms; GPU memory: textures {:.0} MB, meshes {:.0} MB ({} meshes, {} textures)",
         scene.instances.len(),
-        t0.elapsed().as_secs_f32() * 1000.0
+        t0.elapsed().as_secs_f32() * 1000.0,
+        renderer.texture_bytes(&scene) as f64 / 1e6,
+        renderer.mesh_bytes(&scene) as f64 / 1e6,
+        scene.meshes.len(),
+        scene.textures.len()
     );
     image::save_buffer(out, &pixels, w, h, image::ColorType::Rgba8)?;
     println!("wrote {}", out.display());

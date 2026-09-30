@@ -983,6 +983,10 @@ pub fn crash_of(log: &std::path::Path) -> Option<(String, String)> {
     let lines: Vec<&str> = text.lines().collect();
     // (a lost graphics device ends the game in order - it saves the run - but it is a crash
     // for the player all the same: the driver gave up)
+    // (one the game got over by starting again with safer graphics is no crash)
+    if lines.iter().any(|l| l.contains("starting again with safer graphics")) {
+        return None;
+    }
     let lost = lines.iter().rposition(|l| l.contains("the graphics device was lost"));
     if lost.is_none() && lines.iter().any(|l| l.contains("game ends")) {
         return None;

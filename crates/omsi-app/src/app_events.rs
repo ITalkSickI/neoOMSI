@@ -6,10 +6,14 @@ const MIRROR_RATE: f32 = 75.0;
 const MIRROR_MIN_HZ: f32 = 8.0;
 
 fn render_scale_step(fps: f32, slow_frame_wait_share: f32) -> f32 {
-    if fps < 45.0 && slow_frame_wait_share >= 0.35 {
-        -0.1
-    } else if fps > 57.0 || slow_frame_wait_share < 0.35 {
-        0.05
+    // (three levels, far apart, and a wide band between going down and up again: every
+    // step makes the picture's targets anew - hundreds of MB with MSAA and HDR - and a
+    // scale that went up and down by 5 % every two seconds stuttered at each change and
+    // filled the card's memory with the old ones until the driver gave up)
+    if fps < 40.0 && slow_frame_wait_share >= 0.4 {
+        -0.15
+    } else if fps > 58.0 || slow_frame_wait_share < 0.2 {
+        0.15
     } else {
         0.0
     }
@@ -212,8 +216,22 @@ impl ApplicationHandler for App {
                 // the graphics device is gone (a driver reset, an external card unplugged):
                 // nothing can be drawn again - end the session the ordinary way, so that the
                 // summary, the personnel file and the LAN goodbye are not lost
+                // the card ran out of memory: fewer textures (the finest levels of the far
+                // ones go), before the driver gives the device up
+                if self.renderer.as_ref().is_some_and(|r| r.take_out_of_memory()) {
+                    if let Some(w) = self.world.as_ref() {
+                        let now = w.texture_budget_bytes();
+                        let less = if now == 0 { 600_000_000 } else { (now * 3 / 5).max(300_000_000) };
+                        w.set_texture_budget(less);
+                        log::warn!("the graphics card ran out of memory: textures kept to {:.0} MB from now on", less as f64 / 1e6);
+                    }
+                }
                 if let Some(why) = self.renderer.as_ref().and_then(|r| r.device_lost()) {
-                    log::error!("ending the session: the graphics device was lost ({why})");
+                    if self.restart_after_device_loss() {
+                        log::warn!("device lost ({why}): the game goes on in a new start");
+                    } else {
+                        log::error!("ending the session: the graphics device was lost ({why})");
+                    }
                     crate::platform::exit(event_loop);
                     return;
                 }
@@ -286,19 +304,36 @@ impl ApplicationHandler for App {
                     }
                     self.governor.0 += raw_dt;
                     self.governor.1 += 1;
-                    if self.governor.0 >= 2.0 {
+                    if self.governor.0 >= 5.0 {
                         let fps = self.governor.1 as f32 / self.governor.0;
                         let wait_share = self.governor.2 / self.governor.0;
                         self.governor = (0.0, 0, 0.0);
                         let free = self.settings.render_scale <= 0.0
                             && (self.settings.max_fps == 0 || self.settings.max_fps >= 50)
                             && omsi_cfg::env::var_os("OMSI_FIXED_SCALE").is_none();
-                        if let (Some(r), true) = (self.renderer.as_ref(), free) {
+                        if let (Some(r), true) = (self.renderer.as_mut(), free) {
                             let s = r.dynamic_scale();
-                            let next = s + render_scale_step(fps, wait_share);
-                            r.set_dynamic_scale(next);
+                            let step = render_scale_step(fps, wait_share);
+                            r.set_dynamic_scale(s + step);
                             if (r.dynamic_scale() - s).abs() > 1e-3 {
                                 log::info!("frame rate {fps:.0} fps (presentation wait {:.0}%): the 3D picture is drawn at {:.0} % of the window now", wait_share * 100.0, r.dynamic_scale() * 100.0);
+                                self.governor_low = 0;
+                            } else if step < 0.0 {
+                                // at the smallest scale and still waiting for the card: after
+                                // two such readings the picture gets lighter itself (a weak or
+                                // old graphics chip keeps a playable frame rate)
+                                self.governor_low += 1;
+                                if self.governor_low >= 2 && fps < 30.0 {
+                                    self.governor_low = 0;
+                                    // (SSAO first, then the shadows; for this drive only)
+                                    let what = r.lighten().or_else(|| {
+                                        std::mem::replace(&mut self.settings.shadows, false).then_some("shadows off")
+                                    });
+                                    if let Some(what) = what {
+                                        log::warn!("frame rate {fps:.0} fps at the smallest render scale: {what} to keep up");
+                                        self.service_msg = Some((format!("The graphics card cannot keep up: {what}"), 4.0));
+                                    }
+                                }
                             }
                         }
                     }
@@ -555,6 +590,16 @@ impl ApplicationHandler for App {
                 // goes. For a second after mouse steering is switched on the wheel eases
                 // towards the cursor (a half-life of the time that is left), then follows it.
                 let mut analog = analog;
+                // a gamepad's stick: a target the wheel turns towards at a hand's pace (the
+                // whole lock in 1.2 s), not the wheel's place itself (#200)
+                if analog.stick {
+                    if let (Some(x), Some(p)) = (analog.steering, self.player.as_ref()) {
+                        let target = crate::controllers::gamepad_steering(x, p.vehicle.physics.velocity_kmh() as f32);
+                        let now = p.vehicle.physics.controls.steering;
+                        let step = dt / 1.2;
+                        analog.steering = Some(now + (target - now).clamp(-step, step));
+                    }
+                }
                 // (in every view of the bus - driver, outside, passenger - as in OMSI, where
                 // switching the camera leaves the mouse steering on; not on foot or flying)
                 let bus_view = matches!(self.view.as_str(), "driver" | "outside" | "pax");
@@ -688,7 +733,14 @@ impl ApplicationHandler for App {
                             self.audio.as_ref(),
                             self.in_cab,
                         );
-                        p.move_head(dt, self.settings.head_movement);
+                        // (not in the headset: the player's own head moves there, and a head
+                        // thrown about by the bus on top of it made the whole cab sway and
+                        // shift before the eyes)
+                        #[cfg(windows)]
+                        let vr_on = self.vr.is_some();
+                        #[cfg(not(windows))]
+                        let vr_on = false;
+                        p.move_head(dt, self.settings.head_movement && !vr_on);
                         if let Some(w) = self.world.as_ref() {
                             crate::rail_drive::frame(p, self.traffic.as_ref().map(|t| &t.net), w, dt);
                         }

@@ -1101,6 +1101,11 @@ pub struct Renderer {
     mip_sampler: wgpu::Sampler,
     /// Set by the device's error handler when something failed with multisampling on.
     gpu_error: Arc<std::sync::atomic::AtomicBool>,
+    /// The headset's pictures: the heading (degrees) the `[matl_envmap]` sphere maps are
+    /// laid out by instead of each eye's view (see `set_env_heading`).
+    env_heading: std::cell::Cell<Option<f32>>,
+    /// The card ran out of memory since the last `take_out_of_memory`.
+    out_of_memory: Arc<std::sync::atomic::AtomicBool>,
     /// Why the graphics device was lost (a driver reset, the card removed), once it was.
     device_lost: Arc<std::sync::Mutex<Option<String>>>,
     /// Render scale: the pipeline that scales the 3D picture up to the window, its
@@ -1377,6 +1382,27 @@ impl Renderer {
         } else {
             options
         };
+        // A small or shared graphics chip (the processor's graphics outside a Mac, a phone,
+        // a card of up to 2.5 GB, anything on OpenGL) gets a lighter picture whatever the
+        // settings ask: no SSAO and no multisampling, smaller shadow maps; a card of up to
+        // 4 GB no SSAO and at most 2x. (The settings' "High" on such a machine ran out of
+        // memory or at a dozen frames a second.) OMSI_FULL_GPU=1 asks for the settings as
+        // they are.
+        let full = omsi_cfg::env::var_os("OMSI_FULL_GPU").is_some();
+        let weak = !full
+            && (info.backend == wgpu::Backend::Gl
+                || (info.device_type == wgpu::DeviceType::IntegratedGpu && info.backend != wgpu::Backend::Metal)
+                || vram.is_some_and(|v| v <= 2560));
+        let modest = !full && !weak && vram.is_some_and(|v| v <= 4200);
+        let options = if weak {
+            log::warn!("{}: a small or shared graphics chip - no SSAO, no MSAA, shadow maps of at most 1024 (OMSI_FULL_GPU=1 keeps the settings)", info.name);
+            RenderOptions { msaa: 1, ssao: false, shadow_size: options.shadow_size.min(1024), ..options }
+        } else if modest {
+            log::info!("{}: {} MB of its own - no SSAO, at most 2x MSAA and 2048 shadow maps (OMSI_FULL_GPU=1 keeps the settings)", info.name, vram.unwrap_or(0));
+            RenderOptions { msaa: options.msaa.min(2), ssao: false, shadow_size: options.shadow_size.min(2048), ..options }
+        } else {
+            options
+        };
         let shadow_size = options
             .shadow_size
             .clamp(512, if intel_vulkan_safe { 2048 } else { 8192 });
@@ -1524,7 +1550,7 @@ impl Renderer {
         let renderer = Self::build(
             device.clone(),
             queue.clone(),
-            info.name.clone(),
+            format!("{} ({:?})", info.name, info.backend),
             format,
             options,
         );
@@ -1541,7 +1567,7 @@ impl Renderer {
                 Ok(Self::build(
                     device,
                     queue,
-                    info.name,
+                    format!("{} ({:?})", info.name, info.backend),
                     format,
                     RenderOptions { msaa: 1, ..options },
                 ))
@@ -1566,6 +1592,7 @@ impl Renderer {
         // drive - a wrong picture for a frame is better than no game. The first errors and
         // then every thousandth reach the log.
         let gpu_error = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let out_of_memory = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let device_lost: Arc<std::sync::Mutex<Option<String>>> = Default::default();
         {
             let lost = device_lost.clone();
@@ -1580,8 +1607,12 @@ impl Renderer {
         }
         {
             let flag = gpu_error.clone();
+            let oom = out_of_memory.clone();
             let count = Arc::new(std::sync::atomic::AtomicU64::new(0));
             device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
+                if matches!(e, wgpu::Error::OutOfMemory { .. }) {
+                    oom.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 let n = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if msaa > 1 && !flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
                     log::error!("GPU error with {msaa}x MSAA (drawing without it from now on): {}", gpu_error_text(&e));
@@ -3579,6 +3610,8 @@ impl Renderer {
             shadow_pipelines,
             options,
             gpu_error,
+            env_heading: Default::default(),
+            out_of_memory,
             device_lost,
             blend_by_origin: false,
             gpu_timers,
@@ -3610,7 +3643,10 @@ impl Renderer {
     /// it again when there is room. Steps of a twentieth, so that the few sizes it takes
     /// keep their render targets.
     pub fn set_dynamic_scale(&self, s: f32) {
-        self.dynamic_scale.set(((s.clamp(0.6, 1.0) * 20.0).round() / 20.0).clamp(0.6, 1.0));
+        // (1, 0.85 or 0.7: see the game's governor)
+        let s = s.clamp(0.7, 1.0);
+        let level = [1.0f32, 0.85, 0.7].into_iter().min_by(|a, b| (a - s).abs().total_cmp(&(b - s).abs())).unwrap_or(1.0);
+        self.dynamic_scale.set(level);
     }
 
     pub fn dynamic_scale(&self) -> f32 {
@@ -3896,6 +3932,18 @@ impl Renderer {
     }
 
     /// Bytes of all textures of the scene on the GPU (render targets included).
+    /// Bytes the meshes' vertex and index buffers take on the GPU (the freed ones' shared
+    /// placeholder not counted).
+    pub fn mesh_bytes(&self, scene: &Scene) -> u64 {
+        let freed = self.freed.get().map(|f| (f.vertex_buf.clone(), f.index_buf.clone()));
+        scene
+            .meshes
+            .iter()
+            .filter(|m| freed.as_ref().is_none_or(|(v, _)| m.vertex_buf != *v))
+            .map(|m| m.vertex_buf.size() + m.index_buf.size())
+            .sum()
+    }
+
     pub fn texture_bytes(&self, scene: &Scene) -> u64 {
         scene.textures.iter().map(|t| t.bytes).sum()
     }
@@ -6511,6 +6559,16 @@ impl Renderer {
         }
     }
 
+    /// One step lighter on the graphics card, for a picture the card cannot keep up with at
+    /// the smallest render scale: SSAO off. What was switched off, or None when it is off.
+    pub fn lighten(&mut self) -> Option<&'static str> {
+        if self.options.ssao {
+            self.options.ssao = false;
+            return Some("ambient occlusion (SSAO) off");
+        }
+        None
+    }
+
     /// Rebuild the pipelines and targets without multisampling after a GPU error with it.
     /// The scene's materials stay valid (the device hands out the same bind group layout
     /// for identical entries); its per-draw buffers and camera bind group are made anew,
@@ -7043,12 +7101,14 @@ impl Renderer {
                 lighting.cloud_offset[1],
                 if ao_on { 1.0 } else { 0.0 },
             ],
-            cam_right: camera.right().extend(0.0).to_array(),
+            // (w: the heading the sphere maps are laid out by in the headset, see
+            // `set_env_heading`; flagged by cam_up.w)
+            cam_right: camera.right().extend(self.env_heading.get().map(|h| h.to_radians()).unwrap_or(0.0)).to_array(),
             cam_up: camera
                 .right()
                 .cross(camera.forward())
                 .normalize_or_zero()
-                .extend(0.0)
+                .extend(if self.env_heading.get().is_some() { 1.0 } else { 0.0 })
                 .to_array(),
             light_view_proj: light_view_proj.to_cols_array_2d(),
             light_view_proj_far: light_view_proj_far.to_cols_array_2d(),
@@ -9478,6 +9538,20 @@ fn scene_scale_for(requested: f32, width: u32, height: u32) -> f32 {
 /// A GPU error with what the validation layer said, not just its kind.
 impl Renderer {
     /// Why the graphics device was lost, if it was: nothing can be drawn any more.
+    /// Lay the sphere maps of `[matl_envmap]` out by this heading instead of the view
+    /// (None: by the view, as Omsi.exe does). A sphere map turns with the view it is drawn
+    /// for: in the headset every turn of the player's head turned every reflection of the
+    /// bus with it, the two eyes each their own way - the reflections swam about.
+    pub fn set_env_heading(&self, heading: Option<f32>) {
+        self.env_heading.set(heading);
+    }
+
+    /// Whether the card ran out of memory since the last call (the game then keeps fewer
+    /// textures, before the driver gives up the device).
+    pub fn take_out_of_memory(&self) -> bool {
+        self.out_of_memory.swap(false, std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn device_lost(&self) -> Option<String> {
         self.device_lost.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }

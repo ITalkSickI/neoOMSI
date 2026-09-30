@@ -531,6 +531,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         spikes: 0,
         worst_ms: 0.0,
         governor: (0.0, 0, 0.0),
+        governor_low: 0,
         governor_wait_prev: 0.0,
         hidden_frames: 0,
         exiting: false,

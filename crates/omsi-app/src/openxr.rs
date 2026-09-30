@@ -649,6 +649,7 @@ impl Vr {
                 ..Default::default()
             })
         });
+        renderer.set_env_heading(Some(vr_base.yaw));
         let mut eye_cameras = [vr_base; 2];
         let mut ui_cameras = [vr_base; 2];
         let mut eye_projections = [Mat4::IDENTITY; 2];
@@ -692,6 +693,7 @@ impl Vr {
             );
             self.stats_eyes[eye] += eye_start.elapsed();
         }
+        renderer.set_env_heading(None);
         let menu_open = !menu_range.is_empty();
         if !menu_open
             && cockpit_pointer_enabled

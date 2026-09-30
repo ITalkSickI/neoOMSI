@@ -3908,7 +3908,16 @@ impl Traffic {
             let comfortable = v * v / (2.0 * st.decel * 1.4) + 1.0;
             let possible = v * v / (2.0 * MAX_BRAKE * 0.8);
             let go = match TrafficLightController::aspect(ctl.state(li)) {
-                Aspect::Green | Aspect::Dark => true,
+                Aspect::Green | Aspect::Dark => {
+                    // at the line when it showed green: that car goes, whatever comes next
+                    // (a light that is green for a second a cycle - Westcountry's lights on
+                    // its invisible lanes - let nobody through: the first car was still
+                    // taking in the green when it went red again, for ever)
+                    if gap < 3.0 {
+                        amber = Some((c, li));
+                    }
+                    true
+                }
                 Aspect::Yellow | Aspect::GreenYellow => {
                     if amber == Some((c, li)) || gap < comfortable {
                         amber = Some((c, li));
@@ -4062,6 +4071,15 @@ impl Traffic {
                     // when this car's front gets to the meeting place
                     let t_mine = time_to(point - c.before - st.front, v, a_me)
                         + if v < 0.1 { st.reaction } else { 0.0 };
+                    // A meeting place far into the junction's way (the far side of a
+                    // roundabout its path runs round to) is not weighed at the line: the car
+                    // goes in behind the traffic already on its way and gives way there if
+                    // it has to (inside the junction every meeting place counts). Weighed
+                    // at the line, an entry waited for a gap of nine seconds on a ring that
+                    // never had one, and the queue behind it stood for minutes.
+                    if !jn.inside && point - c.before - st.front > 25.0 {
+                        continue;
+                    }
                     // (a claim of one that has stood for seconds outside the meeting place is
                     // not a car about to come: "arrives in 1.9 s" held a queue for six minutes
                     // behind a car that stood in a jam of its own)
@@ -4070,7 +4088,14 @@ impl Traffic {
                         .map(|r| r.contains(&j))
                         .unwrap_or(false)
                         && !(o.stopped > 4.0 && o.state.speed < 0.1)
-                        && o.crawl < 8.0;
+                        && o.crawl < 8.0
+                        // nor of one creeping in a queue, close behind a car that barely moves
+                        // itself: it arrives when the queue does, not in the second and a half
+                        // its own speed-up promises (round a busy roundabout every entry then
+                        // gave way to a car of the ring that was stuck in the jam this very
+                        // entry made - the ring stood still for good)
+                        && !(o.state.speed < 1.5
+                            && o.lead_info.is_some_and(|(lid, gap)| gap < 8.0 && self.cars.iter().find(|x| x.id == lid).is_some_and(|x| x.state.speed < 1.0)));
                     let theirs = dj - c.other_before - o.state.front;
                     // it waits for someone else before this meeting place (a car that gives
                     // way further on still rolls through here on its way to its line)
@@ -4132,7 +4157,7 @@ impl Traffic {
                         if first && t_j < t_clear * if me_decided { 1.0 } else { patience } + 1.0 {
                             hard = true;
                             if explain {
-                                why.push(format!("car {} ({}) arrives at {l}/{m} in {t_j:.1} s, this one in {t_mine:.1} s, clear in {t_clear:.1} s", o.id, if claimed { "claimed" } else { "on it" }));
+                                why.push(format!("car {} ({}) arrives at {l}/{m} in {t_j:.1} s, this one in {t_mine:.1} s, clear in {t_clear:.1} s [its v {:.2} stood {:.1} crawl {:.1} yielding {} lead {:?} lane {} theirs {:.1}]", o.id, if claimed { "claimed" } else { "on it" }, o.state.speed, o.stopped, o.crawl, o.yielding, o.lead_info, o.state.lane, theirs));
                             }
                             if jn.inside {
                                 stop_at = Some(stop_at.unwrap_or(f32::MAX).min(point - c.before));
@@ -5779,10 +5804,10 @@ impl Traffic {
             .map(|c| {
                 let st = &c.state;
                 let light = self.way_lanes(st, 60.0).into_iter().find_map(|(l, d)| {
-                    self.net.lanes[l].traffic_light.and_then(|(ci, li)| self.lights.get(ci).map(|ctl| format!("light {ci}/{li} state {} at {d:.1}", ctl.state(li))))
+                    self.net.lanes[l].traffic_light.and_then(|(ci, li)| self.lights.get(ci).map(|ctl| format!("light {ci}/{li} state {} at {d:.1} (time {:.0}, held {}, cycle {:.0}, phases {:?}, stops {:?})", ctl.state(li), ctl.time, ctl.held, ctl.cycle, ctl.lights, ctl.stops)))
                 });
                 format!(
-                    "car {} {} stood {:.0} s: why {:?} blinker {} yielding {} light_hold {} lane {} ({}) s {:.1}/{:.1} next {:?} {} lead {:?} bus {:?} pos ({:.1}, {:.1}) junction {}",
+                    "car {} {} stood {:.0} s: why {:?} blinker {} yielding {} light_hold {} lane {} ({}) s {:.1}/{:.1} next {:?} {} lead {:?} bus {:?} pos ({:.1}, {:.1}) junction {} [geo_block {:?} squeeze {:?} wait_at {:?} held {} start_timer {:.2} accel_cap {:?} crawl {:.1} passing {} park {} pull_out {:.1} acc {:.2}]",
                     c.id,
                     c.vehicle.ty.def.path.file_stem().unwrap_or_default().to_string_lossy(),
                     c.stopped,
@@ -5800,7 +5825,18 @@ impl Traffic {
                     c.bus.as_ref().map(|b| b.phase),
                     c.vehicle.position.x,
                     c.vehicle.position.y,
-                    c.junction_why
+                    c.junction_why,
+                    c.geo_block,
+                    c.squeeze,
+                    c.wait_at,
+                    c.held,
+                    st.start_timer,
+                    st.accel_cap,
+                    c.crawl,
+                    c.passing.is_some(),
+                    c.park.is_some(),
+                    c.pull_out,
+                    st.acc
                 )
             })
             .collect()

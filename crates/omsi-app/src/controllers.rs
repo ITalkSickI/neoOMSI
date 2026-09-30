@@ -146,9 +146,23 @@ pub(crate) fn cfg_text(devices: &[DeviceCfg]) -> String {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Analog {
     pub steering: Option<f32>,
+    /// The steering is a gamepad's stick (not a wheel): see `gamepad_steering`.
+    pub stick: bool,
     pub throttle: Option<f32>,
     pub brake: Option<f32>,
     pub clutch: Option<f32>,
+}
+
+/// Where a gamepad's stick turns the wheel to (#200): a stick is no steering wheel - taken
+/// as the wheel's place, the smallest movement turned the wheel a long way and a push to
+/// the side was the full lock at any speed. As the bus games take it: a gentler curve
+/// (squared), and less of the lock the faster the bus goes (the whole of it standing, a
+/// third of it at 50 km/h, a fifth at 90 km/h).
+pub fn gamepad_steering(x: f32, kmh: f32) -> f32 {
+    let x = x.clamp(-1.0, 1.0);
+    let curve = x * x.abs();
+    let reach = 1.0 / (1.0 + (kmh.abs() - 10.0).max(0.0) / 20.0);
+    curve * reach
 }
 
 /// A device connected now: its name, its axes (DirectInput slot, -1..1), whether the system
@@ -486,7 +500,12 @@ impl Controllers {
         let off = self.disabled.clone();
         if let Some(g) = self.devices.gilrs.as_ref() {
             for (_, pad) in g.gamepads() {
-                if pad.mapping_source() == gilrs::MappingSource::None || self.cfg.iter().any(|d| names_match(&d.name, pad.name())) {
+                // (a pad OMSI's gamectrler.cfg names is driven by that file through DirectInput
+                // - except an Xbox-type pad on Windows, whose DirectInput twin is left out
+                // for the system's own layout: with the file naming it, nobody read it, and
+                // its triggers were no pedals, #171)
+                let xinput = cfg!(windows) && pad.mapping_source() == gilrs::MappingSource::Driver;
+                if pad.mapping_source() == gilrs::MappingSource::None || (!xinput && self.cfg.iter().any(|d| names_match(&d.name, pad.name()))) {
                     continue;
                 }
                 #[cfg(target_os = "macos")]
@@ -500,7 +519,10 @@ impl Controllers {
                 let dead = |v: f32| if v.abs() < 0.08 { 0.0 } else { v };
                 let rt = pad.button_data(gilrs::Button::RightTrigger2).map(|d| d.value()).unwrap_or(0.0);
                 let lt = pad.button_data(gilrs::Button::LeftTrigger2).map(|d| d.value()).unwrap_or(0.0);
-                out.steering.get_or_insert(dead(x));
+                if out.steering.is_none() {
+                    out.steering = Some(dead(x));
+                    out.stick = true;
+                }
                 out.throttle.get_or_insert(crate::settings::pedal_curve(rt, self.pedal_throttle));
                 out.brake.get_or_insert(crate::settings::pedal_curve(lt, self.pedal_brake));
             }

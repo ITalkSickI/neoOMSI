@@ -1166,8 +1166,12 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // [matl_envmap]: sphere map reflection, masked by the diffuse alpha like the original
         let vdir = normalize(in.world - camera.cam_pos.xyz);
         let r = reflect(vdir, n);
-        let rx = dot(r, camera.cam_right.xyz);
-        let ry = dot(r, camera.cam_up.xyz);
+        // (the headset: laid out by the bus's heading, level, not by each eye's view)
+        let vr_env = camera.cam_up.w > 0.5;
+        let env_right = select(camera.cam_right.xyz, vec3<f32>(cos(camera.cam_right.w), -sin(camera.cam_right.w), 0.0), vr_env);
+        let env_up = select(camera.cam_up.xyz, vec3<f32>(0.0, 0.0, 1.0), vr_env);
+        let rx = dot(r, env_right);
+        let ry = dot(r, env_up);
         var env_uv = vec2<f32>(rx * 0.5 + 0.5, 0.5 + ry * 0.5);
         if (material.bump.y > 0.5) {
             env_uv = env_uv + bump_offset(duv);

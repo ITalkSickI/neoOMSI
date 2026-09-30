@@ -2381,8 +2381,12 @@ impl AiState {
         // clears (the wave that runs down a queue at a green light)
         if self.speed < 0.05 {
             if acc <= 0.05 {
+                // (a hold of a frame or two - a junction that is free and not free by turns
+                // as the cars on the ring come and go - winds the reaction back only a
+                // little: set back whole every frame, it never ran out, and the car stood at
+                // an empty roundabout for minutes, "about to go")
+                self.start_timer = if self.held { (self.start_timer + 3.0 * dt).min(self.reaction) } else { self.reaction };
                 self.held = true;
-                self.start_timer = self.reaction;
                 acc = acc.min(0.0);
             } else if self.held {
                 self.start_timer -= dt;
