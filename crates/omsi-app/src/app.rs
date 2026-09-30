@@ -116,6 +116,10 @@ pub(crate) struct App {
     pub(crate) pad_look: [bool; 4],
     /// The arrow keys turned the head (a glance that comes back when they are let go).
     pub(crate) arrow_glance: bool,
+    /// An arrow key that would switch the cockpit camera is down and not decided yet: a tap
+    /// (let go within `ARROW_HOLD_SECS`) switches, held longer it turns the head instead and
+    /// the camera stays. (key, action, when it went down)
+    pub(crate) arrow_tap: Option<(winit::keyboard::KeyCode, String, Instant)>,
     /// The next click on the city map puts the bus there (Esc → Move the bus on the map).
     pub(crate) teleport_pick: bool,
     /// Discord's "Playing openOMSI" status, and when it was last brought up to date.
@@ -901,6 +905,9 @@ pub(crate) fn report_missing_content(w: &World, msg: &mut Option<(String, f32)>)
 /// How long the glide between two cockpit cameras takes (seconds). The eye, the turn of the
 /// view and the field of view all follow the same curve over this time. 0 = hard cut.
 pub(crate) const CAM_BLEND_SECS: f32 = 0.6;
+/// How long an arrow key has to be held before it turns the head rather than switching the
+/// camera (seconds): shorter is a tap, and the camera switches when the key is let go.
+pub(crate) const ARROW_HOLD_SECS: f32 = 0.25;
 /// The longest step of time one frame adds to the glide (seconds): a frame that hitches at
 /// the start of a switch does not skip ahead in it.
 pub(crate) const CAM_BLEND_MAX_DT: f32 = 1.0 / 30.0;

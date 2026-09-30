@@ -1306,8 +1306,14 @@ impl ApplicationHandler for App {
                         // other key never brought it back straight
                         let (l, r) = (self.keys.contains(&KeyCode::ArrowLeft), self.keys.contains(&KeyCode::ArrowRight));
                         if l || r {
-                            self.look.0 = (self.look.0 + step * 1.5 * (r as i32 - l as i32) as f32).clamp(-140.0, 140.0);
-                            self.arrow_glance = true;
+                            // (a key that would switch the camera waits out its tap time first; held
+                            // past it, it is a glance and the camera stays)
+                            let held = self.arrow_tap.as_ref().map_or(true, |t| t.2.elapsed().as_secs_f32() >= crate::app::ARROW_HOLD_SECS);
+                            if held {
+                                self.arrow_tap = None;
+                                self.look.0 = (self.look.0 + step * 1.5 * (r as i32 - l as i32) as f32).clamp(-140.0, 140.0);
+                                self.arrow_glance = true;
+                            }
                         } else if self.arrow_glance {
                             self.look.0 *= (-6.0 * dt).exp();
                             // (down to a hundredth of a degree before it is set to 0: at half a
@@ -2438,10 +2444,10 @@ impl App {
                 if let Some(k) = hit {
                     let k = k
                         + self
-                            .ui
-                            .as_ref()
-                            .map(|u| u.menu_start)
-                            .unwrap_or(0);
+                        .ui
+                        .as_ref()
+                        .map(|u| u.menu_start)
+                        .unwrap_or(0);
 
                     if self.chooser.is_none() {
                         self.game_menu = Some(k);
