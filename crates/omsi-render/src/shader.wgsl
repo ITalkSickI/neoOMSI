@@ -1529,7 +1529,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         } else {
             kk = omsi_texture_factor(material.params2.y, camera.ambient.rgb + vec3<f32>(g));
         }
-        lit = mix(lit, env.rgb, kk);
+        // In the vanilla picture the lerp is made on the encoded values, as the stage makes
+        // it, like the texture x light product above: made on linear ones it showed the
+        // reflection about twice as bright over a dark surface - since the nights got dark
+        // (#300) the instrument glass of the MAN NL/NG (Fenster.tga, factor 0.5, the sky
+        // at the sphere map's bottom) lay milky white over the unlit gauges.
+        if (classic) {
+            lit = srgb_decode(mix(srgb_encode(lit), srgb_encode(env.rgb), kk));
+        } else {
+            lit = mix(lit, env.rgb, kk);
+        }
     }
     // wet road: a surface whose texture carries [moisture] darkens under rain and starts
     // to mirror the sky, strongest where you look along it (the Fresnel sheen that makes a
