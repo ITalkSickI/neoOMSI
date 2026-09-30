@@ -3200,7 +3200,10 @@ impl TrailerPart {
         // about the vertical axis - the stock articulation.osc's jackknife protection brakes
         // at |alpha| > 47° - and beta about the transverse axis. (The horizontal angle went
         // to beta: the protection never engaged, the bellows turned in the wrong plane.)
-        // The part in front is drawn pitched, this one level: beta is that difference.
+        // The part in front is drawn pitched, this one level: beta is that difference, the
+        // part in front's pitch less this one's. (Taken the other way round, the Agora L's
+        // joint arch and bellows - `anim_rot articulation_0_beta` - tilted away from the rear
+        // section instead of towards it, twice the angle apart at the far ring.)
         // (the pitch of the part in front as it travels, read off its rotation: forward along
         // its heading, whichever way its model is turned)
         let lead_pitch = {
@@ -3211,7 +3214,7 @@ impl TrailerPart {
         };
         let lead_pitch = if lead_pitch.abs() > 90.0 { lead_pitch - 180.0 * lead_pitch.signum() } else { lead_pitch };
         let alpha = ((lead_heading - self.heading + 540.0) % 360.0) - 180.0;
-        let beta = self.pitch as f64 - lead_pitch;
+        let beta = lead_pitch - self.pitch as f64;
         if let Some(id) = self.v_alpha {
             main.state.vars[id as usize] = (alpha * ARTICULATION_SIGN) as f32;
         }
@@ -3921,5 +3924,52 @@ mod grip_tests {
             checked += 1;
         }
         assert!(checked > 0, "no vertex shared between the two bones");
+    }
+
+    /// The joint's vertical angle turns the Agora L's arch (`anim_rot articulation_0_beta
+    /// 0.5`) and the bone its bellows' far ring hangs on half-way towards the rear section,
+    /// whichever way the front section pitches.
+    #[test]
+    fn articulation_beta_tilts_the_joint_towards_the_rear_section() {
+        use super::*;
+        use std::sync::Arc;
+        let root = omsi_cfg::env::var_os("OMSI_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+        let bus = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_L_3d_main.bus");
+        let trail = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_L_3d_trail.bus");
+        if !bus.exists() || !trail.exists() {
+            eprintln!("skipped: no {}", bus.display());
+            return;
+        }
+        let ty = Arc::new(VehicleType::load(&root, &bus).expect("Agora L"));
+        let mut v = VehicleInstance::new(ty, VehicleHost::new(crate::SimClock::default()));
+        v.attach_trailer_ex(Arc::new(VehicleType::load(&root, &trail).expect("Agora L trail")), false);
+        v.update_visuals(0.02);
+        let find = |v: &VehicleInstance, n: &str| {
+            v.ty.meshes
+                .iter()
+                .position(|m| v.ty.model.meshes[m.def_index].file.to_ascii_lowercase().ends_with(n))
+                .expect(n)
+        };
+        let (arch, bone_b) = (find(&v, "gelenk_arch.o3d"), find(&v, "bone_b.o3d"));
+        for pitch in [4.0f32, -4.0] {
+            v.pitch = pitch;
+            for _ in 0..50 {
+                v.update_visuals(0.05);
+            }
+            // where the rear section lies, in the front section's frame
+            let rel = v.body_rotation().inverse() * v.trailers[0].body_rotation();
+            let back = rel.transform_vector3(-Vec3::Y);
+            assert!(back.z.abs() > 0.03, "the sections are not pitched apart ({back:?})");
+            for k in [arch, bone_b] {
+                let d = v.mesh_transforms[k].transform_vector3(-Vec3::Y);
+                assert!(
+                    d.z * back.z > 0.0 && d.z.abs() < back.z.abs(),
+                    "pitch {pitch}: {} points {d:?}, the rear section {back:?}",
+                    v.ty.model.meshes[v.ty.meshes[k].def_index].file
+                );
+            }
+        }
     }
 }
