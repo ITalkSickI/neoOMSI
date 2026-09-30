@@ -2197,8 +2197,11 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             }
         }
         // the cursor itself says when it is over something that can be operated
-        // (steering with the mouse: a cross, as OMSI shows it)
-        let kind: u8 = if self.mouse_drive && matches!(self.view.as_str(), "driver" | "outside" | "pax") && self.game_menu.is_none() {
+        // (steering with the mouse: a cross, as OMSI shows it; turning the view with the
+        // right button held: the four arrows OMSI shows then, #185)
+        let kind: u8 = if self.mouse_look && self.game_menu.is_none() {
+            3
+        } else if self.mouse_drive && matches!(self.view.as_str(), "driver" | "outside" | "pax") && self.game_menu.is_none() {
             2
         } else if self.hover.is_some() {
             1
@@ -2209,6 +2212,7 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
             self.cursor_kind = kind;
             if let Some(w) = self.window.as_ref() {
                 w.set_cursor(match kind {
+                    3 => winit::window::CursorIcon::Move,
                     2 => winit::window::CursorIcon::Crosshair,
                     1 => winit::window::CursorIcon::Pointer,
                     _ => winit::window::CursorIcon::Default,

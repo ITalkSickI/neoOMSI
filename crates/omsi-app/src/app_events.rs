@@ -115,6 +115,8 @@ impl ApplicationHandler for App {
                     self.service_msg = Some(("Mouse steering off".into(), 3.0));
                 }
                 self.mouse_look = state == ElementState::Pressed;
+                // (the cursor shows it at once, not with the next look at what is under it)
+                self.update_hover();
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let amount = match delta {
