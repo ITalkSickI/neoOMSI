@@ -476,25 +476,6 @@ pub struct DormantCar {
 /// player (memory: a dormant car is a few dozen bytes, but each one woken is a full vehicle).
 const MAP_POPULATION_FACTOR: f32 = 8.0;
 
-/// How much of `unsched_vehgroups.txt` group `u`'s traffic a path carries: its `[rule]
-/// trafficdensity` for the group (`rules`, see `Lane::group_density`), else the group's
-/// default there (`defaults`): 0 none, for the first group 1 its medium density, for any
-/// other k that of the k-th group on the same path.
-fn uvg_density(rules: &[(u16, f32)], defaults: &[i32], u: usize) -> f32 {
-    let mut u = u;
-    // (a default naming another group that names this one again would go round for ever)
-    for _ in 0..=defaults.len() {
-        if let Some(&(_, v)) = rules.iter().find(|(k, _)| *k as usize == u) {
-            return v;
-        }
-        match defaults.get(u).copied().unwrap_or(0) {
-            d if d <= 0 => return 0.0,
-            _ if u == 0 => return 1.0,
-            d => u = d as usize - 1,
-        }
-    }
-    0.0
-}
 
 fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
     (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.0 && l.length() >= 8.0)
@@ -532,7 +513,7 @@ pub struct Traffic {
     /// The default density of every `unsched_vehgroups.txt` entry, in file order: 0 none, 1
     /// for the first entry its medium density, for any other that of the first entry, 2 of
     /// the second, and so on. It applies on the paths without a rule for the group.
-    uvg_defaults: Vec<i32>,
+    uvg_defaults: Arc<Vec<i32>>,
     pub cars: Vec<AiCar>,
     /// The random cars out of range (see `DormantCar`).
     pub dormant: Vec<DormantCar>,
@@ -1167,7 +1148,7 @@ impl Traffic {
             groups,
             group_curves,
             group_uvg,
-            uvg_defaults,
+            uvg_defaults: Arc::new(uvg_defaults),
             cars: Vec::new(),
             dormant: Vec::new(),
             dormant_time: 0.0,
@@ -2464,7 +2445,7 @@ impl Traffic {
         if bus.is_none() {
             state.traffic_pool = self.types.iter().find(|t| Arc::ptr_eq(&t.0, &ty))
                 .and_then(|t| self.group_uvg[t.3])
-                .map(|pool| (pool, Arc::new(self.uvg_defaults.clone())));
+                .map(|pool| (pool, self.uvg_defaults.clone()));
         }
         state.plan_next(&self.net);
         // heavy vehicles (trucks, vans) cruise slower, which is what gets them overtaken
@@ -6934,7 +6915,8 @@ impl Traffic {
 
 #[cfg(test)]
 mod group_density_tests {
-    use super::{player_reach_ahead, uvg_density};
+    use super::player_reach_ahead;
+    use omsi_sim::traffic::pool_density as uvg_density;
     use glam::DVec2;
 
     /// Berlin-Spandau's `unsched_vehgroups.txt`: NormalCars 1, Trucks 0, Commercials 1,

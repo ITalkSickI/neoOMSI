@@ -99,18 +99,31 @@ pub struct Lane {
 /// Priority of a path without a `[rule] priority`.
 pub const DEFAULT_PRIORITY: f32 = 128.0;
 
-impl Lane {
-    /// Resolve one pool without collapsing another pool's rule into its density.
-    pub fn pool_density(&self, defaults: &[i32], mut pool: usize) -> f32 {
-        for _ in 0..=defaults.len() {
-            if let Some((_, value)) = self.group_density.iter().rev().find(|(p, _)| *p as usize == pool) { return *value; }
-            match defaults.get(pool).copied().unwrap_or(0) {
-                d if d <= 0 => return 0.0,
-                _ if pool == 0 => return 1.0,
-                d => pool = d as usize - 1,
-            }
+/// How much of `unsched_vehgroups.txt` group `pool`'s traffic a path carries: its `[rule]
+/// trafficdensity` for the group (`rules`, see `Lane::group_density`: the last rule of a
+/// group counts), else the group's default there (`defaults`): 0 none, for the first group 1
+/// its medium density, for any other k that of the k-th group on the same path.
+pub fn pool_density(rules: &[(u16, f32)], defaults: &[i32], pool: usize) -> f32 {
+    let mut u = pool;
+    // (a default naming another group that names this one again would go round for ever)
+    for _ in 0..=defaults.len() {
+        if let Some(&(_, v)) = rules.iter().rev().find(|(k, _)| *k as usize == u) {
+            return v;
         }
-        0.0
+        match defaults.get(u).copied().unwrap_or(0) {
+            d if d <= 0 => return 0.0,
+            _ if u == 0 => return 1.0,
+            d => u = d as usize - 1,
+        }
+    }
+    0.0
+}
+
+impl Lane {
+    /// How much of `unsched_vehgroups.txt` group `pool`'s traffic the lane carries (see
+    /// [`pool_density`]).
+    pub fn pool_density(&self, defaults: &[i32], pool: usize) -> f32 {
+        pool_density(&self.group_density, defaults, pool)
     }
 
     /// Closest point of the lane's polyline to `p`: (distance along the lane, distance to it).
@@ -1918,8 +1931,27 @@ impl AiState {
     /// depot yard from next door. A car that has taken a turn lane takes the turn.
     fn choose_after(&mut self, net: &Network, lane: usize) -> Option<usize> {
         let l = &net.lanes[lane];
-        let open: Vec<usize> = l.next.iter().copied().filter(|&n| !net.lanes[n].no_cars && self.traffic_pool.as_ref().map(|(p, defaults)| net.lanes[n].pool_density(defaults, *p)).unwrap_or(net.lanes[n].density) > 0.0).collect();
-        let mut choices = if open.is_empty() && self.traffic_pool.is_none() { l.next.clone() } else { open };
+        // (a car of a traffic pool - the trucks of a map that keeps them to its port roads -
+        // takes the ways its pool may go, as it was put on one; where none of them does, the
+        // ways open to cars, then any: it does not stand at the junction for ever)
+        let open_to = |pooled: bool| -> Vec<usize> {
+            l.next
+                .iter()
+                .copied()
+                .filter(|&n| {
+                    let nl = &net.lanes[n];
+                    let d = match self.traffic_pool.as_ref().filter(|_| pooled) {
+                        Some((p, defaults)) => nl.pool_density(defaults, *p),
+                        None => nl.density,
+                    };
+                    !nl.no_cars && d > 0.0
+                })
+                .collect()
+        };
+        let pooled = self.traffic_pool.is_some().then(|| open_to(true)).filter(|o| !o.is_empty());
+        let weighted = pooled.is_some();
+        let open = pooled.unwrap_or_else(|| open_to(false));
+        let mut choices = if open.is_empty() { l.next.clone() } else { open };
         // and a way that goes on rather than into the end of the network, where there is
         // the choice (the map's edge is where OMSI takes its cars away; a village like
         // Grundorf had a queue of twenty growing at the end of its one outbound road)
@@ -1939,7 +1971,7 @@ impl AiState {
         if choices.is_empty() {
             None
         } else {
-            if let Some((pool, defaults)) = self.traffic_pool.clone() {
+            if let Some((pool, defaults)) = self.traffic_pool.clone().filter(|_| weighted) {
                 let total: f32 = choices.iter().map(|&n| net.lanes[n].pool_density(&defaults, pool)).sum();
                 let mut pick = (self.rand() >> 32) as f32 / (u32::MAX as f32 + 1.0) * total;
                 for &n in &choices {
