@@ -198,6 +198,23 @@ pub struct ScriptedObject {
     pub texts: Vec<(TextureId, omsi_sim::texttex::TextTextureState)>,
     /// The script asks for the buses due at its stop (`GetArrBus*`).
     pub arrivals: bool,
+    /// `[htmltexture]` pages shown on the object: (script texture index, texture). The
+    /// pages themselves are `inst.html_textures`.
+    pub htmls: Vec<(usize, TextureId)>,
+}
+
+/// Where a ray lands on a page (`[htmltexture]`) of a scenery object: see
+/// [`World::html_object_hit`].
+#[derive(Clone, Copy, Debug)]
+pub struct PageHit {
+    /// Distance (m) along the ray.
+    pub t: f32,
+    pub map_id: i64,
+    /// The page's script texture index.
+    pub page: usize,
+    /// 0..1 across the page, `v` down from the top.
+    pub u: f32,
+    pub v: f32,
 }
 
 /// What the timetable tells the scenery: the time of day, and the buses due at the stops
@@ -4297,6 +4314,7 @@ impl World {
                         var_parent: o.lamp_parent,
                         texts: Vec::new(),
                         arrivals: false,
+                        htmls: Vec::new(),
                     });
                 }
                 // An editor-only object still lays its paths out: OMSI's invisible
@@ -6181,20 +6199,32 @@ impl World {
                         Vec::new();
                     let mut script_texts: Vec<(TextureId, omsi_sim::texttex::TextTextureState)> =
                         Vec::new();
+                    // `[htmltexture]` pages shown on this object: (script texture index, texture)
+                    let mut html_pages: Vec<(usize, TextureId)> = Vec::new();
+                    let mut html_mats: HashMap<usize, MaterialId> = HashMap::new();
                     // Run {init} once for this placement: its variable values choose CTC
                     // schemes and its strings can name [matl_freetex] pictures.
                     let needs_own_script = lamp.is_none()
                         || ot.meshes.iter().any(|(_, _, overrides)| {
                             overrides.iter().any(|o| !o.item && o.freetex.is_some())
                         });
+                    // (a model with `[htmltexture]` pages needs a script instance to feed them,
+                    // also when the object has no script of its own)
+                    let has_pages = lamp.is_none() && !ot.model.html_textures.is_empty();
                     let mut object_script = if needs_own_script {
-                        ot.program.as_ref().map(|program| {
-                            omsi_sim::scenery::SceneryInstance::new(
-                                program.clone(),
+                        let program = ot.program.clone().or_else(|| has_pages.then(|| Arc::new(omsi_script::Program::default())));
+                        program.map(|program| {
+                            let mut inst = omsi_sim::scenery::SceneryInstance::new(
+                                program,
                                 &ot.mesh_defs(),
                                 self.script_clock(),
                                 &strings,
-                            )
+                            );
+                            if has_pages {
+                                let object_dir = ot.sco.path.parent().unwrap_or(std::path::Path::new(""));
+                                inst.init_html_textures(&ot.model.html_textures, &ot.model_dir, object_dir);
+                            }
+                            inst
                         })
                     } else {
                         None
@@ -6495,6 +6525,38 @@ impl World {
                                 }
                             }
                         }
+                        // [htmltexture] + [useHtmlTexture]: a page drawn onto the slot; the
+                        // pictures come from `update_scripted`
+                        if has_pages && object_script.is_some() {
+                            if let Some((_, o3d_mats, overrides)) = ot.meshes.get(mi) {
+                                for o in overrides.iter().filter(|o| !o.item) {
+                                    let Some(page) = o.use_script_texture.map(|n| n.max(0) as usize) else { continue };
+                                    let Some(def) = ot.model.html_textures.iter().find(|d| d.script_index == page) else { continue };
+                                    let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, o) else { continue };
+                                    let mat = match html_mats.get(&page) {
+                                        Some(m) => *m,
+                                        None => {
+                                            let (w, h) = (def.width.max(1) as u32, def.height.max(1) as u32);
+                                            let tex = gpu.add_image(
+                                                renderer,
+                                                scene,
+                                                // (black until the page first draws: a page far away starts later)
+                                                &Image { width: w, height: h, rgba: [0, 0, 0, 255].repeat((w * h) as usize), has_alpha: true },
+                                                false,
+                                            );
+                                            let mat = renderer.add_material(scene, Some(tex), text_alpha(o3d_mats, slot, overrides), [1.0; 4], true);
+                                            let mat = gpu.material(renderer, scene, mat);
+                                            tg.textures.push(tex);
+                                            tg.materials.push(mat);
+                                            html_pages.push((page, tex));
+                                            html_mats.insert(page, mat);
+                                            mat
+                                        }
+                                    };
+                                    renderer.set_material(scene, inst, slot, mat);
+                                }
+                            }
+                        }
                         all_instances.push(inst);
                     }
                     let mut lod_instances = Vec::new();
@@ -6705,6 +6767,7 @@ impl World {
                             || !object_variants.is_empty()
                             || ot.sco.sound.is_some()
                             || !script_texts.is_empty()
+                            || !html_pages.is_empty()
                             || !ot.dynamic_textures.is_empty()
                         {
                             let arrivals = inst.wants_arrivals();
@@ -6726,6 +6789,7 @@ impl World {
                                 var_parent,
                                 texts: script_texts,
                                 arrivals,
+                                htmls: html_pages,
                             });
                         }
                     }
@@ -8127,6 +8191,58 @@ impl World {
         best
     }
 
+    /// The `[htmltexture]` page of a scenery object a ray lands on (within `reach` metres).
+    /// The nearest triangle of those objects decides, as for the bus's pages: a part of
+    /// the object in front of its page takes the click away from it.
+    pub fn html_object_hit(&self, origin: DVec3, dir: glam::Vec3, reach: f32) -> Option<PageHit> {
+        let scripted = self.scripted.lock();
+        let mut best: Option<(f32, Option<PageHit>)> = None;
+        for o in scripted.iter().filter(|o| !o.htmls.is_empty()) {
+            if (o.pos - origin).length() > reach as f64 + 60.0 {
+                continue;
+            }
+            let local = (origin - o.pos).as_vec3();
+            for mi in 0..o.instances.len() {
+                let Some((data, o3d_mats, overrides)) = o.ty.meshes.get(mi) else { continue };
+                if !o.inst.mesh_visible.get(mi).copied().unwrap_or(true) {
+                    continue;
+                }
+                let xf = o.xf * o.inst.mesh_transforms.get(mi).copied().unwrap_or(Mat4::IDENTITY);
+                let Some(hit) = omsi_geometry::ray_mesh_hit(local, dir, data, &xf) else { continue };
+                if hit.t > reach || best.as_ref().is_some_and(|b| b.0 <= hit.t) {
+                    continue;
+                }
+                // the page the hit material slot shows (a slot that shows none is in the way)
+                let slot = data.slot_of(hit.index) as usize;
+                let page = overrides
+                    .iter()
+                    .filter(|m| !m.item && omsi_sim::vehicle::override_slot(o3d_mats, m) == Some(slot))
+                    .find_map(|m| m.use_script_texture)
+                    .map(|n| n.max(0) as usize)
+                    .filter(|n| o.htmls.iter().any(|(i, _)| i == n));
+                let page = page.map(|page| PageHit {
+                    t: hit.t,
+                    map_id: o.map_id,
+                    page,
+                    u: hit.uv.x.clamp(0.0, 1.0),
+                    v: hit.uv.y.clamp(0.0, 1.0),
+                });
+                best = Some((hit.t, page));
+            }
+        }
+        best.and_then(|b| b.1)
+    }
+
+    /// A press, release or move on a page of a scenery object (see [`Self::html_object_hit`]).
+    /// What the page does (`omsi.setVar`, `omsi.trigger`) reaches the object's script.
+    pub fn html_object_pointer(&self, map_id: i64, page: usize, u: f32, v: f32, kind: omsi_sim::htmltex::PointerKind) -> bool {
+        let mut scripted = self.scripted.lock();
+        match scripted.iter_mut().find(|o| o.map_id == map_id) {
+            Some(o) => o.inst.html_pointer(page, u, v, kind),
+            None => false,
+        }
+    }
+
     /// Fill the light map atlas with the 5x5 tiles around `eye` (when it moved to another
     /// tile or tiles came or went): the splines and `[LightMapMapping]` objects are lit by it
     /// at night as the terrain is.
@@ -8339,6 +8455,14 @@ impl World {
                                 },
                             );
                         }
+                    }
+                }
+            }
+            // [htmltexture] pages: only near the listener (a page is a whole browser frame)
+            if !o.htmls.is_empty() && dist < HTML_OBJECT_NEAR {
+                for (index, w, h, rgba) in o.inst.update_html_textures() {
+                    if let Some((_, tex)) = o.htmls.iter().find(|(i, _)| *i == index) {
+                        renderer.update_texture(scene, *tex, &Image { width: w, height: h, rgba, has_alpha: true });
                     }
                 }
             }
@@ -8906,6 +9030,9 @@ pub fn sync_vehicle_textures(
     }
     renderer.rebind_textures(scene, &rebound);
 }
+
+/// Distance (m) up to which the `[htmltexture]` pages of scenery objects are kept running.
+pub const HTML_OBJECT_NEAR: f64 = 60.0;
 
 /// Distance (m) beyond which what a vehicle's scripts redraw is uploaded only every half
 /// second (the picture itself stays: see `Traffic::sync`).

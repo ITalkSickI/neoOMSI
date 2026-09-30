@@ -29,6 +29,17 @@ pub enum HtmlRequest {
     SetNextStop(usize),
 }
 
+/// What `window.omsi` offers a page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageApi {
+    /// A vehicle's page: the vehicle (`omsi.vehicle`), the depot and the IBIS requests
+    /// (`omsi.setRoute` ...), besides the basic API.
+    Vehicle,
+    /// A scenery object's page: only the basic API - `omsi.setVar`, `.trigger`, `.getVar`,
+    /// `.vars`, `.time`, `.date` and `.locale`.
+    Scenery,
+}
+
 /// Most requests kept for the game between two of its frames (a page that asks in a loop).
 const MAX_REQUESTS: usize = 32;
 
@@ -63,7 +74,7 @@ pub trait HtmlRenderer: Send {
     }
 }
 
-pub type BackendFactory = fn(width: u32, height: u32, html: &str) -> Box<dyn HtmlRenderer>;
+pub type BackendFactory = fn(width: u32, height: u32, html: &str, api: PageApi) -> Box<dyn HtmlRenderer>;
 
 static BACKEND: OnceLock<BackendFactory> = OnceLock::new();
 
@@ -71,10 +82,10 @@ pub fn set_backend(factory: BackendFactory) -> bool {
     BACKEND.set(factory).is_ok()
 }
 
-fn make_renderer(width: u32, height: u32, html: &str) -> Box<dyn HtmlRenderer> {
+fn make_renderer(width: u32, height: u32, html: &str, api: PageApi) -> Box<dyn HtmlRenderer> {
     match BACKEND.get() {
-        Some(f) => f(width, height, html),
-        None => Box::new(crate::htmlengine::EngineRenderer::new(width, height, html)),
+        Some(f) => f(width, height, html, api),
+        None => Box::new(crate::htmlengine::EngineRenderer::with_api(width, height, html, api)),
     }
 }
 
@@ -250,14 +261,19 @@ pub struct HtmlTexture {
 }
 
 impl HtmlTexture {
+    /// A vehicle's page.
     pub fn new(script_index: usize, width: i32, height: i32, html: &str) -> HtmlTexture {
+        HtmlTexture::with_api(script_index, width, height, html, PageApi::Vehicle)
+    }
+
+    pub fn with_api(script_index: usize, width: i32, height: i32, html: &str, api: PageApi) -> HtmlTexture {
         let (w, h) = (width.max(1) as u32, height.max(1) as u32);
         log::debug!("htmltexture #{script_index}: {w}x{h}, page of {} bytes", html.len());
         HtmlTexture {
             script_index,
             width: w,
             height: h,
-            renderer: make_renderer(w, h, html),
+            renderer: make_renderer(w, h, html, api),
             last_num: HashMap::new(),
             last_str: HashMap::new(),
             last_api: None,
@@ -278,6 +294,108 @@ impl HtmlTexture {
     pub fn pointer(&mut self, u: f32, v: f32, kind: PointerKind) {
         self.renderer.pointer(u * self.width as f32, v * self.height as f32, kind);
     }
+}
+
+/// What the pages of one owner (a vehicle, a scenery object) did in one update.
+#[derive(Default)]
+pub struct PageOutput {
+    pub events: Vec<(String, f32)>,
+    pub triggers: Vec<String>,
+    pub requests: Vec<HtmlRequest>,
+    /// New pictures: (script texture index, width, height, RGBA).
+    pub frames: Vec<(usize, u32, u32, Vec<u8>)>,
+}
+
+/// Give every page what changed since it last looked (variables, the vehicle's state when
+/// `api` is given, time), and collect what the pages did (variables set, triggers pressed, requests) and
+/// their new pictures. Shared by vehicles and scenery objects.
+pub(crate) fn drive_pages(
+    pages: &mut [HtmlTexture],
+    num: &[(String, f32)],
+    strs: &[(String, String)],
+    api: Option<&crate::vehicle_api::ApiValue>,
+    env: &crate::vehicle_api::ApiValue,
+    depot: Option<&crate::vehicle_api::ApiValue>,
+) -> PageOutput {
+    let mut out = PageOutput::default();
+    for t in pages.iter_mut() {
+        let api_changed = api.is_some_and(|a| t.last_api.as_ref() != Some(a));
+        let env_changed = t.last_env.as_ref() != Some(env);
+        let dn: Vec<(String, f32)> = num.iter().filter(|(n, v)| t.last_num.get(n) != Some(v)).cloned().collect();
+        let ds: Vec<(String, String)> = strs.iter().filter(|(n, v)| t.last_str.get(n) != Some(v)).cloned().collect();
+        if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed || env_changed {
+            log::debug!(
+                "htmltexture #{}: {} numeric and {} string variable(s) to the page{}",
+                t.script_index,
+                dn.len(),
+                ds.len(),
+                if t.started { "" } else { " (first update)" }
+            );
+            if !t.started && api.is_some() {
+                match depot {
+                    Some(d) => {
+                        log::info!("htmltexture #{}: omsi.depot set on the page", t.script_index);
+                        t.renderer.set_depot(d);
+                    }
+                    None => log::debug!("htmltexture #{}: first update without a depot: omsi.depot is empty", t.script_index),
+                }
+            }
+            if let Some(a) = api.filter(|_| api_changed) {
+                t.renderer.set_vehicle(a);
+                t.last_api = Some(a.clone());
+            }
+            if env_changed {
+                t.renderer.set_env(env);
+                t.last_env = Some(env.clone());
+            }
+            t.renderer.set_vars(&dn, &ds);
+            for (n, v) in dn {
+                t.last_num.insert(n, v);
+            }
+            for (n, v) in ds {
+                t.last_str.insert(n, v);
+            }
+            t.started = true;
+        }
+        let page_events = t.renderer.take_events();
+        if !page_events.is_empty() {
+            log::debug!("htmltexture #{}: the page sets {:?}", t.script_index, page_events);
+        }
+        out.events.extend(page_events);
+        out.triggers.extend(t.renderer.take_triggers());
+        out.requests.extend(t.renderer.take_requests());
+        if let Some(rgba) = t.renderer.poll_frame() {
+            log::debug!("htmltexture #{}: new frame of {} bytes", t.script_index, rgba.len());
+            out.frames.push((t.script_index, t.width, t.height, rgba));
+        }
+    }
+    out
+}
+
+/// The pages of a scenery object (`[htmltexture]` in its model), see
+/// [`crate::scenery::SceneryInstance`].
+pub fn scenery_pages(defs: &[omsi_model::HtmlTextureDef], model_dir: &Path, object_dir: &Path) -> Vec<HtmlTexture> {
+    defs.iter()
+        .map(|d| {
+            let dirs = [model_dir, object_dir];
+            let html = load_page(&dirs, &d.path);
+            HtmlTexture::with_api(d.script_index, d.width, d.height, &html, PageApi::Scenery).with_asset_dirs(asset_dirs(&dirs, &d.path))
+        })
+        .collect()
+}
+
+/// A press, release or move on the page `script_index`; what it does to the variables
+/// comes back as (variables set, triggers pressed). Shared by scenery objects.
+pub(crate) fn pointer_on(
+    pages: &mut [HtmlTexture],
+    script_index: usize,
+    u: f32,
+    v: f32,
+    kind: PointerKind,
+) -> Option<(Vec<(String, f32)>, Vec<String>)> {
+    let t = pages.iter_mut().find(|t| t.script_index == script_index)?;
+    t.pointer(u, v, kind);
+    Some((t.renderer.take_events(), t.renderer.take_triggers()))
 }
 
 impl VehicleInstance {
@@ -352,68 +470,9 @@ impl VehicleInstance {
         // one snapshot of the vehicle for all pages
         let api = self.html_api_snapshot();
         let env = self.html_env_snapshot();
-        let mut events = Vec::new();
-        let mut triggers = Vec::new();
-        let mut frames = Vec::new();
-        for t in self.html_textures.iter_mut() {
-            let api_changed = t.last_api.as_ref() != Some(&api);
-            let env_changed = t.last_env.as_ref() != Some(&env);
-            let dn: Vec<(String, f32)> = num
-                .iter()
-                .filter(|(n, v)| t.last_num.get(n) != Some(v))
-                .cloned()
-                .collect();
-            let ds: Vec<(String, String)> = strs
-                .iter()
-                .filter(|(n, v)| t.last_str.get(n) != Some(v))
-                .cloned()
-                .collect();
-            if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed || env_changed {
-                log::debug!(
-                    "htmltexture #{}: {} numeric and {} string variable(s) to the page{}",
-                    t.script_index,
-                    dn.len(),
-                    ds.len(),
-                    if t.started { "" } else { " (first update)" }
-                );
-                if !t.started {
-                    match &depot {
-                        Some(d) => {
-                            log::info!("htmltexture #{}: omsi.depot set on the page", t.script_index);
-                            t.renderer.set_depot(d);
-                        }
-                        None => log::warn!("htmltexture #{}: first update without a depot: omsi.depot is empty", t.script_index),
-                    }
-                }
-                if api_changed {
-                    t.renderer.set_vehicle(&api);
-                    t.last_api = Some(api.clone());
-                }
-                if env_changed {
-                    t.renderer.set_env(&env);
-                    t.last_env = Some(env.clone());
-                }
-                t.renderer.set_vars(&dn, &ds);
-                for (n, v) in dn {
-                    t.last_num.insert(n, v);
-                }
-                for (n, v) in ds {
-                    t.last_str.insert(n, v);
-                }
-                t.started = true;
-            }
-            let page_events = t.renderer.take_events();
-            if !page_events.is_empty() {
-                log::debug!("htmltexture #{}: the page sets {:?}", t.script_index, page_events);
-            }
-            events.extend(page_events);
-            triggers.extend(t.renderer.take_triggers());
-            requests.extend(t.renderer.take_requests());
-            if let Some(rgba) = t.renderer.poll_frame() {
-                log::debug!("htmltexture #{}: new frame of {} bytes", t.script_index, rgba.len());
-                frames.push((t.script_index, t.width, t.height, rgba));
-            }
-        }
+        let out = drive_pages(&mut self.html_textures, &num, &strs, Some(&api), &env, depot.as_ref());
+        let (events, triggers, frames) = (out.events, out.triggers, out.frames);
+        requests.extend(out.requests);
         self.queue_html_requests(requests);
         for (name, v) in events {
             if !self.set_var(&name, v) {

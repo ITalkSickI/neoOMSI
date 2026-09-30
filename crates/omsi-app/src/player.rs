@@ -1275,6 +1275,20 @@ impl Player {
     /// This runs when the mouse moves, not for every headset frame.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn surface_hit(&self, origin: DVec3, dir: Vec3) -> Option<DVec3> {
+        let (mut nearest, nearest_control) = self.nearest_hits(origin, dir);
+        if nearest_control.is_finite() { nearest = nearest_control; }
+        (nearest.is_finite() && nearest < 8.0)
+            .then(|| origin + (dir * nearest).as_dvec3())
+    }
+
+    /// How far along a ray the bus (any visible mesh, trailers too) is.
+    pub(crate) fn body_hit(&self, origin: DVec3, dir: Vec3) -> Option<f32> {
+        Some(self.nearest_hits(origin, dir).0).filter(|t| t.is_finite())
+    }
+
+    /// The nearest hit of a ray on the bus, and the nearest on a mesh with a mouse event
+    /// (infinite: none).
+    fn nearest_hits(&self, origin: DVec3, dir: Vec3) -> (f32, f32) {
         let mut nearest = f32::INFINITY;
         let mut nearest_control = f32::INFINITY;
         let vehicle = &self.vehicle;
@@ -1306,9 +1320,7 @@ impl Player {
                 }
             }
         }
-        if nearest_control.is_finite() { nearest = nearest_control; }
-        (nearest.is_finite() && nearest < 8.0)
-            .then(|| origin + (dir * nearest).as_dvec3())
+        (nearest, nearest_control)
     }
 
     /// The part of the bus under a ray, switch or not: `(name, operable)`. Without this the

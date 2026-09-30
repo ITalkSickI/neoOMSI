@@ -39,26 +39,14 @@ pub(crate) struct Interp {
 }
 
 impl Interp {
-    pub(crate) fn new(dom: Dom) -> Interp {
+    /// A page's interpreter; `api` decides what `window.omsi` offers (a scenery object's page
+    /// has no vehicle, depot or route functions).
+    pub(crate) fn with_api(dom: Dom, api: crate::htmltex::PageApi) -> Interp {
         let global = Arc::new(Mutex::new(Scope { vars: HashMap::new(), parent: None }));
-        let omsi = obj_of(&[
+        let mut basic = vec![
             ("setVar", Val::Nat(Nat::SetVar)),
             ("trigger", Val::Nat(Nat::Trigger)),
             ("getVar", Val::Nat(Nat::GetVar)),
-            ("setRoute", Val::Nat(Nat::SetRoute)),
-            ("setLine", Val::Nat(Nat::SetLine)),
-            ("setDestination", Val::Nat(Nat::SetDestination)),
-            ("clearLine", Val::Nat(Nat::ClearLine)),
-            ("setNextStop", Val::Nat(Nat::SetNextStop)),
-            (
-                "depot",
-                Val::Obj(obj_of(&[
-                    ("name", Val::Str(String::new())),
-                    ("lines", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
-                    ("routes", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
-                    ("destinations", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
-                ])),
-            ),
             ("apiVersion", Val::Num(1.0)),
             (
                 "time",
@@ -79,9 +67,28 @@ impl Interp {
                 ])),
             ),
             ("locale", Val::Str("en".to_string())),
-            ("vehicle", Val::Obj(obj_of(&[]))),
             ("vars", Val::Obj(obj_of(&[("num", Val::Obj(obj_of(&[]))), ("str", Val::Obj(obj_of(&[])))]))),
-        ]);
+        ];
+        if api == crate::htmltex::PageApi::Vehicle {
+            basic.extend([
+                ("setRoute", Val::Nat(Nat::SetRoute)),
+                ("setLine", Val::Nat(Nat::SetLine)),
+                ("setDestination", Val::Nat(Nat::SetDestination)),
+                ("clearLine", Val::Nat(Nat::ClearLine)),
+                ("setNextStop", Val::Nat(Nat::SetNextStop)),
+                (
+                    "depot",
+                    Val::Obj(obj_of(&[
+                        ("name", Val::Str(String::new())),
+                        ("lines", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
+                        ("routes", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
+                        ("destinations", Val::Arr(Arc::new(Mutex::new(Vec::new())))),
+                    ])),
+                ),
+                ("vehicle", Val::Obj(obj_of(&[]))),
+            ]);
+        }
+        let omsi = obj_of(&basic);
         let window = obj_of(&[("omsi", Val::Obj(omsi))]);
         let it = Interp {
             dom,

@@ -512,6 +512,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         timetable: false,
         dragging: false,
         html_pressed: None,
+        html_object_pressed: None,
         drag_delta: (0.0, 0.0),
         look: (0.0, 0.0),
         view_looks: Default::default(),

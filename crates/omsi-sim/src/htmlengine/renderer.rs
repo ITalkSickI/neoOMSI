@@ -30,6 +30,11 @@ pub(crate) struct LayoutCache {
 
 impl EngineRenderer {
     pub fn new(width: u32, height: u32, html: &str) -> EngineRenderer {
+        EngineRenderer::with_api(width, height, html, crate::htmltex::PageApi::Vehicle)
+    }
+
+    /// A page whose `window.omsi` is the one of `api` (see [`crate::htmltex::PageApi`]).
+    pub fn with_api(width: u32, height: u32, html: &str, api: crate::htmltex::PageApi) -> EngineRenderer {
         let dom = Dom::parse(html);
         let scripts = dom.scripts.clone();
         log::debug!(
@@ -40,7 +45,7 @@ impl EngineRenderer {
             width,
             height
         );
-        let mut js = Interp::new(dom);
+        let mut js = Interp::with_api(dom, api);
         let mut warned = false;
         for (n, s) in scripts.iter().enumerate() {
             match js.run(s) {
@@ -229,7 +234,12 @@ impl EngineRenderer {
         };
         let nums: HashMap<String, Val> = num.iter().map(|(k, v)| (k.clone(), Val::Num(*v as f64))).collect();
         let strv: HashMap<String, Val> = strs.iter().map(|(k, v)| (k.clone(), Val::Str(v.clone()))).collect();
-        let arg = obj_of(&[("num", Val::Obj(Arc::new(Mutex::new(nums)))), ("str", Val::Obj(Arc::new(Mutex::new(strv)))), ("vehicle", veh), ("vars", vars)]);
+        let mut fields = vec![("num", Val::Obj(Arc::new(Mutex::new(nums)))), ("str", Val::Obj(Arc::new(Mutex::new(strv)))), ("vars", vars)];
+        // (a scenery object's page has no vehicle)
+        if !matches!(veh, Val::Undef) {
+            fields.push(("vehicle", veh));
+        }
+        let arg = obj_of(&fields);
         self.js.steps = 0;
         let result = self.js.call(update, Val::Obj(omsi), vec![Val::Obj(arg)]);
         log::debug!("htmltexture: window.omsi.update took {} steps", self.js.steps);
