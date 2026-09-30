@@ -6284,7 +6284,7 @@ impl World {
                         if !gpu.trees.contains_key(&tkey) {
                             let dirs = texture_dirs(&self.root, &ot.model_dir);
                             let found = gpu.texture(renderer, scene, texture, &dirs, images);
-                            let m = renderer.add_material_night(
+                            let m = renderer.add_material_extra(
                                 scene,
                                 found.as_ref().map(|f| f.0),
                                 AlphaMode::Test,
@@ -6292,6 +6292,13 @@ impl World {
                                 false,
                                 None,
                                 None,
+                                None,
+                                None,
+                                [0.0; 3],
+                                omsi_render::MaterialExtra {
+                                    tree: true,
+                                    ..Default::default()
+                                },
                             );
                             let m = gpu.material(renderer, scene, m);
                             gpu.trees.insert(
@@ -9317,6 +9324,7 @@ fn material_extra(
         screen: false,
         led: false,
         no_map_lights: false,
+        tree: false,
         moisture: 0.0,
         transmap_declared: ov.iter().any(|o| o.transmap.is_some()),
         // (the last addressing command of the slot decides; the colour is given in bytes)
