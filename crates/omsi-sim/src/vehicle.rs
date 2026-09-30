@@ -1696,11 +1696,15 @@ impl VehicleInstance {
                     // the value is minus the compression. Handing over the compression
                     // itself pushed every wheel down by twice its travel - into the road
                     // under braking, with the body riding high above the arches.
-                    self.put(w[3], -rw.compression);
+                    // (never below where the spring is unloaded: Omsi.exe hands over
+                    // -clamp(travel, 0, maxforce / k), 0x7e4afa - a wheel in the air stays
+                    // where it hangs at rest)
+                    let shown = -rw.compression.max(0.0);
+                    self.put(w[3], shown);
                     if let Some(ws) = self.physics.wheels.get_mut(ai).and_then(|a| a.get_mut(si)) {
                         ws.rotation_deg = rw.rotation_deg;
                         ws.rpm = rw.rpm;
-                        ws.suspension = -rw.compression;
+                        ws.suspension = shown;
                     }
                 }
             }
