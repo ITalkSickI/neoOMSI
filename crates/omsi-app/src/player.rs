@@ -915,8 +915,8 @@ impl Player {
                     let found = hof
                         .info_trips
                         .iter()
-                        .position(|t| t.line.trim().eq_ignore_ascii_case(wanted))
-                        .or_else(|| hof.info_trips.iter().position(|t| !digits.is_empty() && t.line.trim() == digits));
+                        .position(|t| route_line(t).eq_ignore_ascii_case(wanted))
+                        .or_else(|| hof.info_trips.iter().position(|t| !digits.is_empty() && route_line(t) == digits));
                     match found {
                         Some(i) => self.set_route_from_page(&hof, i),
                         None => log::info!("HTML page: depot file {} has no line '{wanted}'", hof.name),
@@ -965,8 +965,8 @@ impl Player {
         let first = hof.info_busstop_lists.get(i).and_then(|l| l.first()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         let name = first.clone().unwrap_or_default();
         let wanted = if term.texture_id.trim().is_empty() { term.strings.first().cloned().unwrap_or_default() } else { term.texture_id.clone() };
-        let line = t.line.trim().to_string();
-        log::info!("HTML page: route {i} '{}' (line '{line}' to '{wanted}')", t.name.trim());
+        let line = route_line(t);
+        log::info!("HTML page: route {i} '{}' (line '{line}' (file: '{}') to '{wanted}')", t.name.trim(), t.line.trim());
         self.type_destination(&line, &wanted, first.as_deref(), (0, &name));
     }
 
@@ -1770,5 +1770,17 @@ mod mouse_tests {
             assert!((s - last).abs() < 0.001, "step at {px}");
             last = s;
         }
+    }
+}
+
+/// The line of a depot route: the file's line column, or - when that is empty or a placeholder
+/// such as "XXX" - the line of its code (`code` = line x 100 + route).
+fn route_line(t: &omsi_vehicle::hof::InfoTrip) -> String {
+    let raw = t.line.trim();
+    let code = omsi_cfg::parse_i32(&t.code);
+    if (raw.is_empty() || raw.chars().all(|c| c == 'x' || c == 'X')) && code >= 100 {
+        (code / 100).to_string()
+    } else {
+        raw.to_string()
     }
 }
