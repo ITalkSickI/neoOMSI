@@ -639,33 +639,33 @@ pub fn build_height_profile_mesh(def: &Spline, curve: &SplineCurve, mirror: bool
     let (flat, tops): (Vec<_>, Vec<_>) = def.height_profiles.iter().partition(|hp| !ridge(hp));
     let mut flat_end = 0u32;
     for (pass, list) in [flat, tops].into_iter().enumerate() {
-    for hp in list {
-        if (hp.x1 - hp.x0).abs() < 1e-3 {
-            continue;
-        }
-        let base = mesh.positions.len() as u32;
-        let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
-            Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
-            _ => (hp.z0, hp.z1),
-        };
-        for i in 0..=n {
-            let s = curve.length * i as f64 / n as f64;
-            for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
-                let (p, _) = skewed_point(curve, s, x as f64 * sign, z as f64);
-                mesh.positions.push((p - origin).as_vec3());
-                mesh.normals.push(Vec3::Z);
-                mesh.uvs.push(Vec2::ZERO);
+        for hp in list {
+            if (hp.x1 - hp.x0).abs() < 1e-3 {
+                continue;
+            }
+            let base = mesh.positions.len() as u32;
+            let (z0, z1) = match drawn_height(def, hp.x0.min(hp.x1), hp.x0.max(hp.x1)) {
+                Some(d) if hp.z0.min(hp.z1) > d + PHANTOM_LIFT => (d, d),
+                _ => (hp.z0, hp.z1),
+            };
+            for i in 0..=n {
+                let s = curve.length * i as f64 / n as f64;
+                for (x, z) in [(hp.x0, z0), (hp.x1, z1)] {
+                    let (p, _) = skewed_point(curve, s, x as f64 * sign, z as f64);
+                    mesh.positions.push((p - origin).as_vec3());
+                    mesh.normals.push(Vec3::Z);
+                    mesh.uvs.push(Vec2::ZERO);
+                }
+            }
+            for i in 0..n as u32 {
+                let (a, b) = (base + i * 2, base + i * 2 + 1);
+                let (c, d) = (a + 2, b + 2);
+                mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
             }
         }
-        for i in 0..n as u32 {
-            let (a, b) = (base + i * 2, base + i * 2 + 1);
-            let (c, d) = (a + 2, b + 2);
-            mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
+        if pass == 0 {
+            flat_end = mesh.indices.len() as u32;
         }
-    }
-    if pass == 0 {
-        flat_end = mesh.indices.len() as u32;
-    }
     }
     mesh.ranges.push((0, flat_end, 0));
     if mesh.indices.len() as u32 > flat_end {
@@ -803,6 +803,10 @@ pub fn map_rotation(rot_deg: [f64; 3]) -> [f64; 3] {
 
 /// Convert an `.o3d`/`.x` mesh to [`MeshData`] (one range per material).
 pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
+    mesh_from_o3d_turning(m, true)
+}
+
+pub fn mesh_from_o3d_turning(m: &omsi_o3d::Mesh, may_turn: bool) -> MeshData {
     // Vertices are stored in the parent (object/vehicle) frame already; the matrix in the
     // file is the mesh's pivot frame used by `origin_from_mesh` animations, not a transform
     // to apply. Mesh files use Direct3D's frame (x right, y up, z forward); the world uses
@@ -812,6 +816,31 @@ pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
     out.positions = m.vertices.iter().map(|v| swap(v.position)).collect();
     out.normals = m.vertices.iter().map(|v| swap(v.normal).normalize_or_zero()).collect();
     out.uvs = m.vertices.iter().map(|v| v.uv).collect();
+    let turn = may_turn && turns_round(m);
+    // group triangles by material, preserving material index as slot
+    let mat_count = m.materials.len().max(1);
+    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); mat_count];
+    for t in &m.triangles {
+        let slot = (t.material as usize).min(mat_count - 1);
+        if turn {
+            buckets[slot].extend_from_slice(&[t.indices[0], t.indices[2], t.indices[1]]);
+        } else {
+            buckets[slot].extend_from_slice(&t.indices);
+        }
+    }
+    for (slot, idx) in buckets.into_iter().enumerate() {
+        if idx.is_empty() {
+            continue;
+        }
+        let first = out.indices.len() as u32;
+        out.indices.extend_from_slice(&idx);
+        out.ranges.push((first, idx.len() as u32, slot as u32));
+    }
+    out
+}
+
+
+pub fn turns_round(m: &omsi_o3d::Mesh) -> bool {
     // A mesh whose faces all turn their backs on their own normals was mirrored in the
     // modeller (the winding flips, the normals are recomputed): drawn one-sided as it stands,
     // the front shows nothing - the LiAZ 5292's right mirror housing and two dashboard
@@ -848,27 +877,37 @@ pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
     // the holes in their place.
     let mirrored = m.transform.determinant() > 0.0;
     let explained = against_turned * 10 <= counted;
-    let turn = mirrored && !explained && counted >= 2 && against * 10 >= counted * 9;
-    // group triangles by material, preserving material index as slot
-    let mat_count = m.materials.len().max(1);
-    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); mat_count];
+    mirrored && !explained && counted >= 2 && against * 10 >= counted * 9
+}
+
+pub fn positive_det_faces_forward(m: &omsi_o3d::Mesh) -> Option<bool> {
+    if m.transform.determinant() <= 0.0 {
+        return None;
+    }
+    let (mut against, mut counted) = (0usize, 0usize);
     for t in &m.triangles {
-        let slot = (t.material as usize).min(mat_count - 1);
-        if turn {
-            buckets[slot].extend_from_slice(&[t.indices[0], t.indices[2], t.indices[1]]);
-        } else {
-            buckets[slot].extend_from_slice(&t.indices);
+        let v = t.indices.map(|i| &m.vertices[i as usize]);
+        let g = (v[1].position - v[0].position).cross(v[2].position - v[0].position);
+        let n = v[0].normal + v[1].normal + v[2].normal;
+        if g.length_squared() > 1e-12 && n.length_squared() > 1e-12 {
+            counted += 1;
+            if g.dot(n) < 0.0 {
+                against += 1;
+            }
         }
     }
-    for (slot, idx) in buckets.into_iter().enumerate() {
-        if idx.is_empty() {
-            continue;
-        }
-        let first = out.indices.len() as u32;
-        out.indices.extend_from_slice(&idx);
-        out.ranges.push((first, idx.len() as u32, slot as u32));
+    match counted {
+        0..=1 => None,
+        _ if against * 10 <= counted => Some(true),
+        _ if against * 10 >= counted * 9 => Some(false),
+        _ => None,
     }
-    out
+}
+
+pub fn reverse_winding(data: &mut MeshData) {
+    for t in data.indices.chunks_exact_mut(3) {
+        t.swap(1, 2);
+    }
 }
 
 #[cfg(test)]
@@ -1210,6 +1249,19 @@ mod tests {
     }
 
     #[test]
+    fn a_backwards_quad_with_an_unmirrored_matrix_can_keep_its_winding() {
+        let v = |x: f32, y: f32| omsi_o3d::Vertex { position: Vec3::new(x, y, 1.0), normal: Vec3::new(0.0, 0.0, 1.0), uv: Vec2::ZERO };
+        let o3d = omsi_o3d::Mesh { vertices: vec![v(0.0, 0.0), v(0.0, 1.0), v(1.0, 0.0), v(1.0, 1.0)], triangles: vec![omsi_o3d::Triangle { indices: [0, 1, 2], material: 0 }, omsi_o3d::Triangle { indices: [2, 1, 3], material: 0 }], materials: vec![omsi_o3d::Material::default()], transform: glam::Mat4::IDENTITY, ..Default::default() };
+        assert_eq!(positive_det_faces_forward(&o3d), Some(false));
+        assert!(turns_round(&o3d));
+        assert_eq!(mesh_from_o3d(&o3d).indices[..3], [0, 2, 1]);
+        let mut kept = mesh_from_o3d_turning(&o3d, false);
+        assert_eq!(kept.indices[..3], [0, 1, 2]);
+        reverse_winding(&mut kept);
+        assert_eq!(kept.indices, mesh_from_o3d(&o3d).indices);
+    }
+
+    #[test]
     fn o3d_front_faces_arrive_clockwise() {
         // A triangle a viewer at the origin looking along +z sees from its front in the
         // file's Direct3D frame (x right, y up, z forward): clockwise there, the normal
@@ -1229,6 +1281,12 @@ mod tests {
 
 /// Möller-Trumbore ray/triangle test. Returns the distance along the ray.
 pub fn ray_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
+    ray_triangle_bary(origin, dir, a, b, c).map(|(t, _, _)| t)
+}
+
+/// The same test, with the barycentric coordinates of the hit: `(t, u, v)`, the point being
+/// `a + u * (b - a) + v * (c - a)`.
+pub fn ray_triangle_bary(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<(f32, f32, f32)> {
     let e1 = b - a;
     let e2 = c - a;
     let p = dir.cross(e2);
@@ -1249,10 +1307,62 @@ pub fn ray_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Optio
     }
     let d = e2.dot(q) * inv;
     if d > 1e-4 {
-        Some(d)
+        Some((d, u, v))
     } else {
         None
     }
+}
+
+/// Where a ray met a mesh.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshHit {
+    /// Distance along the ray.
+    pub t: f32,
+    /// Position of the triangle's first index in `MeshData::indices` (its material slot is the
+    /// one of the `ranges` entry that holds it).
+    pub index: usize,
+    /// The texture coordinates at the hit.
+    pub uv: Vec2,
+}
+
+impl MeshData {
+    /// The material slot of the triangle whose first index is `index`.
+    pub fn slot_of(&self, index: usize) -> u32 {
+        self.ranges
+            .iter()
+            .find(|(first, count, _)| index >= *first as usize && index < (*first + *count) as usize)
+            .map(|r| r.2)
+            .unwrap_or(0)
+    }
+}
+
+/// Closest hit of a world-space ray against a mesh under `transform`, with the triangle it
+/// hit and the texture coordinates there (what a click on a screen texture needs).
+pub fn ray_mesh_hit(origin: Vec3, dir: Vec3, mesh: &MeshData, transform: &Mat4) -> Option<MeshHit> {
+    let inv = transform.inverse();
+    let o = inv.transform_point3(origin);
+    let d = inv.transform_vector3(dir);
+    let scale = d.length();
+    if scale < 1e-9 {
+        return None;
+    }
+    let dn = d / scale;
+    let mut best: Option<MeshHit> = None;
+    for (k, tri) in mesh.indices.chunks_exact(3).enumerate() {
+        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let (a, b, c) = (mesh.positions[i0], mesh.positions[i1], mesh.positions[i2]);
+        if let Some((t, u, v)) = ray_triangle_bary(o, dn, a, b, c) {
+            let t = t / scale;
+            if best.map(|h| t < h.t).unwrap_or(true) {
+                let uv = match (mesh.uvs.get(i0), mesh.uvs.get(i1), mesh.uvs.get(i2)) {
+                    (Some(&x), Some(&y), Some(&z)) => x * (1.0 - u - v) + y * u + z * v,
+                    _ => Vec2::ZERO,
+                };
+                best = Some(MeshHit { t, index: k * 3, uv });
+            }
+        }
+    }
+    best
 }
 
 /// Closest hit of a world-space ray against a mesh under `transform`.
@@ -2048,5 +2158,48 @@ mod cant_tests {
         // beyond the half cant width the height stays what it is at its edge
         assert!((c.offset_point(5.0, 6.0, 0.0).z + 0.15).abs() < 1e-9);
         assert!((c.offset_point(5.0, -6.0, 0.0).z - 0.15).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod ray_hit_tests {
+    use super::*;
+
+    /// A 2 x 2 quad in the x/z plane at y = 0 (x -1..1, z -1..1), two triangles, two material slots;
+    /// u runs with x, v runs down (v = 0 at z = 1).
+    fn quad() -> MeshData {
+        MeshData {
+            positions: vec![Vec3::new(-1.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 1.0), Vec3::new(1.0, 0.0, -1.0), Vec3::new(-1.0, 0.0, -1.0)],
+            normals: vec![Vec3::Y; 4],
+            uvs: vec![Vec2::new(0.0, 0.0), Vec2::new(1.0, 0.0), Vec2::new(1.0, 1.0), Vec2::new(0.0, 1.0)],
+            ranges: vec![(0, 3, 0), (3, 3, 1)],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            one_sided: false,
+        }
+    }
+
+    #[test]
+    fn a_ray_gives_the_texture_coordinates_it_hit() {
+        let m = quad();
+        let id = Mat4::IDENTITY;
+        let h = ray_mesh_hit(Vec3::new(0.5, -5.0, 0.5), Vec3::Y, &m, &id).unwrap();
+        assert!((h.t - 5.0).abs() < 1e-4);
+        assert!((h.uv - Vec2::new(0.75, 0.25)).length() < 1e-4, "{:?}", h.uv);
+        assert_eq!(m.slot_of(h.index), 0, "the upper right triangle is slot 0");
+        let h = ray_mesh_hit(Vec3::new(-0.5, -5.0, -0.5), Vec3::Y, &m, &id).unwrap();
+        assert!((h.uv - Vec2::new(0.25, 0.75)).length() < 1e-4, "{:?}", h.uv);
+        assert_eq!(m.slot_of(h.index), 1);
+        assert!(ray_mesh_hit(Vec3::new(2.0, -5.0, 0.0), Vec3::Y, &m, &id).is_none());
+    }
+
+    #[test]
+    fn the_mesh_transform_is_undone() {
+        let m = quad();
+        // the quad moved 10 m east and doubled in size: its middle is at x = 10, z = 0
+        let xf = Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)) * Mat4::from_scale(Vec3::splat(2.0));
+        let h = ray_mesh_hit(Vec3::new(11.0, -3.0, 0.5), Vec3::Y, &m, &xf).unwrap();
+        assert!((h.t - 3.0).abs() < 1e-4);
+        assert!((h.uv - Vec2::new(0.75, 0.375)).length() < 1e-4, "{:?}", h.uv);
+        assert_eq!(ray_mesh_hit(Vec3::new(11.0, -3.0, 0.5), Vec3::Y, &m, &xf).map(|h| h.t), ray_mesh(Vec3::new(11.0, -3.0, 0.5), Vec3::Y, &m, &xf));
     }
 }

@@ -3083,9 +3083,45 @@ pub struct PlannedStop {
     pub arr: f64,
     pub dep: f64,
     pub position: Option<glam::DVec3>,
+    /// Which way the trip runs through the stop ([`StopDir`]): a circular route, or one
+    /// that turns back, calls at the same place twice and the two stops of it stand a few
+    /// metres apart. Only the direction says which of them a bus has reached (#254).
+    pub dir: StopDir,
     /// The bus stops here (a depot run passes its stations).
     pub stops: bool,
 }
+
+/// Which way a trip runs through one of its stops: the direction it arrives on and the one
+/// it leaves on, as unit vectors of the ground plane (x east, y north). None where a
+/// neighbour's place is unknown or too near to tell a direction - any heading will do then.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StopDir {
+    pub inbound: Option<glam::DVec2>,
+    pub outbound: Option<glam::DVec2>,
+}
+
+impl StopDir {
+    fn takes(self, fwd: glam::DVec2) -> bool {
+        if self.inbound.is_none() && self.outbound.is_none() {
+            return true;
+        }
+        [self.inbound, self.outbound].into_iter().flatten().any(|d| fwd.dot(d) >= DIR_COS)
+    }
+}
+
+/// The unit vector of the ground plane a bus heading `deg` drives along (degrees clockwise
+/// from north, as `VehicleInstance::heading`).
+fn forward_of(deg: f64) -> glam::DVec2 {
+    let h = deg.to_radians();
+    glam::DVec2::new(h.sin(), h.cos())
+}
+
+/// How far apart two stops of a trip must stand before the line between them is taken as
+/// the way the trip runs between them (m).
+const DIR_REACH: f64 = 20.0;
+/// How far off the way a trip runs through a stop a bus may head and still be taken as
+/// running that way: the cosine of the angle, 60 degrees either side.
+const DIR_COS: f64 = 0.5;
 
 #[derive(Debug, Clone)]
 pub struct PlannedTrip {
@@ -3096,6 +3132,24 @@ pub struct PlannedTrip {
     /// Arrival at the last station.
     pub end: f64,
     pub stops: Vec<PlannedStop>,
+}
+
+impl PlannedTrip {
+    /// Give every stop the way the trip runs through it: in from the stop before, out to
+    /// the stop after.
+    fn set_dirs(&mut self) {
+        let p: Vec<Option<glam::DVec3>> = self.stops.iter().map(|s| s.position).collect();
+        let dir = |a: Option<glam::DVec3>, b: Option<glam::DVec3>| -> Option<glam::DVec2> {
+            let v = (b? - a?).truncate();
+            (v.length() >= DIR_REACH).then(|| v.normalize())
+        };
+        for (i, s) in self.stops.iter_mut().enumerate() {
+            s.dir = StopDir {
+                inbound: i.checked_sub(1).and_then(|k| dir(p[k], p[i])),
+                outbound: p.get(i + 1).and_then(|b| dir(p[i], *b)),
+            };
+        }
+    }
 }
 
 /// The bus is at a stop within this distance (m), and has left it beyond the second.
@@ -3132,6 +3186,9 @@ pub struct PlayerDuty {
     /// Time of day of the first update (placing waits a little for the places of stops
     /// beyond the loaded tiles, see `learn_places`).
     first_update: Option<f64>,
+    /// The way the bus faces (degrees clockwise from north), from the last update: it says
+    /// which of two stops a few metres apart the bus is at (see `StopDir`).
+    heading: f64,
 }
 
 impl Schedule {
@@ -3324,18 +3381,21 @@ impl Schedule {
                         arr: departure + arr,
                         dep: departure + dep,
                         position,
+                        dir: StopDir::default(),
                         stops: times.stops[i],
                     }
                 })
                 .collect();
-            trips.push(PlannedTrip {
+            let mut planned = PlannedTrip {
                 name: trip.name.clone(),
                 line: trip.line.clone(),
                 terminus: trip.terminus.clone(),
                 departure,
                 end: departure + times.duration,
                 stops,
-            });
+            };
+            planned.set_dirs();
+            trips.push(planned);
         }
         if trips.is_empty() {
             return Err(format!(
@@ -3401,6 +3461,7 @@ impl Schedule {
             trip_changed: false,
             picked: trip.map(|t| !t.trim().is_empty()).unwrap_or(false),
             first_update: None,
+            heading: 0.0,
         })
     }
 
@@ -3715,6 +3776,8 @@ impl PlayerDuty {
                     s.position = places.get(&s.object_id).copied();
                 }
             }
+            // (a stop that only now has a place gives its neighbours their direction)
+            trip.set_dirs();
         }
     }
 
@@ -3737,13 +3800,18 @@ impl PlayerDuty {
     /// can (else its first stop), late as that is.
     fn place(&mut self, pos: glam::DVec3, now: f64) {
         let trip = &self.trips[self.trip_index];
-        let near = trip
+        // of two stops within AT_STOP of the bus - the two sides of a street on a circular
+        // route - the one the bus drives the way the trip runs through it, else the nearer
+        let fwd = forward_of(self.heading);
+        let near: Vec<(usize, f64)> = trip
             .stops
             .iter()
             .enumerate()
             .filter_map(|(k, s)| s.position.map(|p| (k, (p - pos).length())))
             .filter(|(_, d)| *d < AT_STOP)
-            .min_by(|a, b| a.1.total_cmp(&b.1));
+            .collect();
+        let nearest = |v: Vec<(usize, f64)>| v.into_iter().min_by(|a, b| a.1.total_cmp(&b.1));
+        let near = nearest(near.iter().copied().filter(|&(k, _)| trip.stops[k].dir.takes(fwd)).collect()).or_else(|| nearest(near));
         if near.is_none() && !self.picked {
             let reachable = (self.trip_index..self.trips.len()).find(|&k| {
                 let t = &self.trips[k];
@@ -3847,6 +3915,20 @@ impl PlayerDuty {
         }
     }
 
+    /// A page skips to stop `stop` of the current trip (`omsi.setNextStop`): the stops in
+    /// between are not served. Only forwards, and not once the trip's last stop is reached.
+    pub fn skip_to(&mut self, stop: usize) -> bool {
+        let last = self.trip().stops.len().saturating_sub(1);
+        let stop = stop.min(last);
+        if self.done || stop <= self.next_stop {
+            return false;
+        }
+        self.next_stop = stop;
+        self.at_stop = false;
+        self.arrived_late = None;
+        true
+    }
+
     fn set_trip(&mut self, index: usize) {
         self.trip_index = index;
         self.next_stop = 0;
@@ -3897,6 +3979,7 @@ impl PlayerDuty {
     /// there and how late it left (seconds; negative: early).
     pub fn update(&mut self, bus: &mut omsi_sim::VehicleInstance, day_time: f64) -> Option<(f64, f64)> {
         let day_time = self.duty_time(day_time);
+        self.heading = bus.heading;
         let served = self.advance(bus.position, day_time);
         let delay = self.delay(day_time);
         let trip = &self.trips[self.trip_index];
@@ -3912,6 +3995,51 @@ impl PlayerDuty {
         host.tt_terminus_index = trip.stops.len() as i32 - 1;
         host.tt_delay = delay as f32;
         served
+    }
+
+    /// The bus came to a later stop of the trip than the one it is due at (it drove past
+    /// some). Which stop that is cannot be told by the distance alone: a circular route, or
+    /// one that turns back, calls at the same place twice, and its two stops there stand a
+    /// few metres apart, so a bus at one is within [`AT_STOP`] of the other as well - the
+    /// duty jumped from stop 2 to stop 18 and 3-17 were never served (#254). Three things
+    /// have to agree: the trip runs through the stop the way the bus heads ([`StopDir`]);
+    /// the bus stands nearer to it than to the stop it is due at; and it has driven away
+    /// from the stop it served last.
+    fn catch_up(&mut self, pos: glam::DVec3, fwd: glam::DVec2) {
+        let trip = &self.trips[self.trip_index];
+        let last = trip.stops.len().saturating_sub(1);
+        let upto = if self.left_late.is_some() { trip.stops.len() } else { last };
+        if self.next_stop + 1 >= upto {
+            return;
+        }
+        let of = |k: usize| -> Option<f64> { trip.stops.get(k).and_then(|s| s.position).map(|p| (p - pos).length()) };
+        // still at the stop it served: too early to look for a later one
+        if let Some(k) = self.next_stop.checked_sub(1) {
+            if of(k).is_some_and(|d| d <= AT_STOP) {
+                return;
+            }
+        }
+        let here = of(self.next_stop);
+        let mut best: Option<(usize, f64)> = None;
+        for k in self.next_stop + 1..upto {
+            let Some(d) = of(k) else { continue };
+            if d >= AT_STOP || here.is_some_and(|h| d >= h) || !trip.stops[k].dir.takes(fwd) {
+                continue;
+            }
+            if best.is_none_or(|(_, b)| d < b) {
+                best = Some((k, d));
+            }
+        }
+        let Some((k, _)) = best else { return };
+        log::info!(
+            "duty: trip {}: {} stop(s) passed without stopping, the bus at stop {} '{}' (it was due at {})",
+            trip.name,
+            k - self.next_stop,
+            k + 1,
+            trip.stops[k].name.trim(),
+            self.next_stop + 1
+        );
+        self.next_stop = k;
     }
 
     /// The duty's progress with the bus at `pos` (see [`PlayerDuty::update`]).
@@ -3952,20 +4080,9 @@ impl PlayerDuty {
         // the bus reached a later stop of the trip (skipped stops); before it has left a
         // stop of the trip, not its last one (where the tour's previous trip may end)
         if !self.at_stop {
-            let upto = if self.left_late.is_some() {
-                trip.stops.len()
-            } else {
-                last
-            };
-            if let Some(k) = (self.next_stop + 1..upto).find(|&k| {
-                trip.stops[k]
-                    .position
-                    .map(|p| (p - pos).length() < AT_STOP)
-                    .unwrap_or(false)
-            }) {
-                self.next_stop = k;
-            }
+            self.catch_up(pos, forward_of(self.heading));
         }
+        let trip = &self.trips[self.trip_index];
         // stop progress by proximity
         if let Some(stop) = trip.stops.get(self.next_stop) {
             if let Some(p) = stop.position {
@@ -4172,6 +4289,7 @@ mod tests {
                 arr,
                 dep,
                 position: Some(glam::DVec3::new(x, 0.0, 0.0)),
+                dir: StopDir::default(),
                 stops: true,
             })
             .collect();
@@ -4183,6 +4301,28 @@ mod tests {
             end: stops.last().unwrap().arr,
             stops,
         }
+    }
+
+    #[test]
+    fn a_loop_does_not_jump_to_the_stop_over_the_road() {
+        // out along y = 0 to x = 1000, back along y = 12: stop 1 at x = 100 going out, stop 5
+        // at x = 100 coming back, 12 m apart (#254)
+        let mut trip = planned(0.0, &[(0.0, 0.0, 0.0), (100.0, 60.0, 60.0), (500.0, 120.0, 120.0), (1000.0, 200.0, 200.0), (500.0, 280.0, 280.0), (100.0, 340.0, 340.0), (0.0, 400.0, 400.0)]);
+        for (i, s) in trip.stops.iter_mut().enumerate() {
+            if i >= 4 {
+                s.position.as_mut().unwrap().y = 12.0;
+            }
+        }
+        trip.set_dirs();
+        let mut d = PlayerDuty { line: "5".into(), tour: "1".into(), trips: vec![trip], trip_index: 0, next_stop: 0, at_stop: false, arrived_late: None, done: false, left_late: None, placed: true, trip_changed: false, picked: true, first_update: None, heading: 90.0 };
+        // at stop 0, then leaving east
+        d.advance(glam::DVec3::new(0.0, 0.0, 0.0), 0.0);
+        d.advance(glam::DVec3::new(60.0, 0.0, 0.0), 30.0);
+        assert_eq!(d.next_stop, 1);
+        // at stop 1 heading east: stop 5 (12 m away, the other way round) is not taken
+        d.advance(glam::DVec3::new(100.0, 0.0, 0.0), 60.0);
+        d.advance(glam::DVec3::new(140.0, 0.0, 0.0), 70.0);
+        assert_eq!(d.next_stop, 2, "the duty goes on to stop 2, not over the road to stop 5");
     }
 
     #[test]
@@ -4237,6 +4377,7 @@ mod tests {
             trip_changed: false,
             picked: false,
             first_update: None,
+            heading: 0.0,
         };
         // 200 m from the first stop two minutes before the departure: early, next stop the first
         assert_eq!(d.advance(glam::DVec3::new(300.0, 0.0, 0.0), now), None);
@@ -4284,6 +4425,7 @@ mod tests {
             trip_changed: false,
             picked: false,
             first_update: None,
+            heading: 0.0,
         };
         // 4 km away two minutes before the 15:07 leaves: the duty begins with the 16:01
         let mut d = duty(trips.clone());
@@ -4322,6 +4464,7 @@ mod tests {
             trip_changed: false,
             picked: false,
             first_update: None,
+            heading: 0.0,
         };
         let (trip, stop) = d.trip_for_ibis();
         assert_eq!(trip.line, "5E");

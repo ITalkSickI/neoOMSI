@@ -23,7 +23,9 @@ procedural geometry; both halves now carry their source asset name.
 - Compatible spline types also share a cell when all used slots have identical
   texture filenames, lookup directories and alpha modes. Unused terrain slots
   do not prevent merging. UV generation has already finished; no material is
-  approximated. The audit labels such a shared mesh with its representative type.
+  approximated. Blended spline segments retain their individual meshes and placement
+  origins for the current main branch's far-to-near sorting. The audit labels a
+  shared opaque/cutout mesh with its representative type.
 - Split terrain-mapped spline faces before batching. In each 48 m cell, pool faces
   from different source spline types that use the same tile ground materials.
   Keep vertical cells and winding separate. Calculate tile UVs before merging,
@@ -43,7 +45,7 @@ The implementation uses ordinary meshes and draws on all rendering backends; it
 does not change shaders or lower graphics settings. Spatial batching slightly
 increases conservative culling, so GPU-limited hardware still needs benchmarking.
 
-## Local release measurements, 2026-09-30
+## Local release measurements before main integration, 2026-09-30
 
 Windows/DirectX 12, RTX 5070, 1920x1080, V-sync enabled, Enhanced, 4x MSAA, SSAO, 2048 shadows,
 1024 mirrors, object distance 734 m. Same stationary spawn, date, seed, 20 traffic
@@ -139,7 +141,7 @@ Artifacts: `target/performance-284/bounds-material-before.*` and
 
 Traffic and scheduling variation also affect the FPS comparison. The reduced
 encoding cost is measured directly; the full FPS difference should not be assumed
-for every machine or scene. The final outside-view median is 43.2 FPS, compared
+for every machine or scene. The pre-integration outside-view median is 43.2 FPS, compared
 with 36.7 FPS after the first spline change. Stable 60 FPS at these same Enhanced
 settings has not been achieved in this outside scene. It would require frame time
 below 16.7 ms instead of the measured 23.1 ms.
@@ -149,6 +151,20 @@ Artifacts: `target/performance-284/pool-before.*` and `pool-after.*`.
 The final C2 driver's-seat sanity run (`c2-driver-final`) measured 40.1 FPS
 median, also with the existing Enhanced settings. The scene and mirrors were
 inspected. This is a different camera, so it is not an outside-view A/B result.
+
+## Integration with current main
+
+Upstream `main` at `97b2519` was integrated before opening the PR. Preserve its
+ordered world passes, alpha-test/blend distinction and metric surface lift.
+Opaque/cutout spline cells may merge; declared blended segments keep their own
+placement origins and individual meshes for far-to-near composition. The grouping
+test checks both their separation and their exact placement origins. Ground cells
+use the same `Spline` phase and 8 cm lift as unbatched terrain-mapped splines.
+
+The performance tables above describe the pre-integration executable; they are
+not a claim that current main reproduces the identical baseline. After integration,
+18 geometry unit tests, 21 renderer unit tests (including shader validation),
+13 app scene tests and both GPU integration tests passed.
 
 ## Repeat
 

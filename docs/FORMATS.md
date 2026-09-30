@@ -514,6 +514,9 @@ the bottom.
 
 * `tile_x_y.map.LM.bmp` (256×256): the tile's **night light map** - pools of street lamp
   light on the ground (not shadows), north at the top row; added to the terrain at night.
+  It covers the tile **and its eight neighbours**: the tile itself is the middle third
+  (texels 85⅓..170⅔ each way). Neighbouring light maps are the same picture shifted by a
+  third - 85 texels between two tiles, 171 between every other one, on all stock maps.
 * Spline profiles (`[profilepnt] x z u v`) are extruded as-is: a road's outer points sit at
   the kerb height (0.25 m on the Marcel street splines) with no skirt down to the terrain,
   so the roadway is a slab standing on the ground. The terrain is only cut away under

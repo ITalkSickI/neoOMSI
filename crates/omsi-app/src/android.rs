@@ -165,6 +165,13 @@ pub(crate) fn previous_run_crash() -> Option<(String, String)> {
     if lines[start..].iter().any(|l| l.contains("game ends") || l.contains("session ended")) {
         return None;
     }
+    // sent to the background and not brought back: the system ended the app there (or the
+    // player swiped it away) - no crash, whatever the game was doing
+    let back = lines[start..].iter().rposition(|l| l.contains("app in the background"));
+    let front = lines[start..].iter().rposition(|l| l.contains("app in front"));
+    if back.is_some() && back > front {
+        return None;
+    }
     if let Some(c) = launcher::crash_of(&p) {
         return Some(c);
     }
@@ -235,8 +242,24 @@ impl Shell {
         // run drew with Vulkan: a phone whose Vulkan driver fails on the game still plays
         if !SAFER_TRIED.swap(true, Ordering::Relaxed) && previous_run_crash().is_some() {
             let prev = std::fs::read_to_string(omsi_launcher_lib::data_dir().join("game-prev.log")).unwrap_or_default();
-            let vulkan = prev.lines().any(|l| l.contains("renderer: ") && l.contains("(Vulkan)"));
+            let vulkan = prev.lines().any(|l| l.contains("renderer: ") && l.contains("(Vulkan)")) || prev.lines().any(|l| l.contains("graphics: ") && l.to_ascii_uppercase().contains("VULKAN"));
             std::env::set_var("OMSI_SAFE_GPU", "1");
+            // It went down while the graphics driver compiled the shaders (the last it said
+            // was a stage of that): the phone's Vulkan driver cannot take them, and will not
+            // next time either (the Maleoon and several Mali drivers after the cloud noise,
+            // #229, #278). OpenGL from now on, in the settings - Settings → Graphics API
+            // takes it back.
+            let last = prev.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+            let compiling = last.contains("renderer: compiling") || last.contains("cloud noise made") || last.contains("opening graphics device") || last.contains("compiling renderer pipelines");
+            if vulkan && compiling {
+                if let Ok(mut v) = omsi_launcher_lib::get_settings() {
+                    v["graphics_api"] = serde_json::json!("gl");
+                    match omsi_launcher_lib::save_settings(&v) {
+                        Ok(()) => log::warn!("the graphics driver went down compiling the shaders on Vulkan: OpenGL from now on (Settings → Graphics API)"),
+                        Err(e) => log::warn!("settings not saved: {e:#}"),
+                    }
+                }
+            }
             if vulkan && std::env::var_os("OMSI_BACKEND").is_none() {
                 std::env::set_var("OMSI_BACKEND", "gl");
             }
@@ -271,6 +294,7 @@ impl Shell {
 
 impl ApplicationHandler for Shell {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        log::info!("app in front");
         match self.game.as_mut() {
             Some(g) => g.resumed(event_loop),
             None => self.launcher().resumed(event_loop),
@@ -279,6 +303,9 @@ impl ApplicationHandler for Shell {
     }
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        // (the system may end an app in the background without a word: see
+        // `previous_run_crash`)
+        log::info!("app in the background");
         match self.game.as_mut() {
             Some(g) => g.suspended(event_loop),
             None => self.launcher().suspended(event_loop),

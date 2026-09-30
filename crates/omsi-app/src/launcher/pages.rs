@@ -41,6 +41,8 @@ pub struct PadsView {
     pub selected: usize,
     /// Waiting for a button of the shown device to be pressed (to add its binding).
     pub capturing: bool,
+    /// A button found through "Add a button", kept visible even past the highlight.
+    pub revealed_button: Option<usize>,
     pub dirty: bool,
     /// The button last pressed on the shown device and when: its line is lit, so that one
     /// sees which it is and what it does, and can give it an action there.
@@ -670,6 +672,9 @@ fn mb(v: i64) -> String {
 // --- controls ---------------------------------------------------------------------------------
 
 fn action_label(a: &str) -> String {
+    if let Some(gear) = a.strip_prefix("kw_s_").and_then(|s| s.strip_suffix("_fest")) {
+        return format!("Gear {gear} (H-pattern)");
+    }
     let known: &[(&str, &str)] = &[
         ("throttle", "Throttle"),
         ("brake", "Brake"),
@@ -871,6 +876,13 @@ pub fn controls(l: &mut Launcher, area: Rect) {
     }
 }
 
+/// Hide empty slots beyond the physical buttons without changing the saved controller file.
+fn shown_button_count(buttons: &[(String, String)], physical: usize, revealed: Option<usize>) -> usize {
+    physical
+        .max(buttons.iter().rposition(|(action, _)| !action.trim().is_empty()).map(|i| i + 1).unwrap_or(0))
+        .max(revealed.map(|i| i + 1).unwrap_or(0))
+}
+
 /// The game controllers tab (see `PadsView`).
 fn game_controllers(l: &mut Launcher, body: Rect) {
     use crate::controllers::{DeviceCfg, Func};
@@ -882,8 +894,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     }
     if pv.devices.is_none() {
         let root = std::path::PathBuf::from(&l.state.config.root);
-        let text = std::fs::read(crate::controllers::cfg_path(&root)).map(|b| omsi_cfg::codepage::decode(&b)).unwrap_or_default();
-        pv.devices = Some(crate::controllers::parse_cfg(&text));
+        pv.devices = Some(crate::controllers::read_cfg(&root));
     }
     // what the devices do now (and a button pressed while one is awaited)
     let mut pressed: Option<(String, usize)> = None;
@@ -944,11 +955,13 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     if sel != pv.selected {
         pv.selected = sel;
         pv.capturing = false;
+        pv.revealed_button = None;
         pv.wizard = None;
     }
     if let Some(name) = add {
         devices.push(DeviceCfg { name, second: "0".into(), ..Default::default() });
         pv.selected = devices.len() - 1;
+        pv.revealed_button = None;
         pv.dirty = true;
         // a new device starts with the assistant
         pv.wizard = Some(Wizard { step: 0, rest: [None; 8], at: Vec::new(), error: None });
@@ -1014,6 +1027,13 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let funcs: Vec<String> = Func::LABELS.iter().map(|s| s.to_string()).collect();
     let mut actions: Vec<String> = vec!["<none>".into()];
     actions.extend(l.state.keybindings.get("vehicles").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|b| b.get("action").and_then(|x| x.as_str()).map(String::from)).collect::<Vec<_>>()).unwrap_or_default());
+    // H-pattern shifters use OMSI's "_fest" actions: pressing the gate selects the gear,
+    // releasing it fires "_fest_off", which lets the bus script return to neutral.
+    for a in ["kw_s_R_fest", "kw_s_1_fest", "kw_s_2_fest", "kw_s_3_fest", "kw_s_4_fest", "kw_s_5_fest", "kw_s_6_fest", "kw_s_7_fest", "kw_s_8_fest", "kw_s_9_fest", "kw_s_10_fest"] {
+        if !actions.iter().any(|x| x.eq_ignore_ascii_case(a)) {
+            actions.push(a.to_string());
+        }
+    }
     // the game's own view actions (looking around while held, the cameras, the views)
     for a in ["gear_up", "gear_down", "view_look_left", "view_look_right", "view_look_up", "view_look_down", "view_reset_direction", "view_interiorcam_plus", "view_interiorcam_minus", "view_toggle_viewpoint", "view_set_driver", "view_set_passenger", "view_set_outside"] {
         if !actions.iter().any(|x| x == a) {
@@ -1023,24 +1043,30 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     actions.dedup();
     let mut dirty = false;
     let lit = pv.last_pressed.filter(|(_, t)| t.elapsed().as_secs_f32() < 4.0).map(|(b, _)| b);
+    // Some OMSI configs contain hundreds of empty trailing slots (the G920 report had
+    // 131 entries for 18 physical buttons). Keep them on disk, but do not fill the UI with them.
+    let shown_buttons = shown_button_count(&d.buttons, live_dev.map(|c| c.buttons).unwrap_or(0), pv.revealed_button);
     // (the axes, then every button of the device: the list scrolls - it stopped at the ten
     // buttons that fitted)
     let list = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 50.0);
+    let mut buttons_start_y = 0.0;
     l.ui.scroll_area("pad-detail", list, &mut |ui, v| {
         let x0 = v.x + 6.0;
         let w = v.w - 16.0;
         let mut y = v.y;
-        let (mut steering_force, mut vibration) = d.ff_scale.unwrap_or((1.0, 1.0));
-        if ui.slider("pad-ff-steering", Rect::new(x0, y, w, ROW), &mut steering_force, 0.0, 2.0, 0.05, "Steering force", &|v| format!("{:.0}%", v * 100.0)) {
-            d.ff_scale = Some((steering_force, vibration));
-            dirty = true;
+        if live_dev.is_some_and(|c| c.ff_capable) {
+            let (mut steering_force, mut vibration) = d.ff_scale.unwrap_or((1.0, 1.0));
+            if ui.slider("pad-ff-steering", Rect::new(x0, y, w, ROW), &mut steering_force, 0.0, 2.0, 0.05, "Steering force", &|v| format!("{:.0}%", v * 100.0)) {
+                d.ff_scale = Some((steering_force, vibration));
+                dirty = true;
+            }
+            y += ROW + 6.0;
+            if ui.slider("pad-ff-vibration", Rect::new(x0, y, w, ROW), &mut vibration, 0.0, 2.0, 0.05, "Vibration", &|v| format!("{:.0}%", v * 100.0)) {
+                d.ff_scale = Some((steering_force, vibration));
+                dirty = true;
+            }
+            y += ROW + 20.0;
         }
-        y += ROW + 6.0;
-        if ui.slider("pad-ff-vibration", Rect::new(x0, y, w, ROW), &mut vibration, 0.0, 2.0, 0.05, "Vibration", &|v| format!("{:.0}%", v * 100.0)) {
-            d.ff_scale = Some((steering_force, vibration));
-            dirty = true;
-        }
-        y += ROW + 20.0;
         let lab_w = if w < 520.0 { 84.0 } else { 110.0 };
         let inv_w = 110.0;
         let sel_w = (w - lab_w - inv_w - 60.0 - 3.0 * GAP).clamp(120.0, 200.0);
@@ -1073,11 +1099,12 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         y += 10.0;
         ui.text_in("Buttons", Rect::new(x0, y, w, 20.0), 14.0, Weight::Bold, TEXT, Align::Left);
         y += 26.0;
+        buttons_start_y = y - v.y;
         let cols = if w < 560.0 { 1usize } else { 2 };
         let cw = (w - GAP * (cols - 1) as f32) / cols as f32;
         let per_row = ROW + 4.0;
-        let rows = d.buttons.len().div_ceil(cols);
-        for (b, (act, _)) in d.buttons.iter_mut().enumerate() {
+        let rows = shown_buttons.div_ceil(cols);
+        for (b, (act, _)) in d.buttons.iter_mut().take(shown_buttons).enumerate() {
             let (col, row) = (b / rows.max(1), b % rows.max(1));
             let r = Rect::new(x0 + col as f32 * (cw + GAP), y + row as f32 * per_row, cw, ROW);
             let label = match b.checked_sub(crate::controllers::HAT_BUTTONS) {
@@ -1107,8 +1134,14 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                 d.buttons.push((String::new(), "0".into()));
                 pv.dirty = true;
             }
-            if pv.capturing {
+            let was_capturing = pv.capturing;
+            if was_capturing {
                 pv.capturing = false;
+                pv.revealed_button = Some(n);
+                let cols = if list.w - 16.0 < 560.0 { 1usize } else { 2 };
+                let rows = shown_buttons.max(n + 1).div_ceil(cols).max(1);
+                let row = n % rows;
+                l.ui.scroll_to("pad-detail", buttons_start_y + row as f32 * (ROW + 4.0), ROW, list.h);
             }
             pv.last_pressed = Some((n, std::time::Instant::now()));
             let now = d.buttons.get(n).map(|b| b.0.clone()).filter(|a| !a.is_empty());
@@ -1735,6 +1768,20 @@ pub fn tutorials(l: &mut Launcher, area: Rect) {
 #[cfg(test)]
 mod wizard_tests {
     use crate::controllers::Func;
+
+    #[test]
+    fn h_pattern_gears_have_a_clear_name() {
+        assert_eq!(super::action_label("kw_s_1_fest"), "Gear 1 (H-pattern)");
+        assert_eq!(super::action_label("kw_s_R_fest"), "Gear R (H-pattern)");
+    }
+
+    #[test]
+    fn empty_saved_button_slots_do_not_fill_the_controller_list() {
+        let mut buttons = vec![(String::new(), "0".to_string()); 131];
+        buttons[10].0 = "horn".to_string();
+        assert_eq!(super::shown_button_count(&buttons, 18, None), 18);
+        assert_eq!(super::shown_button_count(&buttons, 18, Some(128)), 129);
+    }
 
     #[test]
     fn a_wheel_with_three_pedals() {

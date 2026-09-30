@@ -385,14 +385,17 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     let glass = mode > 1.5 && material.bump.z > 0.5 &&
         (has_env || material.params.z > 0.5 || material.emissive.w > 0.5);
     let painted_transmap = material.params.z > 0.5 && !glass;
-    let painted_body = mode < 1.5 || painted_transmap;
     // An envmap on opaque vehicle paint is legacy material data, not a request to make
     // the whole body behave like glass. Keep the diffuse/sun response, but use the
     // ordinary rough dielectric path for the body.
     // Foliage and other alpha-tested assets are diffuse silhouettes, not polished surfaces.
     // Letting the generic probe term reflect them creates white sparkles at grazing angles;
     // the photographed envmap is reserved for materials that explicitly request it.
-    let reflective_env = has_env && !painted_body && !thin;
+    // (opaque materials reflect as well - chrome handrails, bumpers and wheel trims are
+    // opaque with a sphere map, and left out they showed no reflection at all in the
+    // enhanced picture, #266 - but through the clear-coat path below: metal only where a
+    // mask of its own says so)
+    let reflective_env = has_env && !painted_transmap && !thin;
     // see-through glass is seen from either side: from inside the bus its normal points
     // away (the vanilla pass takes the angle either way round too); taken as it is, the
     // grazing Fresnel turned the whole windscreen into a milky mirror
@@ -709,7 +712,8 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     // grew with the night and whitened the saloon)
     // (the lamps' light does not reach into the gaps under the seats and round the
     // handrails either: without the ambient occlusion on it they glowed through there)
-    let cabin = sf.albedo * interior_lamps(in.world, n, in.params2.z) * mix(1.0, ao, 0.85);
+    let cabin_light = interior_lamps(in.world, n, in.params2.z);
+    let cabin = sf.albedo * cabin_light * mix(1.0, ao, 0.85);
     var rgb = (direct + ambient + lamps) * pre + cabin;
     var emit = tex.rgb * material.emissive.rgb * max(enh.exposure.z * 2.0, 0.8);
     // (the tile light map on the splines and [LightMapMapping] objects is the vanilla
@@ -733,9 +737,15 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         }
     }
     if (material.params2.x > 0.5 && !terrain) {
-        // [matl_lightmap]: the cabin lamps and displays, visible by day as well
+        // [matl_lightmap]: laid onto the light with ADDSMOOTH in Omsi.exe (see the vanilla
+        // shader), so it adds what the surface's own light leaves: little by day, fully at
+        // night, and less where the saloon lamps light the surface already. (As an emission
+        // at 0.6 of the texture by day and on top of the lamps at night, a switched-on
+        // cabin's light-mapped parts were flat white.)
         let lm = textureSample(t_light, s_diffuse, buv).rgb;
-        emit = emit + tex.rgb * lm * clamp(in.params2.x, 0.0, 1.0) * max(enh.exposure.z * 2.0, 0.6);
+        let night = clamp(camera.sun_color.w, 0.0, 1.0);
+        let left = (vec3<f32>(1.0) - clamp(cabin_light, vec3<f32>(0.0), vec3<f32>(1.0))) * (0.12 + 0.88 * night);
+        emit = emit + tex.rgb * lm * left * clamp(in.params2.x, 0.0, 1.0) * max(enh.exposure.z * 2.0, 0.6);
     }
     if (material.emissive.w < -0.5) {
         // a display's text (see MaterialExtra::display)

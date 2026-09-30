@@ -420,20 +420,16 @@ fn vs_main(in: VsIn) -> VsOut {
     let m = model_matrix(e);
     let wp = m * vec4<f32>(in.pos, 1.0);
     var out: VsOut;
-    // Road surfaces (splines, crossings, markings, a vehicle's shadow blob) are pulled
-    // towards the eye along the line of sight - the picture does not move, only the depth -
-    // by two centimetres near and more far away (seen from above at a slant that is a few
-    // millimetres of height: a tyre on the road does not sink into it). A road a little under the terrain
-    // otherwise lost to it: the ground's triangles came through the carriageway in teeth
-    // and flickered. A depth bias cannot do it with a floating-point depth buffer: its
-    // steps are relative to the depth, well under a millimetre at a hundred metres. The
-    // painted ground layers (0.75) are the ground and stay where they are.
+    // Legacy surfaces are pulled towards the eye along the line of sight. OMSI splines and
+    // [surface] objects use a fixed 8 cm world lift; ordered scenery phases use their authored
+    // world positions. Both use code 0.9 to keep weather classification without view-space pull.
+    // Painted ground (0.75) stays put.
     let surf = inst_params[e * 2u + 1u].w;
     var cp = wp.xyz;
     if (surf > 0.9) {
         let to = wp.xyz - camera.cam_pos.xyz;
         let d = length(to);
-        // (surface objects, 1.25, a little more than the splines under them)
+        // (legacy surface objects, 1.25, a little more than the splines under them)
         let decal = select(0.0, 0.01 + 0.001 * d, surf > 1.1 && surf < 1.5);
         let pull = min(0.02 + 0.002 * d + decal, d * 0.3);
         cp = wp.xyz - to / max(d, 1e-3) * pull;
@@ -556,6 +552,19 @@ fn fs_shadow_test(in: VsOut) {
     if (a < 0.5) {
         discard;
     }
+}
+
+// Roads with feathered alpha borders stay blended while their overlaps compose.
+// Once the surface phases are complete, only fully covered diffuse pixels occlude
+// later scenery. The transparent borders must not become invisible depth walls.
+@fragment
+fn fs_surface_depth(in: VsOut) -> @location(0) vec4<f32> {
+    let a = diffuse_border(textureSample(t_diffuse, s_diffuse, in.uv), in.uv).a
+        * material.color.a * in.params.x;
+    if (a < 0.999) {
+        discard;
+    }
+    return vec4<f32>(0.0);
 }
 
 // A vehicle body and its windows are often one mesh/material. OMSI represents that
@@ -1310,17 +1319,34 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let map_lamps = select(1.0, 0.0, (material.params.y > 0.2 && material.params.y < 0.3) || lm_only);
     let lamp_light = point_lights(in.world, n, map_lamps);
     var light = diffuse + lamp_light;
-    if (material.params2.x > 0.5 && material.extra.x < 0.5) {
+    let light_mapped = material.params2.x > 0.5 && material.extra.x < 0.5;
+    var lit = albedo * material.color.rgb * light;
+    // The vanilla picture: Omsi.exe's texture stages multiply the gamma-encoded texture by
+    // the vertex light (clamped at 1); here the texture is sampled linear and the target
+    // encodes again, so multiplied here a light L showed as L^(1/2.2) - a night at 0.06
+    // looked like 0.28, a late dusk (#300). The same product in gamma: (t^(1/2.2) v)^2.2
+    // = t v^2.2 - with the light map laid on in gamma as well.
+    let classic = camera.sky_color.w > 0.5;
+    if (classic && material.params.y < 0.5) {
+        var v = clamp(material.emissive.rgb + material.color.rgb * (light + interior_lamps(in.world, n, in.params2.z)), vec3<f32>(0.0), vec3<f32>(1.0));
+        if (light_mapped) {
+            let lm = pow(textureSample(t_light, s_diffuse, buv).rgb, vec3<f32>(1.0 / 2.2)) * clamp(in.params2.x, 0.0, 1.0);
+            v = v + lm * (vec3<f32>(1.0) - v);
+        }
+        lit = albedo * pow(v, vec3<f32>(2.2));
+    } else if (light_mapped) {
         // [matl_lightmap], as Omsi.exe's texture stages have it (0x7fe4d3..0x7fe604): the
         // light map is laid onto the vertex light with D3DTOP_ADDSMOOTH (light + map x (1 -
         // light)) before the texture is multiplied in - a lit saloon glows at night and
-        // hardly shows in daylight. (Added after the texture, the maps whitened the cabin
-        // by day as well.)
+        // hardly shows in daylight. The vertex light is D3D's: the material's emissive and
+        // its colour times every light - the saloon lamps (`[interiorlight]`, D3D lights
+        // too, 0x5fa8f0) among them - clamped at 1. (Added once more after the map, the
+        // saloon lamps lit a cabin twice over, flat white where the map was full; and the
+        // material's colour took the map down with it.)
         let lm = textureSample(t_light, s_diffuse, buv).rgb * clamp(in.params2.x, 0.0, 1.0);
-        let l = clamp(light, vec3<f32>(0.0), vec3<f32>(1.0));
-        light = l + lm * (vec3<f32>(1.0) - l);
+        let v = clamp(material.emissive.rgb + material.color.rgb * (light + interior_lamps(in.world, n, in.params2.z)), vec3<f32>(0.0), vec3<f32>(1.0));
+        lit = albedo * (v + lm * (vec3<f32>(1.0) - v));
     }
-    var lit = albedo * material.color.rgb * light;
     // the D3D material's own highlight (specular colour and power of the o3d file or a
     // [matl_allcolor]), lit at the vertices (see `vertex_specular`) and added after the
     // texture as D3D's specular is; the sun's not in its shadow
@@ -1328,7 +1354,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (material.params.y > 0.5) {
         lit = tex.rgb * material.color.rgb;
     }
-    lit = lit + tex.rgb * material.emissive.rgb;
+    if ((!light_mapped && !classic) || material.params.y > 0.5) {
+        lit = lit + tex.rgb * material.emissive.rgb;
+    }
     // the tile light map, as on the terrain: the lamps' pools on the roads and the plates,
     // lighting the surface (not painted over it: added as it was, the pool lay on the road
     // as a white patch); only where it is their light at night - elsewhere the map's lamps
@@ -1336,8 +1364,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (lm_only) {
         lit = lit + albedo * material.color.rgb * light_map_at(in.world) * camera.sun_color.w;
     }
-    // [interiorlight]: the saloon lamps on the meshes and passengers they illuminate
-    lit = lit + tex.rgb * interior_lamps(in.world, n, in.params2.z);
+    // [interiorlight]: the saloon lamps on the meshes and passengers they illuminate (in
+    // a light-mapped material's vertex light already, above)
+    if (!light_mapped && !classic) {
+        lit = lit + tex.rgb * interior_lamps(in.world, n, in.params2.z);
+    }
     if (material.extra.w > 0.5) {
         // [matl_nightmap]: self-illumination that fades in with the night
         // terrain: the tile light map in tile space (north at the top row)

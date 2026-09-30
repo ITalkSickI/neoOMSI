@@ -1626,7 +1626,7 @@ enum Place {
 }
 
 /// Seconds after which a passenger's request at an exit lapses (see `write_pax_vars`).
-const EXIT_REQ_LAPSE: f32 = 40.0;
+const EXIT_REQ_LAPSE: f32 = 120.0;
 
 /// How near an open door (m) a passenger holds it open (the light barrier's reach).
 const DOORWAY: f64 = 1.6;
@@ -2636,10 +2636,12 @@ impl Humans {
                     seat,
                 },
             ) {
+                let exit_id = usize::try_from(exit).ok().and_then(|k| bus.host.tt_stop_ids.get(k)).copied().filter(|&x| x != 0);
                 let p = &mut self.people[i];
                 p.place = Place::Bus(BusId::Player, s.floor);
                 p.lheading = s.rot as f64;
                 p.exit_stop = exit;
+                p.exit_id = exit_id;
                 p.activity = if s.seated {
                     Activity::Sit
                 } else {
@@ -3811,11 +3813,28 @@ impl Humans {
         self.placed_now = out;
     }
 
+    /// Whether a bus empties at `stop` and takes nobody on there (Omsi.exe 0x61f3e3, the
+    /// vehicle's +0x7c5): it is not in service - its target names no valid terminus of the
+    /// depot file, or an `[addterminus_allexit]` one ("$allexit$") - or it shows this very
+    /// stop as its terminus.
+    fn empties_at(&self, bn: &BusNow, stop: i64) -> bool {
+        match &bn.terminus {
+            None => true,
+            Some(t) => self.stops.get(&stop).is_some_and(|s| s.name.trim() == t.trim()),
+        }
+    }
+
     /// Whether the bus goes where person `i`, waiting at `stop`, wants to go (Omsi.exe
     /// 0x61c33c): each wants one of the stop's targets (their own pick among them) and
     /// boards a bus whose terminus serves it. Where the timetable has no trip going on from
     /// the stop, the target is invalid and they take the first bus there.
     fn goes_their_way(&self, i: usize, stop: i64, bn: &BusNow) -> bool {
+        // (a bus not in service, or at its own terminus, is offered to nobody: Omsi.exe
+        // returns before listing it at the stop, 0x61f3e3 - people boarded a bus showing
+        // "Betriebsfahrt" or nothing at all)
+        if self.empties_at(bn, stop) {
+            return false;
+        }
         let Some(targets) = self
             .stop_targets
             .as_ref()
@@ -4705,6 +4724,14 @@ impl Humans {
             }
             if let (Some(stop), Some(b)) = (at_stop, bus) {
                 let here = b.host.tt_busstop_index;
+                // Omsi.exe (0x61f3e3): a bus not in service ("$allexit$": no valid target) or
+                // standing at its own terminus - the terminus it shows is this stop's name -
+                // empties; every rider goes (0x62d129). Riders whose stop it is go by the
+                // stop itself, not only by the timetable's index: that is reset to 0 when the
+                // next trip is taken up, and at the end of a late trip nobody got off (#226
+                // report: "passengers do not get out at the last stop").
+                let everybody = player.is_some_and(|pb| self.empties_at(pb, stop));
+                let here_id = b.host.tt_stop_ids.get(usize::try_from(here).unwrap_or(usize::MAX)).copied();
                 for i in 0..self.people.len() {
                     let (exit, from) = (self.people[i].exit_stop, self.people[i].from);
                     if matches!(
@@ -4717,10 +4744,11 @@ impl Humans {
                             ..
                         }
                     ) {
-                        let leaves = if stop == ALL_OUT_STOP || self.driver_away {
+                        let exit_id = self.people[i].exit_id;
+                        let leaves = if stop == ALL_OUT_STOP || self.driver_away || everybody || exit_id == Some(stop) {
                             true
                         } else if exit >= 0 {
-                            exit <= here
+                            exit <= here && (exit_id.is_none() || here_id == Some(stop))
                         } else {
                             from != stop && self.rand_f() < 0.35
                         };
@@ -4769,13 +4797,14 @@ impl Humans {
                 .map(|v| (self.time - v.1) < dt as f64 * 1.5)
                 .unwrap_or(false);
             if fresh {
+                let everybody = self.empties_at(bn, stop);
                 for i in 0..self.people.len() {
                     match self.people[i].state {
                         State::Riding { bus, .. }
                             if bus == bn.id && self.people[i].from != stop =>
                         {
                             self.people[i].stops_left = self.people[i].stops_left.saturating_sub(1);
-                            if self.people[i].stops_left <= 0 || self.people[i].exit_id == Some(stop) {
+                            if everybody || self.people[i].stops_left <= 0 || self.people[i].exit_id == Some(stop) {
                                 self.people[i].leaving_here = true;
                             }
                         }
@@ -4812,10 +4841,12 @@ impl Humans {
         for r in self.entry_req.iter_mut().chain(self.exit_req.iter_mut()) {
             *r = false;
         }
-        // A request opens a shut door; an open one it holds only from the doorway, as the
-        // light barrier does - one on the way from the upper deck or at the back of the
-        // queue held the SD202's automatic rear door open until the last of them was through
-        // (its script starts the closing time again on every frame with a request).
+        // A request opens a shut door. Those getting off ask the whole way to the exit, as
+        // Omsi.exe's riders do from the moment they stand up (state 5, 0x62d6f8): asked
+        // only from the doorway, the SD202's automatic rear door shut three seconds after
+        // the one in front, on the rider still walking up, and opened again when they got
+        // there - the door "did not know" whether people were getting off. Those boarding
+        // hold an open door from the doorway, as they wait within 0.7 m of it in OMSI.
         let in_doorway = |p: &Person, entry: Option<usize>, exit: Option<usize>| -> bool {
             let Some(pb) = player else { return true };
             let (door, open) = match (entry, exit) {
@@ -4853,7 +4884,7 @@ impl Humans {
                     bus: BusId::Player,
                     goal: Goal::ExitWait(exit),
                     ..
-                } if p.leaving_here && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) && in_doorway(p, None, Some(exit)) => {
+                } if p.leaving_here && self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                     if let Some(r) = self.exit_req.get_mut(exit) {
                         *r = true;
                     }
@@ -4865,7 +4896,7 @@ impl Humans {
                     bus: BusId::Player,
                     goal: Goal::Exit(exit),
                     ..
-                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) && in_doorway(p, None, Some(exit)) => {
+                } if self.exit_req_time.get(&p.id).is_none_or(|t| *t < EXIT_REQ_LAPSE) => {
                     if let Some(r) = self.exit_req.get_mut(exit) {
                         *r = true;
                     }
@@ -5711,8 +5742,14 @@ impl Humans {
                 } else {
                     f64::INFINITY
                 };
+                // people getting off through this door: the front of the queue stands aside
+                // for them - on the door's outside point it stood where they step down to,
+                // and each waited for the other until someone gave up (#253: "passengers
+                // stand at the door a long time before going in")
+                let alighting = self.people.iter().any(|p| matches!(p.state, State::Aboard { bus: b, goal: Goal::Exit(x), .. } if b == bus && (bn.cabin.exits[x].inside - door.inside).length() < 2.0));
+                let aside = if alighting { 0.8 } else { 0.0 };
                 let place = |k: usize| {
-                    let d = QUEUE_GAP * k as f64;
+                    let d = QUEUE_GAP * k as f64 + aside;
                     if d <= q_len {
                         base + q_dir * d
                     } else {
@@ -5803,7 +5840,6 @@ impl Humans {
                     return w;
                 }
                 // people getting off first
-                let alighting = self.people.iter().any(|p| matches!(p.state, State::Aboard { bus: b, goal: Goal::Exit(x), .. } if b == bus && (bn.cabin.exits[x].inside - door.inside).length() < 2.0));
                 if alighting {
                     self.people[i].why = "lets people off first";
                     return w;
@@ -5855,7 +5891,7 @@ impl Humans {
                 // in
                 self.seats.get_mut(&bus).unwrap()[seat] = true;
                 self.free_spot(stop, spot, id);
-                self.door_busy.insert((bus, false, entry), 1.3);
+                self.door_busy.insert((bus, false, entry), 0.8);
                 // the kerb's height in the frame of the section the door is in
                 let ground = world.walk_height(base.x, base.y).unwrap_or(base_w.z);
                 // from where they stand (up to 0.6 m from the door's outside point: put
@@ -5930,6 +5966,11 @@ impl Humans {
                     self.people[i].exit_id = k.map(|k| ahead[k]);
                 }
                 self.people[i].exit_stop = exit;
+                if bus == BusId::Player {
+                    // (the stop itself as well: the timetable's index starts again at 0 with
+                    // the next trip, see where riders decide to get off)
+                    self.people[i].exit_id = usize::try_from(exit).ok().and_then(|k| player_bus.and_then(|b| b.host.tt_stop_ids.get(k))).copied().filter(|&x| x != 0);
+                }
                 self.set_state(
                     i,
                     State::Aboard {
@@ -6208,7 +6249,19 @@ impl Humans {
                     follow: false,
                     goal_dist: None,
                 };
-                if self.people[i].leaving_here && bn.standing() && bn.stop.is_some() {
+                // Omsi.exe's riders get up as the bus heads into their stop (state 7, up to 60 m
+                // out, while it still rolls: 0x62d129), not once it stands - then they held
+                // the doors up at every stop while they came from the back
+                let mine_ahead = bn.approach.is_some_and(|a| {
+                    let p = &self.people[i];
+                    p.exit_id == Some(a)
+                        || (bus == BusId::Player && p.exit_id.is_none() && p.exit_stop >= 0 && player_bus.is_some_and(|b| b.host.tt_stop_ids.get(p.exit_stop as usize) == Some(&a)))
+                        || self.empties_at(bn, a)
+                });
+                if mine_ahead {
+                    self.people[i].leaving_here = true;
+                }
+                if self.people[i].leaving_here && ((bn.standing() && bn.stop.is_some()) || mine_ahead) {
                     if bn.cabin.exits.is_empty() {
                         // a cabin without an exit (a trailer section): rides on
                         self.people[i].leaving_here = false;
@@ -6286,6 +6339,7 @@ impl Humans {
                         if bus == BusId::Player {
                             if let Some(b) = player_bus {
                                 self.people[i].exit_stop = b.host.tt_busstop_index;
+                                self.people[i].exit_id = None;
                             }
                         } else {
                             self.people[i].stops_left = 1;
@@ -8862,6 +8916,9 @@ impl Humans {
         else {
             return want;
         };
+        if self.empties_at(bn, stop) {
+            return want;
+        }
         let free = self
             .seats
             .get(&BusId::Player)

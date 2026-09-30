@@ -2,6 +2,8 @@
 
 use super::*;
 
+const SLOW_UPLOAD_MB_S: f64 = 300.0;
+
 pub(crate) struct App {
     pub(crate) args: Args,
     pub(crate) instance: wgpu::Instance,
@@ -192,6 +194,11 @@ pub(crate) struct App {
     pub(crate) timetable: bool,
     /// The left button is held on a switch: mouse movement turns it.
     pub(crate) dragging: bool,
+    /// The left button is held on a page of the bus (an `[htmltexture]`): its script texture
+    /// index and the place on it the pointer was last seen.
+    pub(crate) html_pressed: Option<(usize, f32, f32)>,
+    /// The same for a page of a scenery object: its map id, script texture index and place.
+    pub(crate) html_object_pressed: Option<(i64, usize, f32, f32)>,
     /// Cursor movement (logical pixels) while dragging a switch, not yet handed to the
     /// script: `<event>_drag` fires once a frame with it (see `Player::drag`).
     pub(crate) drag_delta: (f32, f32),
@@ -320,6 +327,12 @@ impl App {
                 Ok(vr) => self.vr = Some(vr),
                 Err(e) => log::error!("OpenXR could not start: {e:#}"),
             }
+        }
+        let upload = renderer.upload_speed_mb_s();
+        log::info!("graphics: {upload:.0} MB/s copied towards the card");
+        if upload < SLOW_UPLOAD_MB_S {
+            log::error!("graphics: the driver copies only {upload:.0} MB/s towards the card (thousands are usual); every texture and buffer the game sends waits on it, down to a few frames a second - restarting the computer usually brings it back");
+            self.service_msg = Some((format!("Graphics driver is slow ({upload:.0} MB/s): the game will stutter. Restarting the computer usually fixes it."), 30.0));
         }
         crate::lights::load_smoke_texture(&mut renderer, &self.args.root);
         crate::lights::set_corona_root(&self.args.root);
@@ -789,12 +802,12 @@ impl App {
         w.update_texture_budget(r, scene, &centers, false);
         if centers.is_empty()
             || !streamer.update(
-                r,
-                scene,
-                &centers,
-                std::time::Duration::from_millis(6),
-                self.audio.as_ref(),
-            )
+            r,
+            scene,
+            &centers,
+            std::time::Duration::from_millis(6),
+            self.audio.as_ref(),
+        )
         {
             return;
         }

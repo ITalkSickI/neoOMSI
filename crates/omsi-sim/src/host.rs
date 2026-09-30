@@ -94,6 +94,9 @@ pub struct VehicleHost {
     /// The next buses due at the bus stop a scenery object belongs to (its `[varparent]`),
     /// soonest first, for the `GetArrBus*` callbacks of the stop's departure displays.
     pub arrivals: Vec<Arrival>,
+    /// Route, line and destination requests of the vehicle's HTML pages, taken by the game
+    /// (`VehicleInstance::take_html_requests`).
+    pub html_requests: Vec<crate::htmltex::HtmlRequest>,
 }
 
 /// A bus due at a stop (`GetArrBusLine`, `GetArrBusTerminus`, `GetArrBusTimeDiff`).
@@ -659,7 +662,7 @@ mod tests {
             &script,
             "{trigger:matrix_refresh}\n0 (M.V.STLock)\n0 (M.V.STUnlock)\n0 (M.V.STFilter)\n{end}\n",
         )
-        .unwrap();
+            .unwrap();
         let p = compile(&CompileInput {
             scripts: vec![script],
             ..Default::default()
@@ -688,7 +691,7 @@ mod tests {
             &script,
             "{trigger:collision}\n(L.L.collision_energy) (L.S.coll_energy) + (S.L.collision_energy)\n(L.S.coll_pos_y) -4.70 <\n(L.S.coll_pos_z) 1.10 < &&\n{if}\n(L.L.collision_energy_eng) (L.S.coll_energy) + (S.L.collision_energy_eng)\n{endif}\n{end}\n",
         )
-        .unwrap();
+            .unwrap();
         let vars = dir.join("vars.txt");
         std::fs::write(&vars, "collision_energy\ncollision_energy_eng\n").unwrap();
         let p = compile(&CompileInput { varlists: vec![vars], scripts: vec![script], ..Default::default() });

@@ -49,9 +49,17 @@ impl ApplicationHandler for App {
                     s.resize(r, size.width, size.height);
                 }
             }
-            WindowEvent::Focused(true) => self.window_focused = true,
+            WindowEvent::Focused(true) => {
+                self.window_focused = true;
+                if let Some(ctl) = self.controllers.as_mut() {
+                    ctl.set_focus(true);
+                }
+            }
             WindowEvent::Focused(false) => {
                 self.window_focused = false;
+                if let Some(ctl) = self.controllers.as_mut() {
+                    ctl.set_focus(false);
+                }
                 #[cfg(windows)]
                 {
                     self.vr_cursor_physical = None;
@@ -556,6 +564,7 @@ impl ApplicationHandler for App {
                 // the game controllers: their axes this frame, their buttons' key actions
                 let hwnd = self.window.as_deref().and_then(crate::controllers::window_handle);
                 let ctl = self.controllers.get_or_insert_with(|| crate::controllers::Controllers::new(&self.args.root, hwnd));
+                ctl.set_focus(self.window_focused);
                 ctl.deadzone = self.settings.ctrl_deadzone;
                 ctl.pedal_throttle = self.settings.pedal_throttle;
                 ctl.pedal_brake = self.settings.pedal_brake;
@@ -579,7 +588,8 @@ impl ApplicationHandler for App {
                     on: driving.is_some(),
                     kmh,
                     lateral_accel: driving.and_then(|p| p.vehicle.rigid.as_ref()).map(|r| r.accel_body.x).unwrap_or(0.0),
-                    wheel_bump: driving.and_then(|p| p.vehicle.rigid.as_ref()).map(|r| crate::controllers::front_wheel_bump(r, kmh)).unwrap_or(0.0),
+                    wheel_bump: driving.and_then(|p| p.vehicle.rigid.as_ref()).map(|r| crate::controllers::wheel_contact_bump(r, kmh)).unwrap_or(0.0),
+                    wheel_bump_age: 0.0,
                     vib_amp: driving.and_then(|p| p.vehicle.var("FF_Vib_Amp")).unwrap_or(0.0),
                     vib_period: driving.and_then(|p| p.vehicle.var("FF_Vib_Period")).unwrap_or(0.0),
                     dt,
@@ -630,8 +640,8 @@ impl ApplicationHandler for App {
                     let k = if *fade > 0.0 { (-std::f32::consts::LN_2 / *fade * dt).exp() } else { (-dt / 0.06).exp() };
                     *steer = target + (*steer - target) * k;
                     let (mt, mb) = &mut self.mouse_pedals;
-                    *mt = pedal_t + (*mt - pedal_t) * k;
-                    *mb = pedal_b + (*mb - pedal_b) * k;
+                    *mt = crate::player::mouse_pedal(*mt, pedal_t, k);
+                    *mb = crate::player::mouse_pedal(*mb, pedal_b, k);
                     *fade = (*fade - dt).max(0.0);
                     analog.steering = Some(*steer);
                     // OMSI_TRACE_STEER=<csv>: the mouse steering frame by frame
@@ -1032,6 +1042,9 @@ impl ApplicationHandler for App {
                 *self.profile.entry("humans").or_default() += __t.elapsed().as_secs_f64();
                 self.foot_after_humans();
                 if let (Some(d), Some(p), false) = (self.duty.as_mut(), self.player.as_mut(), self.paused) {
+                    if let Some(stop) = p.html_next_stop.take() {
+                        d.skip_to(stop);
+                    }
                     if let Some((arrival, departure)) = d.update(&mut p.vehicle, self.clock.time) {
                         self.career.stop_served(arrival, departure);
                     }

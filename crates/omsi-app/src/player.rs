@@ -81,6 +81,9 @@ pub(crate) struct Player {
     /// The duty is typed into the IBIS by itself (after Shift+U or `--autostart`): a new
     /// trip of the duty is typed too.
     pub(crate) duty_typed: bool,
+    /// The stop a page asked the duty to go on with (`omsi.setNextStop`), for the game to
+    /// hand to the duty.
+    pub(crate) html_next_stop: Option<usize>,
     /// The IBIS typing looks for its keys on a worker thread (in the window: the trials
     /// would hold a frame up to a second and a half; an offscreen run waits for them).
     pub(crate) ibis_background: bool,
@@ -518,9 +521,11 @@ impl Player {
     /// (#226). Scripts that read `AutoClutch` (the Sprinters' G32) work it themselves.
     pub(crate) fn clutch_for_gate(&mut self, name: &str) {
         let Some(gate) = name.get(..5).filter(|p| p.eq_ignore_ascii_case("kw_s_")).map(|_| &name[5..]) else { return };
+        let gate = gate.strip_suffix("_fest").unwrap_or(gate);
         let is_gate = gate.eq_ignore_ascii_case("r") || gate.eq_ignore_ascii_case("n") || gate.parse::<u32>().is_ok();
         let program = &self.vehicle.ty.program;
-        if !is_gate || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+        let reads_clutch = program.var("Clutch").is_some_and(|v| program.reads(v));
+        if !is_gate || !reads_clutch || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
             return;
         }
         self.vehicle.set_var("Clutch", 1.0);
@@ -765,6 +770,7 @@ impl Player {
     /// Advance a running auto-start, then the IBIS typing; true while the auto-start is
     /// still going.
     pub(crate) fn tick_startup(&mut self, dt: f32) -> bool {
+        self.apply_html_requests();
         self.tick_ibis(dt);
         let Some(mut s) = self.startup.take() else {
             return false;
@@ -917,6 +923,106 @@ impl Player {
         }
     }
 
+    /// What the bus's HTML pages asked of the IBIS (`omsi.setRoute`, `omsi.setLine`,
+    /// `omsi.setDestination`, `omsi.setNextStop`): a route is typed as a driver does (line, route, destination),
+    /// a destination alone is written to the sign.
+    pub(crate) fn apply_html_requests(&mut self) {
+        let requests = self.vehicle.take_html_requests();
+        if requests.is_empty() {
+            return;
+        }
+        let (stops, requests): (Vec<_>, Vec<_>) = requests.into_iter().partition(|r| matches!(r, omsi_sim::htmltex::HtmlRequest::SetNextStop(_)));
+        if let Some(omsi_sim::htmltex::HtmlRequest::SetNextStop(i)) = stops.last() {
+            self.html_next_stop = Some(*i);
+        }
+        if requests.is_empty() {
+            return;
+        }
+        let Some(hof) = self.vehicle.host.hof.clone() else {
+            log::info!("HTML page: the bus has no depot file, {requests:?} ignored");
+            return;
+        };
+        for req in requests {
+            match req {
+                omsi_sim::htmltex::HtmlRequest::SetRoute(i) => self.set_route_from_page(&hof, i),
+                omsi_sim::htmltex::HtmlRequest::SetLine(line) => {
+                    let wanted = line.trim();
+                    let digits: String = wanted.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    let found = hof
+                        .info_trips
+                        .iter()
+                        .position(|t| route_line(t).eq_ignore_ascii_case(wanted))
+                        .or_else(|| hof.info_trips.iter().position(|t| !digits.is_empty() && route_line(t) == digits));
+                    match found {
+                        Some(i) => self.set_route_from_page(&hof, i),
+                        None => log::info!("HTML page: depot file {} has no line '{wanted}'", hof.name),
+                    }
+                }
+                omsi_sim::htmltex::HtmlRequest::SetNextStop(_) => {}
+                omsi_sim::htmltex::HtmlRequest::ClearLine => {
+                    if let Some((mut old, ..)) = self.ibis_typist.take() {
+                        old.abandon(&mut self.vehicle);
+                    }
+                    for n in ["IBIS_LinieKurs", "IBIS_Linie_Complex", "IBIS_Linie_Suffix"] {
+                        self.vehicle.set_var(n, 0.0);
+                    }
+                    self.vehicle.set_var("IBIS_RouteIndex", -1.0);
+                    if let Some(i) = self.vehicle.ty.program.str_var("IBIS_Complex_Line") {
+                        self.vehicle.state.str_vars[i as usize] = "     ".into();
+                    }
+                    if let Some(i) = self.vehicle.ty.program.str_var("SetLineTo") {
+                        self.vehicle.state.str_vars[i as usize] = String::new();
+                    }
+                    log::info!("HTML page: line cleared");
+                }
+                omsi_sim::htmltex::HtmlRequest::SetDestination(ti) => {
+                    let Some(term) = hof.termini.get(ti) else {
+                        log::info!("HTML page: depot file {} has no destination {ti}", hof.name);
+                        continue;
+                    };
+                    let line = {
+                        let l = self.vehicle.host.tt_line.trim().to_string();
+                        if !l.is_empty() {
+                            l
+                        } else {
+                            let c = self.vehicle.str_var("IBIS_Complex_Line").trim().to_string();
+                            if !c.is_empty() {
+                                c
+                            } else {
+                                self.vehicle.var("IBIS_LinieKurs").filter(|n| *n > 0.5).map(|n| format!("{}", n.round() as i64)).unwrap_or_default()
+                            }
+                        }
+                    };
+                    let wanted = if term.texture_id.trim().is_empty() { term.strings.first().cloned().unwrap_or_default() } else { term.texture_id.clone() };
+                    log::info!("HTML page: destination {ti} '{wanted}' on line '{line}'");
+                    if let Some((mut old, ..)) = self.ibis_typist.take() {
+                        old.abandon(&mut self.vehicle);
+                    }
+                    schedule::set_player_destination_directly(&mut self.vehicle, Some(&hof), &line, &wanted);
+                }
+            }
+        }
+    }
+
+    /// Type route `i` of the depot file (`omsi.depot.routes[i]`) into the IBIS.
+    fn set_route_from_page(&mut self, hof: &omsi_vehicle::hof::Hof, i: usize) {
+        let Some(t) = hof.info_trips.get(i) else {
+            log::info!("HTML page: depot file {} has no route {i}", hof.name);
+            return;
+        };
+        let code = omsi_cfg::parse_i32(&t.route);
+        let Some(term) = hof.termini.iter().find(|x| x.code == code) else {
+            log::info!("HTML page: route {i} ({}) leads to destination code {code}, which the depot file lacks", t.name.trim());
+            return;
+        };
+        let first = hof.info_busstop_lists.get(i).and_then(|l| l.first()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let name = first.clone().unwrap_or_default();
+        let wanted = if term.texture_id.trim().is_empty() { term.strings.first().cloned().unwrap_or_default() } else { term.texture_id.clone() };
+        let line = route_line(t);
+        log::info!("HTML page: route {i} '{}' (line '{line}' (file: '{}') to '{wanted}')", t.name.trim(), t.line.trim());
+        self.type_destination(&line, &wanted, first.as_deref(), (0, &name));
+    }
+
     /// The driver's head follows the bus's accelerations a little late, as a body does:
     /// forward when braking, out of a bend, down over a bump (OMSI's head movement).
     /// The driver's head on its neck, as Omsi.exe moves the driver's view (0x7e2110): a mass
@@ -978,7 +1084,12 @@ impl Player {
     /// from a stop stalled the engine unless a clutch pedal was worked.
     pub(crate) fn auto_clutch_bite(&mut self, throttle: f32) {
         let program = &self.vehicle.ty.program;
-        if self.vehicle.host.auto_clutch < 0.5 || program.trigger("kw_s_1").is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+        let has_manual_gate = program.trigger("kw_s_1").is_some() || program.trigger("kw_s_1_fest").is_some();
+        // (only a gearbox that reads the clutch pedal: an automatic whose scripts answer to
+        // the number keys as well had its clutch pressed at every stop, and some went to
+        // neutral when it stood, #234)
+        let reads_clutch = program.var("Clutch").is_some_and(|v| program.reads(v));
+        if self.vehicle.host.auto_clutch < 0.5 || !has_manual_gate || !reads_clutch || program.reads_sys(omsi_script::SysVar::AutoClutch) {
             return;
         }
         let gear = self.vehicle.var("antrieb_getr_aktugang").or_else(|| self.vehicle.var("antrieb_getr_gang")).unwrap_or(0.0);
@@ -986,7 +1097,9 @@ impl Player {
         if gear.abs() > 0.5 && kmh < 12.0 {
             // it bites as the throttle goes down and only as far as the engine keeps its
             // revs (a clutch let go at once under full throttle stalled it all the same)
-            let n = self.vehicle.var("engine_n").unwrap_or(0.0);
+            // (a script that keeps its revs under another name: by the throttle alone - taken
+            // as 0 revs the clutch never bit and the bus stood with it down, #260)
+            let n = self.vehicle.var("engine_n").unwrap_or(2000.0);
             let bite = ((throttle - 0.05) / 0.45).clamp(0.0, 1.0).min(((n - 850.0) / 700.0).clamp(0.0, 1.0));
             let bite = bite * bite * (3.0 - 2.0 * bite);
             let want = (1.0 - bite) * (1.0 - kmh / 12.0);
@@ -1141,6 +1254,18 @@ impl Player {
         pick_in(&self.vehicle, origin, dir, spread)
     }
 
+    /// The page (`[htmltexture]`) under a ray and where it lands on it: the script texture
+    /// index and `u`/`v` from 0 to 1 across the page, `v` down from the top.
+    pub(crate) fn html_hit(&self, origin: DVec3, dir: Vec3) -> Option<(usize, f32, f32)> {
+        pick_html_in(&self.vehicle, origin, dir)
+    }
+
+    /// A press, release or move on a page. What the page does with it (`omsi.setVar`,
+    /// `omsi.trigger`) reaches the bus at once.
+    pub(crate) fn html_pointer(&mut self, page: usize, u: f32, v: f32, kind: omsi_sim::htmltex::PointerKind) -> bool {
+        self.vehicle.html_pointer(page, u, v, kind)
+    }
+
     /// The same forgiving pick as `pick`, for the coupled sections of an articulated bus.
     pub(crate) fn pick_trailer(&self, origin: DVec3, dir: Vec3, spread: f32) -> Option<(usize, usize)> {
         pick_trailer_in(&self.vehicle, origin, dir, spread)
@@ -1150,6 +1275,20 @@ impl Player {
     /// This runs when the mouse moves, not for every headset frame.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn surface_hit(&self, origin: DVec3, dir: Vec3) -> Option<DVec3> {
+        let (mut nearest, nearest_control) = self.nearest_hits(origin, dir);
+        if nearest_control.is_finite() { nearest = nearest_control; }
+        (nearest.is_finite() && nearest < 8.0)
+            .then(|| origin + (dir * nearest).as_dvec3())
+    }
+
+    /// How far along a ray the bus (any visible mesh, trailers too) is.
+    pub(crate) fn body_hit(&self, origin: DVec3, dir: Vec3) -> Option<f32> {
+        Some(self.nearest_hits(origin, dir).0).filter(|t| t.is_finite())
+    }
+
+    /// The nearest hit of a ray on the bus, and the nearest on a mesh with a mouse event
+    /// (infinite: none).
+    fn nearest_hits(&self, origin: DVec3, dir: Vec3) -> (f32, f32) {
         let mut nearest = f32::INFINITY;
         let mut nearest_control = f32::INFINITY;
         let vehicle = &self.vehicle;
@@ -1181,9 +1320,7 @@ impl Player {
                 }
             }
         }
-        if nearest_control.is_finite() { nearest = nearest_control; }
-        (nearest.is_finite() && nearest < 8.0)
-            .then(|| origin + (dir * nearest).as_dvec3())
+        (nearest, nearest_control)
     }
 
     /// The part of the bus under a ray, switch or not: `(name, operable)`. Without this the
@@ -1436,10 +1573,10 @@ impl Player {
         let c = def.camera_outside_center;
         let centre = self.vehicle.position
             + self
-                .vehicle
-                .body_rotation()
-                .transform_point3(Vec3::new(c[0], c[1], c[2]))
-                .as_dvec3();
+            .vehicle
+            .body_rotation()
+            .transform_point3(Vec3::new(c[0], c[1], c[2]))
+            .as_dvec3();
         let want = dist.clamp(ORBIT_MIN, ORBIT_MAX);
         let back = -cam.forward().as_dvec3().normalize_or_zero();
         if back.length_squared() < 0.5 {
@@ -1540,10 +1677,10 @@ impl Player {
                 let c = def.camera_outside_center;
                 let center = self.vehicle.position
                     + self
-                        .vehicle
-                        .body_rotation()
-                        .transform_point3(Vec3::new(c[0], c[1], c[2]))
-                        .as_dvec3();
+                    .vehicle
+                    .body_rotation()
+                    .transform_point3(Vec3::new(c[0], c[1], c[2]))
+                    .as_dvec3();
                 let mut cam = Camera {
                     position: center,
                     yaw: self.vehicle.heading as f32 - 35.0 + look.0,
@@ -1695,6 +1832,50 @@ pub(crate) fn pick_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: V
     None
 }
 
+/// The page of an `[htmltexture]` a ray lands on: its script texture index and the place on it
+/// (`u`/`v` from 0 to 1, `v` down from the top), for the nearest such surface. The nearest
+/// triangle of a mesh decides: a bezel of the same mesh in front of the screen takes the click
+/// away from it.
+pub(crate) fn pick_html_in(vehicle: &omsi_sim::VehicleInstance, origin: DVec3, dir: Vec3) -> Option<(usize, f32, f32)> {
+    if vehicle.html_textures.is_empty() {
+        return None;
+    }
+    let pages: Vec<usize> = vehicle.html_textures.iter().map(|t| t.script_index).collect();
+    let o = (origin - vehicle.position).as_vec3();
+    let mut best: Option<(f32, usize, f32, f32)> = None;
+    for (i, vm) in vehicle.ty.meshes.iter().enumerate() {
+        if !vehicle.mesh_props[i].visible {
+            continue;
+        }
+        let def = &vehicle.ty.model.meshes[vm.def_index];
+        let shows_page = |n: Option<i32>| n.is_some_and(|n| pages.contains(&(n.max(0) as usize)));
+        if !def.materials.iter().any(|m| shows_page(m.use_script_texture)) {
+            continue;
+        }
+        let xf = vehicle.mesh_local_transform(i);
+        if !ray_may_hit(&vehicle.ty, i, &xf, o, dir, 0.0) {
+            continue;
+        }
+        let Some(hit) = omsi_geometry::ray_mesh_hit(o, dir, &vm.data, &xf) else {
+            continue;
+        };
+        // the page the hit material slot shows (a slot that shows none is in the way)
+        let slot = vm.data.slot_of(hit.index) as usize;
+        let page = def
+            .materials
+            .iter()
+            .filter(|m| omsi_sim::vehicle::override_slot(&vm.materials, m) == Some(slot))
+            .find_map(|m| m.use_script_texture)
+            .map(|n| n.max(0) as usize)
+            .filter(|n| pages.contains(n));
+        let Some(page) = page else { continue };
+        if best.is_none_or(|b| hit.t < b.0) {
+            best = Some((hit.t, page, hit.uv.x.clamp(0.0, 1.0), hit.uv.y.clamp(0.0, 1.0)));
+        }
+    }
+    best.map(|(_, page, u, v)| (page, u, v))
+}
+
 /// The same forgiving pick as `pick`, but for the coupled sections of an articulated
 /// bus.  The old picker only searched the lead vehicle, so GN92's rear door opener and
 /// every other button in the second section could never receive a click.
@@ -1767,9 +1948,37 @@ pub(crate) fn mouse_steering(cursor_x: f32, width: f32, kmh: f32) -> f32 {
     x / (kmh / 10.0).max(1.0)
 }
 
+/// A mouse pedal following the cursor, `k` of the way left behind each frame. The last bit
+/// is snapped: in f32 the easing stops one step short of the target (1 - 6e-8 at 60 fps), and
+/// the stock gearbox scripts kick down only at a throttle of exactly 1 - the cursor at the top
+/// edge never gave it.
+pub(crate) fn mouse_pedal(current: f32, target: f32, k: f32) -> f32 {
+    let v = target + (current - target) * k;
+    if (v - target).abs() < 1e-4 { target } else { v }
+}
+
 #[cfg(test)]
 mod mouse_tests {
-    use super::mouse_steering;
+    use super::{mouse_pedal, mouse_steering};
+
+    #[test]
+    fn the_mouse_pedal_reaches_the_floor() {
+        for fps in [30.0f32, 60.0, 144.0] {
+            let k = (-(1.0 / fps) / 0.06f32).exp();
+            let (mut t, mut b) = (0.0, 1.0);
+            for _ in 0..(fps as usize) {
+                t = mouse_pedal(t, 1.0, k);
+                b = mouse_pedal(b, 0.0, k);
+            }
+            // exactly: the kickdown compares the throttle with 1
+            assert_eq!(t, 1.0, "{fps} fps");
+            assert_eq!(b, 0.0, "{fps} fps");
+        }
+        // on the way it still eases
+        let k = (-(1.0 / 60.0f32) / 0.06).exp();
+        let t = mouse_pedal(0.0, 1.0, k);
+        assert!(t > 0.2 && t < 0.3, "{t}");
+    }
 
     #[test]
     fn the_mouse_steers_less_the_faster_the_bus() {
@@ -1791,5 +2000,17 @@ mod mouse_tests {
             assert!((s - last).abs() < 0.001, "step at {px}");
             last = s;
         }
+    }
+}
+
+/// The line of a depot route: the file's line column, or - when that is empty or a placeholder
+/// such as "XXX" - the line of its code (`code` = line x 100 + route).
+fn route_line(t: &omsi_vehicle::hof::InfoTrip) -> String {
+    let raw = t.line.trim();
+    let code = omsi_cfg::parse_i32(&t.code);
+    if (raw.is_empty() || raw.chars().all(|c| c == 'x' || c == 'X')) && code >= 100 {
+        (code / 100).to_string()
+    } else {
+        raw.to_string()
     }
 }
