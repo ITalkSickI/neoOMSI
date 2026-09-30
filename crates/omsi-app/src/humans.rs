@@ -1692,6 +1692,8 @@ pub struct Person {
     /// passing through others.
     stuck: f32,
     ghost: f32,
+    /// Seconds a standing vehicle has stood in the way (see the crowd step).
+    car_wait: f32,
     /// Seconds left going round something in the way off the pavement's line (a lamp post
     /// on the path): the corridor does not pull them back into it meanwhile.
     detour: f32,
@@ -2912,6 +2914,7 @@ impl Humans {
             age,
             stuck: 0.0,
             ghost: 0.0,
+            car_wait: 0.0,
             detour: 0.0,
             detour_side: 0.0,
             blocked: 0.0,
@@ -5096,6 +5099,40 @@ impl Humans {
         // shoves anybody out of a vehicle's box
         if omsi_cfg::env::var_os("OMSI_CHECK_OVERLAP").is_some() {
             self.check_overlaps(world, traffic, player);
+        }
+        // Somebody on foot whose way a standing vehicle blocks - a car that has pulled up on
+        // the crossing, a bus in the yard - waits for it instead of walking into its side
+        // (they pressed against it, slid along it and were drawn back by their path into
+        // it again, over and over); after a while they go round it.
+        for i in 0..self.people.len() {
+            let p = &self.people[i];
+            if remove.contains(&i) || p.puppet.is_some() || p.remote || !matches!(p.place, Place::Ground) {
+                continue;
+            }
+            let want = wants[i].vel;
+            let speed = want.length();
+            if speed < 0.2 {
+                self.people[i].car_wait = 0.0;
+                continue;
+            }
+            let ahead = p.position.truncate() + want / speed * 0.9;
+            let in_way = blocks.iter().any(|b| b.vel.length() < 0.5 && b.near(ahead, BODY_OUTSIDE + 0.15) && {
+                let (q, inside) = b.closest(ahead);
+                inside || (ahead - q).length() < BODY_OUTSIDE + 0.15
+            });
+            if !in_way {
+                self.people[i].car_wait = 0.0;
+                continue;
+            }
+            self.people[i].car_wait += dt;
+            if self.people[i].car_wait > 8.0 {
+                // round it: off the path's corridor for a few seconds, the vehicle's box
+                // steering them past its end
+                self.people[i].detour = self.people[i].detour.max(4.0);
+                self.people[i].car_wait = 0.0;
+            } else if self.people[i].detour <= 0.0 {
+                wants[i].vel = DVec2::ZERO;
+            }
         }
         // the crowd
         let mut walkers: Vec<Walker> = Vec::with_capacity(self.people.len());
