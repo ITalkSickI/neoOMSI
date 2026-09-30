@@ -447,6 +447,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         started: Instant::now(),
         total_frames: 0,
         mirror_budget: 1.0,
+        mirrors_seen: 2,
         mirror_turn: 0,
         hover_key: None,
         view,
