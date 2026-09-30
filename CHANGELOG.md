@@ -4,6 +4,16 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.400 - 2026-09-30
+
+### Performance
+- Macs and phones: a fixed render scale keeps to the same pixel budget as the automatic
+  one on high-resolution screens, the navigator draws without multisampling, the picture's
+  depth is not written back where nothing reads it, and two frames are in flight so the
+  graphics chip works while the next frame is prepared (M1 Pro, Thüringer Wald: 20 to 57
+  fps; one frame more of input delay with V-sync) (#385, by hannsadrian).
+- Linux builds link with lld (#384, by no-felix).
+
 ## 0.1.394 - 2026-09-30
 
 ### Graphics
