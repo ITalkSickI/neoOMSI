@@ -1246,8 +1246,19 @@ impl DriveGrid {
 /// covered the terrain is not drawn (the original cuts the terrain polygons instead) and the
 /// surface height is used for ground queries.
 /// How far below the ground a surface may lie and still take the ground away: enough for a
+/// Take the ground away under every road surface lying about its height (`OMSI_ROAD_CUT=1`).
+/// Omsi.exe does not: the ground goes only where the map says (`[terrainhole]` meshes, the
+/// splines' `[terrainholeprofile]`, a tile's `.hole` file), and a road lying on it wins by
+/// its depth bias. Cut by a raster of 1.5-3 m texels, the ground went a metre or two past
+/// the road's edge too, and the sky showed through along kerbs and car parks.
+pub fn road_cut() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OMSI_ROAD_CUT").is_some())
+}
+
+/// How far below the ground a surface may lie and still take the ground away: enough for a
 /// sunken road or an underpass, not enough for a junction plate left at height zero.
-pub const DEEP_CUT: f32 = 4.0;
+const DEEP_CUT: f32 = 4.0;
 
 pub struct TileSurface {
     pub size: usize,
@@ -1662,7 +1673,7 @@ impl TileSurface {
     /// it), and cutting the ground over it opened a band you could see the sky through.
     /// A plate a mapper left thirty metres down takes nothing either.
     pub fn cuts(&self, k: usize, t: f32, flush: f32) -> bool {
-        if !self.covered(k) || self.low_height(k) - flush > t {
+        if !road_cut() || !self.covered(k) || self.low_height(k) - flush > t {
             return false;
         }
         if self.road_covered(k) && t <= self.road_height(k) + DEEP_CUT {
@@ -1685,6 +1696,8 @@ impl TileSurface {
     }
 
     /// Is any texel actually cut? (`mask_image` with the same arguments would do something.)
+    /// (Only the map's own holes - `[terrainhole]` meshes, the splines' `[terrainholeprofile]`
+    /// - unless `road_cut`.)
     pub fn cuts_anything(&self, terrain_at: &dyn Fn(f32, f32) -> f32, flush: f32) -> bool {
         let n = self.size;
         let cell = tile_size() as f32 / n as f32;
