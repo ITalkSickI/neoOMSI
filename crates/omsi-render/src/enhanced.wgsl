@@ -424,9 +424,10 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         // the pane instead of leaving a flat pale surface at normal incidence.
         rough = 0.04;
         // the pane's [matl_envmap] factor says how much it mirrors (its alpha is its
-        // transparency, never a mask): 0.4 on the Scania's panes, which the fixed 0.08
-        // left looking like empty frames
-        f0 = vec3<f32>(clamp(0.06 + 0.2 * min(material.params2.y, 1.0), 0.08, 0.26));
+        // transparency, never a mask): from glass's own 4 % up to 12 % for a factor of 1
+        // (0.4 on the Scania's panes). Up to 26 % as before, every window of every bus
+        // was a mirror - far more than the original's panes reflect (issue #176).
+        f0 = vec3<f32>(clamp(0.04 + 0.08 * min(material.params2.y, 1.0), 0.04, 0.12));
     } else if (reflective_env) {
         // Paint reflects its few per cent through a smooth clear coat; much more than a few
         // per cent is polished metal - but only where the model says so with a mask of its

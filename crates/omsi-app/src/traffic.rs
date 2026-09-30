@@ -6395,9 +6395,12 @@ impl Traffic {
                 renderer.set_params(scene, *inst, &[], visible, &[]);
             }
         }
-        // script textures of far cars as stand-ins (a few cars a frame change over)
-        let mut swapped: Vec<usize> = Vec::new();
-        let mut changes = 0;
+        // A far car's script textures (its destination sign) stay as they are drawn: OMSI
+        // shows them at any distance its model level has them. (They were stood in for by
+        // their mean colour beyond 50 m, and every timetable bus coming up the street had
+        // a blank sign until it was almost there.) What a far car's scripts redraw goes to
+        // the GPU at most every half second, a slice of the cars per frame.
+        let tick = (self.time as f64 * 2.0) as u64;
         for c in &mut self.cars {
             // out of sight (`tick` decided): hidden once, then left alone until it comes
             // into view again - its many per-mesh updates were a third of this stage
@@ -6417,24 +6420,11 @@ impl Traffic {
             }
             c.render.hidden = false;
             if let Some(cam) = self.camera {
-                if !c.render.script_textures.is_empty() && changes < 8 {
-                    let d = (c.vehicle.position - cam).length();
-                    let far = if c.render.displays_far {
-                        d > crate::scene::DISPLAYS_NEAR
-                    } else {
-                        d > crate::scene::DISPLAYS_FAR
-                    };
-                    if far != c.render.displays_far {
-                        crate::scene::swap_vehicle_displays(
-                            renderer,
-                            scene,
-                            &mut c.vehicle,
-                            &mut c.render,
-                            far,
-                            &mut swapped,
-                        );
-                        changes += 1;
-                    }
+                let far = (c.vehicle.position - cam).length() > crate::scene::DISPLAYS_FAR;
+                let due = c.render.display_tick != tick;
+                c.render.displays_far = far && !due;
+                if far && due {
+                    c.render.display_tick = tick;
                 }
             }
             crate::scene::sync_vehicle_textures(renderer, scene, &mut c.vehicle, &c.render);
@@ -6519,7 +6509,6 @@ impl Traffic {
                 }
             }
         }
-        renderer.rebind_textures(scene, &swapped);
     }
 }
 

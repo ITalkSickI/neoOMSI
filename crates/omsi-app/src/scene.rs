@@ -6201,14 +6201,16 @@ impl World {
                                         .cloned()
                                         .unwrap_or_default();
                                     let (w, h) = (tt.width.max(1) as u32, tt.height.max(1) as u32);
+                                    let alpha = text_alpha(o3d_mats, slot, overrides);
                                     let key = format!(
-                                        "{}|{}|{}x{}|{}|{:?}",
+                                        "{}|{}|{}x{}|{}|{:?}|{:?}",
                                         tt.font.to_ascii_lowercase(),
                                         text,
                                         w,
                                         h,
                                         tt.full_color,
-                                        tt.color
+                                        tt.color,
+                                        alpha
                                     );
                                     if let Some(e) = gpu.text_textures.get_mut(&key) {
                                         e.2 += 1;
@@ -6253,7 +6255,7 @@ impl World {
                                     let mat = renderer.add_material(
                                         scene,
                                         Some(tex),
-                                        AlphaMode::Blend,
+                                        alpha,
                                         [1.0; 4],
                                         true,
                                     );
@@ -6827,7 +6829,8 @@ impl World {
                 };
                 let text = tt.variable.trim().parse::<usize>().ok().and_then(|k| strings.get(k)).cloned().unwrap_or_default();
                 let (w, h) = (tt.width.max(1) as u32, tt.height.max(1) as u32);
-                let key = format!("{}|{}|{}x{}|{}|{:?}", tt.font.to_ascii_lowercase(), text, w, h, tt.full_color, tt.color);
+                let alpha = text_alpha(o3d_mats, slot, overrides);
+                let key = format!("{}|{}|{}x{}|{}|{:?}|{:?}", tt.font.to_ascii_lowercase(), text, w, h, tt.full_color, tt.color, alpha);
                 if let Some(e) = gpu.text_textures.get_mut(&key) {
                     e.2 += 1;
                     let mat = e.1;
@@ -6841,7 +6844,7 @@ impl World {
                     None => vec![0u8; (w * h * 4) as usize],
                 };
                 let tex = gpu.add_image(renderer, scene, &Image { width: w, height: h, rgba, has_alpha: true }, false);
-                let mat = renderer.add_material(scene, Some(tex), AlphaMode::Blend, [1.0; 4], true);
+                let mat = renderer.add_material(scene, Some(tex), alpha, [1.0; 4], true);
                 let mat = gpu.material(renderer, scene, mat);
                 gpu.text_textures.insert(key.clone(), (tex, mat, 1));
                 tg.texts.push(key);
@@ -8586,7 +8589,7 @@ pub fn sync_vehicle_textures(
     }
     let mut rebound = Vec::new();
     for (i, st) in vehicle.host.script_textures.iter_mut().enumerate() {
-        // (far away the texture is a stand-in: the picture goes up when the vehicle is near)
+        // (far away what the scripts redraw goes up every half second: `displays_far`)
         if st.dirty && !st.locked && !render.displays_far {
             if let Some(Some(tex)) = render.script_textures.get(i) {
                 let img = Image {
@@ -8609,62 +8612,9 @@ pub fn sync_vehicle_textures(
     renderer.rebind_textures(scene, &rebound);
 }
 
-/// Distances (m) beyond which a vehicle's script textures are stood in for, and within
-/// which they come back: a 30 cm display 50 m away is five pixels wide.
+/// Distance (m) beyond which what a vehicle's scripts redraw is uploaded only every half
+/// second (the picture itself stays: see `Traffic::sync`).
 pub const DISPLAYS_FAR: f64 = 50.0;
-pub const DISPLAYS_NEAR: f64 = 40.0;
-
-/// Put a vehicle's script textures into stand-in (`far`) or full form; the textures swapped
-/// go to `swapped` (their materials need `Renderer::rebind_textures`).
-pub fn swap_vehicle_displays(
-    renderer: &Renderer,
-    scene: &mut Scene,
-    vehicle: &mut omsi_sim::VehicleInstance,
-    render: &mut VehicleRender,
-    far: bool,
-    swapped: &mut Vec<TextureId>,
-) {
-    if render.displays_far == far {
-        return;
-    }
-    for (i, st) in vehicle.host.script_textures.iter_mut().enumerate() {
-        let Some(Some(tex)) = render.script_textures.get(i) else {
-            continue;
-        };
-        let data = if far {
-            // the mean colour of a sparse sample of the picture
-            let (mut sum, mut n) = ([0u64; 4], 0u64);
-            for px in st.rgba.chunks_exact(4).step_by(61) {
-                for k in 0..4 {
-                    sum[k] += px[k] as u64;
-                }
-                n += 1;
-            }
-            let mean: Vec<u8> = sum.iter().map(|v| (v / n.max(1)) as u8).collect();
-            TextureData {
-                width: 1,
-                height: 1,
-                format: omsi_texture::PixelFormat::Rgba8,
-                levels: vec![mean],
-                has_alpha: true,
-                gpu_mips: false,
-            }
-        } else {
-            st.dirty = false;
-            TextureData {
-                width: st.width,
-                height: st.height,
-                format: omsi_texture::PixelFormat::Rgba8,
-                levels: vec![st.rgba.clone()],
-                has_alpha: true,
-                gpu_mips: st.mipmaps,
-            }
-        };
-        renderer.replace_texture(scene, *tex, &data);
-        swapped.push(*tex);
-    }
-    render.displays_far = far;
-}
 
 /// A texture name that stands for "no texture": exporters write `null.bmp` into slots
 /// that have none (the SD202's IBIS key click spots). The slot shows its material colour;
@@ -8867,6 +8817,17 @@ fn alpha_mode(a: i32) -> AlphaMode {
     }
 }
 
+/// How a `[texttexture]` shows on its slot: alpha tested where the slot's `[matl_alpha]` is 1
+/// (the stock route helpers, `routearrows_busstop.sco`: blended, the empty part of the text
+/// wrote depth and cut away whatever was drawn behind it later - a bus beside the stop lost
+/// half its roof), blended otherwise.
+fn text_alpha(materials: &[omsi_o3d::Material], slot: usize, overrides: &[MaterialDef]) -> AlphaMode {
+    match material_alpha(materials, slot, overrides) {
+        AlphaMode::Test => AlphaMode::Test,
+        _ => AlphaMode::Blend,
+    }
+}
+
 /// Identify a solid vehicle body material that should participate in the depth buffer.
 /// Some bus packs put either `[matl_alpha] 2` or `[matl_noZcheck]` on a complete body mesh.
 /// The decision must not depend on one creator's language or on a particular bus name:
@@ -8978,9 +8939,11 @@ pub struct VehicleRender {
     /// `script_textures` belong to the vehicle this part is coupled to (`[scriptshare]`):
     /// they are not this render's to give back.
     pub shared_script: bool,
-    /// The script textures (cockpit and passenger displays, 1024×512 pictures for a C2) are
-    /// stood in for by a texel of their mean colour while the vehicle is far from the camera.
+    /// The script textures (cockpit and passenger displays, 1024×512 pictures for a C2) wait
+    /// with their upload this frame: the vehicle is far and it is not its half second.
     pub displays_far: bool,
+    /// The half second a far vehicle's displays were last uploaded in.
+    pub display_tick: u64,
     /// `[smoothskin]` meshes drawn from a copy of their own (the player's articulated bus's
     /// bellows): (mesh index, the copy, the bone transforms it was last shaped for).
     pub skinned: Vec<(usize, MeshId, Vec<Mat4>)>,
@@ -10291,6 +10254,7 @@ impl World {
             own_materials,
             set: key,
             displays_far: false,
+            display_tick: 0,
             skinned: Vec::new(),
             hidden: false,
             interior_lamps: std::cell::Cell::new(None),

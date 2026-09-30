@@ -1526,7 +1526,7 @@ impl ApplicationHandler for App {
                         // OMSI 2's dynamic route arrows over the junctions ahead
                         if nav.arrows {
                             if let Some(w) = self.world.as_ref() {
-                                let spots = nav.arrow_spots(self.traffic.as_ref().map(|t| &t.net), 350.0);
+                                let spots = nav.arrow_spots(self.traffic.as_ref().map(|t| &t.net), 350.0, &|id| w.object_positions.lock().get(&id).map(|p| (p.0, p.1[0])));
                                 self.route_arrows.tick(dt, w, r, scene, &spots);
                             }
                         }
