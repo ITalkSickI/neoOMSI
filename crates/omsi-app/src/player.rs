@@ -1120,6 +1120,12 @@ impl Player {
         self.axes.lock_curvature = self.vehicle.ty.def.inv_min_turn_radius;
         self.axes.update(dt);
         let a = self.analog;
+        // a throttle pedal takes off a brake the keys hold (`pedal_hold`), as the throttle
+        // key does: a brake tapped on the keys or a wheel's button stayed on under the
+        // pedal and the bus was driven against its brakes (#377)
+        if a.throttle.is_some_and(|t| t > 0.05) {
+            self.axes.brake = 0.0;
+        }
         self.auto_clutch_bite(a.throttle.unwrap_or(0.0).max(self.axes.throttle));
         self.vehicle.set_controls(omsi_sim::Controls {
             throttle: a.throttle.unwrap_or(self.axes.throttle).max(self.axes.throttle),

@@ -8587,13 +8587,12 @@ impl World {
                 continue;
             }
             let dist = (o.pos - center).length();
-            // text textures from the script's strings, when it asks for them (and once at first)
+            // text textures from the script's strings whenever they change (`update` leaves
+            // an unchanged one alone): read only on `Refresh_Strings`, a board whose string
+            // was still empty at its first frame stayed blank for good (#367)
             if !o.texts.is_empty() {
-                let refresh = o.inst.take_refresh_strings();
+                let _ = o.inst.take_refresh_strings();
                 for (tex, st) in o.texts.iter_mut() {
-                    if !refresh && st.last_text.is_some() {
-                        continue;
-                    }
                     let text = o.inst.str_var(st.def.variable.trim()).to_string();
                     if st.update(&text) {
                         let (w, h) = (st.def.width.max(1) as u32, st.def.height.max(1) as u32);

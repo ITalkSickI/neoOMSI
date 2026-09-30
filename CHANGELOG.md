@@ -4,6 +4,40 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.402 - 2026-09-30
+
+### Graphics
+- Rain on the windows: drops no longer run down in lanes of wavy lines all at once. Now and
+  then a single drop breaks loose, slides a few centimetres to a hand's width in jerks,
+  nearly straight with a little drift, and stops again - each at its own moment.
+
+### Vehicles (compared with Omsi.exe)
+- A `[matl_change]` with several `[matl_item]`s shows item n at value n, as Omsi.exe does:
+  only the first was kept and shown at 1, so e.g. the MAN New Lion's City's door buttons
+  (2 = lit while the door is open) stayed dark (#352).
+- `[animparent]` hangs a mesh on the last mesh before it that carries the name, as Omsi.exe
+  resolves it while reading: door variants reusing their arms' names moved the later
+  variant's leaves with the first one's arm (Solaris Urbino III "Bode new", #348).
+- Station displays and other scenery text show a string that arrives after their first
+  frame (they were only redrawn on `Refresh_Strings`, #367).
+
+### Driving
+- A throttle pedal takes off a brake the keyboard holds, as the throttle key does: the
+  bus was driven against its brakes (#377).
+
+### Traffic
+- Cars change only onto lanes open to their own traffic group: trucks no longer take the
+  cycle paths beside a road (#327); trucks keep to the speed limit (up to 80-90 km/h, it was
+  38-47 on every road), bicycles ride at 20-28 km/h.
+- In multiplayer the host has traffic round itself again (#342).
+
+### Phones and crash reports
+- Phones and OpenGL leave out the Enhanced graphics' pipelines: they are never drawn there,
+  and compiling the ray-marched clouds' sky killed Mali and Adreno drivers before the first
+  frame (#364, #333, #316, #371).
+- A crash report takes its title from the run itself: an error before the game started, or
+  one the game got over, titled reports of games that died much later (#381, #331).
+
 ## 0.1.400 - 2026-09-30
 
 ### Performance
