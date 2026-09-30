@@ -460,8 +460,8 @@ pub struct DormantCar {
 const MAP_POPULATION_FACTOR: f32 = 8.0;
 
 fn street_lane_weight(l: &omsi_sim::traffic::Lane) -> Option<f64> {
-    (l.kind == LaneKind::Street && !l.no_cars && l.density > 0.001 && l.length() >= 8.0)
-        .then(|| l.length() as f64 * l.density.clamp(0.05, 4.0) as f64)
+    (l.kind == LaneKind::Street && !l.no_cars && (l.density > 0.0 || l.pool_densities.iter().any(|(_, d)| *d > 0.0)) && l.length() >= 8.0)
+        .then(|| l.length() as f64 * l.pool_densities.iter().map(|(_, d)| *d).fold(l.density, f32::max).clamp(0.05, 4.0) as f64)
 }
 
 pub struct Traffic {
@@ -486,6 +486,7 @@ pub struct Traffic {
     types: Vec<(Arc<VehicleType>, f32, LaneKind, usize)>,
     /// The random traffic groups: name, `unsched_trafficdens.txt` factor and day curves.
     groups: Vec<omsi_map::ailists::UnschedGroup>,
+    pool_ids: Vec<(usize, bool)>,
     /// The map has an `unsched_trafficdens.txt` (else the global.cfg curve applies).
     group_curves: bool,
     pub cars: Vec<AiCar>,
@@ -824,6 +825,7 @@ impl Traffic {
         net.link(1.5);
         let mut types = Vec::new();
         let mut groups: Vec<omsi_map::ailists::UnschedGroup> = Vec::new();
+        let mut pool_ids = Vec::new();
         // `unsched_trafficdens.txt`: per random group a factor and its density over the day
         // (by day of the week); the global.cfg curve is the fallback of maps without it
         let dens: Vec<omsi_map::ailists::UnschedGroup> =
@@ -863,19 +865,12 @@ impl Traffic {
                         .any(|v| v.file.to_ascii_lowercase().ends_with(".zug"))
             }) {
                 let lname = g.name.trim().to_ascii_lowercase();
-                if let Some(names) = &unscheduled {
-                    match names.iter().find(|n| n.0 == lname) {
-                        None => continue,
-                        Some((_, 0)) if !all_groups => {
-                            log::info!(
-                                "random traffic group {} is off by default (unsched_vehgroups.txt)",
-                                g.name
-                            );
-                            continue;
-                        }
-                        _ => {}
-                    }
-                }
+                let pool = if let Some(names) = &unscheduled {
+                    let Some((index, (_, class))) = names.iter().enumerate().find(|(_, n)| n.0 == lname) else { continue };
+                    (index, *class != 0 || all_groups)
+                } else { (groups.len(), true) };
+                // Disabled defaults still allow explicit positive per-path pool rules.
+                pool_ids.push(pool);
                 let gi = groups.len();
                 groups.push(
                     dens.iter()
@@ -1056,6 +1051,7 @@ impl Traffic {
             lanes_generation: 0,
             types,
             groups,
+            pool_ids,
             group_curves,
             cars: Vec::new(),
             dormant: Vec::new(),
@@ -1279,7 +1275,7 @@ impl Traffic {
         (groups.iter().map(|&g| self.group_density(g)).sum::<f32>() / factors).clamp(0.0, 2.0)
     }
 
-    fn pick_type(&mut self, kind: LaneKind) -> Option<Arc<VehicleType>> {
+    fn pick_type(&mut self, kind: LaneKind, lane: usize) -> Option<Arc<VehicleType>> {
         // a vehicle's share: its weight within its group times what the group makes now
         let group_weight: Vec<f32> = (0..self.groups.len())
             .map(|g| {
@@ -1293,7 +1289,8 @@ impl Traffic {
         let dens: Vec<f32> = (0..self.groups.len())
             .map(|g| {
                 if kind == LaneKind::Street {
-                    self.group_density(g)
+                    let (pool, enabled) = self.pool_ids[g];
+                    self.group_density(g) * self.net.lanes[lane].pool_density(pool, enabled)
                 } else {
                     1.0
                 }
@@ -1866,7 +1863,7 @@ impl Traffic {
                 // lanes the map keeps clear of cars, and those whose [rule] trafficdensity is
                 // zero, are not spawned on at all; a lower density makes a lane that much less
                 // likely to be picked
-                .filter(|(_, l)| !l.no_cars && l.density > 0.001)
+                .filter(|(_, l)| !l.no_cars && (l.density > 0.0 || l.pool_densities.iter().any(|(_, d)| *d > 0.0)))
                 // nor, where there are others, lanes that end the network just ahead (the car
                 // would only drive into the end and wait there to be taken away)
                 .filter(|(i, _)| {
@@ -1882,7 +1879,7 @@ impl Traffic {
                 // as many cars on a lane as metres of it (times its density): counted per
                 // lane, the many short lanes of a junction drew the cars into the town's
                 // tangles and left the long roads between them empty
-                .map(|(i, l)| (i, l.length() * l.density.clamp(0.05, 4.0)))
+                .map(|(i, l)| (i, l.length() * l.pool_densities.iter().map(|(_, d)| *d).fold(l.density, f32::max).clamp(0.05, 4.0)))
                 .collect::<Vec<(usize, f32)>>()
         };
         let mut candidates = pick(true);
@@ -1971,8 +1968,8 @@ impl Traffic {
             {
                 continue; // not into a car parked in the lane
             }
-            let Some(ty) = self.pick_type(kind) else {
-                break;
+            let Some(ty) = self.pick_type(kind, lane) else {
+                continue;
             };
             // (nor onto the rear section of an articulated bus, nor the player's bus)
             if kind != LaneKind::Air && !self.spawn_clear(&ty, p, heading) {
@@ -2011,7 +2008,10 @@ impl Traffic {
                         .copied()
                         .filter(|&n| {
                             let nl = &self.net.lanes[n];
-                            nl.kind == d.kind && !nl.no_cars && nl.density > 0.001
+                            nl.kind == d.kind && !nl.no_cars && self.types.iter()
+                                .find(|t| Arc::ptr_eq(&t.0, &d.ty))
+                                .map(|t| { let (pool, enabled) = self.pool_ids[t.3]; nl.pool_density(pool, enabled) })
+                                .unwrap_or(nl.density) > 0.0
                         })
                         .collect();
                     if options.is_empty() {
@@ -2115,8 +2115,8 @@ impl Traffic {
             let x = self.rand_f() as f32 * acc;
             let lane = outside[cumulative.partition_point(|&c| c < x).min(outside.len() - 1)].0;
             let s = (self.rand_f() * (self.net.lanes[lane].length() as f64 - 4.0)) as f32 + 2.0;
-            let Some(ty) = self.pick_type(LaneKind::Street) else {
-                return;
+            let Some(ty) = self.pick_type(LaneKind::Street, lane) else {
+                continue;
             };
             let seed = self.rand();
             let scheme = if ty.paint_schemes.is_empty() { None } else { Some((seed >> 8) as usize % ty.paint_schemes.len().min(AI_SCHEMES)) };
@@ -2190,6 +2190,9 @@ impl Traffic {
             });
         }
         let mut state = AiState::new(lane, s, seed);
+        if bus.is_none() {
+            state.traffic_pool = self.types.iter().find(|t| Arc::ptr_eq(&t.0, &ty)).map(|t| self.pool_ids[t.3]);
+        }
         state.plan_next(&self.net);
         // heavy vehicles (trucks, vans) cruise slower, which is what gets them overtaken
         let heavy = ty.def.mass > 6.0 || bus.is_some();
@@ -3444,7 +3447,7 @@ impl Traffic {
         self.net
             .lanes
             .get(lane)
-            .map(|l| !l.no_cars && l.density > 0.001)
+            .map(|l| !l.no_cars && (l.density > 0.0 || l.pool_densities.iter().any(|(_, d)| *d > 0.0)))
             .unwrap_or(false)
     }
 
