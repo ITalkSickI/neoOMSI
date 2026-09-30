@@ -922,6 +922,22 @@ impl Player {
                         None => log::info!("HTML page: depot file {} has no line '{wanted}'", hof.name),
                     }
                 }
+                omsi_sim::htmltex::HtmlRequest::ClearLine => {
+                    if let Some((mut old, ..)) = self.ibis_typist.take() {
+                        old.abandon(&mut self.vehicle);
+                    }
+                    for n in ["IBIS_LinieKurs", "IBIS_Linie_Complex", "IBIS_Linie_Suffix"] {
+                        self.vehicle.set_var(n, 0.0);
+                    }
+                    self.vehicle.set_var("IBIS_RouteIndex", -1.0);
+                    if let Some(i) = self.vehicle.ty.program.str_var("IBIS_Complex_Line") {
+                        self.vehicle.state.str_vars[i as usize] = "     ".into();
+                    }
+                    if let Some(i) = self.vehicle.ty.program.str_var("SetLineTo") {
+                        self.vehicle.state.str_vars[i as usize] = String::new();
+                    }
+                    log::info!("HTML page: line cleared");
+                }
                 omsi_sim::htmltex::HtmlRequest::SetDestination(ti) => {
                     let Some(term) = hof.termini.get(ti) else {
                         log::info!("HTML page: depot file {} has no destination {ti}", hof.name);

@@ -62,6 +62,7 @@ pub(crate) enum Nat {
     SetRoute,
     SetLine,
     SetDestination,
+    ClearLine,
 }
 
 #[derive(Clone)]

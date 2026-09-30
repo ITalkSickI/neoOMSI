@@ -22,6 +22,8 @@ pub enum HtmlRequest {
     SetLine(String),
     /// `omsi.setDestination(index)`: the destination sign, `omsi.depot.destinations[index]`.
     SetDestination(usize),
+    /// `omsi.clearLine()`: the IBIS shows no line (before a route is started).
+    ClearLine,
 }
 
 /// Most requests kept for the game between two of its frames (a page that asks in a loop).

@@ -48,6 +48,7 @@ impl Interp {
             ("setRoute", Val::Nat(Nat::SetRoute)),
             ("setLine", Val::Nat(Nat::SetLine)),
             ("setDestination", Val::Nat(Nat::SetDestination)),
+            ("clearLine", Val::Nat(Nat::ClearLine)),
             (
                 "depot",
                 Val::Obj(obj_of(&[
@@ -812,6 +813,10 @@ impl Interp {
                 } else {
                     log::debug!("htmltexture: {n:?} ignored, the index is not a number");
                 }
+                Val::Undef
+            }
+            Nat::ClearLine => {
+                self.requests.push(crate::htmltex::HtmlRequest::ClearLine);
                 Val::Undef
             }
             Nat::SetLine => {
