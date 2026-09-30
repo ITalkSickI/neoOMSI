@@ -110,6 +110,7 @@ pub struct VehicleType {
     pub model_dir: PathBuf,
     pub program: Arc<Program>,
     pub meshes: Vec<VehicleMesh>,
+    pub keep_winding: bool,
     /// Paint schemes / adverts from the `[CTC]` folders' `.cti` files.
     pub paint_schemes: Vec<PaintScheme>,
     /// `[texchanges]`: material textures a script variable swaps (roller blinds, trim).
@@ -307,6 +308,7 @@ impl VehicleType {
         }
         let mut meshes = Vec::new();
         let mut missing_packs: Vec<(String, usize)> = Vec::new();
+        let (mut turned, mut positive_forward, mut positive_backward) = (Vec::new(), 0usize, 0usize);
         if !model.lods.is_empty() {
             let start = model.lods[0].first_mesh;
             let end = model
@@ -345,6 +347,14 @@ impl VehicleType {
                         };
                         // (a mesh none of whose bones is bound moves as a rigid one)
                         let skin = if skin.iter().any(|b| b.def_index.is_some()) { skin } else { Vec::new() };
+                        match omsi_geometry::positive_det_faces_forward(&m) {
+                            Some(true) => positive_forward += 1,
+                            Some(false) => positive_backward += 1,
+                            None => {}
+                        }
+                        if omsi_geometry::turns_round(&m) {
+                            turned.push(meshes.len());
+                        }
                         meshes.push(VehicleMesh {
                             def_index: start + i,
                             data: mesh_from_o3d(&m),
@@ -367,6 +377,13 @@ impl VehicleType {
                     }
                 }
             }
+        }
+        let keep_winding = positive_forward > positive_backward;
+        if keep_winding && !turned.is_empty() {
+            for &i in &turned {
+                omsi_geometry::reverse_winding(&mut meshes[i].data);
+            }
+            log::info!("{}: {} meshes keep their winding ({positive_forward} of the meshes with a positive determinant face along their normals, {positive_backward} against them)", bus_file.display(), turned.len());
         }
         for (pack, n) in &missing_packs {
             log::warn!(
@@ -462,6 +479,7 @@ impl VehicleType {
             missing_packs,
             mesh_bounds,
             mesh_boxes,
+            keep_winding,
         })
     }
 
@@ -619,7 +637,7 @@ impl VehicleType {
             return Some(std::borrow::Cow::Borrowed(&m.data));
         }
         match omsi_o3d::load_mesh(&m.file) {
-            Ok(o) => Some(std::borrow::Cow::Owned(mesh_from_o3d(&o))),
+            Ok(o) => Some(std::borrow::Cow::Owned(omsi_geometry::mesh_from_o3d_turning(&o, !self.keep_winding))),
             Err(e) => {
                 log::warn!("{}: {e}", m.file.display());
                 None

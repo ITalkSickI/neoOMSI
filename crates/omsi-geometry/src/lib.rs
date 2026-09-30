@@ -771,6 +771,10 @@ pub fn map_rotation(rot_deg: [f64; 3]) -> [f64; 3] {
 
 /// Convert an `.o3d`/`.x` mesh to [`MeshData`] (one range per material).
 pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
+    mesh_from_o3d_turning(m, true)
+}
+
+pub fn mesh_from_o3d_turning(m: &omsi_o3d::Mesh, may_turn: bool) -> MeshData {
     // Vertices are stored in the parent (object/vehicle) frame already; the matrix in the
     // file is the mesh's pivot frame used by `origin_from_mesh` animations, not a transform
     // to apply. Mesh files use Direct3D's frame (x right, y up, z forward); the world uses
@@ -780,6 +784,31 @@ pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
     out.positions = m.vertices.iter().map(|v| swap(v.position)).collect();
     out.normals = m.vertices.iter().map(|v| swap(v.normal).normalize_or_zero()).collect();
     out.uvs = m.vertices.iter().map(|v| v.uv).collect();
+    let turn = may_turn && turns_round(m);
+    // group triangles by material, preserving material index as slot
+    let mat_count = m.materials.len().max(1);
+    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); mat_count];
+    for t in &m.triangles {
+        let slot = (t.material as usize).min(mat_count - 1);
+        if turn {
+            buckets[slot].extend_from_slice(&[t.indices[0], t.indices[2], t.indices[1]]);
+        } else {
+            buckets[slot].extend_from_slice(&t.indices);
+        }
+    }
+    for (slot, idx) in buckets.into_iter().enumerate() {
+        if idx.is_empty() {
+            continue;
+        }
+        let first = out.indices.len() as u32;
+        out.indices.extend_from_slice(&idx);
+        out.ranges.push((first, idx.len() as u32, slot as u32));
+    }
+    out
+}
+
+
+pub fn turns_round(m: &omsi_o3d::Mesh) -> bool {
     // A mesh whose faces all turn their backs on their own normals was mirrored in the
     // modeller (the winding flips, the normals are recomputed): drawn one-sided as it stands,
     // the front shows nothing - the LiAZ 5292's right mirror housing and two dashboard
@@ -816,27 +845,37 @@ pub fn mesh_from_o3d(m: &omsi_o3d::Mesh) -> MeshData {
     // the holes in their place.
     let mirrored = m.transform.determinant() > 0.0;
     let explained = against_turned * 10 <= counted;
-    let turn = mirrored && !explained && counted >= 2 && against * 10 >= counted * 9;
-    // group triangles by material, preserving material index as slot
-    let mat_count = m.materials.len().max(1);
-    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); mat_count];
+    mirrored && !explained && counted >= 2 && against * 10 >= counted * 9
+}
+
+pub fn positive_det_faces_forward(m: &omsi_o3d::Mesh) -> Option<bool> {
+    if m.transform.determinant() <= 0.0 {
+        return None;
+    }
+    let (mut against, mut counted) = (0usize, 0usize);
     for t in &m.triangles {
-        let slot = (t.material as usize).min(mat_count - 1);
-        if turn {
-            buckets[slot].extend_from_slice(&[t.indices[0], t.indices[2], t.indices[1]]);
-        } else {
-            buckets[slot].extend_from_slice(&t.indices);
+        let v = t.indices.map(|i| &m.vertices[i as usize]);
+        let g = (v[1].position - v[0].position).cross(v[2].position - v[0].position);
+        let n = v[0].normal + v[1].normal + v[2].normal;
+        if g.length_squared() > 1e-12 && n.length_squared() > 1e-12 {
+            counted += 1;
+            if g.dot(n) < 0.0 {
+                against += 1;
+            }
         }
     }
-    for (slot, idx) in buckets.into_iter().enumerate() {
-        if idx.is_empty() {
-            continue;
-        }
-        let first = out.indices.len() as u32;
-        out.indices.extend_from_slice(&idx);
-        out.ranges.push((first, idx.len() as u32, slot as u32));
+    match counted {
+        0..=1 => None,
+        _ if against * 10 <= counted => Some(true),
+        _ if against * 10 >= counted * 9 => Some(false),
+        _ => None,
     }
-    out
+}
+
+pub fn reverse_winding(data: &mut MeshData) {
+    for t in data.indices.chunks_exact_mut(3) {
+        t.swap(1, 2);
+    }
 }
 
 #[cfg(test)]
@@ -1149,6 +1188,19 @@ mod tests {
         // a plain spline keeps its gradient parabola
         let p = SplineCurve { delta_h: None, ..c };
         assert!((p.height_at(p.length) - (-5.79 + 73.86 * 0.0619 / 2.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_backwards_quad_with_an_unmirrored_matrix_can_keep_its_winding() {
+        let v = |x: f32, y: f32| omsi_o3d::Vertex { position: Vec3::new(x, y, 1.0), normal: Vec3::new(0.0, 0.0, 1.0), uv: Vec2::ZERO };
+        let o3d = omsi_o3d::Mesh { vertices: vec![v(0.0, 0.0), v(0.0, 1.0), v(1.0, 0.0), v(1.0, 1.0)], triangles: vec![omsi_o3d::Triangle { indices: [0, 1, 2], material: 0 }, omsi_o3d::Triangle { indices: [2, 1, 3], material: 0 }], materials: vec![omsi_o3d::Material::default()], transform: glam::Mat4::IDENTITY, ..Default::default() };
+        assert_eq!(positive_det_faces_forward(&o3d), Some(false));
+        assert!(turns_round(&o3d));
+        assert_eq!(mesh_from_o3d(&o3d).indices[..3], [0, 2, 1]);
+        let mut kept = mesh_from_o3d_turning(&o3d, false);
+        assert_eq!(kept.indices[..3], [0, 1, 2]);
+        reverse_winding(&mut kept);
+        assert_eq!(kept.indices, mesh_from_o3d(&o3d).indices);
     }
 
     #[test]
