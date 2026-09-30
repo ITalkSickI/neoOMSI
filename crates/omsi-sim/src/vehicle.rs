@@ -800,6 +800,10 @@ pub struct AiFrame {
     /// shut); 0 = not at a stop (a script still closing its doors is told -1 until it
     /// answers, see `VehicleInstance::station_released`).
     pub at_station: i32,
+    /// `TrafficPriorityWarningNeeded`: a vehicle with right of way (`TrafficPriority`) has
+    /// something in its way that is to be warned - the stock ambulance's script sounds its
+    /// siren for the next 30 m on it.
+    pub priority_warning: bool,
 }
 
 pub struct VehicleInstance {
@@ -2150,6 +2154,7 @@ impl VehicleInstance {
             ("AI_Interiorlight", ai.lights as i32 as f32),
             ("AI_Engine", 1.0),
             ("AI_Scheduled_AtStation", station),
+            ("TrafficPriorityWarningNeeded", ai.priority_warning as i32 as f32),
         ] {
             self.set_var(name, v);
         }
