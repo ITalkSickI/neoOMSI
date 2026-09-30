@@ -443,6 +443,8 @@ fn step_time(l: &mut Launcher, r: Rect) {
     // (the airport nearest the map, not Berlin's for every map: Novi Sad got Berlin's rain)
     let home = nearest_airport(&l.state.config.root, &l.state.choice.map);
     items.push((format!("metar:{}", metar.clone().unwrap_or_else(|| home.clone())), "Current weather".into(), format!("METAR of {} (fetched at the start)", metar.clone().unwrap_or_else(|| home.clone())), "public".into(), false));
+    // the weather going on from one to another through the day
+    items.push(("cycle".into(), "Weather cycle".into(), "Changes every 25-60 minutes, as the month allows".into(), "autorenew".into(), false));
     for w in l.state.weathers.clone() {
         if !l.state.weather_fits(&w) {
             continue;
@@ -625,6 +627,7 @@ fn summary(l: &mut Launcher, side: Rect) {
     };
     let weather = match l.state.choice.weather.strip_prefix("metar:") {
         Some(code) => format!("Current weather at {code}"),
+        None if l.state.choice.weather == "cycle" => "Weather cycle".into(),
         None => l.state.weathers.iter().find(|w| w.file == l.state.choice.weather).map(|w| w.name.clone()).unwrap_or_else(|| "Map default".into()),
     };
     let (yy, mm, dd) = super::ui::parse_date(&l.state.choice.date);

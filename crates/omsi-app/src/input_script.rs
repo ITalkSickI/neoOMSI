@@ -589,9 +589,9 @@ impl App {
                     "LAN: the host's weather: {}",
                     w.as_deref().unwrap_or("the map's default")
                 );
-                self.args.weather = w;
-                self.weather = Some(load_weather(&self.args));
-                self.wetness = self.weather.as_ref().map(initial_wetness).unwrap_or(0.0);
+                // (coming over to it as the host does, not at a stroke - the streets stay
+                // as wet as they are and dry or wet with it)
+                self.change_weather(w, false);
             }
             lan::WorldUpdate::Tours(tours) => {
                 if let Some(s) = self.schedule.as_mut() {
@@ -1695,15 +1695,59 @@ pub(crate) fn script_key(name: &str) -> Option<KeyCode> {
         }
         let cur = self.args.weather.clone().unwrap_or_default().replace('\\', "/").to_ascii_lowercase();
         let i = files.iter().position(|f| f.to_ascii_lowercase() == cur).map(|i| (i + 1) % files.len()).unwrap_or(0);
-        self.args.weather = Some(files[i].clone());
-        self.weather = Some(load_weather(&self.args));
-        // (a host: the others take it up with its next clock message)
-        if let Some(l) = self.lan.as_mut() {
-            l.set_weather(&files[i]);
+        self.change_weather(Some(files[i].clone()), true);
+    }
+
+    /// Go over to weather `file` (None: the map's default) in a few minutes of the day (see
+    /// `weather_cycle`); a host tells the others (`share`), who come over to it the same way.
+    pub(crate) fn change_weather(&mut self, file: Option<String>, share: bool) {
+        let from = self.weather.clone().unwrap_or_default();
+        self.args.weather = file.clone();
+        let to = load_weather(&self.args);
+        let name = to.name.clone();
+        self.weather_blend = Some(crate::weather_cycle::Blend::new(from, to, 240.0));
+        if share {
+            // (a host: the others take it up with its next clock message)
+            if let (Some(l), Some(f)) = (self.lan.as_mut(), file.as_ref()) {
+                l.set_weather(f);
+            }
         }
-        let name = self.weather.as_ref().map(|w| w.name.clone()).unwrap_or_default();
-        log::info!("weather now {} ({name})", files[i]);
+        log::info!("weather: going over to {file:?} ({name})");
         self.service_msg = Some((format!("Weather: {name}"), 4.0));
+    }
+
+    /// The weather this frame: a change coming in, and the cycle's next one (`secs` of the
+    /// day went by; in LAN play only the host's cycle runs, the others follow it).
+    pub(crate) fn tick_weather(&mut self, secs: f32) {
+        if let Some(b) = self.weather_blend.as_mut() {
+            let (w, clouds_changed, done) = b.step(secs);
+            self.weather = Some(w);
+            if done {
+                self.weather_blend = None;
+            }
+            if clouds_changed {
+                if let (Some(r), Some(scene)) = (self.renderer.as_ref(), self.scene.as_mut()) {
+                    crate::weather_setup::setup_sky(&self.args, r, scene, self.envir.as_ref(), self.weather.as_ref());
+                }
+            }
+        }
+        let follows = self.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client);
+        if follows || self.weather_blend.is_some() {
+            return;
+        }
+        let Some(c) = self.weather_cycle.as_mut() else { return };
+        c.next_in -= secs as f64;
+        if c.next_in > 0.0 {
+            return;
+        }
+        c.next_in = c.interval();
+        let r = c.rand();
+        let all = crate::weather_cycle::installed();
+        let now = self.weather.clone().unwrap_or_default();
+        let now_file = self.args.weather.clone().unwrap_or_default();
+        if let Some(next) = crate::weather_cycle::pick(&all, &now, &now_file, self.clock.day_month().1, r) {
+            self.change_weather(Some(next), true);
+        }
     }
 
     /// Drive another of the vehicles standing in the world (a situation's): the one driven

@@ -85,6 +85,7 @@ mod startup;
 mod traffic_link;
 mod tutorial;
 mod weather_setup;
+mod weather_cycle;
 mod world_load;
 
 // the interface's translations (locales/app.yml; the English text is the key)
@@ -513,6 +514,8 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         plugins: None,
         career: Default::default(),
         wetness: 0.0,
+        weather_blend: None,
+        weather_cycle: None,
         cursor_kind: 0,
         settings,
         lan: None,

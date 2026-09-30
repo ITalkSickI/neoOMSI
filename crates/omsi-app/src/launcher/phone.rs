@@ -162,6 +162,7 @@ fn time_text(l: &Launcher) -> String {
     let (y, m, d) = super::ui::parse_date(&l.state.choice.date);
     let weather = match l.state.choice.weather.strip_prefix("metar:") {
         Some(c) => format!("live {c}"),
+        None if l.state.choice.weather == "cycle" => "weather cycle".into(),
         None => l.state.weathers.iter().find(|w| w.file == l.state.choice.weather).map(|w| w.name.clone()).unwrap_or_else(|| "map weather".into()),
     };
     format!("{:02}:{:02} · {d} {} {y} · {weather}", l.state.choice.time / 60, l.state.choice.time % 60, &super::ui::MONTHS[(m as usize).clamp(1, 12) - 1][..3])
@@ -526,7 +527,7 @@ fn time_sheet(l: &mut Launcher, r: Rect) -> bool {
     let done = l.ui.button("p-time-done", Rect::new(left.x, left.bottom() - 52.0, left.w, 52.0), "Done", Some("check"), ButtonKind::Primary);
     // the weather: the map's, or one of the weather files
     let right = Rect::new(left.right() + 16.0, r.y, r.right() - left.right() - 16.0, r.h);
-    let items: Vec<(String, String, String)> = std::iter::once((String::new(), "The map's weather".to_string(), "As the map sets it".to_string())).chain(l.state.weathers.iter().map(|w| (w.file.clone(), w.name.clone(), format!("{:.0} °C · {} · {}", w.temp, if w.clouds.is_empty() { "clear" } else { w.clouds.as_str() }, if w.precip.is_empty() { "dry" } else { w.precip.as_str() })))).collect();
+    let items: Vec<(String, String, String)> = [(String::new(), "The map's weather".to_string(), "As the map sets it".to_string()), ("cycle".to_string(), "Weather cycle".to_string(), "Changes every 25-60 minutes, as the month allows".to_string())].into_iter().chain(l.state.weathers.iter().map(|w| (w.file.clone(), w.name.clone(), format!("{:.0} °C · {} · {}", w.temp, if w.clouds.is_empty() { "clear" } else { w.clouds.as_str() }, if w.precip.is_empty() { "dry" } else { w.precip.as_str() })))).collect();
     let chosen = l.state.choice.weather.clone();
     let mut pick = None;
     if right.w > 120.0 {

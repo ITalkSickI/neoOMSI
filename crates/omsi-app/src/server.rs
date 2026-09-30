@@ -49,7 +49,8 @@ name = openOMSI server
 motd = Welcome! Drive safely.
 
 # the map (relative to the OMSI 2 folder), the start date (YYYY-MM-DD, empty: today),
-# the time of day and the weather (a .owt of the OMSI 2 folder, empty: the map's default)
+# the time of day and the weather (a .owt of the OMSI 2 folder, empty: the map's default,
+# cycle: one after another through the day, as the month allows)
 map = maps/Berlin-Spandau/global.cfg
 date =
 time = 08:00
