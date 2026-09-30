@@ -5771,7 +5771,6 @@ impl Humans {
                     if let Some(other) = self
                         .choose_entry(i, bn)
                         .filter(|e| *e != entry && bn.entry_open.get(*e).copied().unwrap_or(false))
-                        .filter(|_| d > 1.5 || self.people[i].t_state > 8.0)
                     {
                         self.set_state(
                             i,
@@ -6567,17 +6566,24 @@ impl Humans {
             allowed
         };
         let dist = |e: usize| (bn.world(bn.cabin.entries[e].outside).truncate() - pos).length();
-        let open: Vec<usize> = allowed
-            .iter()
-            .copied()
-            .filter(|&e| bn.entry_open.get(e).copied().unwrap_or(false))
-            .collect();
-        let pool = if open.is_empty() { &allowed } else { &open };
+        // A door still shut counts as some metres farther, the more the longer one has
+        // waited at it: an open door not much farther is taken, a far one only once the
+        // near door stays shut. (Only the doors open at the moment counted: a bus whose
+        // rear doors opened a moment before its front one sent the people waiting at the
+        // front to the back.)
+        let waited = if matches!(p.state, State::Queue { .. }) { p.t_state.max(0.0) as f64 } else { 0.0 };
+        let shut = |e: usize| {
+            if bn.entry_open.get(e).copied().unwrap_or(false) {
+                0.0
+            } else {
+                6.0 + 2.0 * waited
+            }
+        };
         // with both leaves open, spread out: the shorter queue wins at similar distance
-        pool.iter().copied().min_by(|a, b| {
+        allowed.iter().copied().min_by(|a, b| {
             let qa = self.people.iter().filter(|q| matches!(q.state, State::Queue { bus, entry, .. } if bus == bn.id && entry == *a)).count() as f64;
             let qb = self.people.iter().filter(|q| matches!(q.state, State::Queue { bus, entry, .. } if bus == bn.id && entry == *b)).count() as f64;
-            (dist(*a) + qa * 0.8).total_cmp(&(dist(*b) + qb * 0.8))
+            (dist(*a) + qa * 0.8 + shut(*a)).total_cmp(&(dist(*b) + qb * 0.8 + shut(*b)))
         })
     }
 
