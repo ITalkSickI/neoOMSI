@@ -232,6 +232,17 @@ fn ao_at(frag: vec2<f32>, world: vec3<f32>) -> f32 {
 @group(0) @binding(18) var t_lmap: texture_2d<f32>;
 @group(0) @binding(19) var<uniform> lmap: vec4<f32>;
 
+// The sRGB curve both ways (the textures are sampled through it, the target writes through
+// it): the classic picture multiplies on the encoded values, as Omsi.exe does.
+fn srgb_encode(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn srgb_decode(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
+
 // The tile light map's light at a world point (black outside the loaded square).
 fn light_map_at(p: vec3<f32>) -> vec3<f32> {
     if (lmap.w < 0.5) {
@@ -1324,16 +1335,19 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // The vanilla picture: Omsi.exe's texture stages multiply the gamma-encoded texture by
     // the vertex light (clamped at 1); here the texture is sampled linear and the target
     // encodes again, so multiplied here a light L showed as L^(1/2.2) - a night at 0.06
-    // looked like 0.28, a late dusk (#300). The same product in gamma: (t^(1/2.2) v)^2.2
-    // = t v^2.2 - with the light map laid on in gamma as well.
+    // looked like 0.28, a late dusk (#300). So the product is made on the encoded texture
+    // and decoded again, with the light map laid on encoded as well. (Through the sRGB curve
+    // itself: taken as a power of 2.2, t v^2.2, the curve's linear foot below 0.0031 put a
+    // night wall at a quarter of OMSI 2's - a texture of 0.66 under a light of 0.05 came out
+    // at 2 of 255 instead of 8.)
     let classic = camera.sky_color.w > 0.5;
     if (classic && material.params.y < 0.5) {
         var v = clamp(material.emissive.rgb + material.color.rgb * (light + interior_lamps(in.world, n, in.params2.z)), vec3<f32>(0.0), vec3<f32>(1.0));
         if (light_mapped) {
-            let lm = pow(textureSample(t_light, s_diffuse, buv).rgb, vec3<f32>(1.0 / 2.2)) * clamp(in.params2.x, 0.0, 1.0);
+            let lm = srgb_encode(textureSample(t_light, s_diffuse, buv).rgb) * clamp(in.params2.x, 0.0, 1.0);
             v = v + lm * (vec3<f32>(1.0) - v);
         }
-        lit = albedo * pow(v, vec3<f32>(2.2));
+        lit = srgb_decode(srgb_encode(albedo) * v);
     } else if (light_mapped) {
         // [matl_lightmap], as Omsi.exe's texture stages have it (0x7fe4d3..0x7fe604): the
         // light map is laid onto the vertex light with D3DTOP_ADDSMOOTH (light + map x (1 -
