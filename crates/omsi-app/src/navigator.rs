@@ -35,6 +35,7 @@ use crate::traffic::Traffic;
 // --- colours (sRGB) -------------------------------------------------------------------
 
 // neutral dark, half transparent, calm
+const NAV_REDRAW_S: f32 = 1.0 / 30.0;
 const PANEL: Color = Color::rgba(10, 10, 10, 0.70);
 const BAR: Color = Color::rgba(0, 0, 0, 0.35);
 const ROAD_CASING: Color = Color::rgba(30, 30, 30, 0.9);
@@ -183,6 +184,7 @@ struct Roads {
 }
 
 pub struct Navigator {
+    drawn_at: f32,
     pub enabled: bool,
     /// The next stops with their times under the map (Shift+N cycles map, map and
     /// schedule, off).
@@ -248,9 +250,6 @@ pub struct Navigator {
     /// Seconds of delay the jams ahead on the route cost.
     jam_cost: f32,
     first: bool,
-    /// The corner widget's picture is drawn every other frame (`true` next): the uploads
-    /// and the encoder of every frame cost real frame time on the integrated chip.
-    draw_flip: bool,
 }
 
 /// The duty as the navigator shows it: line, terminus, the stops from the next one on,
@@ -297,6 +296,7 @@ fn ease(dt: f32, tau: f32) -> f64 {
 impl Navigator {
     pub fn new(enabled: bool, opacity: f32, corner: &str) -> Navigator {
         Navigator {
+            drawn_at: f32::MIN,
             enabled,
             schedule: false,
             speed_avg: 8.0,
@@ -335,7 +335,6 @@ impl Navigator {
             dist_t: 0.0,
             jam_cost: 0.0,
             first: true,
-            draw_flip: true,
         }
     }
 
@@ -829,7 +828,8 @@ impl Navigator {
         if self.gpu.is_none() {
             self.gpu = Some(Gpu::new(&renderer.device, renderer.format(), 1, self.atlas.size));
         }
-        if self.target.map(|t| (t.1, t.2) != (w, h)).unwrap_or(true) {
+        let resized = self.target.map(|t| (t.1, t.2) != (w, h)).unwrap_or(true);
+        if resized {
             if let Some((t, _, _)) = self.target.take() {
                 renderer.free_texture(scene, t);
                 scene.premultiplied.remove(&t);
@@ -840,9 +840,8 @@ impl Navigator {
         }
         let (tex, _, _) = self.target.unwrap();
         let Some(view) = renderer.texture_view(scene, tex) else { return };
-        // (every other frame: the picture is one frame stale, the uploads are half)
-        self.draw_flip = !self.draw_flip;
-        if self.draw_flip {
+        if resized || self.city.open || self.time - self.drawn_at >= NAV_REDRAW_S {
+            self.drawn_at = self.time;
             self.draw(renderer, &view, (w, h), map_h, f);
         }
         // (the small navigator steps aside while the city map is open)

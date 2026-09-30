@@ -11152,9 +11152,9 @@ impl World {
                         && !dirt_overlay
                         && !rain_layer;
                     // (while it snows the film is the snow-crystal texture, drawn as it is)
-                    extra.rain_film = rain_layer && !snowing() && omsi_cfg::env::var_os("OMSI_TEXTURE_RAIN").is_none()
-                        // (OMSI 2's own rain runs down the pane as its texture)
-                        && !crate::CLASSIC.load(std::sync::atomic::Ordering::Relaxed);
+                    // (all three graphics: OMSI 2's own rain, its texture sliding down the
+                    // pane, looked like wet paper next to drops that bend the street)
+                    extra.rain_film = rain_layer && !snowing() && omsi_cfg::env::var_os("OMSI_TEXTURE_RAIN").is_none();
                     // Some mod buses put [matl_noZcheck] on the complete body mesh.
                     // That flag is for decals; on a body it disables depth writing and
                     // lets the cabin bleed through the outside shell. Keep it on genuine

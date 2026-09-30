@@ -4,6 +4,7 @@
 const MIRROR_RATE: f32 = 75.0;
 /// The least a mirror is redrawn a second (see the mirrors in `window_event`).
 const MIRROR_MIN_HZ: f32 = 8.0;
+const MIRROR_MAX_HZ: f32 = 30.0;
 
 fn render_scale_step(fps: f32, slow_frame_wait_share: f32) -> f32 {
     // (three levels, far apart, and a wide band between going down and up again: every
@@ -877,7 +878,7 @@ impl ApplicationHandler for App {
                     let key = self.camera.as_ref().map(|c| (self.cursor.0.round() as i32, self.cursor.1.round() as i32, (c.yaw * 4.0).round() as i32, (c.pitch * 4.0).round() as i32));
                     // (the cab sways with the suspension: a view that only turned waits a few frames)
                     let cursor_moved = key.map(|k| (k.0, k.1)) != self.hover_key.map(|k| (k.0, k.1));
-                    if cursor_moved || (key != self.hover_key && self.total_frames % 3 == 0) || self.total_frames % 6 == 0 {
+                    if cursor_moved || (key != self.hover_key && self.total_frames % 6 == 0) || self.total_frames % 12 == 0 {
                         self.hover_key = key;
                         self.update_hover();
                     }
@@ -1664,7 +1665,9 @@ impl ApplicationHandler for App {
                             screen: (s.config.width as f32, s.config.height as f32),
                             dt,
                         };
+                        let __tn = Instant::now();
                         nav.frame(r, scene, &frame);
+                        *self.profile.entry("hud.navigator").or_default() += __tn.elapsed().as_secs_f64();
                         // OMSI 2's dynamic route arrows over the junctions ahead
                         if nav.arrows {
                             if let Some(w) = self.world.as_ref() {
@@ -1757,6 +1760,7 @@ impl ApplicationHandler for App {
                     }),
                 };
                 lighting.detail = self.settings.detail_textures;
+                lighting.glass_wind = self.player.as_ref().map(|p| crate::lights::vehicle_velocity(&p.vehicle)).unwrap_or_default();
                 // an LED panel's dots burn this much above their own colour (16 levels,
                 // see `Settings::led_glow`); the masks keep their mip chain unless the
                 // player asks for the sharper look (`Settings::led_mips`)
@@ -1915,7 +1919,7 @@ impl ApplicationHandler for App {
                                     .filter(|rate| rate.is_finite() && *rate >= 0.0)
                                     .unwrap_or(self.settings.vr_mirror_rate)
                             } else {
-                                MIRROR_RATE.max(mirrors * MIRROR_MIN_HZ)
+                                MIRROR_RATE.max(mirrors * MIRROR_MIN_HZ).min(MIRROR_MAX_HZ * self.mirrors_seen.max(1) as f32)
                             }
                         };
                         self.mirror_budget = (self.mirror_budget + raw_dt.min(0.1) * rate).min(2.5);
@@ -1923,12 +1927,12 @@ impl ApplicationHandler for App {
                         // (in the cab, and from outside too while the bus is near: its
                         // mirrors are seen from the pavement and stood frozen)
                         let near = self.player.as_ref().zip(self.camera.as_ref()).is_some_and(|(p, c)| (p.vehicle.position - c.position).length() < 12.0);
-                        while (self.in_cab || near) && self.mirror_budget >= 1.0 && drawn < 2 {
+                        while (self.in_cab || near) && self.mirror_budget >= 1.0 && drawn < self.mirrors_seen.clamp(1, 2) {
                             let (Some(w), Some(p)) = (self.world.as_ref(), self.player.as_ref()) else { break };
                             self.mirror_budget -= 1.0;
                             drawn += 1;
                             self.mirror_turn = self.mirror_turn.wrapping_add(1);
-                            render_mirrors(
+                            self.mirrors_seen = render_mirrors(
                                 r,
                                 scene,
                                 w,

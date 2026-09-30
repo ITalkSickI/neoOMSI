@@ -4,7 +4,48 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
-## 0.1.373 - 2026-09-30
+## 0.1.381 - 2026-09-30
+
+### Graphics
+- Rain on the bus windows looks like real drops, in all three graphics modes (Vanilla had
+  OMSI's sliding texture until now):
+  - every drop is a lens: it shows the street behind the glass through itself, small and
+    upside down, with the sky at its bottom (from the last frame's picture);
+  - drops come in four sizes up to over a centimetre, with uneven rims, the heavy ones
+    drawn out downwards, and clear glass between them;
+  - a runner leaves a thin stream of water in its track;
+  - while the bus drives, the airstream takes the runners up and out across the windscreen
+    and back along the side windows, harder the faster it goes.
+  It costs about half a millisecond at 1080p.
+
+## 0.1.380 - 2026-09-30
+
+### Game menu
+- The pause menu's Options are kept: most switches (collisions, camera collisions, view
+  turning with the steering, force feedback, keyboard brake hold, automatic clutch, head
+  tracking) were written in a form the settings file read as "not set" and came back at
+  their defaults, and LED glow and LED mipmaps were not saved at all.
+- The launcher takes over the settings a game changed instead of writing its older copy back
+  over them when it saved something of its own.
+
+### Passengers
+- Somebody at the front of a queue whom a railing, pole or shelter wall holds off the door
+  boards from where they stand; they stood a metre from the open door until the bus left.
+
+## 0.1.378 - 2026-09-30
+
+### Performance
+- Busy maps run much faster: the frame's render preparation (culling, shadow casters, draw
+  lists, bundle recording) is spread over the render threads instead of one core, mirrors
+  are drawn only when in view and at most 30 times a second, the navigator's map is redrawn
+  at most 30 times a second, and the cab's hover pick tests only the triangles near the
+  cursor. On St-Servan with traffic and passengers: 37 to 60 fps (#369, by ThiBot77).
+
+### Website
+- Download: the "Your system" badge no longer breaks across the card title, and the
+  Download buttons line up.
+
+## 0.1.374 - 2026-09-30
 
 ### Graphics
 - Vanilla lights textures through the sRGB curve instead of a plain power of 2.2, so dark

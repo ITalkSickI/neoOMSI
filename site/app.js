@@ -102,8 +102,8 @@ async function download() {
     const a = (rel.assets || []).find(a => a.name === file);
     const size = a ? ` · ${(a.size / 1048576).toFixed(0)} MB` : "";
     const mine = p.os && p.os === visitorOs();
-    return `<div class="card elevation-${mine ? 3 : 1} dl-card${mine ? " dl-mine" : ""}"><span class="material-icons card-icon">${p.icon}</span>
-      <h3>${p.name}${mine ? ` <small class="dl-badge">your system</small>` : ""}</h3><p>${p.note}${size}</p>
+    return `<div class="card elevation-${mine ? 3 : 1} dl-card${mine ? " dl-mine" : ""}"><div class="dl-head"><span class="material-icons card-icon">${p.icon}</span>${mine ? `<span class="dl-badge">Your system</span>` : ""}</div>
+      <h3>${p.name}</h3><p>${p.note}${size}</p>
       ${a ? `<a class="btn btn-contained" href="${a.browser_download_url}" download><span class="material-icons">download</span>Download</a>`
           : `<p>Not in this release.</p>`}</div>`;
   };

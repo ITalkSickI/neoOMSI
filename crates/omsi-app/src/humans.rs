@@ -5832,8 +5832,18 @@ impl Humans {
                     return w;
                 }
                 if d > 0.6 {
-                    self.people[i].why = "";
-                    return w;
+                    // held off the door by something of the map in the way (a railing, a
+                    // pole, a shelter's wall: people are kept out of its collision boxes)
+                    // - as close as they get is close enough. They stood a metre from the
+                    // open door until the bus left without them.
+                    let held = d < 2.0 && self.people[i].stuck > 1.0;
+                    if !held {
+                        self.people[i].why = "";
+                        return w;
+                    }
+                    if debug_pax() {
+                        log::info!("t={:.1} pax {} cannot get closer to entry {entry} than {d:.1} m: boards from there", self.time, self.people[i].label());
+                    }
                 }
                 if self.door_busy.contains_key(&(bus, false, entry)) {
                     self.people[i].why = "the doorway is busy";
