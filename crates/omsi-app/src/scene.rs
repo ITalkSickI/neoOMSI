@@ -1427,6 +1427,10 @@ fn tree_quad_mesh() -> MeshData {
 /// under it. Anything higher is a bridge or an embankment, where cutting would open a hole.
 /// `OMSI_HEIGHTPROFILE_GROUND=1`: the wheels stand on the splines' `[heightprofile]`s as
 /// they did before, instead of on the drawn splines as Omsi.exe stands them (A/B runs).
+/// `OMSI_CHECK_ROADS`: road points under the ground, and where.
+static OVER_ROAD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static OVER_ROAD_AT: std::sync::Mutex<Vec<(f64, f64, f32)>> = std::sync::Mutex::new(Vec::new());
+
 fn heightprofile_ground() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| omsi_cfg::env::var_os("OMSI_HEIGHTPROFILE_GROUND").is_some())
@@ -4618,6 +4622,13 @@ impl World {
                             }
                             check.1 += 1;
                             let th = t.sample((i as f32 + 0.5) * cell, (j as f32 + 0.5) * cell);
+                            // the ground over a road: shows through it (Omsi.exe cuts nothing)
+                            if ts.road_covered(k) && th > ts.road_height(k) + 0.03 && th < ts.road_height(k) + 1.5 {
+                                OVER_ROAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                if let Ok(mut w) = OVER_ROAD_AT.lock() {
+                                    w.push((x0 + ((i as f32 + 0.5) * cell) as f64, y0 + ((j as f32 + 0.5) * cell) as f64, th - ts.road_height(k)));
+                                }
+                            }
                             let old_rule = th >= ts.low_height(k) - surface_flush();
                             let new_rule = ts.low_height(k) - surface_flush() <= th
                                 && th <= ts.height(k) + surface_flush();
@@ -4727,6 +4738,14 @@ impl World {
         if check_roads {
             where_.sort_by(|a, b| b.2.total_cmp(&a.2));
             log::info!("ground-cut check: {holes} of {cells} covered ground points would be cut away with nothing under them ({:.2} %)", holes as f32 / cells.max(1) as f32 * 100.0);
+            let over = OVER_ROAD.load(std::sync::atomic::Ordering::Relaxed);
+            log::info!("ground-over-road check: {over} of {cells} road points lie under the ground (3 cm to 1.5 m)");
+            if let Ok(mut w) = OVER_ROAD_AT.lock() {
+                w.sort_by(|a, b| b.2.total_cmp(&a.2));
+                for (x, y, d) in w.iter().take(8) {
+                    log::info!("   ground {d:.2} m over the road at ({x:.1}, {y:.1})");
+                }
+            }
             for (x, y, d) in where_.iter().take(5) {
                 log::info!("   {d:.1} m of nothing under the ground at ({x:.0}, {y:.0})");
             }
