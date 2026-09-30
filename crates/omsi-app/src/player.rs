@@ -1929,9 +1929,37 @@ pub(crate) fn mouse_steering(cursor_x: f32, width: f32, kmh: f32) -> f32 {
     x / (kmh / 10.0).max(1.0)
 }
 
+/// A mouse pedal following the cursor, `k` of the way left behind each frame. The last bit
+/// is snapped: in f32 the easing stops one step short of the target (1 - 6e-8 at 60 fps), and
+/// the stock gearbox scripts kick down only at a throttle of exactly 1 - the cursor at the top
+/// edge never gave it.
+pub(crate) fn mouse_pedal(current: f32, target: f32, k: f32) -> f32 {
+    let v = target + (current - target) * k;
+    if (v - target).abs() < 1e-4 { target } else { v }
+}
+
 #[cfg(test)]
 mod mouse_tests {
-    use super::mouse_steering;
+    use super::{mouse_pedal, mouse_steering};
+
+    #[test]
+    fn the_mouse_pedal_reaches_the_floor() {
+        for fps in [30.0f32, 60.0, 144.0] {
+            let k = (-(1.0 / fps) / 0.06f32).exp();
+            let (mut t, mut b) = (0.0, 1.0);
+            for _ in 0..(fps as usize) {
+                t = mouse_pedal(t, 1.0, k);
+                b = mouse_pedal(b, 0.0, k);
+            }
+            // exactly: the kickdown compares the throttle with 1
+            assert_eq!(t, 1.0, "{fps} fps");
+            assert_eq!(b, 0.0, "{fps} fps");
+        }
+        // on the way it still eases
+        let k = (-(1.0 / 60.0f32) / 0.06).exp();
+        let t = mouse_pedal(0.0, 1.0, k);
+        assert!(t > 0.2 && t < 0.3, "{t}");
+    }
 
     #[test]
     fn the_mouse_steers_less_the_faster_the_bus() {

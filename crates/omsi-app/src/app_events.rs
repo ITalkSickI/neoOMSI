@@ -630,8 +630,8 @@ impl ApplicationHandler for App {
                     let k = if *fade > 0.0 { (-std::f32::consts::LN_2 / *fade * dt).exp() } else { (-dt / 0.06).exp() };
                     *steer = target + (*steer - target) * k;
                     let (mt, mb) = &mut self.mouse_pedals;
-                    *mt = pedal_t + (*mt - pedal_t) * k;
-                    *mb = pedal_b + (*mb - pedal_b) * k;
+                    *mt = crate::player::mouse_pedal(*mt, pedal_t, k);
+                    *mb = crate::player::mouse_pedal(*mb, pedal_b, k);
                     *fade = (*fade - dt).max(0.0);
                     analog.steering = Some(*steer);
                     // OMSI_TRACE_STEER=<csv>: the mouse steering frame by frame
