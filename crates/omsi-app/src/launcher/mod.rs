@@ -89,6 +89,9 @@ impl Clipboard {
 /// Width of the left rail (points).
 pub const RAIL_W: f32 = 236.0;
 
+/// How often the launcher made its device again after losing it (see `recover_device`).
+static LAUNCHER_RECOVERIES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 pub struct Launcher {
     instance: wgpu::Instance,
     window: Option<Arc<Window>>,
@@ -549,7 +552,43 @@ impl Launcher {
         dpi * (lw / 1440.0).min(lh / 820.0).clamp(0.8, 2.2)
     }
 
+    /// The graphics device was lost (#274: an AMD Radeon's DX12 driver gave up while the
+    /// preview's textures went up, and the launcher then drew on the dead device, with
+    /// thousands of errors a second): everything made on it goes, the other interface is
+    /// taken - DirectX 12 and Vulkan for each other, remembered in the settings for the game
+    /// as well - and the window is drawn again on a new device. Twice at most.
+    fn recover_device(&mut self) -> bool {
+        let Some(why) = self.renderer.as_ref().and_then(|r| r.device_lost()) else { return false };
+        let tries = LAUNCHER_RECOVERIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let name = self.renderer.as_ref().map(|r| r.adapter_name.clone()).unwrap_or_default();
+        let other = if name.contains("(Dx12)") { Some("vulkan") } else if name.contains("(Vulkan)") && cfg!(windows) { Some("dx12") } else if name.contains("(Vulkan)") { Some("gl") } else { None };
+        log::error!("launcher: the graphics device was lost on {name} ({why}); {}", match (tries < 2, other) {
+            (true, Some(o)) => format!("drawing on {o} from now on"),
+            (true, None) => "drawing on a new device".to_string(),
+            _ => "giving up".to_string(),
+        });
+        if tries >= 2 {
+            return false;
+        }
+        if let Some(o) = other {
+            std::env::set_var("OMSI_BACKEND", o);
+            self.state.settings["graphics_api"] = serde_json::json!(o);
+            self.state.settings_dirty = 0.3;
+        }
+        self.surface = None;
+        self.gpu = None;
+        self.preview_tex = None;
+        self.showroom = showroom::Showroom::new();
+        self.preview_gen = 0;
+        self.renderer = None;
+        self.make_surface();
+        true
+    }
+
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
+        if self.recover_device() {
+            return;
+        }
         let now = Instant::now();
         let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
         self.last = now;

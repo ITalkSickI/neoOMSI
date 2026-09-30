@@ -1321,7 +1321,20 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var light = diffuse + lamp_light;
     let light_mapped = material.params2.x > 0.5 && material.extra.x < 0.5;
     var lit = albedo * material.color.rgb * light;
-    if (light_mapped) {
+    // The vanilla picture: Omsi.exe's texture stages multiply the gamma-encoded texture by
+    // the vertex light (clamped at 1); here the texture is sampled linear and the target
+    // encodes again, so multiplied here a light L showed as L^(1/2.2) - a night at 0.06
+    // looked like 0.28, a late dusk (#300). The same product in gamma: (t^(1/2.2) v)^2.2
+    // = t v^2.2 - with the light map laid on in gamma as well.
+    let classic = camera.sky_color.w > 0.5;
+    if (classic && material.params.y < 0.5) {
+        var v = clamp(material.emissive.rgb + material.color.rgb * (light + interior_lamps(in.world, n, in.params2.z)), vec3<f32>(0.0), vec3<f32>(1.0));
+        if (light_mapped) {
+            let lm = pow(textureSample(t_light, s_diffuse, buv).rgb, vec3<f32>(1.0 / 2.2)) * clamp(in.params2.x, 0.0, 1.0);
+            v = v + lm * (vec3<f32>(1.0) - v);
+        }
+        lit = albedo * pow(v, vec3<f32>(2.2));
+    } else if (light_mapped) {
         // [matl_lightmap], as Omsi.exe's texture stages have it (0x7fe4d3..0x7fe604): the
         // light map is laid onto the vertex light with D3DTOP_ADDSMOOTH (light + map x (1 -
         // light)) before the texture is multiplied in - a lit saloon glows at night and
@@ -1341,7 +1354,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (material.params.y > 0.5) {
         lit = tex.rgb * material.color.rgb;
     }
-    if (!light_mapped || material.params.y > 0.5) {
+    if ((!light_mapped && !classic) || material.params.y > 0.5) {
         lit = lit + tex.rgb * material.emissive.rgb;
     }
     // the tile light map, as on the terrain: the lamps' pools on the roads and the plates,
@@ -1353,7 +1366,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     // [interiorlight]: the saloon lamps on the meshes and passengers they illuminate (in
     // a light-mapped material's vertex light already, above)
-    if (!light_mapped) {
+    if (!light_mapped && !classic) {
         lit = lit + tex.rgb * interior_lamps(in.world, n, in.params2.z);
     }
     if (material.extra.w > 0.5) {

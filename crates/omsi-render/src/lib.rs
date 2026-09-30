@@ -476,6 +476,10 @@ pub struct Lighting {
     pub sky_color: Vec3,
     /// 0 at day, 1 at night: strength of nightmaps and coronas.
     pub night: f32,
+    /// The night maps (`[matl_nightmap]`, the tiles' light maps) switched as Omsi.exe
+    /// switches them - on with the lamps, not faded in with the dusk (its stage is set when
+    /// the object's `NightlightA` is over 0.5, 0x61197a/0x7fee02); None: by `night`.
+    pub night_maps: Option<f32>,
     /// Sun azimuth (radians, clockwise from north) and day/twilight/night sky texture weights.
     pub sun_azimuth: f32,
     pub sky_weights: [f32; 3],
@@ -535,6 +539,7 @@ impl Default for Lighting {
             fog_density: 0.0006,
             sky_color: Vec3::new(0.55, 0.70, 0.92),
             night: 0.0,
+            night_maps: None,
             sun_azimuth: 0.0,
             sky_weights: [1.0, 0.0, 0.0],
             cloud_density: 0.0,
@@ -1687,6 +1692,7 @@ impl Renderer {
         }
         // One module for both paths: the enhanced fragment shader shares the vertex shader,
         // which the depth prepass relies on to the last bit (see `VsOut::clip`).
+        log::info!("renderer: compiling the scene shaders");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("omsi"),
             source: wgpu::ShaderSource::Wgsl(scene_shader_source().into()),
@@ -2255,6 +2261,7 @@ impl Renderer {
             })
         };
         let shadow_clear_pipeline = {
+            log::info!("renderer: compiling the shadow clear shader");
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shadow clear"),
                 source: wgpu::ShaderSource::Wgsl(
@@ -2400,6 +2407,7 @@ impl Renderer {
             ],
         });
         drop(puff_texture);
+        log::info!("renderer: compiling the coronas shaders");
         let corona_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("corona"),
             source: wgpu::ShaderSource::Wgsl(corona_shader_source().into()),
@@ -2554,6 +2562,7 @@ impl Renderer {
             ],
         });
         let (cloud_shape_view, cloud_detail_view, cloud_sampler) = cloud_noise_textures(&device, &queue);
+        log::info!("renderer: compiling the sky and clouds shaders");
         let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sky"),
             source: wgpu::ShaderSource::Wgsl(sky_shader_source().into()),
@@ -2678,6 +2687,7 @@ impl Renderer {
                 },
             ],
         });
+        log::info!("renderer: compiling the overlays shaders");
         let overlay_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("overlay"),
             source: wgpu::ShaderSource::Wgsl(include_str!("overlay.wgsl").into()),
@@ -2736,6 +2746,7 @@ impl Renderer {
             cache: None,
         });
         // ambient occlusion: a depth prepass with the camera projection, then the AO and a blur
+        log::info!("renderer: compiling the SSAO shaders");
         let ssao_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ssao"),
             source: wgpu::ShaderSource::Wgsl(include_str!("ssao.wgsl").into()),
@@ -2884,6 +2895,7 @@ impl Renderer {
                 .map(|(kind, cull)| make_prepass_samples(kind, cull, msaa))
         });
         // --- mipmaps on the GPU: the CPU box filter took up to a second per bus spawn
+        log::info!("renderer: compiling the mip maps shaders");
         let mip_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mip"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mip.wgsl").into()),
@@ -2951,6 +2963,7 @@ impl Renderer {
             ..Default::default()
         });
         // --- enhanced graphics: the post passes (glow, metering, adaptation, tone curve, FXAA)
+        log::info!("renderer: compiling the post passes shaders");
         let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("post"),
             source: wgpu::ShaderSource::Wgsl(include_str!("post.wgsl").into()),
@@ -3460,6 +3473,7 @@ impl Renderer {
             multiview_mask: None,
             cache: None,
         });
+        log::info!("renderer: compiling the VR interface shaders");
         let xr_ui_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("OpenXR spatial UI"),
             source: wgpu::ShaderSource::Wgsl(include_str!("xr_ui.wgsl").into()),
@@ -3495,6 +3509,7 @@ impl Renderer {
             cache: None,
         });
         // --- render scale: the smaller 3D picture scaled up to the window
+        log::info!("renderer: compiling the upscaler shaders");
         let upscale_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("upscale"),
             source: wgpu::ShaderSource::Wgsl(include_str!("upscale.wgsl").into()),
@@ -7151,7 +7166,7 @@ impl Renderer {
                 .extend(lighting.snow.clamp(0.0, 1.0))
                 .to_array(),
             fog: lighting.fog_color.extend(lighting.fog_density).to_array(),
-            sun_color: lighting.sun_color.extend(lighting.night).to_array(),
+            sun_color: lighting.sun_color.extend(lighting.night_maps.unwrap_or(lighting.night)).to_array(),
             sky_color: lighting
                 .secondary
                 .extend(if lighting.classic && !enhanced { 1.0 } else { 0.0 })

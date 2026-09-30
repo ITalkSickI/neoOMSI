@@ -860,6 +860,8 @@ pub struct VehicleInstance {
     ai_odometer: f32,
     /// Kilometres driven this session (the odometer's `kmcounter_*`).
     driven_km: f64,
+    /// The odometer's start was set from `[kmcounter_init]` (see `update_engine_vars`).
+    km_started: bool,
     /// The cabin air as the engine keeps it (°C, g/m³), and the value last written, so that
     /// a bus whose own scripts heat or cool the cabin keeps what they write.
     cabin_air: Option<(f32, f32, f32)>,
@@ -1123,6 +1125,7 @@ impl VehicleInstance {
             ai_odometer: 0.0,
             seat: (0.0, 0.0, Vec3::ZERO),
             driven_km: 0.0,
+            km_started: false,
             cabin_air: None,
             ai_visuals: true,
             ai_visuals_missed: 0.0,
@@ -1770,6 +1773,22 @@ impl VehicleInstance {
     /// as a heated/ventilated bus is; the absolute humidity follows the outside air).
     fn update_engine_vars(&mut self, dt: f32) {
         self.update_driver_seat(dt);
+        // `[kmcounter_init] year km`: in service since that year, so many kilometres a year -
+        // the odometer starts at what that comes to on the day driven (it stood at 0 on
+        // every bus that has one, #305), a little different from bus to bus of the kind
+        if !self.km_started {
+            self.km_started = true;
+            if let (Some((year, per_year)), true) = (self.ty.def.km_counter_init, self.host.km_base == 0.0) {
+                // (a map whose day lies before the bus was built: the part of this year)
+                let part = self.host.clock.day_of_year as f64 / 365.0;
+                let years = ((self.host.clock.year - year) as f64 + part).max(part);
+                if years > 0.0 && per_year > 0.0 {
+                    let seed = (std::ptr::addr_of!(self.host) as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40;
+                    let spread = 0.85 + 0.3 * (seed % 1000) as f64 / 1000.0;
+                    self.host.km_base = years * per_year as f64 * spread;
+                }
+            }
+        }
         // (the sum is split, not the parts: 0.7 km + 0.5 km is 1 km 200 m, not 0 km 1200 m)
         let total = self.host.km_base + self.driven_km;
         self.set_engine_var("kmcounter_km", total.trunc() as f32);

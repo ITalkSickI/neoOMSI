@@ -114,6 +114,11 @@ impl Program {
         self.blocks.iter().any(|b| b.ops.iter().any(|op| matches!(op, Op::Store(v) if *v == var)))
     }
 
+    /// Whether any block of the program reads variable `var` (`(L.L.name)`).
+    pub fn reads(&self, var: VarId) -> bool {
+        self.blocks.iter().any(|b| b.ops.iter().any(|op| matches!(op, Op::Load(v) if *v == var)))
+    }
+
     /// Whether any block of the program reads the system variable `sys` (`(L.S.name)`).
     pub fn reads_sys(&self, sys: SysVar) -> bool {
         self.blocks.iter().any(|b| b.ops.iter().any(|op| matches!(op, Op::LoadSys(v) if *v == sys)))

@@ -35,6 +35,7 @@ pub fn lighting_from(d: &Daylight, fog_range: f32) -> Lighting {
         fog_density: density,
         sky_color: d.sky,
         night: d.night,
+        night_maps: Some(if d.lamps_on || d.night >= 0.5 { 1.0 } else { 0.0 }),
         sun_azimuth: d.azimuth_rad,
         sky_weights: d.sky_weights,
         envir_tint: d.envir_tint,
@@ -92,6 +93,12 @@ pub fn apply_weather(
     l.rain = rain;
     let gloom = (overcast * 0.5 + rain * 0.5).clamp(0.0, 1.0);
     l.night = l.night.max(0.45 * gloom);
+    // (night maps on with the street lamps, or where the weather makes it that dark: a
+    // clear dusk showed the lit windows and signs at a fraction, a rainy one at nearly
+    // full, #276)
+    if l.night >= 0.5 {
+        l.night_maps = Some(1.0);
+    }
     if snow > 0.0 {
         // snow on the ground throws light back up
         l.ambient *= 1.0 + 0.35 * snow;

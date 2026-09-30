@@ -292,7 +292,12 @@ impl App {
             let scripted = |name: &str| p.vehicle.ty.program.trigger(name).is_some();
             // (a manual's scripts answer to the gear keys; the LiAZ's KPP has - and + too, and
             // triggers up to 10 whatever its box has: `antrieb_number_gears` says how many)
-            let manual = scripted("kw_s_1") && scripted("kw_s_2") && !scripted("automatic_D");
+            // (a dashboard script answers to the automatic's keys for its own display on a
+            // manual bus as well - the Sprinter W906 MT showed R N D, #279: a gearbox
+            // script that reads the clutch pedal is a manual one)
+            let program = &p.vehicle.ty.program;
+            let reads_clutch = program.var("Clutch").is_some_and(|v| program.reads(v));
+            let manual = scripted("kw_s_1") && scripted("kw_s_2") && (!scripted("automatic_D") || reads_clutch);
             let count = p.vehicle.ty.program.constant("antrieb_number_gears").map(|n| n.round() as usize).filter(|n| (1..=8).contains(n));
             let gears: Vec<(&'static str, &'static str)> = if manual {
                 MANUAL.iter().copied().enumerate().filter(|(k, (a, _))| {

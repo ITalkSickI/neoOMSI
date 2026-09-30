@@ -2297,9 +2297,15 @@ impl App {
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("--root").arg(&self.args.root).arg("--no-menu").arg("--situation").arg(&file);
         cmd.env("OMSI_SAFE_GPU", (n + 1).to_string());
-        let vulkan = self.renderer.as_ref().is_some_and(|r| r.adapter_name.contains("(Vulkan)"));
-        if cfg!(windows) && vulkan && omsi_cfg::env::var_os("OMSI_BACKEND").is_none() {
-            cmd.env("OMSI_BACKEND", "dx12");
+        // (on Windows the other interface: DirectX 12 after Vulkan, Vulkan after DirectX 12 -
+        // an AMD Radeon's DX12 driver lost the device where its Vulkan one did not, #274)
+        let name = self.renderer.as_ref().map(|r| r.adapter_name.clone()).unwrap_or_default();
+        if cfg!(windows) {
+            if name.contains("(Vulkan)") {
+                cmd.env("OMSI_BACKEND", "dx12");
+            } else if name.contains("(Dx12)") {
+                cmd.env("OMSI_BACKEND", "vulkan");
+            }
         }
         match cmd.spawn() {
             Ok(_) => {

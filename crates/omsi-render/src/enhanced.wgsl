@@ -385,14 +385,17 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     let glass = mode > 1.5 && material.bump.z > 0.5 &&
         (has_env || material.params.z > 0.5 || material.emissive.w > 0.5);
     let painted_transmap = material.params.z > 0.5 && !glass;
-    let painted_body = mode < 1.5 || painted_transmap;
     // An envmap on opaque vehicle paint is legacy material data, not a request to make
     // the whole body behave like glass. Keep the diffuse/sun response, but use the
     // ordinary rough dielectric path for the body.
     // Foliage and other alpha-tested assets are diffuse silhouettes, not polished surfaces.
     // Letting the generic probe term reflect them creates white sparkles at grazing angles;
     // the photographed envmap is reserved for materials that explicitly request it.
-    let reflective_env = has_env && !painted_body && !thin;
+    // (opaque materials reflect as well - chrome handrails, bumpers and wheel trims are
+    // opaque with a sphere map, and left out they showed no reflection at all in the
+    // enhanced picture, #266 - but through the clear-coat path below: metal only where a
+    // mask of its own says so)
+    let reflective_env = has_env && !painted_transmap && !thin;
     // see-through glass is seen from either side: from inside the bus its normal points
     // away (the vanilla pass takes the angle either way round too); taken as it is, the
     // grazing Fresnel turned the whole windscreen into a milky mirror

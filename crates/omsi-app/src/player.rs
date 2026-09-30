@@ -524,7 +524,8 @@ impl Player {
         let gate = gate.strip_suffix("_fest").unwrap_or(gate);
         let is_gate = gate.eq_ignore_ascii_case("r") || gate.eq_ignore_ascii_case("n") || gate.parse::<u32>().is_ok();
         let program = &self.vehicle.ty.program;
-        if !is_gate || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+        let reads_clutch = program.var("Clutch").is_some_and(|v| program.reads(v));
+        if !is_gate || !reads_clutch || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
             return;
         }
         self.vehicle.set_var("Clutch", 1.0);
@@ -1084,7 +1085,11 @@ impl Player {
     pub(crate) fn auto_clutch_bite(&mut self, throttle: f32) {
         let program = &self.vehicle.ty.program;
         let has_manual_gate = program.trigger("kw_s_1").is_some() || program.trigger("kw_s_1_fest").is_some();
-        if self.vehicle.host.auto_clutch < 0.5 || !has_manual_gate || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+        // (only a gearbox that reads the clutch pedal: an automatic whose scripts answer to
+        // the number keys as well had its clutch pressed at every stop, and some went to
+        // neutral when it stood, #234)
+        let reads_clutch = program.var("Clutch").is_some_and(|v| program.reads(v));
+        if self.vehicle.host.auto_clutch < 0.5 || !has_manual_gate || !reads_clutch || program.reads_sys(omsi_script::SysVar::AutoClutch) {
             return;
         }
         let gear = self.vehicle.var("antrieb_getr_aktugang").or_else(|| self.vehicle.var("antrieb_getr_gang")).unwrap_or(0.0);
@@ -1092,7 +1097,9 @@ impl Player {
         if gear.abs() > 0.5 && kmh < 12.0 {
             // it bites as the throttle goes down and only as far as the engine keeps its
             // revs (a clutch let go at once under full throttle stalled it all the same)
-            let n = self.vehicle.var("engine_n").unwrap_or(0.0);
+            // (a script that keeps its revs under another name: by the throttle alone - taken
+            // as 0 revs the clutch never bit and the bus stood with it down, #260)
+            let n = self.vehicle.var("engine_n").unwrap_or(2000.0);
             let bite = ((throttle - 0.05) / 0.45).clamp(0.0, 1.0).min(((n - 850.0) / 700.0).clamp(0.0, 1.0));
             let bite = bite * bite * (3.0 - 2.0 * bite);
             let want = (1.0 - bite) * (1.0 - kmh / 12.0);

@@ -208,8 +208,24 @@ impl Launcher {
         }
         if self.ui.button("crash-issue", Rect::new(inner.x, by, 190.0, 38.0), "Report on GitHub", Some("open_in_new"), ButtonKind::Ghost) {
             let title = format!("Crash: {}", what.chars().take(80).collect::<String>());
-            let body = format!("openOMSI {} on {}\n\n```\n{what}\n```\n\n(Paste the report here - Copy report in the launcher.)", updater::current_version(), std::env::consts::OS);
             let enc = |t: &str| t.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+            // the end of the log goes with it, as much as a link holds (a report of the
+            // last line alone said where the game stopped, never what led there); the whole
+            // report is on the clipboard as well
+            let lines: Vec<&str> = tail.lines().collect();
+            let mut shown = 0;
+            let body = loop {
+                let end = lines[lines.len() - shown..].join("\n");
+                let body = format!("openOMSI {} on {}\n\n```\n{what}\n```\n\nThe end of the log:\n```\n{end}\n```\n", updater::current_version(), std::env::consts::OS);
+                if shown >= lines.len() || enc(&body).len() > 6500 {
+                    break if shown == 0 { body } else {
+                        let end = lines[lines.len() - shown.saturating_sub(1)..].join("\n");
+                        format!("openOMSI {} on {}\n\n```\n{what}\n```\n\nThe end of the log:\n```\n{end}\n```\n", updater::current_version(), std::env::consts::OS)
+                    };
+                }
+                shown += 1;
+            };
+            self.ui.clipboard_out = Some(format!("openOMSI {} ({})\n{what}\n\n{tail}", updater::current_version(), std::env::consts::OS));
             updater::open_url(&format!("{}/issues/new?title={}&body={}", updater::REPO_URL, enc(&title), enc(&body)));
         }
     }
