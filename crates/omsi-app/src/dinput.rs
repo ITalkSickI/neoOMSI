@@ -44,6 +44,10 @@ pub(crate) struct Device {
     dev: IDirectInputDevice8W,
     /// The slots the device has (an axis it lacks is not in the list).
     has_axis: [bool; 8],
+    /// Hardware capability, also needed by the launcher which does not create effects.
+    ff_capable: bool,
+    /// Offset of the axis that can receive forces in our data format.
+    ff_axis: u32,
     state: RawState,
     ff: Option<IDirectInputEffect>,
     ff_error_logged: bool,
@@ -73,6 +77,10 @@ impl Device {
     pub fn has_ff(&self) -> bool {
         self.ff.is_some()
     }
+
+    pub fn ff_capable(&self) -> bool {
+        self.ff_capable
+    }
 }
 
 /// The devices, and the thread that finds them.
@@ -81,6 +89,8 @@ pub(crate) struct DirectInput {
     hwnd: HWND,
     /// The game wants force feedback (the window is the game's, not the launcher's).
     ff: bool,
+    /// A foreground FFB device must not be reacquired while the window is away.
+    focused: bool,
     pub devices: Vec<Device>,
     found: Arc<Mutex<Option<Vec<(GUID, String)>>>>,
     scan: mpsc::Sender<()>,
@@ -183,6 +193,14 @@ fn prop(n: usize) -> *const GUID {
 }
 
 impl DirectInput {
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    pub fn force_axis(&self, name: &str) -> Option<usize> {
+        self.devices.iter().find(|d| d.name == name && d.ff.is_some()).map(|d| d.ff_axis as usize / 4)
+    }
+
     /// `hwnd`: the window the devices belong to; `ff`: take the devices for force feedback
     /// (the game's window: they then answer only while it is in front, as in OMSI).
     pub fn new(hwnd: isize, ff: bool) -> Option<DirectInput> {
@@ -242,7 +260,31 @@ impl DirectInput {
                 }
             }
         });
-        Some(DirectInput { di, hwnd: HWND(hwnd as *mut _), ff, devices: Vec::new(), found, scan, events: Vec::new(), last_force: Instant::now() })
+        Some(DirectInput { di, hwnd: HWND(hwnd as *mut _), ff, focused: true, devices: Vec::new(), found, scan, events: Vec::new(), last_force: Instant::now() })
+    }
+
+    /// Let go of foreground effects when the game loses focus, then take them once on return.
+    pub fn set_focus(&mut self, focused: bool) {
+        if self.focused == focused {
+            return;
+        }
+        self.focused = focused;
+        log::info!("game controllers: window {} focus; {} DirectInput device(s)", if focused { "regained" } else { "lost" }, self.devices.len());
+        for d in &mut self.devices {
+            unsafe {
+                if focused {
+                    if !reacquire(&d.dev, d.ff.is_some()) {
+                        log::warn!("{}: DirectInput could not reacquire the device after focus returned", d.name);
+                    }
+                    d.ff_error_logged = false;
+                } else {
+                    if let Some(e) = d.ff.as_ref() {
+                        let _ = e.Stop();
+                    }
+                    let _ = d.dev.Unacquire();
+                }
+            }
+        }
     }
 
     /// Look for devices again (the window heard of one plugged in or out).
@@ -260,13 +302,15 @@ impl DirectInput {
             dev.SetDataFormat(&mut fmt).ok()?;
             let mut caps = DIDEVCAPS { dwSize: std::mem::size_of::<DIDEVCAPS>() as u32, ..Default::default() };
             let _ = dev.GetCapabilities(&mut caps);
-            let wants_ff = self.ff && caps.dwFlags & DIDC_FORCEFEEDBACK != 0;
+            let ff_capable = caps.dwFlags & DIDC_FORCEFEEDBACK != 0;
+            let mut wants_ff = self.ff && ff_capable;
             let level = if wants_ff { DISCL_EXCLUSIVE | DISCL_FOREGROUND } else { DISCL_NONEXCLUSIVE | DISCL_BACKGROUND };
             if let Err(e) = dev.SetCooperativeLevel(self.hwnd, level) {
                 if wants_ff {
                     // (forces need the device to themselves: another program - the wheel's
                     // own control software - may be holding it)
                     log::warn!("{name}: force feedback needs the device to itself, which Windows refused ({e}): no forces");
+                    wants_ff = false;
                 }
                 dev.SetCooperativeLevel(self.hwnd, DISCL_NONEXCLUSIVE | DISCL_BACKGROUND).ok()?;
             }
@@ -283,10 +327,15 @@ impl DirectInput {
             }
             // which slots the device has (the data of an absent one reads as the middle)
             let mut has_axis = [false; 8];
+            let mut ff_axis = None;
             for (k, h) in has_axis.iter_mut().enumerate() {
                 let mut info = DIDEVICEOBJECTINSTANCEW { dwSize: std::mem::size_of::<DIDEVICEOBJECTINSTANCEW>() as u32, ..Default::default() };
                 *h = dev.GetObjectInfo(&mut info, (k * 4) as u32, DIPH_BYOFFSET).is_ok();
+                if *h && info.dwFlags & DIDOI_FFACTUATOR != 0 {
+                    ff_axis.get_or_insert((k * 4) as u32);
+                }
             }
+            let ff_axis = ff_axis.unwrap_or(0);
             let mut ff = None;
             if wants_ff {
                 // the wheel's own centring off: the game's forces take its place
@@ -297,7 +346,7 @@ impl DirectInput {
             }
             let _ = dev.Acquire();
             if wants_ff {
-                let mut axes = [0u32; 1];
+                let mut axes = [ff_axis; 1];
                 let mut dirs = [0i32; 1];
                 let mut cf = DICONSTANTFORCE { lMagnitude: 0 };
                 let mut eff = DIEFFECT {
@@ -326,13 +375,17 @@ impl DirectInput {
                     Err(err) => log::warn!("{name}: says it has force feedback, but its constant force could not be made ({err}): no forces"),
                 }
             }
-            log::info!("game controller (DirectInput): {name}, {} axes, {} buttons{}", has_axis.iter().filter(|a| **a).count(), caps.dwButtons, if ff.is_some() { ", force feedback" } else { "" });
-            Some(Device { name: name.to_string(), guid: *guid, dev, has_axis, state: RawState::default(), ff, ff_error_logged: false, buttons: caps.dwButtons as usize })
+            log::info!("game controller (DirectInput): {name}, {} axes, {} buttons{}", has_axis.iter().filter(|a| **a).count(), caps.dwButtons, if ff.is_some() { format!(", force feedback on axis {}", ff_axis / 4) } else if ff_capable && self.ff { ", force feedback capable (effect unavailable)".into() } else if ff_capable { ", force feedback capable".into() } else { String::new() });
+            Some(Device { name: name.to_string(), guid: *guid, dev, has_axis, ff_capable, ff_axis, state: RawState::default(), ff, ff_error_logged: false, buttons: caps.dwButtons as usize })
         }
     }
 
     /// Read every device; devices plugged in or out since the last list are opened or let go.
     pub fn poll(&mut self) {
+        if !self.focused {
+            self.events.clear();
+            return;
+        }
         if let Some(list) = self.found.lock().unwrap().take() {
             self.devices.retain(|d| list.iter().any(|(g, _)| *g == d.guid));
             for (g, name) in list {
@@ -392,14 +445,22 @@ impl DirectInput {
 
     /// The force on the wheel of device `name`: -1 (full to the left) .. 1. Set at most 100
     /// times a second (each is a message to the device).
-    pub fn set_force(&mut self, name: &str, f: f32) {
+    /// Returns whether a force-feedback effect with this exact device name exists.
+    pub fn set_force(&mut self, name: &str, f: f32) -> bool {
+        let found = self.devices.iter().any(|d| d.name == name && d.ff.is_some());
+        if !found {
+            return false;
+        }
+        if !self.focused {
+            return true;
+        }
         if self.last_force.elapsed() < Duration::from_millis(10) {
-            return;
+            return true;
         }
         self.last_force = Instant::now();
         for d in self.devices.iter_mut().filter(|d| d.name == name) {
             let Some(e) = d.ff.as_ref() else { continue };
-            let mut axes = [0u32; 1];
+            let mut axes = [d.ff_axis; 1];
             let mut dirs = [0i32; 1];
             let mut cf = DICONSTANTFORCE { lMagnitude: (f.clamp(-1.0, 1.0) * DI_FFNOMINALMAX as f32) as i32 };
             let mut eff = DIEFFECT {
@@ -431,6 +492,7 @@ impl DirectInput {
                 }
             }
         }
+        true
     }
 }
 

@@ -49,9 +49,17 @@ impl ApplicationHandler for App {
                     s.resize(r, size.width, size.height);
                 }
             }
-            WindowEvent::Focused(true) => self.window_focused = true,
+            WindowEvent::Focused(true) => {
+                self.window_focused = true;
+                if let Some(ctl) = self.controllers.as_mut() {
+                    ctl.set_focus(true);
+                }
+            }
             WindowEvent::Focused(false) => {
                 self.window_focused = false;
+                if let Some(ctl) = self.controllers.as_mut() {
+                    ctl.set_focus(false);
+                }
                 #[cfg(windows)]
                 {
                     self.vr_cursor_physical = None;
@@ -556,6 +564,7 @@ impl ApplicationHandler for App {
                 // the game controllers: their axes this frame, their buttons' key actions
                 let hwnd = self.window.as_deref().and_then(crate::controllers::window_handle);
                 let ctl = self.controllers.get_or_insert_with(|| crate::controllers::Controllers::new(&self.args.root, hwnd));
+                ctl.set_focus(self.window_focused);
                 ctl.deadzone = self.settings.ctrl_deadzone;
                 ctl.pedal_throttle = self.settings.pedal_throttle;
                 ctl.pedal_brake = self.settings.pedal_brake;
@@ -579,7 +588,8 @@ impl ApplicationHandler for App {
                     on: driving.is_some(),
                     kmh,
                     lateral_accel: driving.and_then(|p| p.vehicle.rigid.as_ref()).map(|r| r.accel_body.x).unwrap_or(0.0),
-                    wheel_bump: driving.and_then(|p| p.vehicle.rigid.as_ref()).map(|r| crate::controllers::front_wheel_bump(r, kmh)).unwrap_or(0.0),
+                    wheel_bump: driving.and_then(|p| p.vehicle.rigid.as_ref()).map(|r| crate::controllers::wheel_contact_bump(r, kmh)).unwrap_or(0.0),
+                    wheel_bump_age: 0.0,
                     vib_amp: driving.and_then(|p| p.vehicle.var("FF_Vib_Amp")).unwrap_or(0.0),
                     vib_period: driving.and_then(|p| p.vehicle.var("FF_Vib_Period")).unwrap_or(0.0),
                     dt,
