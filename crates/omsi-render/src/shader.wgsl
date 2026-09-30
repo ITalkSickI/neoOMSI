@@ -1421,11 +1421,26 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // night wall at a quarter of OMSI 2's - a texture of 0.66 under a light of 0.05 came out
     // at 2 of 255 instead of 8.)
     let classic = camera.sky_color.w > 0.5;
+    // (the terrain's night map is its tile light map: light, not a glow - see below)
+    let terrain_night = classic
+        && material.params.y < 0.5
+        && material.extra.x > 0.5
+        && material.extra.w > 0.5
+        && material.extra.w < 1.5;
     if (classic && material.params.y < 0.5) {
         var v = clamp(material.emissive.rgb + material.color.rgb * (light + interior_lamps(in.world, n, in.params2.z)), vec3<f32>(0.0), vec3<f32>(1.0));
         if (light_mapped) {
             let lm = srgb_encode(textureSample(t_light, s_diffuse, buv).rgb) * clamp(in.params2.x, 0.0, 1.0);
             v = v + lm * (vec3<f32>(1.0) - v);
+        }
+        if (terrain_night) {
+            // the terrain's tile light map lights the ground as the lamps' own light: added
+            // to the vertex light before the texture is multiplied in. Laid over the lit
+            // ground instead, as a night map glows, its faint fringe (0.01, linear) put
+            // one beige veil over cobbles and grass alike, a whole car park the colour of
+            // sand where OMSI 2 shows it dark grey.
+            let nm = srgb_encode(textureSample(t_night, s_diffuse, vec2<f32>(in.uv.x, 1.0 - in.uv.y)).rgb);
+            v = min(v + nm * camera.sun_color.w * clamp(in.params2.y, 0.0, 1.0), vec3<f32>(1.0));
         }
         lit = srgb_decode(srgb_encode(albedo) * v);
     } else if (light_mapped) {
@@ -1463,7 +1478,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (!light_mapped && !classic) {
         lit = lit + tex.rgb * interior_lamps(in.world, n, in.params2.z);
     }
-    if (material.extra.w > 0.5) {
+    if (material.extra.w > 0.5 && !terrain_night) {
         // [matl_nightmap]: self-illumination that fades in with the night
         // terrain: the tile light map in tile space (north at the top row)
         let nuv = select(buv, vec2<f32>(in.uv.x, 1.0 - in.uv.y), material.extra.x > 0.5);
