@@ -687,6 +687,7 @@ impl ApplicationHandler for App {
                             dt,
                             self.audio.as_ref(),
                             self.in_cab,
+                            !matches!(self.view.as_str(), "free" | "foot"),
                         );
                         p.move_head(dt, self.settings.head_movement);
                         if let Some(w) = self.world.as_ref() {
@@ -1420,6 +1421,7 @@ impl ApplicationHandler for App {
                                             pitch: 1.0,
                                             looping: false,
                                             position: Some(line.position.as_vec3()),
+                                            doppler: true,
                                             range: 3.0,
                                             lowpass_hz: 0.0,
                                         },
