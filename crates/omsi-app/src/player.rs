@@ -530,8 +530,8 @@ impl Player {
         let gate = gate.strip_suffix("_fest").unwrap_or(gate);
         let is_gate = gate.eq_ignore_ascii_case("r") || gate.eq_ignore_ascii_case("n") || gate.parse::<u32>().is_ok();
         let program = &self.vehicle.ty.program;
-        let reads_clutch = program.var("Clutch").is_some_and(|v| program.reads(v));
-        if !is_gate || !reads_clutch || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
+        // (a manual gearbox only: see `Program::manual_gearbox`)
+        if !is_gate || !program.manual_gearbox() || self.vehicle.host.auto_clutch < 0.5 || program.trigger(name).is_none() || program.reads_sys(omsi_script::SysVar::AutoClutch) {
             return;
         }
         self.vehicle.set_var("Clutch", 1.0);
@@ -1094,7 +1094,7 @@ impl Player {
     /// from a stop stalled the engine unless a clutch pedal was worked.
     pub(crate) fn auto_clutch_bite(&mut self, throttle: f32) {
         let program = &self.vehicle.ty.program;
-        let has_manual_gate = program.trigger("kw_s_1").is_some() || program.trigger("kw_s_1_fest").is_some();
+        let has_manual_gate = program.manual_gearbox();
         // (only a gearbox that reads the clutch pedal: an automatic whose scripts answer to
         // the number keys as well had its clutch pressed at every stop, and some went to
         // neutral when it stood, #234)
