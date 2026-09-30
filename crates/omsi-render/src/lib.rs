@@ -1615,7 +1615,7 @@ impl Renderer {
                 wanted,
             )
         });
-        let mut required_features = if adapter_table_needed {
+        let mut required_features = if adapter_table_needed && info.backend != wgpu::Backend::Noop {
             adapter.features() & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
         } else {
             wgpu::Features::empty()
@@ -10743,6 +10743,25 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn noop_backend_initializes_renderer() {
+        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+        descriptor.backends = wgpu::Backends::NOOP;
+        descriptor.backend_options.noop = wgpu::NoopBackendOptions { enable: true };
+        let instance = wgpu::Instance::new(descriptor);
+        let res = pollster::block_on(Renderer::new_with(
+            &instance,
+            None,
+            Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+            RenderOptions {
+                msaa: 2,
+                shadow_size: 1024,
+                ..Default::default()
+            },
+        ));
+        assert!(res.is_ok(), "renderer should initialize on noop backend: {:?}", res.err());
     }
 
     #[test]
