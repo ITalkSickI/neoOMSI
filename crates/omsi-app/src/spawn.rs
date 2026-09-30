@@ -410,7 +410,6 @@ pub(crate) fn spawn_player(
         head_omega: Vec3::ZERO,
         steer_look: 0.0,
         seat: Vec3::ZERO,
-        smooth_cam: std::cell::Cell::new(None),
         mirror_offsets: crate::settings::mirror_offsets(&vt.def.path),
         mirrors_dirty: false,
         take_change: false,
@@ -507,9 +506,9 @@ pub(crate) fn spawn_player(
                 .map(|f| {
                     !f.is_empty()
                         && def
-                            .file
-                            .to_ascii_lowercase()
-                            .contains(&f.to_ascii_lowercase())
+                        .file
+                        .to_ascii_lowercase()
+                        .contains(&f.to_ascii_lowercase())
                 })
                 .unwrap_or(false)
             {
