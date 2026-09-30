@@ -2077,6 +2077,37 @@ impl Schedule {
         }
         let t_route = t_spawn.elapsed();
         if let Some(ci) = onto {
+            // a train whose next trip runs the other way (its `[trainreverse]` is not how the
+            // train stands) is turned round where it stands, as Omsi.exe turns it when the
+            // trip begins (0x613a98): its last car leads, on the way back. (It drove off
+            // along the siding instead - past the end of the track - and another train
+            // appeared for the trip.)
+            let reverse = self.data.trips[self.departures[i].trip].train_reverse;
+            if traffic.cars[ci].is_rail() && traffic.cars[ci].consist_reversed != reverse {
+                let c = &traffic.cars[ci];
+                let tail = c.vehicle.trailers.last().map(|t| t.position).unwrap_or(c.vehicle.position);
+                let net = &traffic.net;
+                let found = section
+                    .iter()
+                    .enumerate()
+                    .take(24)
+                    .filter_map(|(k, &l)| net.lanes[l].nearest_point(tail).map(|(s, d)| (k, l, s, d)))
+                    .min_by(|a, b| a.3.total_cmp(&b.3));
+                match found {
+                    Some((k, l, s, d)) if d < 2.5 => {
+                        traffic.turn_train(world, renderer, scene, ci, l, s, &section[..k], reverse);
+                    }
+                    _ => {
+                        if omsi_cfg::env::var_os("OMSI_DEBUG_TRAFFIC").is_some() {
+                            log::info!("trip {trip_name}: train {} would turn round, but its last car at ({:.1}, {:.1}) is not on the trip's way (nearest {:?}); its front at ({:.1}, {:.1}) on lane {}", c.id, tail.x, tail.y, found.map(|f| (f.0, f.1, f.2, f.3)), c.vehicle.position.x, c.vehicle.position.y, c.state.lane);
+                            for &l in section.iter().take(4).chain(std::iter::once(&c.state.lane)) {
+                                let ln = &net.lanes[l];
+                                log::info!("  lane {l} {:?} len {:.1} ({:.1}, {:.1}) -> ({:.1}, {:.1}) next {:?} rev {}", ln.key, ln.length(), ln.start().x, ln.start().y, ln.end().x, ln.end().y, ln.next, ln.reversed);
+                            }
+                        }
+                    }
+                }
+            }
             // the tour's bus that has just finished its trip takes this one on from where
             // it stands: the section itself when it stands on it, else the shortest way
             // from its lane onto one of the section's first lanes (round a terminal loop)
@@ -2257,11 +2288,34 @@ impl Schedule {
         };
         let tour = self.departures[i].tour.clone();
         let terminus = self.data.trips[self.departures[i].trip].terminus.clone();
+        // every further car of the train with the cars of its unit, as Omsi.exe creates
+        // each car of a `.zug` (the first has its own with `create_car`): the ones before it
+        // (towards the front of the train), the car, the ones behind it
+        let rest: Option<Vec<(Arc<VehicleType>, bool)>> = train.as_ref().map(|cars| {
+            let mut rest = Vec::new();
+            for (t, rev) in &cars[1..] {
+                let mut front = traffic.coupled_chain(t, *rev, false);
+                front.reverse();
+                rest.extend(front);
+                rest.push((t.clone(), *rev));
+                rest.extend(traffic.coupled_chain(t, *rev, true));
+            }
+            rest
+        });
+        // a trip that runs the train turned round (`[trainreverse]`): its last car leads
+        let turned: Option<Vec<(Arc<VehicleType>, bool)>> = (self.data.trips[self.departures[i].trip].train_reverse
+            && traffic.net.lanes[route[0]].kind == omsi_sim::traffic::LaneKind::Rail)
+            .then(|| {
+                let mut all = vec![(ty.clone(), false)];
+                all.extend(traffic.trailer_chain(&ty));
+                all.extend(rest.clone().unwrap_or_default());
+                all.into_iter().rev().map(|(t, r)| (t, !r)).collect()
+            });
         let Some(ci) = traffic.spawn_bus(
             world,
             renderer,
             scene,
-            ty.clone(),
+            turned.as_ref().map(|t| t[0].0.clone()).unwrap_or_else(|| ty.clone()),
             route,
             s,
             stops,
@@ -2273,20 +2327,14 @@ impl Schedule {
             return Placed::Drop;
         };
         self.car_departure.insert(traffic.cars[ci].id, i);
-        if let Some(cars) = &train {
-            // every further car of the train with the cars of its unit, as Omsi.exe creates
-            // each car of a `.zug` (the first has had its own with `create_car`): the ones
-            // before it (towards the front of the train), the car, the ones behind it
-            let mut rest: Vec<(Arc<VehicleType>, bool)> = Vec::new();
-            for (t, rev) in &cars[1..] {
-                let mut front = traffic.coupled_chain(t, *rev, false);
-                front.reverse();
-                rest.extend(front);
-                rest.push((t.clone(), *rev));
-                rest.extend(traffic.coupled_chain(t, *rev, true));
-            }
-            traffic.attach_cars(world, renderer, scene, ci, &rest);
-            log::info!("train: {}", std::iter::once(ty.def.path.file_stem().unwrap_or_default().to_string_lossy().to_string()).chain(traffic.cars[ci].vehicle.trailers.iter().map(|t| format!("{}{}", t.ty.def.path.file_stem().unwrap_or_default().to_string_lossy(), if t.reversed { " (turned)" } else { "" }))).collect::<Vec<_>>().join(" + "));
+        if let Some(t) = &turned {
+            traffic.set_trailers(world, renderer, scene, ci, &t[1..]);
+            traffic.cars[ci].consist_reversed = true;
+        } else if let Some(rest) = &rest {
+            traffic.attach_cars(world, renderer, scene, ci, rest);
+        }
+        if train.is_some() {
+            log::info!("train: {}", std::iter::once(traffic.cars[ci].vehicle.ty.def.path.file_stem().unwrap_or_default().to_string_lossy().to_string()).chain(traffic.cars[ci].vehicle.trailers.iter().map(|t| format!("{}{}", t.ty.def.path.file_stem().unwrap_or_default().to_string_lossy(), if t.reversed { " (turned)" } else { "" }))).collect::<Vec<_>>().join(" + "));
             traffic.cars[ci].state.max_speed_kmh = 90.0;
             traffic.cars[ci].state.length = 20.0 * (1 + traffic.cars[ci].vehicle.trailers.len()) as f32;
         }
