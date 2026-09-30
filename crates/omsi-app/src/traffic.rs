@@ -1879,6 +1879,12 @@ impl Traffic {
             (LaneKind::Street, street_target),
             (LaneKind::Air, if has_air { 3 } else { 0 }),
         ] {
+            // (a LAN host counts the cars round itself only: counted over the whole map,
+            // the traffic it keeps round the other players met its own target and the
+            // host drove through empty streets, #342)
+            if kind == LaneKind::Street && !self.lan_centers.is_empty() {
+                self.count_near = Some((center, self.spawn_radius));
+            }
             self.populate_kind(world, renderer, scene, center, kind, target);
         }
         self.populate_lan_centers(world, renderer, scene, center, street_target);

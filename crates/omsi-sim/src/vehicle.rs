@@ -2580,10 +2580,12 @@ pub fn compute_mesh_props(ty: &VehicleType, var: &dyn Fn(&str) -> Option<f32>) -
                 slot_uv: vec![[0.0; 2]; vm.materials.len().max(1)],
                 ..Default::default()
             };
-            for m in &def.materials {
+            for (mi, m) in def.materials.iter().enumerate() {
                 // [matl_change] tex idx var + [matl_item]: the variant (night map) is active
                 // when the variable is set
-                if let Some((_, _, v)) = &m.change {
+                if let Some((_, _, v)) = m.change.as_ref().filter(|_| !m.item) {
+                    // (its items follow it: item n shows at n, 1 <= n <= their number)
+                    let items = def.materials[mi + 1..].iter().take_while(|d| d.item).count().max(1) as f32;
                     if let Some(slot) = override_slot(&vm.materials, m) {
                         // (the item as Omsi.exe picks it: the variable rounded is 1; an
                         // undeclared one is 0 - see scene.rs `change_picks_item`)
@@ -2593,7 +2595,8 @@ pub fn compute_mesh_props(ty: &VehicleType, var: &dyn Fn(&str) -> Option<f32>) -
                             .ok()
                             .or_else(|| var(v))
                             .unwrap_or(0.0);
-                        props.slot_night[slot] = if x.is_finite() && x.round_ties_even() == 1.0 { 1.0 } else { 0.0 };
+                        let n = if x.is_finite() { x.round_ties_even() } else { 0.0 };
+                        props.slot_night[slot] = if n >= 1.0 && n <= items { 1.0 } else { 0.0 };
                     }
                 }
                 // several light maps: the slot is as bright as the brightest (the texture
