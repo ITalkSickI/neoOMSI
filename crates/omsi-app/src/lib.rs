@@ -467,6 +467,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         paused: false,
         game_menu: None,
         menu_top: None,
+        menu_scroll_drag: false,
         menu_more: false,
         plugin_keys: Vec::new(),
         clock_hold: 0.0,

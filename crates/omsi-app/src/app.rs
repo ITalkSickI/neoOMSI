@@ -102,6 +102,7 @@ pub(crate) struct App {
     /// The first line of the game menu (or chooser) shown, when a finger has scrolled it
     /// (in lines, fractional while dragged); `None`: the chosen line is kept in view.
     pub(crate) menu_top: Option<f32>,
+    pub(crate) menu_scroll_drag: bool,
     /// The game menu shows all its lines ("More..."), not only the everyday ones.
     pub(crate) menu_more: bool,
     /// Keys pressed (true) and let go since the Lua plugins' last frame.
