@@ -1,27 +1,10 @@
 use super::*;
 
-const IBIS: &str = include_str!("../../../../docs/examples/htmltexture/ibis.html");
+const DEMO: &str = include_str!("../../../../docs/examples/htmltexture/demo.html");
 
 fn px(frame: &[u8], w: u32, x: u32, y: u32) -> [u8; 4] {
     let i = ((y * w + x) * 4) as usize;
     [frame[i], frame[i + 1], frame[i + 2], frame[i + 3]]
-}
-
-#[test]
-fn the_ibis_example_shows_the_speed() {
-    let mut r = EngineRenderer::new(800, 480, IBIS);
-    r.set_vars(&[("velocity_kmh".into(), 42.4)], &[("next_stop".into(), "Hauptbahnhof".into())]);
-    assert_eq!(r.text_of("speed").as_deref(), Some("42"));
-    assert_eq!(r.text_of("stop").as_deref(), Some("Hauptbahnhof"));
-    let a = r.poll_frame().unwrap();
-    assert_eq!(a.len(), 800 * 480 * 4);
-    assert_eq!(px(&a, 800, 2, 2), [0x10, 0x18, 0x20, 255]);
-    assert!(a.chunks(4).any(|p| p[0] > 200 && p[1] > 120 && p[2] < 80), "amber text is drawn");
-    r.set_vars(&[("velocity_kmh".into(), 7.0)], &[]);
-    assert_eq!(r.text_of("speed").as_deref(), Some("7"));
-    let b = r.poll_frame().unwrap();
-    assert_ne!(a, b);
-    assert!(r.poll_frame().is_none(), "no new frame without a change");
 }
 
 #[test]
@@ -234,29 +217,6 @@ fn a_click_can_press_a_trigger() {
     assert!(r.take_triggers().is_empty());
 }
 
-#[test]
-fn the_controls_example_can_be_operated() {
-    const CONTROLS: &str = include_str!("../../../../docs/examples/htmltexture/controls.html");
-    let mut r = EngineRenderer::new(800, 480, CONTROLS);
-    r.set_vars(&[("velocity_kmh".into(), 34.2)], &[("next_stop".into(), "Hauptbahnhof".into())]);
-    assert_eq!(r.text_of("speed").as_deref(), Some("34"));
-    let idle = r.poll_frame().unwrap();
-    click(&mut r, 55.0, 196.0); // 1
-    click(&mut r, 55.0, 266.0); // 4
-    assert_eq!(r.text_of("entry").as_deref(), Some("14"));
-    assert!(r.take_events().is_empty(), "nothing is sent before OK");
-    click(&mut r, 230.0, 406.0); // OK
-    assert_eq!(r.take_events(), vec![("IBIS_Linie".to_string(), 14.0)]);
-    click(&mut r, 500.0, 242.0); // Doors
-    assert_eq!(r.take_triggers(), vec!["door_toggle".to_string()]);
-    let typed = r.poll_frame().unwrap();
-    assert_ne!(idle, typed, "the page shows what was pressed");
-    // the flash of the pressed button ends by itself
-    r.js.now += 1.0;
-    assert!(r.run_timers());
-    assert_eq!(px(&r.render(), 800, 420, 220), [0x2b, 0x3a, 0x4a, 255]);
-}
-
 fn map(items: Vec<(&str, crate::vehicle_api::ApiValue)>) -> crate::vehicle_api::ApiValue {
     crate::vehicle_api::ApiValue::Map(items.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
 }
@@ -326,10 +286,282 @@ fn a_timer_sees_the_latest_vehicle_without_an_update_function() {
     assert_eq!(r.text_of("e").as_deref(), Some("2"));
 }
 
-const DASHBOARD: &str = include_str!("../../../../docs/examples/htmltexture/dashboard.html");
+// ─────────────── demo.html: header, speed, lamps, doors, controls ───────────────
+
+/// The vehicle object `demo.html` reads. `bare`: a bus without doors, boarding doors and
+/// rpm signal (those come as `null` / empty).
+fn demo_vehicle(speed: f64, engine_on: bool, door_open: bool, bare: bool) -> crate::vehicle_api::ApiValue {
+    use crate::vehicle_api::ApiValue as A;
+    let s = |t: &str| A::Str(t.to_string());
+    let num = |items: Vec<(&str, f64)>| map(items.into_iter().map(|(k, v)| (k, A::Num(v))).collect());
+    let flags = |items: Vec<(&str, bool)>| map(items.into_iter().map(|(k, v)| (k, A::Bool(v))).collect());
+    let open = if door_open && !bare { 1.0 } else { 0.0 };
+    let door = |n: f64, o: f64| map(vec![("number", A::Num(n)), ("open", A::Num(o)), ("isOpen", A::Bool(o > 0.05))]);
+    let (count, doors, entries, exits) = if bare {
+        (0.0, vec![], vec![], vec![])
+    } else {
+        (
+            2.0,
+            vec![door(1.0, open), door(2.0, 0.0)],
+            vec![map(vec![("number", A::Num(1.0)), ("open", A::Bool(door_open)), ("requested", A::Bool(false))])],
+            vec![map(vec![("number", A::Num(2.0)), ("open", A::Bool(false)), ("requested", A::Bool(true))])],
+        )
+    };
+    map(vec![
+        ("info", map(vec![("number", s("42")), ("ident", s("DEMO")), ("route", s("Line 7")), ("nextStop", s("Central Station"))])),
+        (
+            "motion",
+            num(vec![
+                ("speedKmh", speed),
+                ("heading", 90.0),
+                ("pitch", 0.4),
+                ("bank", -0.2),
+                ("steeringDeg", 5.0),
+                ("x", 120.5),
+                ("y", 33.2),
+                ("z", 0.1),
+                ("odometerKm", 1234.5),
+            ]),
+        ),
+        (
+            "engine",
+            map(vec![
+                ("running", A::Bool(engine_on)),
+                ("rpm", if bare { A::Null } else { A::Num(800.0) }),
+                ("gear", A::Num(3.0)),
+                ("tankContent", A::Num(180.0)),
+                ("throttle", A::Num(0.4)),
+                ("brake", A::Num(0.0)),
+                ("clutch", A::Num(0.0)),
+            ]),
+        ),
+        ("electrics", flags(vec![("on", false), ("failure", false)])),
+        ("battery", map(vec![("on", A::Null)])),
+        ("brakes", flags(vec![("parking", false), ("stop", false), ("kneeling", false)])),
+        ("wipers", flags(vec![("running", false)])),
+        ("train", num(vec![("trailers", 0.0)])),
+        (
+            "lights",
+            map(vec![
+                ("headlights", A::Num(0.0)),
+                ("brake", A::Bool(false)),
+                ("reverse", A::Bool(false)),
+                ("fog", A::Bool(false)),
+                ("indicatorLeft", A::Bool(false)),
+                ("indicatorRight", A::Bool(false)),
+                ("hazard", A::Bool(false)),
+                ("interior", A::Num(0.0)),
+            ]),
+        ),
+        ("doors", map(vec![("count", A::Num(count)), ("anyOpen", A::Bool(open > 0.05)), ("list", A::List(doors))])),
+        ("passengers", map(vec![("onboard", A::Num(23.0)), ("entries", A::List(entries)), ("exits", A::List(exits))])),
+        ("cabin", num(vec![("temperature", 21.5)])),
+        ("condition", num(vec![("dirt", 0.12), ("crashes", 0.0), ("lastImpactKJ", 0.0), ("streetCondition", 1.0)])),
+    ])
+}
+
+/// A renderer with `demo.html` loaded and the vehicle handed over (as the game does on the
+/// first update).
+fn demo_page(v: &crate::vehicle_api::ApiValue) -> EngineRenderer {
+    let mut r = EngineRenderer::new(800, 480, DEMO);
+    r.set_vehicle(v);
+    r.set_vars(&[], &[]);
+    r
+}
+
+fn has_colour(frame: &[u8], rgb: [u8; 3]) -> bool {
+    frame.chunks(4).any(|p| p[0] == rgb[0] && p[1] == rgb[1] && p[2] == rgb[2])
+}
+
+/// `.warn` (open door, brake held) and `.on` (engine lamp, open boarding door).
+const RED: [u8; 3] = [0xe5, 0x38, 0x3b];
+const GREEN: [u8; 3] = [0x1f, 0xa6, 0x4f];
+
+fn inside(r: &EngineRenderer, mut n: usize, ancestor: usize) -> bool {
+    loop {
+        if n == ancestor {
+            return true;
+        }
+        match r.js.dom.nodes[n].parent {
+            Some(p) if p != n => n = p,
+            _ => return false,
+        }
+    }
+}
+
+/// A point inside the element `id`, found the way a finger finds it: the first row at column
+/// `x` where a press would reach the element (the page's height depends on what the script
+/// has built, so no fixed coordinates).
+fn point_in(r: &EngineRenderer, id: &str, x: f32) -> (f32, f32) {
+    let node = r.js.dom.by_id(id).unwrap_or_else(|| panic!("no element {id}"));
+    let mut y = 0.0;
+    while y < 900.0 {
+        if inside(r, r.hit_node(x, y), node) {
+            return (x, y + 2.0);
+        }
+        y += 6.0;
+    }
+    panic!("{id} is not under column {x}");
+}
+
+fn click_on(r: &mut EngineRenderer, id: &str, x: f32) {
+    let (x, y) = point_in(r, id, x);
+    click(r, x, y);
+}
+
+// buttons of the demo: 170 px wide, 6 px apart, the row starts 10 px in
+const X_STOP: f32 = 60.0;
+const X_OPEN: f32 = 270.0;
+const X_BRAKE: f32 = 450.0;
 
 #[test]
-fn the_dashboard_example_shows_the_vehicle() {
+fn the_demo_shows_the_header_and_the_speed() {
+    let mut r = EngineRenderer::new(800, 480, DEMO);
+    r.set_vehicle(&demo_vehicle(-36.6, true, false, false));
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("num").as_deref(), Some("Bus 42"));
+    assert_eq!(r.text_of("ident").as_deref(), Some("DEMO"));
+    assert_eq!(r.text_of("route").as_deref(), Some("Line 7"));
+    assert_eq!(r.text_of("stop").as_deref(), Some("Central Station"));
+    assert_eq!(r.text_of("kmh").as_deref(), Some("37"), "the speed is shown without its sign");
+    assert_eq!(r.text_of("rpm").as_deref(), Some("800"));
+    assert_eq!(r.text_of("gear").as_deref(), Some("3"));
+    assert_eq!(r.text_of("tank").as_deref(), Some("180"));
+    assert_eq!(r.text_of("thr").as_deref(), Some("0.40"));
+    let a = r.poll_frame().unwrap();
+    assert_eq!(a.len(), 800 * 480 * 4);
+    assert_eq!(px(&a, 800, 799, 200), [0x09, 0x0e, 0x14, 255], "the page background");
+    assert_eq!(px(&a, 800, 799, 10), [0x11, 0x19, 0x25, 255], "the header bar");
+    r.set_vehicle(&demo_vehicle(7.0, true, false, false));
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("kmh").as_deref(), Some("7"));
+    let b = r.poll_frame().unwrap();
+    assert_ne!(a, b);
+    assert!(r.poll_frame().is_none(), "no new frame without a change");
+}
+
+#[test]
+fn the_demo_footer_counts_updates_and_reads_variables() {
+    let mut r = EngineRenderer::new(800, 480, DEMO);
+    r.set_vehicle(&demo_vehicle(0.0, true, false, false));
+    r.set_vars(&[("Engine_N".into(), 812.0)], &[]);
+    let foot = r.text_of("foot").unwrap();
+    assert!(foot.contains("api 1 | updates 1 | vars 1 | Engine_N 812"), "{foot}");
+    assert!(!foot.contains("DEMO |"), "the host is there, so it is no browser demo: {foot}");
+    r.set_vars(&[("Engine_N".into(), 900.0)], &[]);
+    let foot = r.text_of("foot").unwrap();
+    assert!(foot.contains("updates 2") && foot.contains("Engine_N 900"), "{foot}");
+}
+
+#[test]
+fn the_demo_lists_doors_and_boarding() {
+    let r = demo_page(&demo_vehicle(0.0, true, true, false));
+    let sum = r.text_of("doorsum").unwrap();
+    assert!(sum.contains("2 door(s), any open: yes"), "{sum}");
+    let pax = r.text_of("pax").unwrap();
+    assert!(pax.contains("IN 1"), "{pax}");
+    assert!(pax.contains("OUT 2 REQ"), "the requested exit is marked: {pax}");
+    let doors = r.text_of("doors").unwrap();
+    assert!(doors.contains("OPEN 100%") && doors.contains("shut"), "{doors}");
+    let r = demo_page(&demo_vehicle(0.0, true, false, false));
+    assert!(r.text_of("doorsum").unwrap().contains("any open: no"));
+}
+
+#[test]
+fn the_demo_copes_with_a_bus_that_lacks_signals() {
+    let r = demo_page(&demo_vehicle(0.0, false, false, true));
+    assert_eq!(r.text_of("rpm").as_deref(), Some("--"), "a signal the bus lacks is null");
+    assert!(r.text_of("doorsum").unwrap().contains("(none reported)"));
+    assert_eq!(r.text_of("pax").as_deref(), Some("no boarding doors reported"));
+    assert_eq!(r.text_of("kmh").as_deref(), Some("0"), "the rest of the page still updates");
+}
+
+#[test]
+fn the_demo_draws_open_doors_and_the_running_engine() {
+    let mut r = EngineRenderer::new(800, 480, DEMO);
+    let idle = r.poll_frame().unwrap();
+    assert!(!has_colour(&idle, RED) && !has_colour(&idle, GREEN), "everything is dark before the first update");
+    r.set_vehicle(&demo_vehicle(0.0, true, false, false));
+    r.set_vars(&[], &[]);
+    let f = r.poll_frame().unwrap();
+    assert!(has_colour(&f, GREEN), "the running engine is drawn green");
+    assert!(!has_colour(&f, RED), "all doors shut: nothing red");
+    r.set_vehicle(&demo_vehicle(0.0, false, true, false));
+    r.set_vars(&[], &[]);
+    let f = r.poll_frame().unwrap();
+    assert!(has_colour(&f, RED), "the open door is drawn red");
+}
+
+#[test]
+fn the_demo_stop_request_and_outside_opener_press_their_triggers() {
+    let mut r = demo_page(&demo_vehicle(0.0, true, false, false));
+    click_on(&mut r, "b_stop", X_STOP);
+    assert_eq!(r.take_triggers(), vec!["door_haltewunsch".to_string(), "door_haltewunsch_off".to_string()]);
+    assert!(r.text_of("foot").unwrap().contains("last: trigger door_haltewunsch"));
+    assert!(r.take_events().is_empty(), "the buttons only press triggers");
+    click_on(&mut r, "b_open", X_OPEN);
+    assert_eq!(r.take_triggers(), vec!["door_aussenoeffner".to_string(), "door_aussenoeffner_off".to_string()]);
+    assert!(r.text_of("foot").unwrap().contains("last: trigger door_aussenoeffner"));
+    // beside the buttons nothing happens
+    click(&mut r, 790.0, 5.0);
+    assert!(r.take_triggers().is_empty() && r.take_events().is_empty());
+}
+
+#[test]
+fn the_demo_brake_button_holds_while_pressed() {
+    let mut r = demo_page(&demo_vehicle(0.0, false, false, false));
+    let (x, y) = point_in(&r, "b_brake", X_BRAKE);
+    r.pointer(x, y, PointerKind::Down);
+    assert_eq!(r.take_events(), vec![("Brake".to_string(), 1.0)]);
+    assert!(has_colour(&r.poll_frame().unwrap(), RED), "the held button turns red");
+    assert!(r.text_of("foot").unwrap().contains("last: setVar Brake 1"));
+    r.pointer(x, y, PointerKind::Up);
+    assert_eq!(r.take_events(), vec![("Brake".to_string(), 0.0)], "released once, not twice");
+    assert!(!has_colour(&r.poll_frame().unwrap(), RED));
+    assert!(r.text_of("foot").unwrap().contains("last: setVar Brake 0"));
+}
+
+#[test]
+fn the_demo_brake_lets_go_when_released_beside_the_button() {
+    let mut r = demo_page(&demo_vehicle(0.0, false, false, false));
+    let (x, y) = point_in(&r, "b_brake", X_BRAKE);
+    r.pointer(x, y, PointerKind::Down);
+    assert_eq!(r.take_events(), vec![("Brake".to_string(), 1.0)]);
+    r.pointer(790.0, 5.0, PointerKind::Up);
+    assert_eq!(r.take_events(), vec![("Brake".to_string(), 0.0)]);
+    // a release without a hold sends nothing
+    r.pointer(790.0, 5.0, PointerKind::Up);
+    assert!(r.take_events().is_empty());
+}
+
+#[test]
+fn the_demo_redraws_from_the_latest_snapshot_every_second() {
+    let mut r = demo_page(&demo_vehicle(0.0, true, false, false));
+    assert!(r.text_of("foot").unwrap().contains("| 0 s |"));
+    // a new snapshot without an update call: the once-a-second timer picks it up
+    let mut v = demo_vehicle(20.0, true, false, false);
+    if let crate::vehicle_api::ApiValue::Map(m) = &mut v {
+        for (k, val) in m.iter_mut() {
+            if k.as_str() == "info" {
+                *val = map(vec![
+                    ("number", crate::vehicle_api::ApiValue::Str("42".into())),
+                    ("ident", crate::vehicle_api::ApiValue::Str("DEMO".into())),
+                    ("route", crate::vehicle_api::ApiValue::Str("Line 9".into())),
+                    ("nextStop", crate::vehicle_api::ApiValue::Str("Depot".into())),
+                ]);
+            }
+        }
+    }
+    r.set_vehicle(&v);
+    r.js.now += 1.2;
+    assert!(r.run_timers());
+    assert_eq!(r.text_of("route").as_deref(), Some("Line 9"));
+    assert_eq!(r.text_of("kmh").as_deref(), Some("20"));
+    assert!(r.text_of("foot").unwrap().contains("| 1 s |"));
+}
+
+#[test]
+fn the_demo_shows_a_real_vehicle_snapshot() {
     use crate::vehicle_api::{snapshot, Inputs};
     let var = |n: &str| match n.to_ascii_lowercase().as_str() {
         "door_0" => Some(0.0),
@@ -337,7 +569,12 @@ fn the_dashboard_example_shows_the_vehicle() {
         "engine_n" => Some(800.0),
         _ => None,
     };
-    let text = |n: &str| if n == "number" { "4711".to_string() } else { String::new() };
+    let text = |n: &str| match n {
+        "number" => "4711".to_string(),
+        "act_route" => "Line 7".to_string(),
+        "act_busstop" => "Hauptbahnhof".to_string(),
+        _ => String::new(),
+    };
     let api = snapshot(&Inputs {
         var: &var,
         text: &text,
@@ -354,12 +591,14 @@ fn the_dashboard_example_shows_the_vehicle() {
         dirt: 0.0,
         trailers: 0,
     });
-    let mut r = EngineRenderer::new(800, 480, DASHBOARD);
+    let mut r = EngineRenderer::new(800, 480, DEMO);
     r.set_vehicle(&api);
     r.set_vars(&[], &[]);
     assert_eq!(r.text_of("kmh").as_deref(), Some("37"));
     assert_eq!(r.text_of("num").as_deref(), Some("Bus 4711"));
+    assert_eq!(r.text_of("route").as_deref(), Some("Line 7"));
+    assert_eq!(r.text_of("stop").as_deref(), Some("Hauptbahnhof"));
     let f = r.poll_frame().unwrap();
-    assert!(f.chunks(4).any(|p| p[0] == 0xc6 && p[1] == 0x28 && p[2] == 0x28), "the open door is drawn red");
-    assert!(f.chunks(4).any(|p| p[0] == 0x2e && p[1] == 0x7d && p[2] == 0x32), "the running engine is drawn green");
+    assert!(has_colour(&f, RED), "the open door is drawn red");
+    assert!(has_colour(&f, GREEN), "the running engine is drawn green");
 }

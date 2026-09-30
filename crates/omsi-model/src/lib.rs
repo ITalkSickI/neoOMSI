@@ -1032,12 +1032,12 @@ mod tests {
 
     #[test]
     fn an_html_texture_takes_a_script_texture_index() {
-        let text = "[scripttexture]\n64\n32\n\n[htmltexture]\n800\n480\nhtml\\ibis.html\n\n[mesh]\nx.o3d\n\n[matl]\nx.dds\n0\n[useHtmlTexture]\n0\n";
+        let text = "[scripttexture]\n64\n32\n\n[htmltexture]\n800\n480\nhtml\\demo.html\n\n[mesh]\nx.o3d\n\n[matl]\nx.dds\n0\n[useHtmlTexture]\n0\n";
         let m = Model::parse(&omsi_cfg::CfgFile::from_str("model.cfg", text));
         assert_eq!(m.script_textures, vec![(64, 32), (800, 480)]);
         assert_eq!(m.html_textures.len(), 1);
         assert_eq!(m.html_textures[0].script_index, 1);
-        assert_eq!(m.html_textures[0].path, "html\\ibis.html");
+        assert_eq!(m.html_textures[0].path, "html\\demo.html");
         assert_eq!(m.meshes[0].materials[0].use_script_texture, Some(1));
     }
 
