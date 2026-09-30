@@ -366,7 +366,8 @@ struct MaterialUniform {
     /// The PBR maps beside the diffuse texture (`Scene::pbr_maps`): x has a normal map,
     /// y an occlusion, z a roughness, w a metalness channel.
     pbr: [f32; 4],
-    /// x: a screen (`MaterialExtra::screen`); y, z, w unused.
+    /// x: a screen (`MaterialExtra::screen`); y: `[matl_texadress_border]`, z its colour's
+    /// rgb packed as r * 65536 + g * 256 + b (bytes), w its alpha.
     flags: [f32; 4],
 }
 
@@ -716,6 +717,11 @@ pub struct MaterialExtra {
     /// material's transmap flag before it reads the name (0x7fbbf4), and with it the
     /// `[matl_envmap]` reflection goes by the texture's alpha instead of the factor.
     pub transmap_declared: bool,
+    /// `[matl_texadress_border]`: its colour (RGBA, 0..1). Where the (scrolled) texture
+    /// coordinates leave [0, 1] the diffuse texture reads this colour instead of its edge,
+    /// as Direct3D's border addressing does: a roller blind's band that has scrolled away
+    /// vanishes in a transparent border.
+    pub border: Option<[f32; 4]>,
 }
 
 /// The textures a material's bind group samples.
@@ -4540,7 +4546,15 @@ impl Renderer {
                 if extra.no_z_check { 1.0 } else { 0.0 },
             ],
             pbr: texture.and_then(|t| scene.pbr_maps.get(&t)).map(|m| m.flags).unwrap_or([0.0; 4]),
-            flags: [if extra.screen { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0],
+            flags: {
+                let b = extra.border.unwrap_or([0.0; 4]).map(|c| (c.clamp(0.0, 1.0) * 255.0).round());
+                [
+                    if extra.screen { 1.0 } else { 0.0 },
+                    if extra.border.is_some() { 1.0 } else { 0.0 },
+                    b[0] * 65536.0 + b[1] * 256.0 + b[2],
+                    b[3] / 255.0,
+                ]
+            },
         };
         let slot = |t: Option<TextureId>| {
             t.and_then(|t| scene.textures.get(t).map(|g| (t, g.gen)))
