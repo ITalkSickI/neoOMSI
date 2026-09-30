@@ -286,15 +286,18 @@ need a few changes. When something doesn't show up, check this list first.
 * `<button>` comes with a default look (grey, rounded, padded). Boxes with
   `display:inline-block` are laid out in rows that wrap, which is what you want for keypads
   and lists. A box without a `width` is as wide as its content.
+* `<img src width height>` (bmp, dds, tga, jpg, png). The file is looked up next to the page
+  (see `htmlengine/images.rs`). `img.src` can be changed from a script. Pictures are cached,
+  a missing file is cached too.
 * `<head>`, `<title>`, `<meta>`, `<link>` are read and then ignored.
 
-Not available: images, canvas, tables, lists (`ul`/`li`), forms and `input` fields, iframes,
-video.
+Not available: canvas, tables, lists (`ul`/`li`), forms and `input` fields, iframes, video, svg.
 
 ### CSS
 
 * Selectors: tag, `#id`, `.class`, `*`, combinations like `div.a#b`, descendant chains (`.panel span`) and comma lists.
-* Properties: `color`, `background` / `background-color`, `font-size`, `font-weight`,
+* Properties: `color`, `background` / `background-color`, `background-image: url()`,
+  `background-size`, `background-repeat`, `background-position`, `font-size`, `font-weight`,
   `text-align`, `line-height`, `margin` (and `-top/-right/-bottom/-left`), `padding` (same),
   `width`, `height`, `display` (`none`, `inline`, `inline-block`), `visibility`,
   `border-radius`.
