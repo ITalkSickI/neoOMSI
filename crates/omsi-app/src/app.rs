@@ -513,7 +513,8 @@ impl App {
                 if let Some(d) = self.args.driver.as_deref() {
                     self.career = career::Career::load(&self.args.root, d);
                 }
-                if self.args.passengers {
+                // (and a player who joins another's game sees the host's people)
+                if self.args.passengers || self.args.lan_join.is_some() {
                     let mut h = humans::Humans::new(&self.args.root);
                     if let Some(lan) = self.lan.as_ref() {
                         h.set_lan_seed(lan::population_seed(lan));
@@ -539,7 +540,9 @@ impl App {
                     }
                     self.humans = Some(h);
                 }
-                if self.args.traffic > 0 || self.args.schedule || crate::rail_drive::args_rail(&self.args) {
+                // (a player who joins draws the host's traffic in it, whatever their own count
+                // says: the host's cars had nowhere to go without it)
+                if self.args.traffic > 0 || self.args.schedule || crate::rail_drive::args_rail(&self.args) || self.args.lan_join.is_some() {
                     match traffic::Traffic::new(&self.args.root, &w, self.args.traffic) {
                         Ok(mut t) => {
                             if let Some(lan) = self.lan.as_ref() {

@@ -33,7 +33,10 @@ pub(crate) fn run_offscreen(
     let mut scene = renderer.new_scene();
     let (world, mut camera) = lan::answering_while(&mut lan_off, args.bus.as_deref(), || load_world(args, &renderer, &mut scene))?;
     let lan_seed = lan_off.as_ref().map(lan::population_seed);
-    let mut traffic = if args.traffic > 0 || args.schedule || crate::rail_drive::args_rail(args) {
+    // (a player who joins another's game draws the host's traffic in it, whatever their own
+    // count says: without it the host's cars had nowhere to go - "passengers, but no
+    // traffic" on a server)
+    let mut traffic = if args.traffic > 0 || args.schedule || crate::rail_drive::args_rail(args) || args.lan_join.is_some() {
         let mut t = traffic::Traffic::new(&args.root, &world, args.traffic)?;
         if let Some(seed) = lan_seed {
             t.set_lan_seed(seed);
@@ -129,7 +132,7 @@ pub(crate) fn run_offscreen(
         .as_deref()
         .map(|d| career::Career::load(&args.root, d))
         .unwrap_or_default();
-    let mut humans_off = if args.passengers {
+    let mut humans_off = if args.passengers || args.lan_join.is_some() {
         let mut h = humans::Humans::new(&args.root);
         if let Some(seed) = lan_seed {
             h.set_lan_seed(seed);
