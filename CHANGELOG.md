@@ -4,6 +4,23 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.330 - 2026-09-30
+
+### Driving
+- The driver's and the passengers' views ride with the bus: their cameras hang on the body
+  as Omsi.exe's do, pitching under braking and leaning in bends with the cab, the mouse
+  look turned in the bus's frame. The level view with the cab rocking about it was most of
+  the "boat" - the body's own heave, pitch and roll already settle as Omsi.exe's do.
+- Mods with physics of their own: `Brakeforce` and every `Axle_Brakeforce_*` go back to 0
+  after the physics read them, as Omsi.exe clears them each frame before the scripts run -
+  a script that brakes only now and then (a retarder, a stop brake, custom physics) no
+  longer leaves the brakes on for good.
+
+### Traffic
+- Timetable buses pull into the bay: they move over to the `[busstop]` box as Omsi.exe
+  moves them - the kerb-side flank 0.3 m past the box's centre, from the stop's docking
+  distance (30 m) out - whether or not a path leads into the bay (#241).
+
 ## 0.1.328 - 2026-09-30
 
 ### Vehicles
