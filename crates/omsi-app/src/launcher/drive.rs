@@ -174,6 +174,14 @@ fn step_bus(l: &mut Launcher, r: Rect) {
                 l.state.touched();
             }
         }
+        // the number plate (registration) by hand: empty leaves it to the bus's `[number]`
+        // list and the map's `registrations.txt`, as before
+        y += ROW + 8.0;
+        l.ui.label(Rect::new(r.x, y, 130.0, ROW), "Number plate");
+        if l.ui.text_input("plate", Rect::new(r.x + 130.0, y, r.w - 130.0, ROW), &mut l.state.choice.plate, "Automatic", Some("badge")) {
+            l.state.touched();
+        }
+        y += ROW + 8.0;
         if !v.missing_packs.is_empty() {
             let text = format!(
                 "This bus takes its dashboard, steering wheel or ticket machine from {} - not installed. It will drive with those parts missing, as in OMSI 2; install {} (Mods page) to complete it.",

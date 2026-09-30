@@ -73,6 +73,8 @@ fn servers_path() -> std::path::PathBuf {
 pub struct Choice {
     pub bus: String,
     pub paint: String,
+    /// The number plate the player typed for the bus (empty: as the content says).
+    pub plate: String,
     pub hof: String,
     /// The depot file was chosen by hand (else it follows the map and the date).
     pub hof_manual: bool,
@@ -107,6 +109,7 @@ impl Default for Choice {
         Choice {
             bus: String::new(),
             paint: String::new(),
+            plate: String::new(),
             hof: String::new(),
             hof_manual: false,
             map: String::new(),
@@ -491,6 +494,7 @@ impl State {
             map: host_map.unwrap_or_else(|| c.map.clone()),
             bus: c.bus.clone(),
             paint: Some(c.paint.clone()).filter(|p| !p.is_empty()),
+            plate: Some(c.plate.clone()).filter(|p| !p.trim().is_empty()),
             hof: Some(c.hof.clone()).filter(|p| !p.is_empty()),
             entry: Some(c.entry),
             line: if c.free { None } else { c.line.clone() },
@@ -1015,6 +1019,21 @@ pub fn crash_of(log: &std::path::Path) -> Option<(String, String)> {
     }
     let tail = lines[lines.len().saturating_sub(150)..].join("\n");
     Some((what.chars().take(600).collect(), tail))
+}
+
+#[cfg(test)]
+mod choice_tests {
+    /// `launcher-duty.json` from before the number plate field: the missing key falls back to
+    /// the default (no plate), and a typed plate survives a round trip.
+    #[test]
+    fn an_old_duty_file_loads_and_a_typed_plate_is_kept() {
+        let old: super::Choice = serde_json::from_str(r#"{"bus":"Vehicles/x.bus","map":"maps/x/global.cfg"}"#).unwrap();
+        assert_eq!(old.plate, "");
+        let mut c = super::Choice::default();
+        c.plate = "B-AB 1234".into();
+        let back: super::Choice = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.plate, "B-AB 1234");
+    }
 }
 
 #[cfg(test)]
