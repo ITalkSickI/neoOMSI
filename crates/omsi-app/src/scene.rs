@@ -3168,7 +3168,7 @@ impl World {
         if let Some(ix) = g.as_ref() {
             return ix.clone();
         }
-        let mut built = MapIndex::build(&self.map_tiles(), &self.chrono_dirs.read());
+        let mut built = MapIndex::build(&self.map_tiles(), &self.chrono_dirs.read(), &self.root);
         // the index's object positions go to `object_positions` (kept once, not twice: 345 000
         // objects on Ahlheim took 30 MB in each)
         let objects = std::mem::take(&mut built.objects);
@@ -4282,6 +4282,7 @@ impl World {
         let debug_objects = omsi_cfg::env::var_os("OMSI_DEBUG_OBJECTS").is_some();
         let check_objects = omsi_cfg::env::var_os("OMSI_CHECK_OBJECTS").is_some();
         let debug_float = omsi_cfg::env::var_os("OMSI_DEBUG_FLOAT").is_some();
+        let index = self.index();
         for (oi, (o, fp)) in st.objects.iter().zip(res.poses.iter()).enumerate() {
             let Some(Pose { pos, rot: xf }) = *fp else {
                 continue;
@@ -4376,8 +4377,9 @@ impl World {
                 trees.push((ot.clone(), texture, pos, height, height * ratio, heading));
                 continue;
             }
-            // crossings with a light program get a controller; their lanes refer to it
-            let controller = if ot.sco.traffic_lights.is_empty() {
+            // Stock junctions carry a light program even where the map places no signals.
+            // Use the map-wide index so lamps on an unloaded neighbouring tile still count.
+            let controller = if !traffic_light_program_enabled(&ot.sco, index.traffic_light_parents.contains(&o.id)) {
                 None
             } else {
                 let known = self.controller_of_object.lock().get(&o.id).copied();
@@ -11705,6 +11707,10 @@ fn spline_lanes(
     out
 }
 
+fn traffic_light_program_enabled(sco: &SceneryObject, has_signals: bool) -> bool {
+    !sco.traffic_lights.is_empty() && (has_signals || sco.is_traffic_light)
+}
+
 /// Lanes of one placed scenery object: `[path]` arcs in the object frame (x right,
 /// y forward, z up; heading clockwise, radius > 0 right turn) rotated by the object heading.
 fn object_lanes(
@@ -11860,6 +11866,16 @@ pub(crate) fn resolve_scenery_freetex_name<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn traffic_light_program_requires_a_placed_signal() {
+        let sco = SceneryObject::parse(&omsi_cfg::CfgFile::from_str("junction.sco", "[traffic_lights_group]\n72\n[traffic_light]\nMain\n[phase]\n0\n10\n[phase]\n6\n62\n"));
+        assert!(!traffic_light_program_enabled(&sco, false));
+        assert!(traffic_light_program_enabled(&sco, true));
+        let gate = SceneryObject { is_traffic_light: true, ..sco };
+        assert!(traffic_light_program_enabled(&gate, false));
+        assert!(!traffic_light_program_enabled(&SceneryObject::default(), true));
+    }
 
     fn freetex_test_look() -> Look {
         Look {
