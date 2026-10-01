@@ -3711,9 +3711,11 @@ impl Humans {
         };
         if let (Some(b), Some(cabin)) = (bus, self.player_cabin.clone()) {
             // A bus that is already serving a stop keeps serving it until it really pulls
-            // away: a frame-time spike must not "leave" and re-enter the stop.
+            // away: a frame-time spike must not "leave" and re-enter the stop, nor a driver
+            // rolling a metre on to line up a door (Omsi.exe keeps people walking up to a
+            // bus slower than 3 m/s, 0x62a6a0).
             let speed = b.physics.velocity_kmh() as f64 / 3.6;
-            let limit = if self.served_stop.is_some() { 4.0 } else { 0.5 };
+            let limit = if self.served_stop.is_some() { 10.8 } else { 0.5 };
             let (entry_open, exit_open) =
                 Self::doors_open(b, cabin.entries.len(), cabin.exits.len());
             let all_exit_here = match (b.var("target_index_int"), b.host.hof.as_ref()) {
@@ -5764,7 +5766,8 @@ impl Humans {
                     return Want::stand(None, Activity::Stand);
                 };
                 let bn = &buses[bi];
-                if bn.stop != Some(stop) || !bn.standing() {
+                // (Omsi.exe 0x62a6a0 states 2-3: the bus still counts while slower than 3 m/s)
+                if bn.stop != Some(stop) || bn.speed.abs() >= 3.0 {
                     back(self, "the bus pulls away");
                     self.people[i].avoid = Some(bus);
                     return Want::stand(None, Activity::Stand);
