@@ -2935,12 +2935,17 @@ impl World {
                 for sp in tile.splines.iter().filter(|s| !s.deleted && !s.file.trim().is_empty()) {
                     let Some(st) = self.spline_type(&sp.file) else { continue };
                     if !st.def.paths.iter().any(|p| p.kind == 0) {
-                        // (not the short pieces a car park's bays are made of)
-                        if let Some(w) = road_width(&sp.file, &st.def).filter(|_| sp.length >= 35.0) {
-                            let curve = SplineCurve::from_map(sp, origin2);
+                        // Short surfaces also corroborate editor-only traffic paths at
+                        // junctions; the navigator filters decorative patches for display.
+                        if sp.length >= 2.0 {
+                            let curve = SplineCurve::from_map(sp, origin2).with_sli(&st.def);
                             let n = ((curve.length / 4.0).ceil() as usize).clamp(1, 400);
-                            let pts: Vec<DVec3> = (0..=n).map(|k| curve.point_at(curve.length * k as f64 / n as f64)).collect();
-                            roads.push((pts, w));
+                            let side = if sp.mirror { -1.0 } else { 1.0 };
+                            for (lo, hi, z) in road_sections(&sp.file, &st.def) {
+                                let offset = side * ((lo + hi) * 0.5) as f64;
+                                let pts: Vec<DVec3> = (0..=n).map(|k| curve.offset_point(curve.length * k as f64 / n as f64, offset, z as f64)).collect();
+                                roads.push((pts, hi - lo));
+                            }
                         }
                     }
                     if st.def.paths.is_empty() {
@@ -2994,7 +2999,7 @@ impl World {
         }
         log::info!("navigation map: {} roads without a path for cars", roads.len());
         log::info!("navigation map: {} tiles, {} lanes, {} objects placed, {} street name signs, {} object types, {:.1} s", tiles.len(), lanes.len(), positions.len(), signs.len(), scos.lock().len(), t0.elapsed().as_secs_f64());
-        NavigationMap { lanes, roads, places: positions, signs }
+        NavigationMap { lanes, road_surfaces: roads, places: positions, signs }
     }
 
     /// Every tile of global.cfg's `[map]` list whose file exists, with its index in that list
@@ -12626,38 +12631,111 @@ mod material_tests {
 /// The whole map for the navigator (see [`World::navigation_map`]).
 pub struct NavigationMap {
     pub lanes: Vec<Lane>,
-    /// Roads without a path for cars (the East Berlin streets beyond the wall on Spandau,
-    /// yards, closed roads): their centre line and width, drawn on the maps, never routed.
-    pub roads: Vec<(Vec<DVec3>, f32)>,
+    /// Asphalt footprints used to corroborate editor-only driving paths. They are evidence
+    /// for roads, not streets to draw: a paved yard or median has no road centre line.
+    pub road_surfaces: Vec<(Vec<DVec3>, f32)>,
     /// Every placed object's position by id (bus stops beyond the loaded tiles).
     pub places: HashMap<i64, DVec3>,
     /// Street name signs: where, the object's heading and the name on it.
     pub signs: Vec<(DVec3, f64, String)>,
 }
 
-/// A spline without a path for cars that is a road all the same, and its width: a road by
-/// its name (`str_...`, "strasse", "road", "street") and at least 4 m of surface across.
-fn road_width(file: &str, def: &omsi_scenery::sli::Spline) -> Option<f32> {
-    let name = file.replace('\\', "/").rsplit('/').next().unwrap_or("").to_ascii_lowercase();
-    // (or by its surface: an asphalt or cobbled texture)
-    let tex_road = def.textures.iter().any(|t| {
-        let t = t.file.to_ascii_lowercase();
-        ["asph", "strass", "straß", "road", "street", "fahrbahn", "pflaster", "kopfstein", "cobble"].iter().any(|k| t.contains(k))
-    });
-    let roadish = tex_road || name.starts_with("str_") || name.starts_with("str.") || ["strasse", "straße", "road", "street", "fahrbahn"].iter().any(|k| name.contains(k));
-    if !roadish {
-        return None;
+/// Whether an asset name describes a road surface. Match whole filename tokens so objects
+/// such as `StreetLight.sli` do not become roads just because their name contains "street".
+fn road_surface_name(file: &str) -> bool {
+    let base = file.replace('\\', "/").rsplit('/').next().unwrap_or("").to_ascii_lowercase();
+    let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(&base);
+    let tokens: Vec<&str> = stem.split(|c: char| !c.is_ascii_alphanumeric() && c != 'ß').filter(|t| !t.is_empty()).collect();
+    let excludes = ["light", "lamp", "sign", "schild", "rail", "track", "gleis", "tram", "strab", "wire", "mast", "wall", "fence", "leitplanke", "gehweg", "side", "bord", "pavement", "fahrrad", "radweg", "cycle", "parking", "parkplatz", "gruen", "gras"];
+    if tokens.iter().any(|t| excludes.iter().any(|x| t.contains(x))) {
+        return false;
     }
-    let lo = def.height_profiles.iter().map(|h| h.x0.min(h.x1)).fold(f32::MAX, f32::min);
-    let hi = def.height_profiles.iter().map(|h| h.x0.max(h.x1)).fold(f32::MIN, f32::max);
-    let w = hi - lo;
-    if !w.is_finite() || w < 4.0 {
-        return None;
+    stem.starts_with("str_")
+        || tokens.iter().any(|t| {
+            ["str", "strasse", "straße", "road", "roads", "street", "streets", "fahrbahn", "pflaster", "kopfstein", "cobble"].contains(t)
+                || t.starts_with("asph")
+        })
+}
+
+/// The horizontal road surfaces actually drawn by a pathless spline: lateral bounds and
+/// height. A texture merely listed in the file is not evidence of a road, and the origin
+/// need not be in the middle of the surface. Keep medians and pavements out of its width.
+fn road_sections(file: &str, def: &omsi_scenery::sli::Spline) -> Vec<(f32, f32, f32)> {
+    let name = file.to_ascii_lowercase();
+    if def.only_editor || ["gehweg", "radweg", "fahrrad", "tram", "strab", "gleis", "rail", "parking"].iter().any(|s| name.contains(s)) || def.paths.iter().any(|p| p.kind == 2) {
+        return Vec::new();
     }
-    // the carriageway: the width its name says ("str_2spur_6m_..", "7,5m"), else a share of
-    // the cross-section (which has the pavements too)
-    let named = name.split(['_', ' ', '-']).find_map(|t| t.strip_suffix('m').and_then(|n| n.replace(',', ".").parse::<f32>().ok())).filter(|v| (3.0..=30.0).contains(v));
-    Some(named.unwrap_or(w * 0.6).min(w))
+    let mut sections = Vec::new();
+    for profile in &def.profiles {
+        let road = def.textures.get(profile.texture).map(|t| road_surface_name(&t.file)).unwrap_or_else(|| def.textures.is_empty() && road_surface_name(file));
+        if !road { continue; }
+        for pair in profile.points.windows(2) {
+            let (a, b) = (&pair[0], &pair[1]);
+            let (lo, hi) = (a.x.min(b.x), a.x.max(b.x));
+            if lo.is_finite() && hi.is_finite() && a.z.is_finite() && b.z.is_finite() && hi - lo > 0.1 && (a.z - b.z).abs() <= (hi - lo) * 0.15 {
+                sections.push((lo, hi, (a.z + b.z) * 0.5));
+            }
+        }
+    }
+    sections.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut merged: Vec<(f32, f32, f32)> = Vec::new();
+    for (lo, hi, z) in sections {
+        if let Some(last) = merged.last_mut().filter(|s| lo <= s.1 + 0.2 && (z - s.2).abs() < 0.2) {
+            last.1 = last.1.max(hi);
+        } else {
+            merged.push((lo, hi, z));
+        }
+    }
+    merged.retain(|(lo, hi, _)| hi - lo >= 4.0);
+    merged
+}
+
+#[cfg(test)]
+mod navigation_road_tests {
+    use super::*;
+
+    fn road_spline() -> omsi_scenery::sli::Spline {
+        use omsi_scenery::sli::{SplineProfile, SplineProfilePoint};
+        omsi_scenery::sli::Spline {
+            profiles: vec![SplineProfile { points: vec![SplineProfilePoint { x: -4.0, ..Default::default() }, SplineProfilePoint { x: 4.0, ..Default::default() }], ..Default::default() }],
+            // This editor selection width is deliberately much wider than the mesh.
+            height_profiles: vec![omsi_scenery::sli::HeightProfile { x0: -40.0, x1: 40.0, ..Default::default() }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn road_candidates_use_drawn_width_and_ignore_nonroad_assets() {
+        let def = road_spline();
+        assert!(road_sections("Splines/StreetLight.sli", &def).is_empty());
+        assert!(road_surface_name("Splines/Fahrbahn.sli"));
+        assert!(!road_surface_name("Splines/Straßenbahn.sli"));
+        assert_eq!(road_sections("Splines/Str_2spur_6m.sli", &def), vec![(-4.0, 4.0, 0.0)]);
+        let mut only_editor = def.clone();
+        only_editor.only_editor = true;
+        assert!(road_sections("Splines/Str_2spur_6m.sli", &only_editor).is_empty());
+        let mut asphalt = def;
+        asphalt.textures.push(omsi_scenery::sli::SplineTexture { file: "Texture/asphalt_rough.bmp".into(), ..Default::default() });
+        assert_eq!(road_sections("Splines/CustomCurve.sli", &asphalt), vec![(-4.0, 4.0, 0.0)]);
+        assert!(road_sections("Splines/BS_Gehweg_Asphalt01_MD_04m.sli", &asphalt).is_empty());
+    }
+
+    #[test]
+    fn road_surface_bounds_keep_offsets_medians_and_unused_textures() {
+        use omsi_scenery::sli::{Spline, SplineProfile, SplineProfilePoint, SplineTexture};
+        let profile = |texture, lo, hi| SplineProfile { texture, points: vec![SplineProfilePoint { x: lo, ..Default::default() }, SplineProfilePoint { x: hi, ..Default::default() }] };
+        let mut def = Spline {
+            textures: vec![SplineTexture { file: "str_asphdrk.bmp".into(), ..Default::default() }, SplineTexture { file: "str_side1.bmp".into(), ..Default::default() }, SplineTexture { file: "gras1.bmp".into(), ..Default::default() }],
+            profiles: vec![profile(1, -25.0, -18.0), profile(0, -18.0, -15.0), profile(0, -15.0, -12.0), profile(2, -12.0, 12.0), profile(0, 12.0, 18.0), profile(1, 18.0, 25.0)],
+            ..Default::default()
+        };
+        assert_eq!(road_sections("Custom/divided.sli", &def), vec![(-18.0, -12.0, 0.0), (12.0, 18.0, 0.0)]);
+        def.profiles = vec![profile(1, -25.0, 25.0)];
+        assert!(road_sections("Custom/surface.sli", &def).is_empty(), "unused asphalt texture must not turn pavement into a road");
+        def.profiles = vec![profile(0, -4.0, 4.0)];
+        def.paths.push(omsi_scenery::PathDef { kind: 2, ..Default::default() });
+        assert!(road_sections("Custom/track.sli", &def).is_empty());
+    }
 }
 
 /// A street name sign object (the stock Verkehrszeichen_MC `StreetSign_*`, and the
