@@ -49,7 +49,8 @@ pub(crate) struct Args {
     /// from the game menu, or a placed one taken over at its driver's door (G).
     #[arg(long)]
     pub(crate) on_foot: bool,
-    /// Control preset: `simple` (W/S/A/D and the arrow keys drive; the default), `wasd`,
+    /// Control preset: `simple` (W/S/A/D and Up/Down drive, Left/Right switch the interior
+    /// camera as in OMSI; the default), `wasd`,
     /// `arrows` (leaves W, S and D to the jobs `Inputs/keyboard.cfg` gives them - wipers,
     /// viewpoint and the D of the automatic gearbox) or `omsi` (only the original layout,
     /// Shift + numpad). With WASD driving, hold shift for the OMSI meaning of a key.

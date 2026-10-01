@@ -116,7 +116,8 @@ pub(crate) struct Player {
 /// can still be put into gear. `--drive-keys arrows` leaves W/A/S/D to OMSI entirely.
 /// The driving keys of a control preset (`drive_keys` in the settings):
 /// `omsi` - only the original layout of Inputs/keyboard.cfg (Shift + numpad), nothing extra;
-/// `simple` - W/S/A/D and the arrow keys both drive; `wasd` - W/S/A/D only;
+/// `simple` - W/S/A/D and Up/Down drive (plain Left/Right keep OMSI's interior camera
+/// switch, view_interiorcam_minus/plus, Omsi.exe 0x706278; A/D steer); `wasd` - W/S/A/D only;
 /// `arrows` - the arrow keys only (W/S/D keep their OMSI meaning: wipers, viewpoint, gear).
 pub(crate) fn fallback_action(code: KeyCode, preset: &str) -> Option<omsi_sim::EngineAction> {
     use omsi_sim::EngineAction as A;
@@ -130,8 +131,8 @@ pub(crate) fn fallback_action(code: KeyCode, preset: &str) -> Option<omsi_sim::E
     Some(match code {
         KeyCode::ArrowUp if arrows => A::Throttle,
         KeyCode::ArrowDown if arrows => A::Brake,
-        KeyCode::ArrowLeft if arrows => A::SteeringLeft,
-        KeyCode::ArrowRight if arrows => A::SteeringRight,
+        KeyCode::ArrowLeft if arrows && preset == "arrows" => A::SteeringLeft,
+        KeyCode::ArrowRight if arrows && preset == "arrows" => A::SteeringRight,
         KeyCode::KeyW if wasd => A::Throttle,
         KeyCode::KeyS if wasd => A::Brake,
         KeyCode::KeyA if wasd => A::SteeringLeft,
@@ -2111,5 +2112,21 @@ fn route_line(t: &omsi_vehicle::hof::InfoTrip) -> String {
         (code / 100).to_string()
     } else {
         raw.to_string()
+    }
+}
+#[cfg(test)]
+mod preset_tests {
+    use super::fallback_action;
+    use omsi_sim::EngineAction as A;
+    use winit::keyboard::KeyCode;
+
+    #[test]
+    fn plain_left_right_steer_only_with_the_arrows_preset() {
+        assert_eq!(fallback_action(KeyCode::ArrowLeft, "simple"), None);
+        assert_eq!(fallback_action(KeyCode::ArrowRight, "simple"), None);
+        assert_eq!(fallback_action(KeyCode::ArrowUp, "simple"), Some(A::Throttle));
+        assert_eq!(fallback_action(KeyCode::KeyA, "simple"), Some(A::SteeringLeft));
+        assert_eq!(fallback_action(KeyCode::ArrowLeft, "arrows"), Some(A::SteeringLeft));
+        assert_eq!(fallback_action(KeyCode::ArrowRight, "arrows"), Some(A::SteeringRight));
     }
 }
