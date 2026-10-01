@@ -902,8 +902,7 @@ pub(crate) fn run_offscreen(
             }
             if std::mem::take(&mut h.stop_request) {
                 if let Some(p) = player.as_mut() {
-                    p.vehicle.trigger("door_haltewunsch");
-                    p.vehicle.trigger("door_haltewunsch_off");
+                    p.vehicle.trigger("int_haltewunsch");
                 }
             }
         }

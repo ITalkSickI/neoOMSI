@@ -1142,11 +1142,10 @@ impl ApplicationHandler for App {
                             h.take_change_tray();
                         }
                         if std::mem::take(&mut h.stop_request) {
-                            p.vehicle.trigger("door_haltewunsch");
-                            // (a press is let go again: the script keeps its button pressed
-                            // until `_off`, and the stop request never ended - the automatic
-                            // rear door opened again whenever it was shut)
-                            p.vehicle.trigger("door_haltewunsch_off");
+                            // a passenger's request is the vehicle trigger Omsi.exe fires
+                            // (0x62e42c), not the cab's stop button `door_haltewunsch`,
+                            // whose switch and brake sounds some buses play
+                            p.vehicle.trigger("int_haltewunsch");
                         }
                         h.write_pax_vars(&mut p.vehicle);
                         p.vehicle.host.humans_on_path_link = h.path_link_counts();
