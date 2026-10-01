@@ -882,6 +882,29 @@ fn time_to(dist: f32, v: f32, a: f32) -> f32 {
     (-v + (v * v + 2.0 * a * dist).sqrt()) / a
 }
 
+fn crossing_arrival(st: &AiState, distance: f32, claimed: bool, waits_short: bool, stalled: bool) -> f32 {
+    if distance <= 0.3 {
+        return 0.0;
+    }
+    if claimed {
+        return time_to(distance, st.speed, st.accel)
+            + if st.speed < 0.1 { st.reaction } else { 0.0 };
+    }
+    if waits_short {
+        return f32::MAX;
+    }
+    // A queue cannot accelerate freely. Keep its actual movement in the prediction:
+    // ignoring a crawling car altogether would let another drive into its path.
+    if stalled {
+        return if st.speed > 0.0 { distance / st.speed } else { f32::MAX };
+    }
+    if st.speed > 0.5 {
+        distance / st.speed
+    } else {
+        time_to(distance, 0.0, st.accel) + st.reaction
+    }
+}
+
 impl Traffic {
     /// Make the population deterministic for a LAN room.  The room's session id is
     /// shared by the host and every client, so the same map/time produces the same
@@ -4125,22 +4148,17 @@ impl Traffic {
                     if !jn.inside && point - c.before - st.front > 25.0 {
                         continue;
                     }
-                    // (a claim of one that has stood for seconds outside the meeting place is
-                    // not a car about to come: "arrives in 1.9 s" held a queue for six minutes
-                    // behind a car that stood in a jam of its own)
+                    // A stalled car neither claims an imminent arrival nor accelerates
+                    // freely in the arrival prediction, even without a reservation.
+                    let stalled = (o.stopped > 4.0 && o.state.speed < 0.1)
+                        || o.crawl >= 8.0
+                        || (o.state.speed < 1.5
+                            && o.lead_info.is_some_and(|(lid, gap)| gap < 8.0 && self.cars.iter().find(|x| x.id == lid).is_some_and(|x| x.state.speed < 1.0)));
                     let claimed = reservations
                         .get(&m)
                         .map(|r| r.contains(&j))
                         .unwrap_or(false)
-                        && !(o.stopped > 4.0 && o.state.speed < 0.1)
-                        && o.crawl < 8.0
-                        // nor of one creeping in a queue, close behind a car that barely moves
-                        // itself: it arrives when the queue does, not in the second and a half
-                        // its own speed-up promises (round a busy roundabout every entry then
-                        // gave way to a car of the ring that was stuck in the jam this very
-                        // entry made - the ring stood still for good)
-                        && !(o.state.speed < 1.5
-                            && o.lead_info.is_some_and(|(lid, gap)| gap < 8.0 && self.cars.iter().find(|x| x.id == lid).is_some_and(|x| x.state.speed < 1.0)));
+                        && !stalled;
                     let theirs = dj - c.other_before - o.state.front;
                     // it waits for someone else before this meeting place (a car that gives
                     // way further on still rolls through here on its way to its line)
@@ -4151,24 +4169,7 @@ impl Traffic {
                                 .map(|w| w - 0.6 <= dj - c.other_before)
                                 .unwrap_or(false));
                     // (it arrives in `t_j` seconds)
-                    let t_j = if theirs <= 0.3 {
-                        0.0
-                    } else if claimed {
-                        // it means to go: it speeds up (a car creeping up to its line is
-                        // not ten seconds away)
-                        time_to(theirs, o.state.speed, o.state.accel)
-                            + if o.state.speed < 0.1 {
-                                o.state.reaction
-                            } else {
-                                0.0
-                            }
-                    } else if waits_short {
-                        f32::MAX
-                    } else if o.state.speed > 0.5 {
-                        theirs / o.state.speed
-                    } else {
-                        time_to(theirs, 0.0, o.state.accel) + o.state.reaction
-                    };
+                    let t_j = crossing_arrival(&o.state, theirs, claimed, waits_short, stalled);
                     if is_on && theirs <= 0.3 {
                         // in the meeting place right now: unless this car is further in
                         // already (then it is the other one that has to wait)
@@ -7016,6 +7017,63 @@ impl Traffic {
             ctl.time = time;
             ctl.held = held;
         }
+    }
+}
+
+#[cfg(test)]
+mod junction_arrival_tests {
+    use super::crossing_arrival;
+    use omsi_sim::traffic::AiState;
+
+    #[test]
+    fn stopped_queue_does_not_predict_a_restart() {
+        let st = AiState::new(0, 0.0, 1);
+        assert_eq!(crossing_arrival(&st, 10.0, false, false, true), f32::MAX);
+    }
+
+    #[test]
+    fn crawling_queue_is_measured_at_its_actual_speed() {
+        let mut st = AiState::new(0, 0.0, 1);
+        for speed in [0.2, 0.3, 0.4, 0.5, 0.8, 1.4] {
+            st.speed = speed;
+            assert!((crossing_arrival(&st, 10.0, false, false, true) - 10.0 / speed).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn crawling_queue_allows_a_gap_but_nearby_traffic_still_counts() {
+        let mut st = AiState::new(0, 0.0, 1);
+        st.speed = 0.4;
+        let gap = 7.5;
+        assert!(crossing_arrival(&st, 10.0, false, false, true) > gap);
+        assert!(crossing_arrival(&st, 1.0, false, false, true) < gap);
+        // Once it can move freely again, account for it accelerating towards the crossing.
+        assert!(crossing_arrival(&st, 10.0, true, false, false) < gap);
+    }
+
+    #[test]
+    fn queue_already_at_the_conflict_still_blocks() {
+        let st = AiState::new(0, 0.0, 1);
+        for distance in [-1.0, 0.0, 0.3] {
+            assert_eq!(crossing_arrival(&st, distance, false, true, true), 0.0);
+        }
+    }
+
+    #[test]
+    fn freely_starting_car_keeps_its_accelerating_prediction() {
+        let st = AiState::new(0, 0.0, 1);
+        let expected = (20.0 / st.accel).sqrt() + st.reaction;
+        assert!((crossing_arrival(&st, 10.0, false, false, false) - expected).abs() < 1e-5);
+        assert!((crossing_arrival(&st, 10.0, true, false, false) - expected).abs() < 1e-5);
+    }
+
+    #[test]
+    fn car_waiting_before_the_conflict_is_not_approaching() {
+        let mut st = AiState::new(0, 0.0, 1);
+        st.speed = 2.0;
+        assert_eq!(crossing_arrival(&st, 10.0, false, true, false), f32::MAX);
+        assert!(crossing_arrival(&st, 10.0, true, false, false) < 5.0);
+        assert_eq!(crossing_arrival(&st, 10.0, false, false, false), 5.0);
     }
 }
 
