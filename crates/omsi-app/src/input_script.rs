@@ -1261,6 +1261,10 @@ impl App {
                 "click" => {
                     if self.placing.is_some() && self.game_menu.is_none() {
                         self.placing_click();
+                    } else if self.game_menu.is_some() {
+                        // (on the menu as the window's button: its lines, its arrows)
+                        self.left_button(event_loop, true);
+                        self.left_button(event_loop, false);
                     } else {
                         self.on_left(true);
                         self.on_left(false);
@@ -1415,7 +1419,38 @@ impl App {
     pub(crate) fn open_list(&mut self, kind: crate::game_lists::ListKind) {
         self.admin_list = Some(crate::game_lists::items(self, &kind));
         self.list_kind = Some(kind);
-        self.chooser = Some(0);
+        // (on its first line, not on a heading)
+        self.chooser = Some(if self.is_heading(0) { self.chooser_next(0, 1) } else { 0 });
+    }
+
+    /// Line `k` of the list shown heads the lines under it (`game_lists::HEADING`).
+    fn is_heading(&self, k: usize) -> bool {
+        self.admin_list.as_ref().and_then(|l| l.get(k)).is_some_and(|l| l.1 == crate::game_lists::HEADING)
+    }
+
+    /// The line `step` lines on from `sel` (round the list; `n - 1` is one back), over the
+    /// headings.
+    fn chooser_next(&self, sel: usize, step: usize) -> usize {
+        let n = self.admin_list.as_ref().unwrap_or(&self.vehicle_list).len().max(1);
+        let mut k = sel;
+        for _ in 0..n {
+            k = (k + step) % n;
+            if !self.is_heading(k) {
+                break;
+            }
+        }
+        k
+    }
+
+    /// Left or Right on line `k` of a list, or a click on the arrows round its value: its
+    /// setting one step down (`-`) or up (`+`), see `game_lists::ADJUST`; other lines stay.
+    pub(crate) fn chooser_adjust(&mut self, k: usize, dir: &str) {
+        let Some(action) = self.admin_list.as_ref().and_then(|l| l.get(k)).and_then(|l| l.1.strip_suffix(crate::game_lists::ADJUST)).map(|a| format!("{a} {dir}")) else { return };
+        // (run as a pick of the line, with the step in place of the mark)
+        if let Some(l) = self.admin_list.as_mut().and_then(|l| l.get_mut(k)) {
+            l.1 = action;
+        }
+        self.chooser_pick(k);
     }
 
     /// A key while the vehicle chooser is open.
@@ -1429,10 +1464,13 @@ impl App {
                 self.admin_list = None;
                 self.list_kind = None;
             }
-            KeyCode::ArrowUp | KeyCode::KeyW => self.chooser = Some((sel + n - 1) % n),
-            KeyCode::ArrowDown | KeyCode::KeyS => self.chooser = Some((sel + 1) % n),
-            KeyCode::PageUp => self.chooser = Some(sel.saturating_sub(15)),
-            KeyCode::PageDown => self.chooser = Some((sel + 15).min(n - 1)),
+            KeyCode::ArrowUp | KeyCode::KeyW => self.chooser = Some(self.chooser_next(sel, n - 1)),
+            KeyCode::ArrowDown | KeyCode::KeyS => self.chooser = Some(self.chooser_next(sel, 1)),
+            KeyCode::ArrowLeft | KeyCode::KeyA => self.chooser_adjust(sel, "-"),
+            KeyCode::ArrowRight | KeyCode::KeyD => self.chooser_adjust(sel, "+"),
+            // (off a heading onto the line under it)
+            KeyCode::PageUp => self.chooser = Some(sel.saturating_sub(15)).map(|k| if self.is_heading(k) { self.chooser_next(k, 1) } else { k }),
+            KeyCode::PageDown => self.chooser = Some((sel + 15).min(n - 1)).map(|k| if self.is_heading(k) { self.chooser_next(k, 1) } else { k }),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => self.chooser_pick(sel),
             _ => {}
         }
@@ -1441,6 +1479,10 @@ impl App {
     /// Place the chosen vehicle: in front of the camera in a free or map view, else beside
     /// the vehicle driven (OMSI puts a new vehicle where the map view points).
     pub(crate) fn chooser_pick(&mut self, k: usize) {
+        // (a heading is no choice)
+        if self.is_heading(k) {
+            return;
+        }
         self.chooser = None;
         // a list of the menu's (the administration, the options …): done, and the list
         // shown again - or the next one (a line's tours), or back to the menu

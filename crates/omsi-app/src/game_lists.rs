@@ -88,17 +88,44 @@ const VOLUME: [f32; 6] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
 /// The pedal strengths the options step through (see `settings::pedal_curve`).
 const PEDAL: [f32; 7] = [0.5, 0.7, 0.85, 1.0, 1.25, 1.5, 2.0];
 
+/// A switch's value as the lists show it (capitalised: the translations' keys, "on" and
+/// "off" were English in every language).
 fn on_off(b: bool) -> &'static str {
     if b {
-        "on"
+        "On"
     } else {
-        "off"
+        "Off"
     }
 }
 
 /// The next of `steps` after `now` (round to the first).
 pub(crate) fn next_step<T: PartialOrd + Copy>(steps: &[T], now: T) -> T {
     steps.iter().copied().find(|s| *s > now).unwrap_or(steps[0])
+}
+
+/// A list line that heads the lines under it: not chosen, not run.
+pub(crate) const HEADING: &str = "#";
+/// The end of the action of a line whose value Left and Right step down and up (and the
+/// arrows drawn round its value): the action is run with `-` or `+` in its place, and with
+/// it as it is on Enter (see `App::chooser_adjust`).
+pub(crate) const ADJUST: &str = " ±";
+
+/// `now` one of `steps` on: `+` up and `-` down (Right and Left), stopping at the ends;
+/// otherwise (Enter) up and round to the first, as these lines always went.
+fn step<T: PartialOrd + Copy>(steps: &[T], now: T, dir: &str) -> T {
+    match dir {
+        "+" => steps.iter().copied().find(|s| *s > now).unwrap_or(now),
+        "-" => steps.iter().rev().copied().find(|s| *s < now).unwrap_or(now),
+        _ => next_step(steps, now),
+    }
+}
+
+/// The interface size one step larger or smaller: quarters from 50% to 200%, reached from
+/// wherever the launcher's slider left it (110% goes to 125% or to 100%).
+pub(crate) fn ui_scale_step(now: f32, up: bool) -> f32 {
+    let q = now * 4.0;
+    let q = if up { (q + 0.01).floor() + 1.0 } else { (q - 0.01).ceil() - 1.0 };
+    q.clamp(2.0, 8.0) / 4.0
 }
 
 pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
@@ -108,45 +135,57 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
         ListKind::Admin => return crate::admin::items(app),
         ListKind::Options => {
             let s = &app.settings;
+            // one line a setting with its value on the right, which Left and Right change,
+            // under the launcher's headings (two lines a value, "+" and "-", and six for the
+            // seat made the list 35 lines long without an order)
+            let on = |b: bool| tr(on_off(b));
+            let head = |out: &mut Vec<(String, String)>, name: &str| out.push((tr(name), HEADING.into()));
+            let line = |out: &mut Vec<(String, String)>, name: String, value: String, verb: &str| out.push((format!("{name}\t{value}"), format!("{verb}{ADJUST}")));
+            head(&mut out, "Simulation");
             if app.lan.is_none() {
-                out.push((format!("{}: x{}", tr("Time speed"), s.time_speed), "speed".into()));
+                line(&mut out, tr("Time speed"), format!("x{}", s.time_speed), "speed");
             }
             if let Some(t) = app.traffic.as_ref() {
-                out.push((format!("{}: {}", tr("Traffic"), t.target), "traffic".into()));
+                line(&mut out, tr("Traffic"), t.target.to_string(), "traffic");
             }
-            out.push((format!("{}: {:.0} %", tr("Passengers"), s.pax_density * 100.0), "pax".into()));
-            out.push((format!("{}: {:.0} %", tr("Volume"), s.volume * 100.0), "volume".into()));
-            out.push((format!("{}: {}", tr("Navigator"), tr(on_off(app.navigator.as_ref().is_some_and(|n| n.enabled)))), "navigator".into()));
-            out.push((format!("{}: {}", tr("Sun shadows"), tr(on_off(s.shadows))), "shadows".into()));
-            out.push((format!("{}: {}", tr("Head movement"), tr(on_off(s.head_movement))), "head".into()));
-            out.push((format!("{}: {}", tr("Camera glides between viewpoints"), tr(on_off(s.driverview_smooth))), "cam_smooth".into()));
-            out.push((format!("{}: {}", tr("Collisions with objects"), tr(on_off(s.collision_objects))), "coll_objects".into()));
-            out.push((format!("{}: {}", tr("Collisions with vehicles"), tr(on_off(s.collision_vehicles))), "coll_vehicles".into()));
-            out.push((format!("{}: {}", tr("Steering with the mouse"), tr(on_off(app.mouse_drive))), "mouse".into()));
-            // (how far the wheel turns for the cursor's way across the window: 100% is OMSI's)
-            let sens = format!("{:.0}%", s.mouse_sens * 100.0);
-            out.push((format!("{} + ({})", tr("Mouse steering sensitivity"), sens), "mouse_sens 0.1".into()));
-            out.push((format!("{} - ({})", tr("Mouse steering sensitivity"), sens), "mouse_sens -0.1".into()));
-            out.push((format!("{}: {}", tr("Frame rate"), tr(on_off(s.show_fps))), "fps".into()));
-            out.push((format!("{}: {}", tr("Camera collisions"), tr(on_off(s.camera_collision))), "camcoll".into()));
-            out.push((format!("{}: {}", tr("View turns with steering"), tr(on_off(s.steer_look))), "steer_look".into()));
-            out.push((format!("{}: {}", tr("Driver's hands in the cab view"), tr(on_off(s.hands_in_cab))), "hands_in_cab".into()));
-            out.push((format!("{}: {}", tr("Force feedback and vibration"), tr(on_off(s.ff_enabled))), "ff".into()));
-            out.push((format!("{}: {}", tr("Keyboard brake stays on until the throttle"), tr(on_off(s.brake_hold))), "brake_hold".into()));
-            out.push((format!("{}: {}", tr("Automatic clutch"), tr(on_off(s.auto_clutch))), "auto_clutch".into()));
+            line(&mut out, tr("Passengers"), format!("{:.0} %", s.pax_density * 100.0), "pax");
+            line(&mut out, tr("Collisions with objects"), on(s.collision_objects), "coll_objects");
+            line(&mut out, tr("Collisions with vehicles"), on(s.collision_vehicles), "coll_vehicles");
+            head(&mut out, "Display & sound");
+            // (the texts, the menu, the timetable and the navigator, larger to be read)
+            line(&mut out, tr("Interface size"), format!("{:.0} %", s.ui_scale * 100.0), "ui_scale");
+            line(&mut out, tr("Interface grows with the window"), on(s.ui_scale_window), "ui_window");
+            // (the backgrounds of all of it, the navigator's as well; the texts stay solid)
+            line(&mut out, tr("Interface opacity"), format!("{:.0} %", s.ui_opacity * 100.0), "ui_opacity");
+            line(&mut out, tr("Navigator"), on(app.navigator.as_ref().is_some_and(|n| n.enabled)), "navigator");
+            line(&mut out, tr("Frame rate"), on(s.show_fps), "fps");
+            line(&mut out, tr("Notes in the top-left corner"), on(s.notes), "notes");
+            line(&mut out, tr("Sun shadows"), on(s.shadows), "shadows");
             // (the LED panels' dots glow, and how much of the mip chain they are held at)
-            out.push((format!("{}: {}/15", tr("LED glow"), s.led_glow), "led_glow".into()));
-            out.push((format!("{}: {:.2}", tr("LED mip strength"), s.led_mips), "led_mips".into()));
-            out.push((format!("{} (opentrack UDP {}): {}", tr("Head tracking"), s.head_tracking_port, tr(on_off(s.head_tracking))), "headtrack".into()));
-            out.push((format!("{}: x{}", tr("Throttle pedal strength"), s.pedal_throttle), "pedal_t".into()));
-            out.push((format!("{}: x{}", tr("Brake pedal strength"), s.pedal_brake), "pedal_b".into()));
+            line(&mut out, tr("LED glow"), format!("{}/15", s.led_glow), "led_glow");
+            line(&mut out, tr("LED mip strength"), format!("{:.2}", s.led_mips), "led_mips");
+            line(&mut out, tr("Volume"), format!("{:.0} %", s.volume * 100.0), "volume");
+            head(&mut out, "Driving");
+            line(&mut out, tr("Steering with the mouse"), on(app.mouse_drive), "mouse");
+            // (how far the wheel turns for the cursor's way across the window: 100% is OMSI's)
+            line(&mut out, tr("Mouse steering sensitivity"), format!("{:.0} %", s.mouse_sens * 100.0), "mouse_sens");
+            line(&mut out, tr("Keyboard brake stays on until the throttle"), on(s.brake_hold), "brake_hold");
+            line(&mut out, tr("Automatic clutch"), on(s.auto_clutch), "auto_clutch");
+            line(&mut out, tr("Force feedback and vibration"), on(s.ff_enabled), "ff");
+            line(&mut out, tr("Throttle pedal strength"), format!("x{}", s.pedal_throttle), "pedal_t");
+            line(&mut out, tr("Brake pedal strength"), format!("x{}", s.pedal_brake), "pedal_b");
+            head(&mut out, "Camera");
+            line(&mut out, tr("Head movement"), on(s.head_movement), "head");
+            line(&mut out, tr("Camera glides between viewpoints"), on(s.driverview_smooth), "cam_smooth");
+            line(&mut out, tr("Camera collisions"), on(s.camera_collision), "camcoll");
+            line(&mut out, tr("View turns with steering"), on(s.steer_look), "steer_look");
+            line(&mut out, tr("Driver's hands in the cab view"), on(s.hands_in_cab), "hands_in_cab");
+            line(&mut out, format!("{} (opentrack UDP {})", tr("Head tracking"), s.head_tracking_port), on(s.head_tracking), "headtrack");
+            // (the seat: a line an axis, Right moving it forward, up and right)
             let seat = |v: f32| format!("{:+.0} cm", v * 100.0);
-            out.push((format!("{} ({})", tr("Seat forward"), seat(s.seat[1])), "seat 1 0.05".into()));
-            out.push((format!("{} ({})", tr("Seat back"), seat(s.seat[1])), "seat 1 -0.05".into()));
-            out.push((format!("{} ({})", tr("Seat up"), seat(s.seat[2])), "seat 2 0.05".into()));
-            out.push((format!("{} ({})", tr("Seat down"), seat(s.seat[2])), "seat 2 -0.05".into()));
-            out.push((format!("{} ({})", tr("Seat right"), seat(s.seat[0])), "seat 0 0.05".into()));
-            out.push((format!("{} ({})", tr("Seat left"), seat(s.seat[0])), "seat 0 -0.05".into()));
+            line(&mut out, tr("Seat forward / back"), seat(s.seat[1]), "seat 1");
+            line(&mut out, tr("Seat up / down"), seat(s.seat[2]), "seat 2");
+            line(&mut out, tr("Seat right / left"), seat(s.seat[0]), "seat 0");
             out.push((tr("Reset the seat position"), "seat_reset".into()));
         }
         ListKind::Lines => {
@@ -271,25 +310,27 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
             Some(ListKind::Admin)
         }
         ListKind::Options => {
+            // (Left and Right: the last word; Enter leaves `ADJUST`'s mark there)
+            let dir = arg.split_whitespace().last().filter(|d| matches!(*d, "+" | "-")).unwrap_or("");
             let s = &mut app.settings;
             let key_value: Option<(&str, String)> = match verb {
                 "speed" => {
-                    s.time_speed = next_step(&SPEEDS, s.time_speed);
+                    s.time_speed = step(&SPEEDS, s.time_speed, dir);
                     Some(("time_speed", s.time_speed.to_string()))
                 }
                 "traffic" => {
                     if let Some(t) = app.traffic.as_mut() {
-                        t.target = next_step(&TRAFFIC, t.target);
+                        t.target = step(&TRAFFIC, t.target, dir);
                         app.args.traffic = t.target;
                     }
                     None
                 }
                 "pax" => {
-                    s.pax_density = next_step(&PAX, s.pax_density);
+                    s.pax_density = step(&PAX, s.pax_density, dir);
                     Some(("pax_density", s.pax_density.to_string()))
                 }
                 "volume" => {
-                    s.volume = next_step(&VOLUME, s.volume);
+                    s.volume = step(&VOLUME, s.volume, dir);
                     Some(("volume", s.volume.to_string()))
                 }
                 "navigator" => {
@@ -343,6 +384,28 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     s.show_fps = !s.show_fps;
                     Some(("show_fps", (s.show_fps as u8).to_string()))
                 }
+                // (at once: the menu itself is drawn at the new size)
+                "ui_scale" => {
+                    s.ui_scale = ui_scale_step(s.ui_scale, dir != "-");
+                    Some(("ui_scale", s.ui_scale.to_string()))
+                }
+                "notes" => {
+                    s.notes = !s.notes;
+                    Some(("notes", (s.notes as u8).to_string()))
+                }
+                "ui_window" => {
+                    s.ui_scale_window = !s.ui_scale_window;
+                    Some(("ui_scale_window", (s.ui_scale_window as u8).to_string()))
+                }
+                // (5 % a step, the navigator's backdrop at once as well)
+                "ui_opacity" => {
+                    let d = if dir == "-" { -0.05 } else { 0.05 };
+                    s.ui_opacity = ((s.ui_opacity + d) * 20.0).round().clamp(4.0, 20.0) / 20.0;
+                    if let Some(n) = app.navigator.as_mut() {
+                        n.opacity = s.ui_opacity;
+                    }
+                    Some(("ui_opacity", s.ui_opacity.to_string()))
+                }
                 "headtrack" => {
                     s.head_tracking = !s.head_tracking;
                     Some(("head_tracking", (s.head_tracking as u8).to_string()))
@@ -360,22 +423,21 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     Some(("hands_in_cab", (s.hands_in_cab as u8).to_string()))
                 }
                 "pedal_t" => {
-                    s.pedal_throttle = next_step(&PEDAL, s.pedal_throttle);
+                    s.pedal_throttle = step(&PEDAL, s.pedal_throttle, dir);
                     Some(("pedal_throttle", s.pedal_throttle.to_string()))
                 }
                 "pedal_b" => {
-                    s.pedal_brake = next_step(&PEDAL, s.pedal_brake);
+                    s.pedal_brake = step(&PEDAL, s.pedal_brake, dir);
                     Some(("pedal_brake", s.pedal_brake.to_string()))
                 }
                 "mouse_sens" => {
-                    let d: f32 = arg.trim().parse().unwrap_or(0.0);
+                    let d = if dir == "-" { -0.1 } else { 0.1 };
                     s.mouse_sens = ((s.mouse_sens + d) * 10.0).round().clamp(1.0, 30.0) / 10.0;
                     Some(("mouse_sens", s.mouse_sens.to_string()))
                 }
                 "seat" => {
-                    let mut it = arg.split_whitespace();
-                    let k: usize = it.next().and_then(|x| x.parse().ok()).unwrap_or(0).min(2);
-                    let d: f32 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+                    let k: usize = arg.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0).min(2);
+                    let d = if dir == "-" { -0.05 } else { 0.05 };
                     s.seat[k] = ((s.seat[k] + d) * 100.0).round().clamp(-150.0, 150.0) / 100.0;
                     Some((["seat_x", "seat_y", "seat_z"][k], s.seat[k].to_string()))
                 }
@@ -394,15 +456,24 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     s.ff_enabled = !s.ff_enabled;
                     Some(("ff_enabled", (s.ff_enabled as u8).to_string()))
                 }
-                // the 16 levels run on, off after 15
+                // the 16 levels run on, off after 15 (Left and Right stop at the ends)
                 "led_glow" => {
-                    s.led_glow = (s.led_glow + 1) % 16;
+                    s.led_glow = match dir {
+                        "+" => (s.led_glow + 1).min(15),
+                        "-" => s.led_glow.saturating_sub(1),
+                        _ => (s.led_glow + 1) % 16,
+                    };
                     Some(("led_glow", s.led_glow.to_string()))
                 }
                 // (the launcher's slider steps by 0.05; on the menu every press is a 0.25
                 // step, and after 4 it starts at 0 again)
                 "led_mips" => {
-                    s.led_mips = if s.led_mips >= 4.0 { 0.0 } else { ((s.led_mips + 0.25) * 100.0).round() / 100.0 };
+                    s.led_mips = match dir {
+                        "+" => (s.led_mips + 0.25).min(4.0),
+                        "-" => (s.led_mips - 0.25).max(0.0),
+                        _ => if s.led_mips >= 4.0 { 0.0 } else { s.led_mips + 0.25 },
+                    };
+                    s.led_mips = (s.led_mips * 100.0).round() / 100.0;
                     Some(("led_mips", s.led_mips.to_string()))
                 }
                 "seat_reset" => {
@@ -623,6 +694,34 @@ mod tests {
         assert_eq!(super::next_step(&super::SPEEDS, 1.0), 2.0);
         assert_eq!(super::next_step(&super::SPEEDS, 15.0), 1.0);
         assert_eq!(super::next_step(&super::TRAFFIC, 35), 50);
+    }
+
+    #[test]
+    fn left_and_right_stop_at_the_ends() {
+        use super::{step, PAX, SPEEDS};
+        assert_eq!(step(&SPEEDS, 2.0, "+"), 4.0);
+        assert_eq!(step(&SPEEDS, 2.0, "-"), 1.0);
+        assert_eq!(step(&SPEEDS, 15.0, "+"), 15.0);
+        assert_eq!(step(&SPEEDS, 1.0, "-"), 1.0);
+        // (Enter goes round, as before)
+        assert_eq!(step(&SPEEDS, 15.0, ""), 1.0);
+        // (a value between the steps: to the next one either way)
+        assert_eq!(step(&PAX, 0.6, "+"), 0.75);
+        assert_eq!(step(&PAX, 0.6, "-"), 0.5);
+    }
+
+    #[test]
+    fn interface_size_steps_in_quarters() {
+        use super::ui_scale_step as step;
+        assert_eq!(step(1.0, true), 1.25);
+        assert_eq!(step(1.0, false), 0.75);
+        assert_eq!(step(2.0, true), 2.0);
+        assert_eq!(step(0.75, false), 0.5);
+        assert_eq!(step(0.5, false), 0.5);
+        // (from the slider's 5% steps: to the next quarter either way)
+        assert_eq!(step(1.1, true), 1.25);
+        assert_eq!(step(1.1, false), 1.0);
+        assert_eq!(step(1.95, true), 2.0);
     }
 
     #[test]

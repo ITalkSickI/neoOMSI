@@ -853,6 +853,8 @@ impl App {
     /// Paint the controls into `painter` (physical pixels).
     fn touch_paint(&mut self) {
         let speed = self.player.as_ref().map(|p| p.vehicle.physics.velocity_kmh().abs());
+        // (the buttons' backgrounds follow the interface's opacity; their icons stay solid)
+        let panel_bg = PANEL_BG.alpha(crate::ui::backdrop(self.settings.ui_opacity));
         let (w, h) = self.touch.size;
         let t = &mut self.touch;
         let u = t.u;
@@ -872,7 +874,7 @@ impl App {
                 use std::f32::consts::{FRAC_PI_2, PI, TAU};
                 let (rim_in, hub) = (r - 12.0 * u, 16.0 * u);
                 let part = Color::rgba(230, 230, 230, if t.steering { 0.95 } else { 0.8 });
-                pt.circle(c, rim_in, PANEL_BG);
+                pt.circle(c, rim_in, panel_bg);
                 // the spokes turn with the wheel (one and a half turns to the lock)
                 let a0 = t.steer * WHEEL_LOCK_ANGLE;
                 let half = 3.5 * u;
@@ -896,7 +898,7 @@ impl App {
                 if r.w <= 0.0 {
                     continue;
                 }
-                pt.rounded(r, 12.0 * u, PANEL_BG);
+                pt.rounded(r, 12.0 * u, panel_bg);
                 if v > 0.0 {
                     let fill = Rect::new(r.x, r.bottom() - r.h * v, r.w, r.h * v);
                     pt.rounded(fill, 12.0 * u, match name { "GAS" => Color::rgba(104, 190, 118, 0.75), "CLUTCH" => Color::rgba(90, 150, 230, 0.75), _ => Color::rgba(222, 78, 68, 0.75) });
@@ -913,12 +915,12 @@ impl App {
                 let at = Vec2::new(w * 0.5, h - 22.0 * u);
                 let s = format!("{v:.0} km/h");
                 let tw = fonts.width(&s, 20.0 * u, Weight::Bold);
-                pt.rounded(Rect::new(at.x - tw * 0.5 - 12.0 * u, at.y - 24.0 * u, tw + 24.0 * u, 34.0 * u), 10.0 * u, PANEL_BG);
+                pt.rounded(Rect::new(at.x - tw * 0.5 - 12.0 * u, at.y - 24.0 * u, tw + 24.0 * u, 34.0 * u), 10.0 * u, panel_bg);
                 pt.text(atlas, fonts, &s, 20.0 * u, Weight::Bold, at, Align::Center, TEXT);
             }
         }
         if t.stick_r > 0.0 && !t.hidden {
-            pt.circle(t.stick_c, t.stick_r, PANEL_BG);
+            pt.circle(t.stick_c, t.stick_r, panel_bg);
             pt.arc(t.stick_c, t.stick_r - 3.0 * u, t.stick_r, 0.0, std::f32::consts::TAU, Color::rgba(230, 230, 230, 0.35));
             let knob = t.stick_at.map(|(c, d)| c + d).unwrap_or(t.stick_c);
             pt.circle(knob, 24.0 * u, Color::rgba(230, 230, 230, 0.8));
@@ -935,7 +937,7 @@ impl App {
         let held: Vec<Btn> = t.fingers.iter().filter_map(|f| if let Role::Button(_, b) = f.role { Some(b) } else { None }).collect();
         for b in t.buttons.iter() {
             let pressed = held.contains(&b.btn);
-            let bg = if b.on { PANEL_ON } else if pressed { Color::rgba(90, 94, 100, 0.85) } else { PANEL_BG };
+            let bg = if b.on { PANEL_ON } else if pressed { Color::rgba(90, 94, 100, 0.85) } else { panel_bg };
             let fg = if b.on { Color::rgba(20, 20, 20, 1.0) } else { TEXT };
             if b.round {
                 let c = b.rect.center();
