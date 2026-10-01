@@ -1653,6 +1653,11 @@ impl Renderer {
                 label: Some("omsi"),
                 required_features,
                 required_limits: limits,
+                // (a card of up to 4 GB gets the allocator's small blocks: the large ones
+                // left hundreds of MB reserved and unused, and 2 GB cards lost the device to
+                // "Out of memory" in the first frames with the textures well under budget,
+                // #332, #295)
+                memory_hints: if weak || modest || vram.is_some_and(|v| v <= 4200) { wgpu::MemoryHints::MemoryUsage } else { wgpu::MemoryHints::Performance },
                 ..Default::default()
             })
             .await
