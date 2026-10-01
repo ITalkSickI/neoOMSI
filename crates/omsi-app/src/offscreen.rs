@@ -2289,7 +2289,7 @@ pub(crate) fn run_offscreen(
                 &mut scene,
                 dt,
                 camera.position,
-                daylight.lamps_on,
+                daylight.brightness,
                 &phase,
                 None,
                 false,

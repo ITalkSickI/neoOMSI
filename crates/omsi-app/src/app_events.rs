@@ -1694,7 +1694,7 @@ impl ApplicationHandler for App {
                         scene,
                         dt,
                         cam.position,
-                        daylight.lamps_on,
+                        daylight.brightness,
                         &phase,
                         self.audio.as_ref(),
                         self.in_cab,

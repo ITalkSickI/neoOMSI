@@ -8570,7 +8570,7 @@ impl World {
         scene: &mut Scene,
         dt: f32,
         center: DVec3,
-        nightlight: bool,
+        brightness: f32,
         phase_of: &dyn Fn(usize, usize) -> (f32, f32),
         audio: Option<&omsi_audio::AudioEngine>,
         muffled: bool,
@@ -8603,11 +8603,12 @@ impl World {
                 }
                 continue;
             }
-            // the object's own hours ([NightMapMode]): in use, and lit only while in use
+            // the object's own hours ([NightMapMode]): in use, and lit while in use and the
+            // daylight under its own threshold (0.6, or 0.3-0.75 with a [NightMapMode])
             let use_ = InUse::new(o.ty.sco.night_map_mode, o.map_id as u64);
             let in_use = use_.in_use(now.time, day);
             let vars = omsi_sim::scenery::SceneryVars {
-                nightlight: (nightlight && (!(2..=4).contains(&use_.mode) || in_use)) as i32 as f32,
+                nightlight: use_.lit(now.time, day, brightness) as i32 as f32,
                 in_use: in_use as i32 as f32,
                 traffic_light_phase: o
                     .controller
@@ -8676,9 +8677,9 @@ impl World {
             });
         }
         for (o, vars) in scripted.iter_mut().zip(inputs.iter()) {
-            if vars.is_none() {
+            let Some(nightlight) = vars.as_ref().map(|v| v.nightlight) else {
                 continue;
-            }
+            };
             let dist = (o.pos - center).length();
             // text textures from the script's strings whenever they change (`update` leaves
             // an unchanged one alone): read only on `Refresh_Strings`, a board whose string
@@ -8744,7 +8745,7 @@ impl World {
             }
             for (inst, slot, base, item, var) in &o.variants {
                 let x = if var.trim().eq_ignore_ascii_case("NightlightA") {
-                    nightlight as i32 as f32
+                    nightlight
                 } else {
                     var.trim()
                         .parse()
@@ -8761,7 +8762,7 @@ impl World {
                     .iter()
                     .map(|(inst, slot, _, _, var)| {
                         let value = if var.trim().eq_ignore_ascii_case("NightlightA") {
-                            nightlight as i32 as f32
+                            nightlight
                         } else {
                             var.trim()
                                 .parse::<f32>()
@@ -11918,6 +11919,17 @@ pub(crate) fn resolve_scenery_freetex_name<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nightlight_follows_the_objects_darkness_threshold() {
+        let day = DayKind { workday: true, ..Default::default() };
+        let plain = InUse::new(0, 7);
+        assert!(plain.lit(12.0 * 3600.0, day, 0.5));
+        assert!(!plain.lit(12.0 * 3600.0, day, 0.65));
+        let home = InUse::new(2, 7);
+        assert!((0.3..=0.75).contains(&home.threshold));
+        assert!(!home.lit(3.0 * 3600.0, day, 0.0));
+    }
 
     #[test]
     fn vehicle_freetex_retries_paths_below_texture_component() {
