@@ -2174,6 +2174,13 @@ impl Renderer {
                     },
                     count: None,
                 },
+                // Tile masks/light maps clamp independently of repeating ground textures.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 11,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         // coronas: camera group + a corona texture group
@@ -5098,6 +5105,10 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 10,
                     resource: wgpu::BindingResource::TextureView(&orm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: wgpu::BindingResource::Sampler(&self.clamp_sampler),
                 },
             ],
         })
@@ -10575,6 +10586,196 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a graphics adapter; renders terrain and foliage lighting"]
+    fn enhanced_masked_and_uncut_ground_share_lighting() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let mut renderer = pollster::block_on(Renderer::new_with(
+            &instance,
+            None,
+            Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+            RenderOptions {
+                msaa: 1,
+                ssao: false,
+                shadow_size: 1024,
+                fxaa: false,
+                render_scale: 1.0,
+                ..Default::default()
+            },
+        ))
+        .expect("test renderer");
+        let mut scene = renderer.new_scene();
+        let mut texture = |rgba: [u8; 4]| {
+            renderer.add_texture(
+                &mut scene,
+                &omsi_texture::Image {
+                    width: 1,
+                    height: 1,
+                    rgba: rgba.to_vec(),
+                    has_alpha: true,
+                },
+                false,
+            )
+        };
+        let grey = texture([100, 100, 100, 255]);
+        let opaque = texture([255; 4]);
+        let transparent = texture([100, 100, 100, 0]);
+        let masked = renderer.add_terrain_material(
+            &mut scene,
+            Some(grey),
+            Some(opaque),
+            None,
+            1.0,
+            None,
+            0.0,
+        );
+        let uncut =
+            renderer.add_terrain_material(&mut scene, Some(grey), None, None, 1.0, None, 0.0);
+        let cut = renderer.add_terrain_material(
+            &mut scene,
+            Some(grey),
+            Some(transparent),
+            None,
+            1.0,
+            None,
+            0.0,
+        );
+        let foliage =
+            renderer.add_material(&mut scene, Some(grey), AlphaMode::Test, [1.0; 4], false);
+        let cut_foliage = renderer.add_material(
+            &mut scene,
+            Some(transparent),
+            AlphaMode::Test,
+            [1.0; 4],
+            false,
+        );
+        let backdrop = renderer.add_material(
+            &mut scene,
+            None,
+            AlphaMode::Opaque,
+            [1.0, 0.0, 0.0, 1.0],
+            true,
+        );
+        let mut quad = |left: f32, right: f32, z: f32, material| {
+            let mesh = renderer.add_mesh(
+                &mut scene,
+                &MeshData {
+                    positions: vec![
+                        Vec3::new(left, -5.0, z),
+                        Vec3::new(right, -5.0, z),
+                        Vec3::new(right, 5.0, z),
+                        Vec3::new(left, 5.0, z),
+                    ],
+                    normals: vec![Vec3::Z; 4],
+                    uvs: vec![glam::Vec2::splat(0.5); 4],
+                    indices: vec![0, 1, 2, 0, 2, 3],
+                    ranges: vec![(0, 6, 0)],
+                    one_sided: false,
+                },
+            );
+            renderer.add_instance(
+                &mut scene,
+                mesh,
+                DVec3::ZERO,
+                Mat4::IDENTITY,
+                vec![material],
+            )
+        };
+        // Symmetric samples in the same image share exposure, view and lamp distances.
+        quad(-6.0, 6.0, -1.0, backdrop);
+        let ground = quad(-5.0, -0.5, 0.0, masked);
+        let mapped = quad(0.5, 5.0, 0.0, uncut);
+        scene.instances[ground].render_phase = RenderPhase::Terrain;
+        scene.instances[mapped].render_phase = RenderPhase::Spline;
+        scene.instances[mapped].surface = true;
+        let camera = Camera {
+            position: DVec3::new(0.0, -0.105, 6.0),
+            yaw: 0.0,
+            pitch: -89.0,
+            roll: 0.0,
+            fov_deg: 90.0,
+            near: 0.1,
+            far: 100.0,
+        };
+        let day = Lighting {
+            enhanced: true,
+            sun_dir: Vec3::Z,
+            sun_intensity: 1.0,
+            shadows: false,
+            detail: false,
+            fog_density: 0.0,
+            ..Default::default()
+        };
+        let night = Lighting {
+            sun_dir: -Vec3::Z,
+            sun_intensity: 0.0,
+            night: 1.0,
+            ..day.clone()
+        };
+        let pixel = |rgba: &[u8], x: usize| -> [u8; 3] {
+            rgba[(32 * 64 + x) * 4..(32 * 64 + x) * 4 + 3]
+                .try_into()
+                .unwrap()
+        };
+        for (name, lighting) in [("sun", &day), ("lamp", &night)] {
+            scene.lights = if name == "lamp" {
+                vec![PointLight {
+                    position: DVec3::new(0.0, 0.0, 4.0),
+                    radius: 20.0,
+                    core: 10.0,
+                    intensity: 1.0,
+                    ..Default::default()
+                }]
+            } else {
+                Vec::new()
+            };
+            let rgba = renderer
+                .render_to_image(&mut scene, 64, 64, &camera, lighting)
+                .unwrap();
+            let (a, b) = (pixel(&rgba, 16), pixel(&rgba, 47));
+            assert!(
+                a.iter().all(|v| *v > 10 && *v < 245),
+                "lit, unclipped {name}: {a:?}"
+            );
+            assert!(
+                a.iter().zip(b).all(|(a, b)| a.abs_diff(b) <= 2),
+                "masked terrain and uncut mapped ground differ under {name}: {a:?} / {b:?}"
+            );
+        }
+        // A road cut still reveals the geometry beneath it.
+        renderer.set_material(&mut scene, ground, 0, cut);
+        let rgba = renderer
+            .render_to_image(&mut scene, 64, 64, &camera, &night)
+            .unwrap();
+        let a = pixel(&rgba, 16);
+        assert!(
+            a[0] > a[1] + 30 && a[0] > a[2] + 30,
+            "road cut must reveal red: {a:?}"
+        );
+
+        // Real foliage still scatters light arriving from behind its normal; ground does not.
+        renderer.set_material(&mut scene, ground, 0, masked);
+        renderer.set_material(&mut scene, mapped, 0, foliage);
+        scene.lights[0].position.z = -4.0;
+        let rgba = renderer
+            .render_to_image(&mut scene, 64, 64, &camera, &night)
+            .unwrap();
+        let (a, b) = (pixel(&rgba, 16), pixel(&rgba, 47));
+        assert!(
+            b[1] > a[1] + 8,
+            "foliage retains backlighting: ground {a:?}, foliage {b:?}"
+        );
+        renderer.set_material(&mut scene, mapped, 0, cut_foliage);
+        let rgba = renderer
+            .render_to_image(&mut scene, 64, 64, &camera, &night)
+            .unwrap();
+        let b = pixel(&rgba, 47);
+        assert!(
+            b[0] > b[1] + 30 && b[0] > b[2] + 30,
+            "foliage cutout must reveal red: {b:?}"
+        );
+    }
 
     #[test]
     #[ignore = "requires a graphics adapter; run with --ignored on a GPU host"]
