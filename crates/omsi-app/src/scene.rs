@@ -5848,6 +5848,12 @@ impl World {
                 if !gpu.textures.contains_key(&path) {
                     if let Some(img) = u.prepared.images.get(&path) {
                         let id = gpu.add_data(renderer, scene, img);
+                        // (the PBR maps beside it: only the textures decoded on the spot had
+                        // them, the ones the tile's preparation brought - nearly all of a
+                        // map's - were drawn flat)
+                        if !path.to_string_lossy().ends_with("#bump") {
+                            attach_pbr(renderer, scene, &path, id);
+                        }
                         gpu.textures.insert(
                             path.clone(),
                             TexEntry {
