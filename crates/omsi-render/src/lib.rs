@@ -372,8 +372,8 @@ struct MaterialUniform {
     /// The PBR maps beside the diffuse texture (`Scene::pbr_maps`): x has a normal map,
     /// y an occlusion, z a roughness, w a metalness channel.
     pbr: [f32; 4],
-    /// x: a screen (`MaterialExtra::screen`); y: `[matl_texadress_border]`, z its colour's
-    /// rgb packed as r * 65536 + g * 256 + b (bytes), w its alpha.
+    /// x: a screen (`MaterialExtra::screen`); y: 1 `[matl_texadress_border]`, 2
+    /// `[matl_texadress_mirroronce]`; z the border colour's rgb packed as r * 65536 + g * 256 + b (bytes), w its alpha.
     flags: [f32; 4],
 }
 
@@ -393,6 +393,23 @@ pub enum AlphaMode {
     Opaque,
     Test,
     Blend,
+}
+
+/// How a material's textures read outside [0, 1]: Omsi.exe sets the material's
+/// `[matl_texadress_*]` mode as ADDRESSU/ADDRESSV of all eight sampler stages (0x7fff70).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum TexAddressing {
+    /// Repeating, Direct3D's default.
+    #[default]
+    Wrap,
+    /// `[matl_texadress_mirror]`: every other repeat mirrored.
+    Mirror,
+    /// `[matl_texadress_clamp]`, and `[matl_texadress_border]` (whose colour the shader
+    /// puts outside, `MaterialExtra::border`).
+    Clamp,
+    /// `[matl_texadress_mirroronce]`: mirrored once about 0, then clamped (the shader takes
+    /// the coordinates' absolute value under the clamping sampler).
+    MirrorOnce,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -648,7 +665,7 @@ impl GpuTexture {
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct BindKey {
     textures: [(usize, u64); 7],
-    clamp: bool,
+    address: TexAddressing,
     uniform: [u32; 36],
 }
 
@@ -687,8 +704,8 @@ pub struct Material {
     pub emissive: [f32; 3],
     /// `[matl_transmap]` (texture, its alpha channel is used).
     pub transmap: Option<(TextureId, bool)>,
-    /// Sampled clamped (`[matl_texadress_clamp]`).
-    clamp: bool,
+    /// Its textures' addressing (`[matl_texadress_*]`).
+    address: TexAddressing,
     /// Keep the exact material parameters so a CTC texture swap can change only the diffuse
     /// map without losing map lighting, moisture, screen, or other renderer flags.
     uniform: MaterialUniform,
@@ -1221,9 +1238,11 @@ pub struct Renderer {
     overlay_pipeline_1x: wgpu::RenderPipeline,
     xr_ui_pipeline: wgpu::RenderPipeline,
     started: std::time::Instant,
-    /// `[matl_texadress_clamp]`: the diffuse of the next material is sampled clamped.
+    /// `[matl_texadress_clamp]` (and border, mirror-once) and `[matl_texadress_mirror]`.
     clamp_sampler: wgpu::Sampler,
-    pub clamp_next: std::cell::Cell<bool>,
+    mirror_sampler: wgpu::Sampler,
+    /// The addressing of the next material's textures (`[matl_texadress_*]`).
+    pub address_next: std::cell::Cell<TexAddressing>,
     /// The next material is lit at night by the tile light maps (`[LightMapMapping]`, the
     /// splines) instead of the map's lamps.
     pub light_map_next: std::cell::Cell<bool>,
@@ -2437,6 +2456,16 @@ impl Renderer {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            anisotropy_clamp: options.anisotropy,
+            ..Default::default()
+        });
+        let mirror_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::MirrorRepeat,
+            address_mode_v: wgpu::AddressMode::MirrorRepeat,
+            address_mode_w: wgpu::AddressMode::MirrorRepeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
@@ -3721,7 +3750,8 @@ impl Renderer {
             mip_layout,
             mip_sampler,
             clamp_sampler,
-            clamp_next: std::cell::Cell::new(false),
+            mirror_sampler,
+            address_next: std::cell::Cell::new(TexAddressing::Wrap),
             light_map_next: std::cell::Cell::new(false),
             lm_atlas_view: lm_atlas.create_view(&wgpu::TextureViewDescriptor::default()),
             lm_atlas,
@@ -4572,7 +4602,7 @@ impl Renderer {
             bump,
             emissive,
             transmap,
-            clamp,
+            address,
             mut uniform,
         ) = {
             let src = scene.materials.get(base)?;
@@ -4590,7 +4620,7 @@ impl Renderer {
                 src.bump,
                 src.emissive,
                 src.transmap,
-                src.clamp,
+                src.address,
                 src.uniform,
             )
         };
@@ -4612,7 +4642,7 @@ impl Renderer {
                 slot(env_mask),
                 slot(bump.map(|b| b.0)),
             ],
-            clamp,
+            address,
             uniform: bytemuck::cast(uniform),
         };
         let (bind_group, buf) = match scene.bind_groups.get(&key) {
@@ -4637,7 +4667,7 @@ impl Renderer {
                         bump,
                         pbr: texture.and_then(|id| scene.pbr_maps.get(&id)).copied(),
                     },
-                    clamp,
+                    address,
                     &buf,
                 );
                 scene
@@ -4661,7 +4691,7 @@ impl Renderer {
             bump,
             emissive,
             transmap,
-            clamp,
+            address,
             uniform,
             buf,
             bind_group,
@@ -4824,7 +4854,7 @@ impl Renderer {
         // a rain film's reflection slot holds the picture behind the glass: its drops show
         // the street through themselves, bent and upside down, as real drops do
         let envmap = if extra.rain_film { Some((self.glass_slot(scene), 0.0)) } else { envmap };
-        let clamp = self.clamp_next.replace(false);
+        let address = self.address_next.replace(TexAddressing::Wrap);
         let lm_mapped = self.light_map_next.replace(false);
         let mode = match alpha {
             AlphaMode::Opaque => 0.0,
@@ -4884,7 +4914,13 @@ impl Renderer {
                 let b = extra.border.unwrap_or([0.0; 4]).map(|c| (c.clamp(0.0, 1.0) * 255.0).round());
                 [
                     if extra.screen { 1.0 } else { 0.0 },
-                    if extra.border.is_some() { 1.0 } else { 0.0 },
+                    if extra.border.is_some() {
+                        1.0
+                    } else if address == TexAddressing::MirrorOnce {
+                        2.0
+                    } else {
+                        0.0
+                    },
                     b[0] * 65536.0 + b[1] * 256.0 + b[2],
                     b[3] / 255.0,
                 ]
@@ -4904,7 +4940,7 @@ impl Renderer {
                 slot(env_mask),
                 slot(bump.map(|b| b.0)),
             ],
-            clamp,
+            address,
             uniform: bytemuck::cast(uniform),
         };
         let (bind_group, buf) = match scene.bind_groups.get(&key) {
@@ -4923,7 +4959,7 @@ impl Renderer {
                         bump,
                         pbr: texture.and_then(|t| scene.pbr_maps.get(&t)).copied(),
                     },
-                    clamp,
+                    address,
                     &buf,
                 );
                 scene
@@ -4947,7 +4983,7 @@ impl Renderer {
             bump,
             emissive,
             transmap,
-            clamp,
+            address,
             uniform,
             buf,
             bind_group,
@@ -4990,7 +5026,7 @@ impl Renderer {
         &self,
         textures: &[GpuTexture],
         maps: MaterialMaps,
-        clamp: bool,
+        address: TexAddressing,
         buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         let view = |t: Option<TextureId>, or: &'_ GpuTexture| -> wgpu::TextureView {
@@ -5010,10 +5046,10 @@ impl Renderer {
         // shader leaves unread by its flags)
         let normal_view = view(maps.pbr.and_then(|p| p.normal), &self.flat_normal_texture);
         let orm_view = view(maps.pbr.and_then(|p| p.orm), &self.white_texture);
-        let sampler = if clamp {
-            &self.clamp_sampler
-        } else {
-            &self.sampler
+        let sampler = match address {
+            TexAddressing::Wrap => &self.sampler,
+            TexAddressing::Mirror => &self.mirror_sampler,
+            TexAddressing::Clamp | TexAddressing::MirrorOnce => &self.clamp_sampler,
         };
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -5196,7 +5232,7 @@ impl Renderer {
                     bump: m.bump,
                     pbr: m.texture.and_then(|t| pbr_maps.get(&t)).copied(),
                 },
-                m.clamp,
+                m.address,
                 &m.buf,
             );
             n += 1;
@@ -10325,10 +10361,10 @@ impl Renderer {
     fn freed(&self, scene: &mut Scene) -> &Freed {
         if self.freed.get().is_none() {
             // a plain material, built as any other and taken out of the scene again (without
-            // using up a clamp request meant for the next real material)
-            let clamp = self.clamp_next.replace(false);
+            // using up an addressing request meant for the next real material)
+            let address = self.address_next.replace(TexAddressing::Wrap);
             let plain = self.add_material(scene, None, AlphaMode::Opaque, [1.0; 4], false);
-            self.clamp_next.set(clamp);
+            self.address_next.set(address);
             let m = scene.materials.swap_remove(plain);
             let (bind_group, buf) = (m.bind_group, m.buf);
             let vertex_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -10414,7 +10450,7 @@ impl Renderer {
             bump: None,
             emissive: [0.0; 3],
             transmap: None,
-            clamp: false,
+            address: TexAddressing::Wrap,
             uniform: <MaterialUniform as bytemuck::Zeroable>::zeroed(),
             buf,
             bind_group,

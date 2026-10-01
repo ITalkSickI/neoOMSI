@@ -306,7 +306,7 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     }
     // --- the surface's texture and alpha, exactly as the vanilla pass reads them
     let terrain = material.extra.x > 0.5;
-    var duv = in.uv;
+    var duv = tex_address(in.uv);
     if (terrain) {
         duv = in.uv * material.extra.z;
     }
@@ -314,7 +314,7 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     let diffuse_a = tex.a;
     // (without the [texcoordtransX/Y] offset: the transmap, night map and light map stay
     // in place, see fs_main)
-    let buv = in.uv - in.params.zw;
+    let buv = tex_address(in.uv - in.params.zw);
     if (terrain && material.extra.y > 0.0) {
         let det = textureSample(t_light, s_diffuse, in.uv * material.extra.y);
         tex = vec4<f32>(clamp(tex.rgb * det.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), tex.a);

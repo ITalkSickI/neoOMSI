@@ -5656,11 +5656,8 @@ impl World {
                         t.terrain_slots.push((0, t.meshes.len(), slot));
                     }
                 }
-                let clamp = overrides
-                    .iter()
-                    .filter(for_slot)
-                    .any(|o| !matches!(o.tex_address, omsi_model::TexAddress::Wrap));
-                renderer.clamp_next.set(clamp);
+                let address = tex_addressing(overrides.iter().filter(for_slot));
+                renderer.address_next.set(address);
                 renderer.light_map_next.set(ot.sco.light_map_mapping);
                 // OMSI_DEBUG_OBJMAT=<part of the object's file name>: how its slots are made
                 if let Ok(f) = omsi_cfg::env::var("OMSI_DEBUG_OBJMAT") {
@@ -5703,7 +5700,7 @@ impl World {
                     it_extra.no_z_write |= extra.no_z_write;
                     it_extra.no_z_check |= extra.no_z_check;
                     it_extra.glass |= extra.glass;
-                    renderer.clamp_next.set(clamp);
+                    renderer.address_next.set(address);
                     renderer.light_map_next.set(ot.sco.light_map_mapping);
                     let item = renderer.add_material_extra(
                         scene, tex, it_alpha, ic, false, transmap, it_night, None, envmap, ie,
@@ -6625,6 +6622,7 @@ impl World {
                                     (base.alpha, base.color, base.unlit, base.transmap, base.nightmap, base.lightmap, base.envmap, base.emissive);
                                 let slot_ov: Vec<&MaterialDef> = overrides.iter().filter(|o| !o.item && omsi_sim::vehicle::override_slot(o3d_mats, o) == Some(slot)).collect();
                                 let extra = material_extra(&slot_ov, base.env_mask, base.bump, [0.0; 4]);
+                                renderer.address_next.set(tex_addressing(slot_ov.iter().copied()));
                                 let mat = renderer.add_material_extra(scene, Some(tex), alpha, color, unlit, transmap, night, light, env, emissive, extra);
                                 let mat = gpu.material(renderer, scene, mat);
                                 tg.materials.push(mat);
@@ -9506,6 +9504,19 @@ fn material_extra(
     }
 }
 
+/// The addressing of a slot's textures: its last `[matl_texadress_*]` command decides (the
+/// border mode is clamped, its colour comes with `material_extra`).
+fn tex_addressing<'a>(ov: impl DoubleEndedIterator<Item = &'a MaterialDef>) -> omsi_render::TexAddressing {
+    use omsi_model::TexAddress as A;
+    use omsi_render::TexAddressing as R;
+    match ov.rev().map(|o| o.tex_address).find(|a| *a != A::Wrap) {
+        None | Some(A::Wrap) => R::Wrap,
+        Some(A::Mirror) => R::Mirror,
+        Some(A::Clamp | A::Border) => R::Clamp,
+        Some(A::MirrorOnce) => R::MirrorOnce,
+    }
+}
+
 /// The key a `[matl_bumpmap]` height map of `path` is kept under (the same file may be a
 /// colour texture as well).
 fn bump_key(path: &Path) -> PathBuf {
@@ -9737,8 +9748,8 @@ pub struct DynSlot {
     pub night: Option<TextureId>,
     pub lightmap: Option<TextureId>,
     pub envmap: Option<(TextureId, f32)>,
-    /// `[matl_texadress_clamp]` (and the other non-wrapping modes): no repeating.
-    pub clamp: bool,
+    /// `[matl_texadress_*]`: how the slot's textures read outside [0, 1].
+    pub address: omsi_render::TexAddressing,
     /// Depth handling, reflection mask and specular term of the slot.
     pub extra: MaterialExtra,
     /// Diffuse and emissive colour of the slot's D3D material (see `d3d_material`); a
@@ -9963,7 +9974,7 @@ pub struct DynTex {
     text: Option<usize>,
     script: Option<usize>,
     script_trans: Option<usize>,
-    clamp: bool,
+    address: omsi_render::TexAddressing,
 }
 
 impl DynTex {
@@ -9974,7 +9985,7 @@ impl DynTex {
 
 impl Look {
     fn add(&self, renderer: &Renderer, scene: &mut Scene, tex: Option<TextureId>) -> MaterialId {
-        renderer.clamp_next.set(self.dyn_tex.clamp);
+        renderer.address_next.set(self.dyn_tex.address);
         renderer.add_material_extra(
             scene,
             self.diffuse.or(tex),
@@ -9996,7 +10007,7 @@ impl Look {
         let d = self.dyn_tex;
         let mut l = self.clone();
         l.dyn_tex = DynTex {
-            clamp: d.clamp,
+            address: d.address,
             ..DynTex::default()
         };
         if let Some(t) = d.text.and_then(|i| text.get(i).copied().flatten()) {
@@ -10981,7 +10992,7 @@ impl World {
                     continue;
                 };
                 if let Some(Some(tex)) = d.text.and_then(|i| text_textures.get(i)) {
-                    renderer.clamp_next.set(d.clamp);
+                    renderer.address_next.set(d.address);
                     // Number/route text is a normal bus material, not an emissive HUD.
                     // Marking it unlit made the glyph RGB stay at full intensity at night,
                     // which turned dark registration characters into glowing white ones.
@@ -11024,7 +11035,7 @@ impl World {
                 } else {
                     (d.color, d.emissive)
                 };
-                renderer.clamp_next.set(d.clamp);
+                renderer.address_next.set(d.address);
                 // a script's screen (matrix displays, the IBIS's picture, LCDs) likewise
                 let mut extra = d.extra;
                 extra.screen = d.script.is_some() || d.script_trans.is_some();
@@ -11439,8 +11450,8 @@ impl World {
                     // Annax meshes address their lines at v = -0.85..-0.39, and clamped they
                     // showed nothing but the empty top row. Number plates, whose UVs run far
                     // past the edges, ask for [matl_texadress_clamp] themselves.
-                    let clamp = ov.iter().any(|o| !matches!(o.tex_address, omsi_model::TexAddress::Wrap));
-                    let base_dyn = DynTex { text: text_base, script: script_base, script_trans, clamp };
+                    let address = tex_addressing(ov.iter().copied());
+                    let base_dyn = DynTex { text: text_base, script: script_base, script_trans, address };
                     // a mirror already holds a rendered picture of the lit world, so it is
                     // drawn as it is; shading it again by the glass's own normal (which
                     // faces backwards, away from the sun) is what made mirrors look black
@@ -11500,7 +11511,7 @@ impl World {
                         if repair_body_depth {
                             it_extra.no_z_check = false;
                         }
-                        let it_dyn = DynTex { text: text_item, script: script_item, script_trans: it_script_trans, clamp };
+                        let it_dyn = DynTex { text: text_item, script: script_item, script_trans: it_script_trans, address };
                         Look { alpha: it_alpha, color: it_color, emissive: it_emissive, unlit: false, diffuse: None, transmap: it_trans, night: it_night, lightmap: it_light, envmap, extra: it_extra, dyn_tex: it_dyn }
                     };
                     let first_item: Vec<&MaterialDef> = ov_item.iter().copied().filter(|o| !later_items.iter().any(|l| std::ptr::eq(*l, *o))).collect();
@@ -11581,7 +11592,7 @@ impl World {
                     } else if let Some(lights) = multi_light(base, item) {
                         variants.push(VariantSlot { mesh: instances.len(), slot, base, item, more: Vec::new(), var: String::new(), more_vars: Vec::new(), entries, tex_var: String::new(), free: Vec::new(), spec, base_tex, entry_tex, lights: Some(lights) });
                     } else if base_dyn.any() {
-                        dyn_slots.push(DynSlot { mesh: instances.len(), slot, text: text_slot, script: script_slot, script_trans, tex, alpha, transmap, night, lightmap, envmap, clamp, extra, color, emissive });
+                        dyn_slots.push(DynSlot { mesh: instances.len(), slot, text: text_slot, script: script_slot, script_trans, tex, alpha, transmap, night, lightmap, envmap, address, extra, color, emissive });
                     }
                     base
                 })
@@ -12528,6 +12539,15 @@ mod material_tests {
             ..roller.clone()
         };
         assert_eq!(material_extra(&[&roller, &clamped], None, None, [0.0; 4]).border, None);
+        // the slot's last addressing command decides how its textures repeat
+        use omsi_render::TexAddressing as R;
+        let mirror = MaterialDef { tex_address: omsi_model::TexAddress::Mirror, ..roller.clone() };
+        let once = MaterialDef { tex_address: omsi_model::TexAddress::MirrorOnce, ..roller.clone() };
+        let plain = MaterialDef::default();
+        assert_eq!(tex_addressing([&plain].into_iter()), R::Wrap);
+        assert_eq!(tex_addressing([&clamped, &mirror, &plain].into_iter()), R::Mirror);
+        assert_eq!(tex_addressing([&mirror, &once].into_iter()), R::MirrorOnce);
+        assert_eq!(tex_addressing([&once, &roller].into_iter()), R::Clamp);
     }
 }
 

@@ -340,7 +340,13 @@ fn diffuse_border(tex: vec4<f32>, uv: vec2<f32>) -> vec4<f32> {
         material.flags.w,
     );
     let outside = any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0));
-    return select(tex, border, material.flags.y > 0.5 && outside);
+    return select(tex, border, material.flags.y > 0.5 && material.flags.y < 1.5 && outside);
+}
+
+// [matl_texadress_mirroronce]: Direct3D mirrors the coordinates once about 0 and clamps
+// them beyond; the clamping sampler does the rest.
+fn tex_address(uv: vec2<f32>) -> vec2<f32> {
+    return select(uv, abs(uv), material.flags.y > 1.5);
 }
 
 fn reflection_mask(uv: vec2<f32>, diffuse_a: f32) -> f32 {
@@ -544,7 +550,7 @@ fn fs_shadow(in: VsOut) {
 
 @fragment
 fn fs_shadow_test(in: VsOut) {
-    var duv = in.uv;
+    var duv = tex_address(in.uv);
     if (material.extra.x > 0.5) {
         duv = in.uv * material.extra.z;
     }
@@ -558,7 +564,7 @@ fn fs_shadow_test(in: VsOut) {
     var a = select(diffuse_border(textureSample(t_diffuse, s_diffuse, duv), duv).a, 1.0, material.params.x > 1.5 && material.params.z < 0.5);
     if (material.params.z > 0.5) {
         // (the transmap stays where it is: [texcoordtransX/Y] only moves the diffuse stage)
-        let tm = textureSample(t_trans, s_diffuse, in.uv - in.params.zw);
+        let tm = textureSample(t_trans, s_diffuse, tex_address(in.uv - in.params.zw));
         a = select(1.0, tm.a, material.params.w > 0.5);
     }
     if (a < 0.5) {
@@ -571,7 +577,7 @@ fn fs_shadow_test(in: VsOut) {
 // later scenery. The transparent borders must not become invisible depth walls.
 @fragment
 fn fs_surface_depth(in: VsOut) -> @location(0) vec4<f32> {
-    let a = diffuse_border(textureSample(t_diffuse, s_diffuse, in.uv), in.uv).a
+    let a = diffuse_border(textureSample(t_diffuse, s_diffuse, tex_address(in.uv)), in.uv).a
         * material.color.a * in.params.x;
     if (a < 0.999) {
         discard;
@@ -591,7 +597,7 @@ fn fs_transmap_depth(in: VsOut) {
     if (material.params.z < 0.5) {
         discard;
     }
-    let tm = textureSample(t_trans, s_diffuse, in.uv - in.params.zw);
+    let tm = textureSample(t_trans, s_diffuse, tex_address(in.uv - in.params.zw));
     let a = select(1.0, tm.a, material.params.w > 0.5) * in.params.x;
     // Only what the colour pass will cover completely may hide what lies behind it: a
     // texel that is merely more opaque than not (the dimmer and anti-aliased dots of a
@@ -1327,7 +1333,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let near = 1.0 - smoothstep(5.0, 15.0, distance(in.world, camera.cam_pos.xyz));
         return vec4<f32>(min(d.rgb, vec3<f32>(1.5)), d.a * near);
     }
-    var duv = in.uv;
+    var duv = tex_address(in.uv);
     if (material.extra.x > 0.5) {
         // terrain: uv is tile space; the ground texture repeats extra.z times per tile
         duv = in.uv * material.extra.z;
@@ -1336,7 +1342,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // The texture coordinates without the [texcoordtransX/Y] offset: in Omsi.exe's
     // fixed-function pipeline the texture transform is the diffuse stage's alone, the
     // transmap, night map and light map stay in place under a scrolling roller blind.
-    let buv = in.uv - in.params.zw;
+    let buv = tex_address(in.uv - in.params.zw);
     if (material.extra.x > 0.5 && material.extra.y > 0.0) {
         // the ground texture's detail texture, repeated finer than the texture itself and
         // modulated over it as the original's terrain pass does. The stock detail maps are
