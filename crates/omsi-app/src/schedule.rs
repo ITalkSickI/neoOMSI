@@ -878,7 +878,15 @@ impl Schedule {
                     self.pending.push_back(j);
                 }
             }
-            if !taken {
+            if !taken && next.is_none() {
+                // the tour's last trip is over: Omsi takes the bus (and what is coupled to
+                // it) off the road at once rather than letting it drive on
+                traffic.remove_car(world, renderer, scene, id);
+                self.car_departure.remove(&id);
+                if omsi_cfg::env::var_os("OMSI_DEBUG_TRAFFIC").is_some() {
+                    log::info!("scheduled bus {id}: the last trip of its tour is over: removed");
+                }
+            } else if !taken {
                 traffic.release(ci);
                 if omsi_cfg::env::var_os("OMSI_DEBUG_TRAFFIC").is_some() {
                     log::info!("scheduled bus {id}: trip over, no next trip of its tour to take on here: it drives off");
