@@ -22,7 +22,7 @@ struct BusVariant {
 }
 
 #[derive(Clone)]
-struct BusModel {
+struct BusManufacturer {
     key: String,
     name: String,
     variants: Vec<BusVariant>,
@@ -32,10 +32,10 @@ struct BusModel {
 pub struct DriveView {
     pub step: usize,
     pub bus_filter: String,
-    /// Models and their configurations, rebuilt only when content or the host list changes.
-    bus_models: std::sync::Arc<Vec<BusModel>>,
-    bus_models_key: (usize, u64, usize),
-    expanded_model: Option<String>,
+    /// The original OMSI manufacturer/type hierarchy, cached between content updates.
+    bus_manufacturers: std::sync::Arc<Vec<BusManufacturer>>,
+    bus_manufacturers_key: (usize, u64, usize),
+    expanded_manufacturer: Option<String>,
     bus_list_initialized: bool,
     vehicle_settings_open: bool,
     pub line_filter: String,
@@ -85,98 +85,100 @@ fn display_bus_name(name: &str) -> String {
     name.replace('_', " ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn family_name(variants: &[BusVariant]) -> (String, usize) {
-    let Some(first) = variants.first() else { return (String::new(), 0) };
-    let first_words: Vec<&str> = first.name.split_whitespace().collect();
-    let mut shared = first_words.len();
-    for variant in variants.iter().skip(1) {
-        let words: Vec<&str> = variant.name.split_whitespace().collect();
-        shared = shared.min(first_words.iter().zip(words.iter()).take_while(|(a, b)| a.eq_ignore_ascii_case(b)).count());
-    }
-    while shared > 0 && matches!(first_words[shared - 1], "-" | "–" | "·" | "|") {
-        shared -= 1;
-    }
-    (first_words[..shared].join(" "), shared)
-}
-
-fn variant_name(variant: &BusVariant, prefix_words: usize) -> String {
-    let suffix = variant.name.split_whitespace().skip(prefix_words).collect::<Vec<_>>().join(" ");
-    let suffix = suffix.trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '–' | ':' | '|'));
-    if suffix.is_empty() { "Standard".to_string() } else { suffix.to_string() }
-}
-
-/// A rendering configuration can differ for every gearbox or operator. Group by the
-/// pack and the model identifier in its friendly type instead of by model.cfg.
-fn bus_family_key(vehicle: &omsi_launcher_lib::VehicleInfo) -> String {
-    let type_name = display_bus_name(&vehicle.type_name);
-    let words: Vec<&str> = type_name.split_whitespace().collect();
-    let model = if words.first().is_some_and(|w| w.eq_ignore_ascii_case("MB")) {
-        words.iter().take(2).copied().collect::<Vec<_>>().join(" ")
-    } else if words.first().is_some_and(|w| w.chars().any(|c| c.is_ascii_digit()) && !w.chars().all(|c| c.is_ascii_digit())) {
-        words.first().unwrap().to_string()
-    } else {
-        String::new()
-    };
-    format!("{}|{}|{}", vehicle.folder.to_lowercase(), vehicle.manufacturer.to_lowercase(), model.to_lowercase())
-}
-
-fn build_bus_models(vehicles: &[omsi_launcher_lib::VehicleInfo], allowed: Option<&std::collections::HashSet<String>>, fresh: &std::collections::HashSet<String>) -> Vec<BusModel> {
-    let mut grouped = std::collections::BTreeMap::<String, Vec<BusVariant>>::new();
+/// OMSI takes the manufacturer and the complete type from [friendlyname]. The
+/// vehicle folder and rendering configuration do not define this hierarchy.
+fn build_bus_manufacturers(vehicles: &[omsi_launcher_lib::VehicleInfo], allowed: Option<&std::collections::HashSet<String>>, fresh: &std::collections::HashSet<String>) -> Vec<BusManufacturer> {
+    let mut grouped = std::collections::BTreeMap::<String, BusManufacturer>::new();
     for vehicle in vehicles {
         if !allowed.map(|a| a.contains(&vehicle.file.replace('\\', "/").to_lowercase())).unwrap_or(true) {
             continue;
         }
-        grouped.entry(bus_family_key(vehicle)).or_default().push(BusVariant {
-            file: vehicle.file.clone(),
-            name: if vehicle.type_name.trim().is_empty() { display_bus_name(&vehicle.name) } else {
-                let maker = vehicle.manufacturer.trim().strip_suffix(" Release").unwrap_or(vehicle.manufacturer.trim());
-                display_bus_name(&format!("{maker} {}", vehicle.type_name))
-            },
-            variant: String::new(),
-            fresh: fresh.contains(&vehicle.file),
-            installed: vehicle.installed,
-            paints: vehicle.paints.len(),
-            incomplete: !vehicle.missing_packs.is_empty(),
+        let maker = vehicle.manufacturer.trim();
+        let key = maker.to_lowercase();
+        let group = grouped.entry(key.clone()).or_insert_with(|| BusManufacturer {
+            key, name: if maker.is_empty() { "Unknown manufacturer".into() } else { display_bus_name(maker) }, variants: Vec::new(),
+        });
+        let type_name = if vehicle.type_name.trim().is_empty() {
+            display_bus_name(&std::path::Path::new(&vehicle.file).file_stem().unwrap_or_default().to_string_lossy())
+        } else { display_bus_name(&vehicle.type_name) };
+        group.variants.push(BusVariant {
+            file: vehicle.file.clone(), name: display_bus_name(&vehicle.name), variant: type_name,
+            fresh: fresh.contains(&vehicle.file), installed: vehicle.installed,
+            paints: vehicle.paints.len(), incomplete: !vehicle.missing_packs.is_empty(),
         });
     }
-    let mut models: Vec<BusModel> = grouped.into_iter().map(|(key, mut variants)| {
-        variants.sort_by(|a, b| natural(&a.name).cmp(&natural(&b.name)).then_with(|| a.file.cmp(&b.file)));
-        let (mut name, mut prefix_words) = family_name(&variants);
-        if name.is_empty() {
-            name = display_bus_name(&key.split('|').next().unwrap_or_default());
-            prefix_words = 0;
-        }
-        for variant in &mut variants {
-            variant.variant = variant_name(variant, prefix_words);
-        }
-        // A few packs give different files exactly the same friendly name. Their
-        // filename is a useful disambiguator only in that case.
+    let mut manufacturers: Vec<BusManufacturer> = grouped.into_values().collect();
+    for maker in &mut manufacturers {
+        // Distinct .bus files remain selectable even when add-ons repeat a friendly
+        // type name. Show the pack, and the file only if the pack also repeats it.
         let mut counts = std::collections::HashMap::<String, usize>::new();
-        for variant in &variants { *counts.entry(variant.variant.clone()).or_default() += 1; }
-        for variant in &mut variants {
-            if counts[&variant.variant] > 1 {
-                let stem = std::path::Path::new(&variant.file).file_stem().unwrap_or_default().to_string_lossy();
-                variant.variant = display_bus_name(&stem);
+        for variant in &maker.variants { *counts.entry(variant.variant.to_lowercase()).or_default() += 1; }
+        for variant in &mut maker.variants {
+            if counts[&variant.variant.to_lowercase()] > 1 {
+                let folder = variant.file.replace('\\', "/").split('/').nth(1).unwrap_or_default().to_string();
+                variant.variant = format!("{} · {}", variant.variant, display_bus_name(&folder));
             }
         }
-        BusModel { key, name, variants }
-    }).collect();
-    models.sort_by(|a, b| natural(&a.name).cmp(&natural(&b.name)).then_with(|| a.key.cmp(&b.key)));
-    models
+        let mut counts = std::collections::HashMap::<String, usize>::new();
+        for variant in &maker.variants { *counts.entry(variant.variant.to_lowercase()).or_default() += 1; }
+        for variant in &mut maker.variants {
+            if counts[&variant.variant.to_lowercase()] > 1 {
+                let stem = std::path::Path::new(&variant.file).file_stem().unwrap_or_default().to_string_lossy();
+                variant.variant = format!("{} · {}", variant.variant, display_bus_name(&stem));
+            }
+        }
+        maker.variants.sort_by(|a, b| bus_name_cmp(&a.variant, &b.variant).then_with(|| a.file.cmp(&b.file)));
+    }
+    manufacturers.sort_by(|a, b| bus_name_cmp(&a.name, &b.name).then_with(|| a.key.cmp(&b.key)));
+    manufacturers
+}
+
+/// Sort numeric runs wherever they occur: DL9 precedes DL10; case does not change
+/// a manufacturer's position.
+fn bus_name_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let a = a.to_lowercase();
+    let b = b.to_lowercase();
+    let mut a = a.chars().peekable();
+    let mut b = b.chars().peekable();
+    loop {
+        match (a.peek().copied(), b.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, _) => return Ordering::Less,
+            (_, None) => return Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                let x: String = std::iter::from_fn(|| a.next_if(|c| c.is_ascii_digit())).collect();
+                let y: String = std::iter::from_fn(|| b.next_if(|c| c.is_ascii_digit())).collect();
+                let x = x.trim_start_matches('0');
+                let y = y.trim_start_matches('0');
+                let order = x.len().cmp(&y.len()).then_with(|| x.cmp(y));
+                if order != Ordering::Equal { return order; }
+            }
+            (Some(x), Some(y)) => {
+                let order = x.cmp(&y);
+                if order != Ordering::Equal { return order; }
+                a.next(); b.next();
+            }
+        }
+    }
+}
+
+pub(super) fn default_livery_label(vehicle: &omsi_launcher_lib::VehicleInfo) -> &str {
+    if vehicle.default_paint.trim().is_empty() { "Default paint" } else { vehicle.default_paint.trim() }
 }
 
 fn variant_matches(variant: &BusVariant, q: &str) -> bool {
     q.is_empty() || variant.name.to_lowercase().contains(q) || variant.variant.to_lowercase().contains(q) || display_bus_name(&variant.file).to_lowercase().contains(q)
 }
 
-fn model_matches(model: &BusModel, q: &str) -> bool {
+fn manufacturer_matches(model: &BusManufacturer, q: &str) -> bool {
     q.is_empty() || model.name.to_lowercase().contains(q) || model.variants.iter().any(|v| variant_matches(v, q))
 }
 
 fn step_bus(l: &mut Launcher, r: Rect) {
     l.ui.heading(Rect::new(r.x, r.y, r.w, 24.0), "Choose a bus", None);
     let search = Rect::new(r.x, r.y + 32.0, r.w, ROW);
-    let search_changed = l.ui.text_input("bus-filter", search, &mut l.drive.bus_filter, "Search models or variants…", Some("search"));
+    let search_changed = l.ui.text_input("bus-filter", search, &mut l.drive.bus_filter, "Search buses…", Some("search"));
     if search_changed {
         l.ui.scroll.remove(&id_of("bus-model-list"));
         l.ui.scroll.remove(&(id_of("bus-model-list") ^ 0xabc));
@@ -193,16 +195,16 @@ fn step_bus(l: &mut Launcher, r: Rect) {
     }
     let allowed_key = allowed.as_ref().map(|a| a.iter().fold(0u64, |hash, file| hash ^ id_of(file))).unwrap_or(u64::MAX);
     let key = (l.state.vehicles.len(), allowed_key, l.state.fresh.len());
-    if key != l.drive.bus_models_key || (l.drive.bus_models.is_empty() && !l.state.vehicles.is_empty()) {
+    if key != l.drive.bus_manufacturers_key || (l.drive.bus_manufacturers.is_empty() && !l.state.vehicles.is_empty()) {
         let fresh = l.state.fresh.keys().cloned().collect();
-        l.drive.bus_models = std::sync::Arc::new(build_bus_models(&l.state.vehicles, allowed.as_ref(), &fresh));
-        l.drive.bus_models_key = key;
+        l.drive.bus_manufacturers = std::sync::Arc::new(build_bus_manufacturers(&l.state.vehicles, allowed.as_ref(), &fresh));
+        l.drive.bus_manufacturers_key = key;
     }
-    let models = l.drive.bus_models.clone();
+    let models = l.drive.bus_manufacturers.clone();
     let chosen = l.state.choice.bus.clone();
 
-    let visible: Vec<&BusModel> = models.iter().filter(|m| model_matches(m, &q)).collect();
-    let count = format!("{} {}", visible.len(), omsi_ui::tr(if visible.len() == 1 { "model" } else { "models" }));
+    let visible: Vec<&BusManufacturer> = models.iter().filter(|m| manufacturer_matches(m, &q)).collect();
+    let count = format!("{} {}", visible.len(), omsi_ui::tr(if visible.len() == 1 { "manufacturer" } else { "manufacturers" }));
     l.ui.text_in(&count, Rect::new(r.x, search.bottom() + 6.0, r.w, 20.0), 11.5, Weight::Regular, TEXT_DIM, Align::Left);
     let list_y = search.bottom() + 32.0;
     let settings_h = if l.drive.vehicle_settings_open { 164.0 } else { 0.0 };
@@ -212,17 +214,16 @@ fn step_bus(l: &mut Launcher, r: Rect) {
     if !l.drive.bus_list_initialized && !models.is_empty() {
         if let Some(index) = models.iter().position(|m| m.variants.iter().any(|v| v.file == chosen)) {
             let model = &models[index];
-            l.drive.expanded_model = Some(model.key.clone());
-            let variant_index = model.variants.iter().position(|v| v.file == chosen).unwrap_or(0);
-            let selected_y = 6.0 + index as f32 * 58.0 + if model.variants.len() > 1 { 58.0 + variant_index as f32 * 42.0 } else { 0.0 };
-            l.ui.scroll_to("bus-model-list", selected_y, 42.0, list.h);
+            l.drive.expanded_manufacturer = Some(model.key.clone());
+            let selected_y = 6.0 + index as f32 * 58.0;
+            l.ui.scroll_to("bus-model-list", selected_y, if model.variants.len() > 1 { 120.0 } else { 54.0 }, list.h);
         }
         l.drive.bus_list_initialized = true;
     }
     if search_changed && !q.is_empty() {
-        l.drive.expanded_model = visible.first().map(|m| m.key.clone());
+        l.drive.expanded_manufacturer = visible.first().map(|m| m.key.clone());
     }
-    let expanded = l.drive.expanded_model.clone();
+    let expanded = l.drive.expanded_manufacturer.clone();
     let mut toggle = None;
     let mut pick = None;
     let loading = l.state.loading_content;
@@ -243,9 +244,9 @@ fn step_bus(l: &mut Launcher, r: Rect) {
             let title = Rect::new(row.x + 42.0, row.y + 7.0, row.w - 78.0, 20.0);
             ui.text_in(&model.name, title, 13.0, Weight::Medium, TEXT, Align::Left);
             ui.tooltip(title, &model.name);
-            let subtitle = if model.variants.len() == 1 { omsi_ui::tr("Single variant").into_owned() }
-                else if let Some(v) = selected { format!("{} · {} {}", omsi_ui::tr(&v.variant), model.variants.len(), omsi_ui::tr("variants")) }
-                else { format!("{} {}", model.variants.len(), omsi_ui::tr("variants")) };
+            let subtitle = if model.variants.len() == 1 { omsi_ui::tr(&model.variants[0].variant).into_owned() }
+                else if let Some(v) = selected { format!("{} · {} {}", omsi_ui::tr(&v.variant), model.variants.len(), omsi_ui::tr("models")) }
+                else { format!("{} {}", model.variants.len(), omsi_ui::tr("models")) };
             let subtitle = if selected.is_some_and(|v| v.incomplete) { format!("{subtitle} · {}", omsi_ui::tr("PARTS MISSING")) }
                 else if selected.is_some_and(|v| v.fresh) { format!("{subtitle} · {}", omsi_ui::tr("NEW")) }
                 else if selected.is_some_and(|v| v.installed) { format!("{subtitle} · {}", omsi_ui::tr("MOD")) } else { subtitle };
@@ -253,33 +254,38 @@ fn step_bus(l: &mut Launcher, r: Rect) {
             ui.icon(if model.variants.len() == 1 { if selected.is_some() { "check" } else { "chevron_right" } } else if open { "expand_less" } else { "expand_more" }, Vec2::new(row.right() - 18.0, row.center().y), 18.0, if selected.is_some() { ACCENT } else { TEXT_DIM });
             y += 58.0;
             if open {
-                for variant in &model.variants {
-                    if !q.is_empty() && !model.name.to_lowercase().contains(&q) && !variant_matches(variant, &q) { continue; }
-                    let row = Rect::new(view.x + 38.0, y, view.w - 50.0, 38.0);
-                    let on = variant.file == chosen;
-                    if ui.row(&format!("bus-config-{}", variant.file), row, on) { pick = Some(variant.file.clone()); }
-                    ui.icon(if on { "check_circle" } else { "radio_button_unchecked" }, Vec2::new(row.x + 16.0, row.center().y), 15.0, if on { ACCENT } else { TEXT_FAINT });
-                    let tag = if variant.incomplete { "PARTS MISSING" } else if variant.fresh { "NEW" } else if variant.installed { "MOD" } else { "" };
-                    let tag_w = if tag.is_empty() { 0.0 } else { ui.width(tag, 10.0, Weight::Bold) + 18.0 };
-                    let label = Rect::new(row.x + 32.0, row.y, row.w - 42.0 - tag_w, row.h);
-                    ui.text_in(&variant.variant, label, 12.5, if on { Weight::Medium } else { Weight::Regular }, if on { TEXT } else { TEXT_SOFT }, Align::Left);
-                    ui.tooltip(row, &format!("{}\n{}\n{} {}", variant.name, variant.file, variant.paints, omsi_ui::tr("liveries")));
-                    if !tag.is_empty() { ui.badge(Vec2::new(row.right() - tag_w, row.y + 11.0), tag, if variant.incomplete { WARN } else if variant.fresh { OK } else { ACCENT_2 }); }
-                    y += 42.0;
+                let variants: Vec<&BusVariant> = model.variants.iter().filter(|variant| q.is_empty() || model.name.to_lowercase().contains(&q) || variant.file == chosen || variant_matches(variant, &q)).collect();
+                let selected_index = variants.iter().position(|variant| variant.file == chosen);
+                let mut options: Vec<String> = variants.iter().map(|variant| variant.variant.clone()).collect();
+                let offset = if selected_index.is_none() { options.insert(0, "Choose a bus".into()); 1 } else { 0 };
+                let mut sel = selected_index.unwrap_or(0);
+                ui.label(Rect::new(view.x + 38.0, y, view.w - 50.0, 22.0), "Type / variant");
+                y += 26.0;
+                let dropdown = Rect::new(view.x + 38.0, y, view.w - 50.0, ROW);
+                if !options.is_empty() && ui.select(&format!("bus-type-{}", model.key), dropdown, &mut sel, &options) {
+                    if let Some(variant) = sel.checked_sub(offset).and_then(|index| variants.get(index)) { pick = Some(variant.file.clone()); }
                 }
-                y += 4.0;
+                if let Some(variant) = selected {
+                    ui.tooltip(dropdown, &format!("{}\n{}\n{} {}", variant.name, variant.file, variant.paints, omsi_ui::tr("liveries")));
+                }
+                y += ROW + 10.0;
             }
         }
         y - view.y + 4.0
     });
     if let Some(key) = toggle {
-        l.drive.expanded_model = if l.drive.expanded_model.as_ref() == Some(&key) { None } else { Some(key) };
+        l.drive.expanded_manufacturer = if l.drive.expanded_manufacturer.as_ref() == Some(&key) { None } else { Some(key.clone()) };
+        if l.drive.expanded_manufacturer.is_some() {
+            if let Some(index) = visible.iter().position(|maker| maker.key == key) {
+                l.ui.scroll_to("bus-model-list", 6.0 + index as f32 * 58.0, 120.0, list.h);
+            }
+        }
     }
     if let Some(file) = pick { l.state.select_bus(&file); }
 
     let mut y = list.bottom() + 16.0;
     if let Some(vehicle) = l.state.bus().cloned() {
-        let paints: Vec<String> = std::iter::once("Default paint".to_string()).chain(vehicle.paints.iter().cloned()).collect();
+        let paints: Vec<String> = std::iter::once(default_livery_label(&vehicle).to_string()).chain(vehicle.paints.iter().cloned()).collect();
         let mut paint_sel = vehicle.paints.iter().position(|p| *p == l.state.choice.paint).map(|i| i + 1).unwrap_or(0);
         l.ui.label(Rect::new(r.x, y, r.w, 22.0), "Livery");
         if paints.len() > 1 { l.ui.text_in(&format!("{} / {}", paint_sel + 1, paints.len()), Rect::new(r.right() - 70.0, y, 70.0, 22.0), 11.5, Weight::Regular, TEXT_DIM, Align::Right); }
@@ -851,18 +857,10 @@ fn summary(l: &mut Launcher, side: Rect) {
     let pr = Rect::new(side.x, side.y, pw, ph);
     l.preview(pr);
     let mut y = pr.bottom() + 18.0;
-    let (bus_name, maker) = l.state.bus().map(|b| {
-        let model = l.drive.bus_models.iter().find(|m| m.variants.iter().any(|v| v.file == b.file));
-        let variant = model.and_then(|m| m.variants.iter().find(|v| v.file == b.file));
-        (model.map(|m| m.name.clone()).unwrap_or_else(|| display_bus_name(&b.name)), variant.filter(|v| v.variant != "Standard").map(|v| v.variant.clone()).unwrap_or_default())
-    }).unwrap_or_else(|| ("No bus chosen".into(), String::new()));
-    if !maker.is_empty() {
-        l.ui.text_in(&maker, Rect::new(side.x, y, pw, 16.0), 12.0, Weight::Regular, TEXT_DIM, Align::Left);
-        y += 18.0;
-    }
+    let bus_name = l.state.bus().map(|bus| display_bus_name(&bus.name)).unwrap_or_else(|| "No bus chosen".into());
     l.ui.text_in(&bus_name, Rect::new(side.x, y, pw, 24.0), 18.0, Weight::Bold, TEXT, Align::Left);
     y += 26.0;
-    let paint = if l.state.choice.paint.is_empty() { "Default paint".to_string() } else { l.state.choice.paint.clone() };
+    let paint = if l.state.choice.paint.is_empty() { l.state.bus().map(default_livery_label).unwrap_or("Default paint").to_string() } else { l.state.choice.paint.clone() };
     l.ui.text_in(&paint, Rect::new(side.x, y, pw, 18.0), 12.5, Weight::Regular, TEXT_DIM, Align::Left);
     y += 30.0;
     let map = l.state.map().map(|m| if m.friendly.is_empty() { m.name.clone() } else { m.friendly.clone() }).unwrap_or_else(|| "-".into());
@@ -1028,49 +1026,65 @@ mod vehicle_picker_tests {
             name: format!("{maker} {name}"), manufacturer: maker.into(), type_name: name.into(),
             folder: folder.into(), file: format!("Vehicles/{folder}/{file}.bus"),
             description: String::new(), paints: vec!["Paint".into()], hofs: vec![],
-            installed: false, missing_packs: vec![], numbers: vec![],
+            installed: false, missing_packs: vec![], numbers: vec![], default_paint: "Beige".into(),
         }
     }
 
     #[test]
-    fn c2_configurations_share_a_readable_family() {
+    fn omsi_manufacturer_groups_dl_and_lions_city_across_packs() {
         let vehicles = vec![
-            vehicle("MB_C2_EN_BVG", "Mercedes-Benz Release", "MB_C2_E5_Solo", "solo"),
-            vehicle("MB_C2_EN_BVG", "Mercedes-Benz Release", "MB_C2_E6_GN_BVG_Leasing 2", "leasing"),
+            vehicle("MAN_DL05", "MAN", "DL05", "dl05"),
+            vehicle("MAN_DL05", "MAN", "DL07", "dl07"),
+            vehicle("MAN_DL05", "MAN", "DL08", "dl08"),
+            vehicle("MAN_DL05", "MAN", "DL09", "dl09"),
+            vehicle("MAN_LC_MVG", "MAN", "Lion's City (MVG)", "mvg"),
+            vehicle("MAN_LC_GUE", "MAN", "Lion's City G (ORN)", "orn"),
         ];
-        let models = build_bus_models(&vehicles, None, &Default::default());
-        assert_eq!(models.len(), 1);
-        assert_eq!(models[0].name, "Mercedes-Benz MB C2");
-        assert!(models[0].variants.iter().any(|v| v.variant == "E6 GN BVG Leasing 2"));
-        assert!(model_matches(&models[0], "leasing"));
-        assert!(!model_matches(&models[0], "no such vehicle"));
+        let manufacturers = build_bus_manufacturers(&vehicles, None, &Default::default());
+        assert_eq!(manufacturers.len(), 1);
+        assert_eq!(manufacturers[0].name, "MAN");
+        assert_eq!(manufacturers[0].variants.len(), 6);
+        assert!(manufacturers[0].variants.iter().any(|v| v.variant == "DL07"));
+        assert!(manufacturers[0].variants.iter().any(|v| v.variant == "Lion's City G (ORN)"));
+        assert!(manufacturer_matches(&manufacturers[0], "orn"));
+        assert!(!manufacturer_matches(&manufacturers[0], "not a bus"));
     }
 
     #[test]
-    fn different_models_and_packs_stay_separate() {
+    fn author_defined_manufacturer_and_complete_type_are_preserved() {
         let vehicles = vec![
-            vehicle("VanHool", "VanHool", "A300 - 1995", "a300"),
-            vehicle("VanHool", "VanHool", "A300 - CNG", "a300cng"),
-            vehicle("VanHool", "VanHool", "A330 - 1999", "a330"),
-            vehicle("OtherPack", "VanHool", "A300 - 1995", "a300"),
+            vehicle("Pack", "Mercedes-Benz Release", "MB_C2_E6_GN_BVG_Leasing 2", "leasing"),
+            vehicle("Pack", "Mercedes-Benz", "O530", "o530"),
         ];
-        let models = build_bus_models(&vehicles, None, &Default::default());
-        assert_eq!(models.len(), 3);
-        assert!(models.iter().any(|m| m.name == "VanHool A300" && m.variants.len() == 2));
+        let manufacturers = build_bus_manufacturers(&vehicles, None, &Default::default());
+        assert_eq!(manufacturers.len(), 2);
+        let maker = manufacturers.iter().find(|m| m.name == "Mercedes-Benz Release").unwrap();
+        assert_eq!(maker.variants[0].variant, "MB C2 E6 GN BVG Leasing 2");
     }
 
     #[test]
-    fn duplicate_labels_preserve_distinct_files_and_host_filter() {
+    fn duplicate_names_remain_selectable_and_host_filter_is_respected() {
         let vehicles = vec![
             vehicle("MAN", "MAN", "NL202", "en92"),
             vehicle("MAN", "MAN", "NL202", "en93"),
+            vehicle("OtherPack", "MAN", "NL202", "en92"),
         ];
-        let models = build_bus_models(&vehicles, None, &Default::default());
-        assert_ne!(models[0].variants[0].variant, models[0].variants[1].variant);
+        let manufacturers = build_bus_manufacturers(&vehicles, None, &Default::default());
+        let labels: std::collections::HashSet<_> = manufacturers[0].variants.iter().map(|v| &v.variant).collect();
+        assert_eq!(labels.len(), 3);
         let allowed = std::collections::HashSet::from([vehicles[1].file.to_lowercase()]);
-        let filtered = build_bus_models(&vehicles, Some(&allowed), &Default::default());
-        assert_eq!(filtered.len(), 1);
+        let filtered = build_bus_manufacturers(&vehicles, Some(&allowed), &Default::default());
         assert_eq!(filtered[0].variants.len(), 1);
         assert_eq!(filtered[0].variants[0].file, vehicles[1].file);
+    }
+
+    #[test]
+    fn numbers_in_type_names_sort_naturally_and_default_livery_has_its_omsi_name() {
+        assert_eq!(bus_name_cmp("DL9", "DL10"), std::cmp::Ordering::Less);
+        assert_eq!(bus_name_cmp("MAN", "man"), std::cmp::Ordering::Equal);
+        let mut vehicle = vehicle("MAN", "MAN", "DL07", "dl07");
+        assert_eq!(default_livery_label(&vehicle), "Beige");
+        vehicle.default_paint.clear();
+        assert_eq!(default_livery_label(&vehicle), "Default paint");
     }
 }

@@ -711,6 +711,9 @@ pub struct VehicleInfo {
     pub file: String,
     pub folder: String,
     pub description: String,
+    /// The original third [friendlyname] line, shown for the bus's standard paint.
+    #[serde(default)]
+    pub default_paint: String,
     pub paints: Vec<String>,
     pub hofs: Vec<String>,
     /// Installed as a mod (the bus file is in the content folder).
@@ -822,12 +825,12 @@ pub fn list_vehicles() -> Result<Vec<VehicleInfo>> {
                 stamped.extend(subs);
             }
         }
-        let key = format!("bus2|{lang}|{}", dirs.iter().map(|d| d.to_string_lossy()).collect::<Vec<_>>().join("|"));
+        let key = format!("bus4|{lang}|{}", dirs.iter().map(|d| d.to_string_lossy()).collect::<Vec<_>>().join("|"));
         keys.push(key.clone());
         let list: Vec<VehicleInfo> = index::cached(&key, index::folder_stamp(&stamped), || read_vehicle_folder(&folder, &dirs, lang));
         out.extend(list);
     }
-    index::save("bus2|", Some(&keys));
+    index::save("bus4|", Some(&keys));
     if out.is_empty() {
         log_empty("Vehicles", ".bus file");
     }
@@ -907,7 +910,7 @@ fn read_vehicle_folder(folder: &str, dirs: &[PathBuf], lang: &str) -> (Vec<Vehic
         if !missing_packs.is_empty() {
             log_line(&format!("vehicles: {} borrows parts from packs that are not installed: {}", f.display(), missing_packs.join(", ")));
         }
-        out.push(VehicleInfo { name: if name.is_empty() { stem.clone() } else { name }, manufacturer: v.manufacturer.trim().to_string(), type_name: v.type_name.trim().to_string(), file: rel, folder: folder.to_string(), description: description.chars().take(600).collect(), paints, hofs, installed: in_content(f), missing_packs, numbers: v.numbers_with_plates() });
+        out.push(VehicleInfo { name: if name.is_empty() { stem.clone() } else { name }, manufacturer: v.manufacturer.trim().to_string(), type_name: v.type_name.trim().to_string(), file: rel, folder: folder.to_string(), description: description.chars().take(600).collect(), default_paint: v.default_paint.trim().to_string(), paints, hofs, installed: in_content(f), missing_packs, numbers: v.numbers_with_plates() });
     }
     deps.sort();
     deps.dedup();
