@@ -50,6 +50,8 @@ impl ScriptTexture {
             self.width = w;
             self.height = h;
             self.rgba = vec![0; (w * h * 4) as usize];
+            // (an image released at the old size must not go up at the new one)
+            self.pending = None;
         }
         self.clear();
     }
@@ -164,6 +166,8 @@ impl ScriptTexture {
         self.height = th;
         self.rgba = if (tw, th) == (w, h) { rgba[..(w * h * 4) as usize].to_vec() } else { resample(w, h, rgba, tw, th) };
         self.mipmaps = true;
+        // the file replaces whatever was released at the old size
+        self.pending = None;
         self.dirty = true;
     }
 }
