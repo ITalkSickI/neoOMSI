@@ -13,7 +13,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 const PAPER_X: u32 = 100;
-const TIME_X: u32 = 650;
+const COLUMN_GAP: u32 = 32;
 const PAPER_TOP: u32 = 88;
 const ROWS_TOP_GAP: u32 = 20;
 const PAPER_BOTTOM_MARGIN: u32 = 48;
@@ -25,6 +25,15 @@ struct PaperRow {
     time: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PaperLayout {
+    columns: usize,
+    rows_per_column: usize,
+    column_width: u32,
+    scale: f32,
+    line_height: u32,
+}
+
 /// Update `file_schedule` to a cached drawing of the current trip. The renderer already
 /// handles the model's `[matl_freetex]` slot, so switching this string updates the paper.
 pub(crate) fn update_vehicle(
@@ -34,7 +43,7 @@ pub(crate) fn update_vehicle(
 ) -> Result<()> {
     let (title, rows) = paper_content(&duty.line, &duty.tour, &duty.trips, duty.trip_index);
     let signature = content_signature(&title, &rows);
-    let path = cache_dir()?.join(format!("schedule-v2-{signature:016x}.png"));
+    let path = cache_dir()?.join(format!("schedule-v3-{signature:016x}.png"));
     let filename = path.to_string_lossy().into_owned();
 
     if vehicle.str_var("file_schedule") == filename {
@@ -181,45 +190,81 @@ fn paper_base() -> Image {
 
 fn draw_schedule(image: &mut Image, font: &FontAtlas, title: &str, rows: &[PaperRow]) {
     let native_height = font.font.height.max(1) as u32;
-    let scale = fit_scale(image.height, native_height, rows.len());
-    let line_height = scaled_height(native_height, scale);
-    let time_x = PAPER_X + scaled_size(TIME_X - PAPER_X, scale);
-    draw_text(image, font, title, PAPER_X, PAPER_TOP, scale);
+    let layout = paper_layout(image.width, image.height, native_height, rows.len());
+    draw_text(image, font, title, PAPER_X, PAPER_TOP, layout.scale);
 
-    let equal_width = scaled_text_width(font, "=", scale).max(1);
-    let right_margin = scaled_size(130, scale);
-    let count =
-        (image.width.saturating_sub(PAPER_X + right_margin) / equal_width).min(120) as usize;
+    let equal_width = scaled_text_width(font, "=", layout.scale).max(1);
+    let count = (image.width.saturating_sub(2 * PAPER_X) / equal_width).min(120) as usize;
     draw_text(
         image,
         font,
         &"=".repeat(count),
         PAPER_X,
-        PAPER_TOP + line_height + 4,
-        scale,
+        PAPER_TOP + scaled_height(native_height, layout.scale) + 4,
+        layout.scale,
     );
 
-    let mut y = PAPER_TOP + native_height + ROWS_TOP_GAP;
-    for row in rows {
-        if y + line_height >= image.height {
-            break;
+    for (index, row) in rows.iter().enumerate() {
+        let (column_x, y) = row_position(index, native_height, &layout);
+        if y + layout.line_height >= image.height {
+            continue;
         }
-        let name_width = scaled_text_width(font, &row.name, scale);
-        let dot_width = scaled_text_width(font, ".", scale).max(1);
-        let available = time_x.saturating_sub(PAPER_X + name_width + scaled_size(12, scale));
+        let time_width = scaled_text_width(font, &row.time, layout.scale);
+        let time_x = column_x + layout.column_width.saturating_sub(time_width);
+        let name_width = scaled_text_width(font, &row.name, layout.scale);
+        let dot_width = scaled_text_width(font, ".", layout.scale).max(1);
+        let available =
+            time_x.saturating_sub(column_x + name_width + scaled_size(12, layout.scale));
         let dots = (available / dot_width).min(96) as usize;
-        draw_text(image, font, &row.name, PAPER_X, y, scale);
+        draw_text(image, font, &row.name, column_x, y, layout.scale);
         draw_text(
             image,
             font,
             &".".repeat(dots),
-            PAPER_X + name_width + scaled_size(9, scale),
+            column_x + name_width + scaled_size(9, layout.scale),
             y,
-            scale,
+            layout.scale,
         );
-        draw_text(image, font, &row.time, time_x, y, scale);
-        y += line_height;
+        draw_text(image, font, &row.time, time_x, y, layout.scale);
     }
+}
+
+fn paper_layout(
+    image_width: u32,
+    image_height: u32,
+    line_height: u32,
+    row_count: usize,
+) -> PaperLayout {
+    let single_column_rows = full_size_rows(image_height, line_height);
+    let columns = if row_count > single_column_rows { 2 } else { 1 };
+    let rows_per_column = if columns == 2 {
+        row_count / 2 + row_count % 2
+    } else {
+        row_count
+    };
+    let column_width = image_width.saturating_sub(2 * PAPER_X + COLUMN_GAP) / 2;
+    let scale = fit_scale(image_height, line_height, rows_per_column);
+    PaperLayout {
+        columns,
+        rows_per_column,
+        column_width,
+        scale,
+        line_height: scaled_height(line_height, scale),
+    }
+}
+
+fn row_position(index: usize, native_height: u32, layout: &PaperLayout) -> (u32, u32) {
+    let column = usize::from(layout.columns == 2 && index >= layout.rows_per_column);
+    let row = index.saturating_sub(column * layout.rows_per_column);
+    let x = PAPER_X + column as u32 * (layout.column_width + COLUMN_GAP);
+    let y = PAPER_TOP + native_height + ROWS_TOP_GAP + row as u32 * layout.line_height;
+    (x, y)
+}
+
+fn full_size_rows(image_height: u32, line_height: u32) -> usize {
+    let rows_top = PAPER_TOP + line_height + ROWS_TOP_GAP;
+    let available = image_height.saturating_sub(rows_top + PAPER_BOTTOM_MARGIN);
+    (available / line_height.max(1)) as usize
 }
 
 fn fit_scale(image_height: u32, line_height: u32, row_count: usize) -> f32 {
@@ -398,13 +443,24 @@ mod tests {
     }
 
     #[test]
-    fn dense_schedule_scales_rows_to_keep_them_on_the_paper() {
-        let scale = fit_scale(1024, 27, 36);
-        let row_height = scaled_height(27, scale);
+    fn long_schedule_uses_two_columns_and_keeps_every_row_on_the_paper() {
+        let layout = paper_layout(1024, 1024, 27, 36);
+        assert_eq!(layout.columns, 2);
+        assert_eq!(layout.rows_per_column, 18);
+        assert_eq!(layout.scale, 1.0);
+
+        let short = paper_layout(1024, 1024, 27, 9);
+        assert_eq!(short.columns, 1);
+        assert_eq!(short.scale, 1.0);
+
+        let extra_long = paper_layout(1024, 1024, 27, 72);
+        assert_eq!(extra_long.columns, 2);
+        assert!(extra_long.scale < 1.0);
         let rows_top = PAPER_TOP + 27 + ROWS_TOP_GAP;
-        assert!(scale < 1.0);
-        assert!(rows_top + row_height * 36 <= 1024 - PAPER_BOTTOM_MARGIN);
-        assert_eq!(fit_scale(1024, 27, 9), 1.0);
+        assert!(
+            rows_top + extra_long.line_height * extra_long.rows_per_column as u32
+                <= 1024 - PAPER_BOTTOM_MARGIN
+        );
 
         let font = test_font();
         let rows: Vec<_> = (0..36)
@@ -426,9 +482,9 @@ mod tests {
         draw_schedule(&mut image, &font, "76 - Dense - 1", &rows);
 
         for i in 0..36 {
-            let y = rows_top + i * row_height;
-            let has_ink = (y..y + row_height).any(|py| {
-                (PAPER_X..PAPER_X + 80).any(|px| {
+            let (x, y) = row_position(i, 27, &layout);
+            let has_ink = (y..y + layout.line_height).any(|py| {
+                (x..x + 80).any(|px| {
                     let pixel = ((py * image.width + px) * 4) as usize;
                     image.rgba[pixel] < 100
                 })
