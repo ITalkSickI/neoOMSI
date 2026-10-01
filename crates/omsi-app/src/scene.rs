@@ -2792,18 +2792,16 @@ impl World {
             }
             // [terrainhole] <mesh>: the cutter that takes the ground away under a junction
             // or an underpass, so the carriageway is not buried under a mound of terrain
-            let holes: Vec<MeshData> = model
-                .meshes
-                .iter()
-                .filter_map(|m| m.terrain_hole.as_ref())
-                .filter_map(|f| {
+            let holes: Vec<MeshData> = sco
+                .terrain_hole_sources(&model)
+                .filter_map(|(hole_dir, f)| {
                     // the cutter sits next to the model, which is either the object's own
                     // folder or a `model` folder inside it
-                    let mp = omsi_cfg::resolve_path(&model_dir, f);
+                    let mp = omsi_cfg::resolve_path(hole_dir, f);
                     let mp = if omsi_cfg::vfs::is_file(&mp) {
                         mp
                     } else {
-                        omsi_cfg::resolve_path(&omsi_cfg::resolve_path(&model_dir, "model"), f)
+                        omsi_cfg::resolve_path(&omsi_cfg::resolve_path(hole_dir, "model"), f)
                     };
                     match omsi_o3d::load_mesh(&mp) {
                         Ok(m) => Some(mesh_from_o3d(&m)),
@@ -4926,11 +4924,10 @@ impl World {
                     for (oi, (o, pose)) in q.objects.iter().zip(res.poses.iter()).enumerate() {
                         let Some(pose) = pose else { continue };
                         let ot = &o.ot;
-                        // what the placing leaves out is not drawn and cuts nothing
+                        // Editor-only helpers and trees do not cut terrain.
                         if ot.sco.tree.is_some()
                             || ot.sco.only_editor
                             || ot.sco.is_help_arrow
-                            || ot.meshes.is_empty()
                         {
                             continue;
                         }
@@ -4938,6 +4935,10 @@ impl World {
                             if !outside(&mesh_bounds(h, &pose.rot, pose.pos)) {
                                 ts.rasterize_hole(h, &pose.rot, pose.pos, tx, ty);
                             }
+                        }
+                        // An explicit cutter is independent of the object's render meshes.
+                        if ot.meshes.is_empty() {
+                            continue;
                         }
                         // Laid on the ground (the terrain is cut under it): a `[surface]` object
                         // and one drawn as a ground layer (`[rendertype]`).
