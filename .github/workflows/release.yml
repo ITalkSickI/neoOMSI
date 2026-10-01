@@ -70,6 +70,17 @@ jobs:
           $arch = if ("${{ matrix.arch }}" -eq "arm64") { "arm64" } else { "x64" }
           Copy-Item "dxc/x/bin/$arch/dxcompiler.dll", "dxc/x/bin/$arch/dxil.dll" dist/windows/
           Get-ChildItem dist/windows
+      # The Visual C++ runtime beside the program, for the DirectX shader compiler (the game
+      # itself has the runtime linked in): Microsoft allows it to be shipped app-locally,
+      # and a PC without the Redistributable then still starts.
+      - name: Visual C++ runtime
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\${{ matrix.arch }}\Microsoft.VC*.CRT" -Directory | Sort-Object FullName | Select-Object -Last 1
+          Copy-Item "$($crt.FullName)\vcruntime140.dll", "$($crt.FullName)\vcruntime140_1.dll", "$($crt.FullName)\msvcp140.dll" dist/windows/
+          Get-ChildItem dist/windows
       - name: Package
         shell: pwsh
         run: |
