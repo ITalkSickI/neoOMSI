@@ -14,7 +14,7 @@
 //!   thread, uploads what they produced a little each frame and unloads the far ones.
 
 use glam::{DVec2, DVec3, Mat4, Vec3};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use omsi_geometry::SplineCurve;
 use omsi_map::{tile_size, MapSpline, SplineAttachment, Tile};
 use rayon::prelude::*;
@@ -48,6 +48,8 @@ pub struct MapIndex {
     /// Every object and spline file the map names (as written, lower case), with the number
     /// of records naming it and one tile that does.
     pub files: HashMap<String, (usize, (i32, i32))>,
+    /// Crossing ids with placed `[trafficlight]` objects, including signals on other tiles.
+    pub traffic_light_parents: HashSet<i64>,
     /// Tile → the world rectangle (x0, y0, x1, y1) its tile square and its splines (with
     /// room for their width) cover.
     pub covers: HashMap<(i32, i32), [f64; 4]>,
@@ -103,22 +105,44 @@ pub fn stop_side(strings: &[String]) -> f32 {
     strings.get(5).map(|s| s.trim()).and_then(|s| s.parse::<f64>().ok()).filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 2.0) as f32).unwrap_or(0.0)
 }
 
+fn traffic_light_parents(tile: &Tile, mut is_signal: impl FnMut(&str) -> bool) -> HashSet<i64> {
+    tile.objects.iter().chain(&tile.attach_objects)
+        .filter_map(|o| o.var_parent.or(o.parent_id).map(|parent| (o.file.as_str(), parent)))
+        .chain(tile.spline_attachments.iter().filter_map(|a| a.var_parent.map(|parent| (a.file.as_str(), parent))))
+        .filter_map(|(file, parent)| is_signal(file).then_some(parent))
+        .collect()
+}
+
 impl MapIndex {
-    /// Read every tile file of the map (with the active chrono patches) - no meshes, no
-    /// object types, just the records. Spandau's 329 tiles take a fraction of a second on
-    /// the worker pool; a tile that cannot be read is logged and left out. `tiles` are
+    /// Read every tile file of the map (with the active chrono patches), without meshes.
+    /// Signal types are read only to identify installed traffic lights. The tiles are read
+    /// on the worker pool; a tile that cannot be read is logged and left out. `tiles` are
     /// (index in global.cfg's `[map]` list, x, y, file): repeaters and timetable tracks name
     /// a tile by that index, which a missing tile file must not shift.
-    pub fn build(tiles: &[(usize, i32, i32, PathBuf)], chrono_dirs: &[PathBuf]) -> MapIndex {
+    pub fn build(tiles: &[(usize, i32, i32, PathBuf)], chrono_dirs: &[PathBuf], root: &Path) -> MapIndex {
         /// What one tile adds besides its own index part: its rows (key, spline, start
         /// distance, interval) and its repeaters (master key, spline, first object index).
         type RowParts = (Vec<((usize, i64), i64, f64, f64)>, Vec<((usize, i64), i64, usize)>);
         let t0 = std::time::Instant::now();
+        let signal_types = parking_lot::Mutex::new(HashMap::new());
         let parts: Vec<Option<(MapIndex, RowParts)>> = tiles
             .par_iter()
             .map(|(gi, tx, ty, path)| {
                 let tile = read_tile(path, chrono_dirs)?;
                 let mut part = MapIndex::default();
+                part.traffic_light_parents = traffic_light_parents(&tile, |file| {
+                    let key = file.replace('/', "\\").to_ascii_lowercase();
+                    *signal_types.lock().entry(key).or_insert_with(|| {
+                        let path = omsi_cfg::resolve_path(root, file);
+                        match omsi_scenery::SceneryObject::load(&path) {
+                            Ok(sco) => sco.is_traffic_light,
+                            Err(e) => {
+                                log::warn!("reading traffic light type: {e}");
+                                false
+                            }
+                        }
+                    })
+                });
                 let mut rows: RowParts = Default::default();
                 for s in tile.splines.iter().filter(|s| !s.deleted) {
                     let map_chain_offset = if tile.version >= 11 || tile.version == 0 {
@@ -202,6 +226,7 @@ impl MapIndex {
                     index.stop_weights.extend(p.stop_weights);
                     index.stop_enter.extend(p.stop_enter);
                     index.stop_side.extend(p.stop_side);
+                    index.traffic_light_parents.extend(p.traffic_light_parents);
                     for (f, (n, t)) in p.files {
                         index.files.entry(f).or_insert((0, t)).0 += n;
                     }
@@ -953,6 +978,49 @@ impl Streamer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn traffic_light_parents_follow_placed_signals_not_other_children() {
+        let object = |file: &str, parent| omsi_map::MapObject {
+            file: file.into(), var_parent: Some(parent), ..Default::default()
+        };
+        let tile = Tile {
+            objects: vec![object("signal.sco", 10), object("sign.sco", 20)],
+            attach_objects: vec![
+                omsi_map::MapObject { file: "signal.sco".into(), parent_id: Some(30), ..Default::default() },
+                omsi_map::MapObject { parent_id: Some(40), ..object("signal.sco", 50) },
+            ],
+            spline_attachments: vec![SplineAttachment {
+                file: "signal.sco".into(), var_parent: Some(60), ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(traffic_light_parents(&tile, |file| file == "signal.sco"), [10, 30, 50, 60].into_iter().collect());
+    }
+
+    #[test]
+    fn a_junction_template_without_placed_signals_is_unsignalized() {
+        let tile = Tile {
+            objects: vec![omsi_map::MapObject { file: "junction.sco".into(), id: 10, ..Default::default() }],
+            ..Default::default()
+        };
+        assert!(traffic_light_parents(&tile, |_| false).is_empty());
+    }
+
+    #[test]
+    #[ignore = "requires OMSI_ROOT with the stock Grundorf map"]
+    fn grundorf_traffic_light_parents_exclude_gaussdorf() {
+        let root = PathBuf::from(std::env::var_os("OMSI_ROOT").expect("OMSI_ROOT"));
+        let map_dir = root.join("maps/Grundorf");
+        let global = omsi_map::GlobalCfg::load(&map_dir.join("global.cfg")).expect("Grundorf");
+        let tiles = global.tiles.iter().map(|t| (t.index, t.x, t.y, map_dir.join(&t.file))).collect::<Vec<_>>();
+        let index = MapIndex::build(&tiles, &[], &root);
+        assert_eq!(index.tiles_failed, 0);
+        assert!(index.traffic_light_parents.contains(&4174), "the real signalized junction");
+        for id in [759, 761] {
+            assert!(!index.traffic_light_parents.contains(&id), "Gaussdorf junction {id} has no signals");
+        }
+    }
 
     #[test]
     fn indexed_tile_search_matches_full_distance_scan() {
