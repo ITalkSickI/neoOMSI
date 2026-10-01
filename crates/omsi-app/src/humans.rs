@@ -1846,10 +1846,6 @@ pub struct Humans {
     pub money: Option<crate::money::Money>,
     /// A rider pressed the stop button for the next stop (the app fires `door_haltewunsch`).
     pub stop_request: bool,
-    /// Somebody at the kerb pressed the outside door opener (`door_aussenoeffner`).
-    pub door_request: bool,
-    /// Stop whose waiting passengers have already pressed the outside opener once.
-    pressed_at_stop: Option<i64>,
     /// Tickets sold at the cash desk this session and what they were worth.
     pub tickets_sold: u32,
     pub ticket_cash: f32,
@@ -2069,8 +2065,6 @@ impl Humans {
             change_due: None,
             money: None,
             stop_request: false,
-            door_request: false,
-            pressed_at_stop: None,
             tickets_sold: 0,
             ticket_cash: 0.0,
             boarded: 0,
@@ -3891,7 +3885,6 @@ impl Humans {
         let kept = self.seats.remove(&BusId::Player);
         self.player_cabin = None;
         self.served_stop = None;
-        self.pressed_at_stop = None;
         self.set_cabin(new_vehicle);
         if let (Some(k), Some(now)) = (kept, self.seats.get_mut(&BusId::Player)) {
             if k.len() == now.len() {
@@ -3924,7 +3917,6 @@ impl Humans {
         if bus == BusId::Player {
             self.player_cabin = None;
             self.served_stop = None;
-            self.pressed_at_stop = None;
         }
     }
 
@@ -4916,32 +4908,11 @@ impl Humans {
                 _ => {}
             }
         }
-        // the outside door opener: somebody queueing at a shut door presses it, once per stop
-        if let (Some(stop), Some(pb)) = (at_stop, player) {
-            let shut = self.people.iter().any(|p| matches!(p.state, State::Queue { bus: BusId::Player, entry, .. } if !pb.entry_open.get(entry).copied().unwrap_or(false)));
-            if shut && self.pressed_at_stop != Some(stop) && pb.standing() {
-                self.pressed_at_stop = Some(stop);
-                self.door_request = true;
-                if debug_pax() {
-                    log::info!(
-                        "t={:.1} a passenger presses the outside door opener at stop {stop}",
-                        self.time
-                    );
-                }
-            }
-        }
-        if let (Some(stop), Some(b)) = (self.pressed_at_stop, bus) {
-            let gone = world
-                .bus_stops
-                .lock()
-                .iter()
-                .find(|s| s.0 == stop)
-                .map(|s| (s.1 - b.position).length() > 40.0)
-                .unwrap_or(true);
-            if gone {
-                self.pressed_at_stop = None;
-            }
-        }
+        // (no outside door opener: Omsi.exe never fires `door_aussenoeffner` - its riders
+        // only raise PAX_Entry<n>_Req, as above. On the SD200/SD202 that trigger is the rear
+        // door's outside button: pressed for a rider queueing at the shut front door, it set
+        // `haltewunsch` under the door release and the rear door opened with nobody at it and
+        // no stop request lamp lit.)
         // cars pedestrians look out for: (position, velocity, half length)
         let mut cars: Vec<(DVec2, DVec2, f64)> = Vec::new();
         let mut blocks: Vec<Block> = Vec::new();

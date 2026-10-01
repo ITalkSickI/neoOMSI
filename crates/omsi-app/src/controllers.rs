@@ -276,7 +276,7 @@ impl Devices {
             while let Some(ev) = g.next_event() {
                 let pad = g.gamepad(ev.id);
                 match ev.event {
-                    EventType::Connected => log::info!("game controller connected: {}", pad.name()),
+                    EventType::Connected => log::info!("game controller connected: {} (layout {:?}, DirectInput {})", pad.name(), pad.mapping_source(), di),
                     // DirectInput handles wheels on Windows; system-mapped gamepads
                     // such as Xbox controllers are listed through gilrs.
                     EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code)
@@ -513,6 +513,13 @@ impl Controllers {
         let mut steer: Option<(String, f32, bool)> = None;
         let dz = self.deadzone.clamp(0.0, 0.3);
         for (cfg, c) in pads {
+            if let Some((k, v)) = c.axes.iter().find(|(_, v)| v.abs() > 0.5) {
+                let key = format!("axis:{}", c.name);
+                if !self.announced.contains(&key) {
+                    log::info!("game controller {}: axis {k} at {v:.2} (set up in gamectrler.cfg: {}, gamepad: {})", c.name, cfg.is_some(), c.gamepad);
+                    self.announced.push(key);
+                }
+            }
             match cfg {
                 Some(d) => {
                     for (k, v) in c.axes.iter().copied() {
@@ -585,6 +592,12 @@ impl Controllers {
                 }
                 let x = pad.value(Axis::LeftStickX);
                 let dead = |v: f32| if v.abs() < 0.08 { 0.0 } else { v };
+                // (said once per pad: the stick moved, and whether it steers - a report of
+                // "the sticks do nothing" then says which way the pad came in)
+                if x.abs() > 0.5 && !self.announced.iter().any(|n| n == &format!("stick:{}", pad.name())) {
+                    self.announced.push(format!("stick:{}", pad.name()));
+                    log::info!("game controller {}: left stick {x:.2}, steers: {} (layout {:?})", pad.name(), out.steering.is_none(), pad.mapping_source());
+                }
                 let rt = pad.button_data(gilrs::Button::RightTrigger2).map(|d| d.value()).unwrap_or(0.0);
                 let lt = pad.button_data(gilrs::Button::LeftTrigger2).map(|d| d.value()).unwrap_or(0.0);
                 if out.steering.is_none() {

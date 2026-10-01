@@ -447,7 +447,6 @@ const OMSI_SURFACE_LIFT: f32 = 0.08;
 fn scenery_draw_position(authored: DVec3, surface: bool) -> DVec3 {
     authored + if surface { DVec3::Z * OMSI_SURFACE_LIFT as f64 } else { DVec3::ZERO }
 }
-
 /// A spline whose profiles all hang this far (m) over its line - wires, catenaries, a
 /// canopy - is no ground surface: it neither cuts the terrain nor carries anything.
 const SPLINE_OVERHEAD: f32 = 2.0;
@@ -2194,15 +2193,24 @@ fn probe_tile(
     // (an embankment the road runs under, ground poking through the asphalt) is no
     // ground and no wall there. Taken with the road, a terrain face over the carriageway was
     // an invisible wall under bridges, and one through it a bump that threw the bus.
-    let on_road = probe.below.is_some();
-    if let (Some(t), false) = (terrain, on_road) {
-        // the ground counts where it is drawn; where it is cut away and nothing else is
-        // there (a surface without a collision), it still carries rather than let the
-        // vehicle drop out of the world
+    let ground = terrain.map(|t| {
         let h = omsi_geometry::terrain_height(t, lx, ly);
         let cut = surface
             .map(|s| s.cut_at(lx, ly, h, surface_flush()))
             .unwrap_or(false);
+        (h, cut)
+    });
+    // ... unless that face lies buried well under ground that is drawn here and is under the
+    // wheel, not over it: the lower slope of an embankment spline (Marcel's `Damm1` falls
+    // 20 m over 30 m on each side) reaching under a junction the terrain carries. Omsi.exe
+    // takes the highest face there, the ground; taken as the road, it dropped the bus 8 m
+    // through the asphalt into the slope (Cotterell, the junction by the park at 250, 427).
+    let buried = matches!((probe.below, ground), (Some(z), Some((h, false))) if h <= top as f32 && h - z > BURIED_FACE);
+    let on_road = probe.below.is_some() && !buried;
+    if let (Some((h, cut)), false) = (ground, on_road) {
+        // the ground counts where it is drawn; where it is cut away and nothing else is
+        // there (a surface without a collision), it still carries rather than let the
+        // vehicle drop out of the world
         if !cut || (probe.below.is_none() && h <= top as f32) {
             probe = probe.merge(omsi_geometry::Probe::of(h, top as f32));
         }
@@ -2224,6 +2232,10 @@ fn probe_tile(
         above: probe.above.map(|z| z as f64),
     }
 }
+
+/// How far a road face may lie under drawn ground before it counts as buried (m): far more
+/// than the ground poking through the asphalt that the road is there to keep out.
+const BURIED_FACE: f32 = 1.0;
 
 /// How far over the ground a wall's top must stand to be a wall to the wheels (a kerb is
 /// less, and the tyre climbs it).
@@ -3887,9 +3899,24 @@ impl World {
         let (terrain, aligned_points, biggest, deformed) = self.final_ground(key, src);
         let warped = self.warp_crossings(st, src);
         let ground_at = |x: f64, y: f64| -> f64 {
-            let lx = (x - st.origin.x).clamp(0.0, tile_size()) as f32;
-            let ly = (y - st.origin.y).clamp(0.0, tile_size()) as f32;
-            terrain.sample(lx, ly) as f64
+            let actual_key = (
+                (x / tile_size()).floor() as i32,
+                (y / tile_size()).floor() as i32,
+            );
+            if actual_key == key {
+                let lx = (x - st.origin.x).clamp(0.0, tile_size()) as f32;
+                let ly = (y - st.origin.y).clamp(0.0, tile_size()) as f32;
+                terrain.sample(lx, ly) as f64
+            } else {
+                // Old maps and converted maps can keep an object in the neighbouring tile's
+                // file with local coordinates past the edge. Sample the terrain actually
+                // under the object instead of pinning it to this tile's border height.
+                Self::base_ground(src, x, y).unwrap_or_else(|| {
+                    let lx = (x - st.origin.x).clamp(0.0, tile_size()) as f32;
+                    let ly = (y - st.origin.y).clamp(0.0, tile_size()) as f32;
+                    terrain.sample(lx, ly) as f64
+                })
+            }
         };
         // poses of everything that can carry an attachment: objects by id, spline rows by
         // their first object
@@ -3905,14 +3932,10 @@ impl World {
                 // it, a car at the kerb of a hill street stood crooked on a road that runs
                 // on a different grade from the ground beneath.
                 Placement::Ground { x, y, z, rot } => {
+                    let base_height =
+                        Self::base_ground(src, *x, *y).unwrap_or_else(|| ground_at(*x, *y));
                     let terrain_relative = !o.ot.sco.surface
-                        || surface_object_terrain_relative(
-                            src,
-                            *x,
-                            *y,
-                            *z,
-                            Self::base_ground(src, *x, *y).unwrap_or(0.0),
-                        );
+                        || surface_object_terrain_relative(src, *x, *y, *z, base_height);
                     Some(Pose {
                         pos: DVec3::new(
                             *x,
@@ -4913,7 +4936,12 @@ impl World {
                     // what the wheels roll on: the splines' height profiles
                     for (hp, b) in &q.drive {
                         if !outside(b) {
-                            ts.add_height_profiles(hp, q.origin, tx, ty);
+                            ts.add_height_profiles(
+                                hp,
+                                scenery_draw_position(q.origin, true),
+                                tx,
+                                ty,
+                            );
                             wheel_meshes += 1;
                         }
                     }
@@ -4988,7 +5016,13 @@ impl World {
                             });
                             ts.rasterize_kind(mesh, &pose.rot, pose.pos, tx, ty, true);
                             if Some(k) == ground_mesh {
-                                ts.add_drive_mesh(mesh, &pose.rot, pose.pos, tx, ty);
+                                ts.add_drive_mesh(
+                                    mesh,
+                                    &pose.rot,
+                                    scenery_draw_position(pose.pos, true),
+                                    tx,
+                                    ty,
+                                );
                                 wheel_meshes += 1;
                             }
                         }
@@ -11799,6 +11833,13 @@ mod tests {
             assert!((at(0, x, 1) - expect(x)).abs() <= 1.0, "row {x}");
         }
         assert!((0..n * n).all(|i| own.rgba[i * 4 + 2] == 0));
+    }
+
+    #[test]
+    fn surface_contact_height_matches_the_visible_surface_lift() {
+        let authored = DVec3::new(12.0, 18.0, 3.5);
+        let contact = scenery_draw_position(authored, true);
+        assert!((contact.z - authored.z - OMSI_SURFACE_LIFT as f64).abs() < 1e-8);
     }
 
     #[test]

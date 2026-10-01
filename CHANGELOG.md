@@ -4,6 +4,46 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.476 - 2026-10-01
+
+### Controls
+- Mouse steering sensitivity can be set in the pause menu's Options (Mouse steering
+  sensitivity + / -, 10% to 300%; 100% is OMSI's), and the launcher's slider goes as far.
+- The log says how each game controller came in (its layout, DirectInput or the system's)
+  and, the first time a stick or axis moves, whether it steers - for reports of sticks
+  that do nothing.
+
+### Windows
+- The game and the dedicated server start on a PC without the Visual C++ Redistributable:
+  its runtime DLLs ship beside `openomsi.exe` ("The code execution cannot proceed because
+  VCRUNTIME140_1.dll was not found").
+
+## 0.1.471 - 2026-10-01
+
+### Physics
+- Buses no longer fall through the road at junctions over a buried embankment slope
+  (Cotterell, the junction by the park): a road face lying more than a metre under the
+  drawn ground beneath the wheel is no road there, and the bus stands on the ground, as
+  with Omsi.exe's highest-face query (#424, #423).
+- The wheels roll on the road where it is drawn: splines and `[surface]` objects are drawn
+  8 cm over their authored height and the bus now stands on them there, not 8 cm into
+  the asphalt (#421).
+
+### Maps
+- An object stored in a neighbouring tile's file, past its own tile's edge, stands on the
+  ground under it instead of the height at its tile's border (#421).
+
+## 0.1.463 - 2026-10-01
+
+### Passengers
+- With the door release on, the SD200's automatic rear door no longer opens on its own
+  while riders board at the front: riders no longer press the outside door opener, which
+  Omsi.exe never does - they only ask for a door through `PAX_Entry<n>_Req` (#416, #415).
+
+### Project
+- Pull requests get a template, and ones opened from a `main` branch or an organisation
+  account are closed with a note (#418).
+
 ## 0.1.455 - 2026-10-01
 
 ### Traffic

@@ -588,7 +588,7 @@ fn settings_columns(ui: &mut Ui, s: &mut Value, dirty: &mut f32, body: Rect, upd
     toggle_setting(ui, s, dirty, row(&mut y), "Steering linearity (keys at OMSI's steady pace)", "steering_linear");
     toggle_setting(ui, s, dirty, row(&mut y), "Old Steering (the wheel stays, turn it back yourself)", "old_steering");
     let mut ms = get(s, "mouse_sens").as_f64().unwrap_or(1.0) as f32;
-    if ui.slider("s-mouse", row(&mut y), &mut ms, 0.25, 2.0, 0.05, "Mouse steering (O)", &|v| if (v - 1.0).abs() < 0.01 { "OMSI".to_string() } else { format!("{:.0}%", v * 100.0) }) {
+    if ui.slider("s-mouse", row(&mut y), &mut ms, 0.1, 3.0, 0.05, "Mouse steering sensitivity (O)", &|v| if (v - 1.0).abs() < 0.01 { "OMSI".to_string() } else { format!("{:.0}%", v * 100.0) }) {
         s["mouse_sens"] = json!((ms * 100.0).round() / 100.0);
         *dirty = 0.3;
     }
