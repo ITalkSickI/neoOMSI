@@ -59,6 +59,10 @@ pub struct MapIndex {
     /// Object id → its `[busstop]`'s (pass_enter_max, pass_enter_min) (see
     /// [`stop_enter`]); only objects that carry strings.
     pub stop_enter: HashMap<i64, (f32, f32)>,
+    /// Object id → the side the stop's platform lies on (see [`stop_side`]): 0 = right of
+    /// the way the map lays the road (the side a bus stopping in its own lane keeps its
+    /// doors on), 1 = the other. Only objects that carry strings.
+    pub stop_side: HashMap<i64, f32>,
 }
 
 /// How many passengers get off at a bus stop, as Omsi.exe reads the stop object's strings
@@ -80,6 +84,23 @@ fn stop_num(strings: &[String], i: usize) -> Option<f32> {
 /// 0), rounded, as Omsi.exe sets the station up (0x620058): how many people wait there.
 pub fn stop_enter(strings: &[String]) -> (f32, f32) {
     (stop_num(strings, 1).unwrap_or(1.0), stop_num(strings, 2).unwrap_or(0.0))
+}
+
+/// The side a bus stop's platform lies on, as Omsi.exe reads it off the stop object's
+/// *timetable data* strings: string 5 (0-based, after name and the entering/exiting
+/// numbers), 0 = the right of the way the map lays the road down, 1 = the other side.
+///
+/// AiList vehicles that carry doors on both sides (Urumqi61's `[AI]YoungMan*`) read it as
+/// `AI_Scheduled_AtStation_Side` and open only the platform's doors; without it a left-hand
+/// platform is served through the traffic, and the door lamps on that side stay dark.
+///
+/// Anything else (an empty string, rubbish) means the map says nothing, which OMSI takes
+/// as the right-hand side: 0. Stops whose strings are not timetable data at all (Spandau's
+/// `bss1\*.jpg` entry-point signs carry flag 7 too) land on the same default. A value past
+/// 1 (OMSI's door scripts test `= 1`, so their other branch covers everything else) is kept
+/// as it stands, up to the two a script that knows the sides can tell apart.
+pub fn stop_side(strings: &[String]) -> f32 {
+    strings.get(5).map(|s| s.trim()).and_then(|s| s.parse::<f64>().ok()).filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 2.0) as f32).unwrap_or(0.0)
 }
 
 impl MapIndex {
@@ -143,11 +164,13 @@ impl MapIndex {
                     if o.extra.len() >= 2 {
                         part.stop_weights.insert(o.id, stop_exit_weight(&o.extra));
                         part.stop_enter.insert(o.id, stop_enter(&o.extra));
+                        part.stop_side.insert(o.id, stop_side(&o.extra));
                     }
                 }
                 for a in tile.spline_attachments.iter().filter(|a| a.repeater.is_none() && a.strings.len() >= 2) {
                     part.stop_weights.insert(a.id, stop_exit_weight(&a.strings));
                     part.stop_enter.insert(a.id, stop_enter(&a.strings));
+                    part.stop_side.insert(a.id, stop_side(&a.strings));
                 }
                 // an object put on a spline (`[splineAttachement]`: an entry point or a stop
                 // on the road): where the row's first object stands on its own spline - enough
@@ -178,6 +201,7 @@ impl MapIndex {
                     index.covers.extend(p.covers);
                     index.stop_weights.extend(p.stop_weights);
                     index.stop_enter.extend(p.stop_enter);
+                    index.stop_side.extend(p.stop_side);
                     for (f, (n, t)) in p.files {
                         index.files.entry(f).or_insert((0, t)).0 += n;
                     }
@@ -1181,6 +1205,23 @@ mod tests {
         assert_eq!(v(&["A", "1", "0", "2.6"]), 3.0);
         assert_eq!(v(&["A", "1", "0", "-4"]), 0.0);
         assert_eq!(v(&["A", "1", "0", "x"]), 0.5);
+    }
+
+    #[test]
+    fn stop_side_as_omsi_reads_it() {
+        let v = |a: &[&str]| stop_side(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        // Urumqi61's shape: name, enter max, enter min, exit, ?, side, "", ""
+        assert_eq!(v(&["NianZiGou", "10", "0", "", "80", "1", "", ""]), 1.0);
+        assert_eq!(v(&["RenMinGuangChang", "50", "20", "100", "80", "0", "", ""]), 0.0);
+        // both sides
+        assert_eq!(v(&["A", "10", "0", "", "30", "2", "", ""]), 2.0);
+        // nothing said / rubbish / a short block: the right-hand side, as OMSI's default
+        assert_eq!(v(&["A", "10", "0", "", "30"]), 0.0);
+        assert_eq!(v(&["A", "10", "0", "", "30", "", "", ""]), 0.0);
+        assert_eq!(v(&["bss1\\11.jpg", "bss1\\6.jpg", "", "", "", "", "", ""]), 0.0);
+        assert_eq!(v(&["A", "10", "0", "", "30", "x", "", ""]), 0.0);
+        // a value out of range is clamped, not trusted into a side that does not exist
+        assert_eq!(v(&["A", "10", "0", "", "30", "80", "", ""]), 2.0);
     }
 
     #[test]

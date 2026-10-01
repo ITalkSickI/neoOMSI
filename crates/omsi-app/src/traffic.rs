@@ -251,6 +251,11 @@ impl AiCar {
         self.bus.as_ref().map(|b| b.at_station()).unwrap_or(false)
     }
 
+    /// The side's doors to open at the stop it is boarding at (`AI_Scheduled_AtStation_Side`).
+    pub fn at_station_side(&self) -> f32 {
+        self.bus.as_ref().map(|b| b.at_station_side()).unwrap_or(0.0)
+    }
+
     /// Standing at one of its stops (doors open, waiting for the departure, pulling out).
     pub fn at_stop(&self) -> bool {
         self.bus.as_ref().map(|b| b.at_stop()).unwrap_or(false)
@@ -2629,7 +2634,7 @@ impl Traffic {
         ty: Arc<VehicleType>,
         route: Vec<usize>,
         s: f32,
-        stops: Vec<(usize, f32, f32, f64, i64)>,
+        stops: Vec<(usize, f32, f32, f64, i64, f32)>,
         number: Option<(String, String)>,
         hof: Option<Arc<omsi_vehicle::Hof>>,
         scheme: Option<Option<usize>>,
@@ -5700,6 +5705,7 @@ impl Traffic {
                 brake: car.state.braking,
                 lights: self.night,
                 at_station: car.at_station() as i32,
+                at_station_side: car.at_station_side(),
                 priority_warning,
             });
         }
@@ -6231,7 +6237,7 @@ impl Traffic {
     /// Hand timetable bus `ci` the next trip of its tour: its route from the lane it is on
     /// (`route[0]` is that lane, `s` where it is on it) and the trip's stops. It stays where
     /// it stands; a stop right there is served in place (its layover).
-    pub fn reroute(&mut self, ci: usize, route: Vec<usize>, s: f32, stops: Vec<(usize, f32, f32, f64, i64)>, layover: bool) {
+    pub fn reroute(&mut self, ci: usize, route: Vec<usize>, s: f32, stops: Vec<(usize, f32, f32, f64, i64, f32)>, layover: bool) {
         let net = &self.net;
         let car = &mut self.cars[ci];
         let lane = car.state.lane;
