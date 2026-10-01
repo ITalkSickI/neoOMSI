@@ -97,7 +97,7 @@ const EXIT_REACH: f64 = 0.6;
 /// Seconds a bus may stand at a stop with every door still shut before a waiting passenger
 /// gives up on it coming to serve them: the driver's own door buttons take a moment, and
 /// the timetable buses' door scripts open a beat after they roll to a stop.
-const DOOR_GRACE: f64 = 4.0;
+const DOOR_GRACE: f64 = 20.0;
 /// How long after a door of a standing bus was last open the people at it wait on (s).
 const DOOR_SHUT_PATIENCE: f64 = 25.0;
 
@@ -5557,6 +5557,10 @@ impl Humans {
                 } else {
                     Activity::Stand
                 };
+                let avoid = self.people[i].avoid;
+                let bus_arriving = buses.iter().any(|b| {
+                    (b.approach == Some(stop) || b.stop == Some(stop)) && avoid != Some(b.id)
+                });
                 let stand = Want {
                     vel: if idle == Activity::Sit {
                         DVec2::ZERO
@@ -5564,14 +5568,13 @@ impl Humans {
                         arrive(pos2, sp.floor().truncate(), pace * 0.6)
                     },
                     face: Some(sp.face),
-                    give: 0.3,
+                    give: if bus_arriving { 0.0 } else { 0.3 },
                     corridor: None,
                     idle,
                     follow: false,
                     goal_dist: None,
                 };
                 // a bus here: board it?
-                let avoid = self.people[i].avoid;
                 let t_state = self.people[i].t_state;
                 let mirror = self.mirror;
                 for bn in buses
@@ -5675,7 +5678,7 @@ impl Humans {
                         return Want {
                             vel: arrive(pos2, target, pace * 0.7),
                             face: Some(face),
-                            give: 0.5,
+                            give: 0.0,
                             corridor: None,
                             idle: Activity::Stand,
                             follow: false,
@@ -5683,7 +5686,7 @@ impl Humans {
                         };
                     }
                     self.people[i].why = "waits at the kerb for the bus";
-                    return Want::stand(Some(face), Activity::Stand);
+                    return Want { give: 0.0, ..Want::stand(Some(face), Activity::Stand) };
                 }
                 if t_state > patience && !buses.iter().any(|b| b.stop == Some(stop)) {
                     // waited long enough: walks off (and somebody else will come)
