@@ -2018,7 +2018,8 @@ pub struct Humans {
 /// Resolve each map entry directly, including human packs with nested folders.
 /// Keep duplicate entries as spawn weights, but load each definition only once.
 fn map_human_types(root: &Path, list: &[String]) -> Vec<Arc<HumanType>> {
-    let mut loaded: HashMap<PathBuf, Option<Arc<HumanType>>> = HashMap::new();
+    // (keyed case-blind: OMSI paths are, and the lists spell one file several ways)
+    let mut loaded: HashMap<String, Option<Arc<HumanType>>> = HashMap::new();
     let mut picked = Vec::new();
     for line in list {
         let rel = line.trim().replace('\\', "/");
@@ -2029,7 +2030,7 @@ fn map_human_types(root: &Path, list: &[String]) -> Vec<Arc<HumanType>> {
             format!("Humans/{rel}")
         };
         let path = omsi_cfg::resolve_path(root, &rel);
-        let ty = loaded.entry(path.clone()).or_insert_with(|| {
+        let ty = loaded.entry(path.to_string_lossy().to_lowercase()).or_insert_with(|| {
             match HumanType::load(&path) {
                 Ok(t) => Some(Arc::new(t)),
                 Err(e) => {
@@ -9103,7 +9104,9 @@ mod tests {
         assert_eq!(picked.len(), 3);
         assert!(Arc::ptr_eq(&picked[0], &picked[1]));
         assert!(Arc::ptr_eq(&picked[1], &picked[2]));
-        assert!(picked.iter().all(|t| t.def.path.starts_with(&nested)));
+        // (case-blind: a case-insensitive disk keeps the list's own spelling)
+        let lower = |p: &Path| p.to_string_lossy().to_lowercase();
+        assert!(picked.iter().all(|t| lower(&t.def.path).starts_with(&lower(&nested))));
         assert!(map_human_types(&root, &["Humans/Missing/None.hum".into()]).is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
