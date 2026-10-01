@@ -1691,9 +1691,9 @@ impl ApplicationHandler for App {
                 *self.profile.entry("scripted").or_default() += __t.elapsed().as_secs_f64();
                 // (the game menu's lines, for the interface below)
                 let menu_lines = if self.game_menu.is_some() { self.game_menu_items() } else { Vec::new() };
-                // HUD
-                if let (Some(hud), Some(r), Some(scene)) = (
-                    self.hud.as_mut(),
+                // the interface over the picture
+                if let (true, Some(r), Some(scene)) = (
+                    self.world.is_some(),
                     self.renderer.as_ref(),
                     self.scene.as_mut(),
                 ) {
@@ -1743,7 +1743,10 @@ impl ApplicationHandler for App {
                         }
                     }
                     let __t = Instant::now();
-                    hud.update(r, scene, &[]);
+                    // (the frame's overlays start empty; the notes are the interface's, in
+                    // Roboto - OMSI's bitmap font HUD is the start menu's and the offscreen
+                    // pictures' only)
+                    scene.overlays.clear();
                     let notes = lines;
                     if let (Some(nav), Some(p), Some(s)) = (self.navigator.as_mut(), self.player.as_ref(), self.surface.as_ref()) {
                         if let Some(w) = self.world.as_ref() {
@@ -1787,6 +1790,8 @@ impl ApplicationHandler for App {
                             weekday: self.clock.weekday(),
                             language: &self.settings.language,
                             screen: (s.config.width as f32, s.config.height as f32),
+                            ui_scale: self.settings.ui_scale,
+                            follow_window: self.settings.ui_scale_window,
                             dt,
                         };
                         let __tn = Instant::now();
@@ -1817,6 +1822,15 @@ impl ApplicationHandler for App {
                         };
                         // the vehicle chooser shows its vehicles in the menu's place (the menu
                         // scrolls a long list)
+                        // the name of the cab's switch under the cursor, unless the interface
+                        // covers the cab there (it read like a line of the menu over it)
+                        let (cx, cy) = self.cursor;
+                        let map_open = self.navigator.as_ref().is_some_and(|n| n.map_open());
+                        let covered = self.game_menu.is_some()
+                            || self.chooser.is_some()
+                            || ui.chat.hovered
+                            || map_open
+                            || self.navigator.as_ref().is_some_and(|n| n.over_panel(cx, cy));
                         let chooser_list = self.admin_list.as_ref().unwrap_or(&self.vehicle_list);
                         let (chooser_items, chooser_sel): (Vec<(&str, &str)>, Option<usize>) = match self.chooser {
                             Some(sel) => {
@@ -1827,6 +1841,8 @@ impl ApplicationHandler for App {
                         };
                         let frame = ui::Frame {
                             scale,
+                            ui_scale: ui::size_factor(h, scale, self.settings.ui_scale, self.settings.ui_scale_window),
+                            opacity: ui::backdrop(self.settings.ui_opacity),
                             width: w,
                             height: h,
                             cursor: self.cursor,
@@ -1834,8 +1850,10 @@ impl ApplicationHandler for App {
                                 #[cfg(windows)] { self.vr.is_some() }
                                 #[cfg(not(windows))] { false }
                             },
-                            tooltip: tooltip.filter(|_| self.settings.tooltips && !self.dragging),
-                            notes: &notes,
+                            tooltip: tooltip.filter(|_| self.settings.tooltips && !self.dragging && !covered),
+                            // (switched off: none, `Settings::notes`; nor over the city map,
+                            // whose header they covered once they stood on the timetable's line)
+                            notes: if self.settings.notes && !map_open { &notes } else { &[] },
                             fps: self.settings.show_fps.then_some(self.fps),
                             paused: self.paused,
                             menu: match chooser_sel {
@@ -1843,7 +1861,9 @@ impl ApplicationHandler for App {
                                 None => self.game_menu.map(|k| (k, &menu_lines[..])),
                             },
                             menu_top: self.menu_top,
-                            timetable: self.timetable.then(|| timetable_rows(self.duty.as_ref(), self.player.as_ref().map(|p| p.vehicle.host.tt_delay as f64))).flatten(),
+                            // (not over the city map, which has the stops and their times: it
+                            // covered the map's zoom and close buttons)
+                            timetable: (self.timetable && !map_open).then(|| timetable_rows(self.duty.as_ref(), self.player.as_ref().map(|p| p.vehicle.host.tt_delay as f64))).flatten(),
                             info: self.info_bar.then(|| info_line(&self.clock, self.player.as_ref(), self.duty.as_ref())),
                             tutorial: self.tutorial.as_ref().filter(|t| !t.hidden).and_then(|t| t.page().map(|p| (p.title.as_str(), p.text.as_str(), p.image.as_deref(), t.at, t.pages.len()))),
                             chat,
@@ -2471,8 +2491,8 @@ impl App {
                     })
                 });
 
-                if let Some(k) = hit {
-                    let k = k
+                if let Some(row) = hit {
+                    let k = row
                         + self
                         .ui
                         .as_ref()
@@ -2483,7 +2503,14 @@ impl App {
                         self.game_menu = Some(k);
                     }
 
-                    self.menu_choose(event_loop, k);
+                    // on the arrows round a line's value: one step down or up; elsewhere on
+                    // the line as Enter
+                    let arrows = self.ui.as_ref().and_then(|u| u.menu_arrows.get(row).copied().flatten());
+                    match arrows {
+                        Some([from, to, _]) if self.cursor.0 >= from && self.cursor.0 < to => self.chooser_adjust(k, "-"),
+                        Some([_, _, plus]) if self.cursor.0 >= plus => self.chooser_adjust(k, "+"),
+                        _ => self.menu_choose(event_loop, k),
+                    }
                 }
             }
 

@@ -2389,7 +2389,7 @@ pub(crate) fn run_offscreen(
         hud.update(&renderer, &mut scene, &lines);
         // the navigator, as the window shows it (its camera settled first)
         if settings.navigator {
-            let mut nav = navigator::Navigator::new(true, settings.navigator_opacity, &settings.navigator_corner);
+            let mut nav = navigator::Navigator::new(true, settings.ui_opacity, &settings.navigator_corner);
             nav.schedule = omsi_cfg::env::var_os("OMSI_NAV_SCHEDULE").is_some();
             if omsi_cfg::env::var_os("OMSI_NAV_MAP").is_some() {
                 nav.toggle_map();
@@ -2418,6 +2418,8 @@ pub(crate) fn run_offscreen(
                 weekday: clock.weekday(),
                 language: &settings.language,
                 screen: (w as f32, h as f32),
+                ui_scale: settings.ui_scale,
+                follow_window: settings.ui_scale_window,
                 dt: 0.1,
             };
             for _ in 0..30 {

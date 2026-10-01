@@ -7220,6 +7220,7 @@ impl Renderer {
             // anew for every overlay of every frame was a steady stream of GPU allocations
             scene.overlay_res.truncate(overlays.len());
             for (k, (tex, r)) in overlays.iter().copied().enumerate() {
+                let r = snap_rect(r);
                 let ndc = [
                     r[0] / full_w as f32 * 2.0 - 1.0,
                     1.0 - r[1] / full_h as f32 * 2.0,
@@ -10534,9 +10535,39 @@ impl Renderer {
     }
 }
 
+/// An overlay's rectangle (physical pixels) moved onto whole pixels, its size kept. The
+/// overlays are pictures drawn texel for pixel - a text, a plate - and the linear filter
+/// blended every pixel of one placed between pixels with its neighbour: the interface's texts
+/// were soft at every size whose layout fell between them (most but 100 %, and the timetable's
+/// rows at that too). A line thinner than a pixel stays one pixel wide or high.
+fn snap_rect(r: [f32; 4]) -> [f32; 4] {
+    // (half up the same way left of the window as right of it: `round` goes away from zero,
+    // and a rectangle across the left edge came out a pixel wider)
+    let snap = |v: f32| (v + 0.5).floor();
+    let (x0, y0) = (snap(r[0]), snap(r[1]));
+    let x1 = if r[2] > r[0] { snap(r[2]).max(x0 + 1.0) } else { snap(r[2]) };
+    let y1 = if r[3] > r[1] { snap(r[3]).max(y0 + 1.0) } else { snap(r[3]) };
+    [x0, y0, x1, y1]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Overlays drawn texel for pixel: onto whole pixels, their size kept.
+    #[test]
+    fn overlays_land_on_whole_pixels() {
+        // (a 120 x 26 text a quarter and a half pixel off: moved, the same size)
+        assert_eq!(snap_rect([25.25, 40.5, 145.25, 66.5]), [25.0, 41.0, 145.0, 67.0]);
+        assert_eq!(snap_rect([10.0, 20.0, 30.0, 40.0]), [10.0, 20.0, 30.0, 40.0]);
+        // (left of the window as well: the same size)
+        assert_eq!(snap_rect([-0.5, -2.5, 19.5, 7.5]), [0.0, -2.0, 20.0, 8.0]);
+        // (a separator 0.6 px high stays a line)
+        let line = snap_rect([16.0, 100.3, 300.0, 100.9]);
+        assert_eq!(line[3] - line[1], 1.0);
+        // (an empty rectangle stays empty)
+        assert_eq!(snap_rect([5.2, 5.2, 5.2, 5.2]), [5.0, 5.0, 5.0, 5.0]);
+    }
 
     #[test]
     #[ignore = "requires a graphics adapter; run with --ignored on a GPU host"]

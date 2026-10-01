@@ -109,7 +109,10 @@ LAN session. Esc opens the game menu: drive the next placed vehicle, place any v
 the installation in front of the camera (or beside the bus), couple what stands close behind
 the bus and uncouple it again, save the situation or load the quicksave, the next weather, the clock an hour on or back, refuel and wash (only at a
 petrol station, as in OMSI), repair (the team needs the map's travel time when the bus stands
-in no depot yard), screenshot, timetable, the object editor (below), quit. Home is the ticket desk camera and Insert the timetable view (as OMSI's keyboard.cfg binds them), and the
+in no depot yard), screenshot, timetable, the object editor (below), quit. Its *Options* hold
+one line a setting under the launcher's headings (Simulation, Display & sound, Driving,
+Camera): **Left** and **Right** (or a click on the arrows round the value) step it down and
+up, Enter as before; they are kept for the next game. Home is the ticket desk camera and Insert the timetable view (as OMSI's keyboard.cfg binds them), and the
 change keys of keyboard.cfg hand out or take back the change. The HUD
 shows time, speed, line, next stop, delay and what the workshop just did (and why the bus
 stands: the parking brake, low air pressure, a line the date's chrono takes off), and the
@@ -138,7 +141,8 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   *Graphics* (the quality preset first, the screen, distances and memory), *Driving* (keys,
   mouse, wheel and pedals, with the way to the Controls page), *Camera* (the seat, the views,
   head tracking, VR), *Sound*, *Gameplay* (passengers, traffic, collisions, the clock) and
-  *General* (language, navigator, updates, and resetting every setting).
+  *General* (language, the game's interface size, navigator, updates, and resetting every
+  setting).
 * **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red. The
   keys are the game's with *Driving keys: Custom controls* (Settings → Driving); with a ready-made
   layout (W A S D, arrows) those keys drive and win over the list - the page says so, and
@@ -190,7 +194,9 @@ lines, as in the game, whose default date is 1989-05-30.
 
 `~/.openomsi/settings.cfg` (written by the launcher's settings page, or by hand) holds
 `msaa` (1/2/4; a count the GPU cannot do falls back to the next lower one), `anisotropy`
-(1..16), `ssao`, `shadows`, `shadow_size`, `navigator`, `navigator_opacity`,
+(1..16), `ssao`, `shadows`, `shadow_size`, `navigator`, `ui_opacity` (how much of the interface's backgrounds shows - the navigator's, the
+menu's, the timetable's, the plates under the notes - 0.2 to 1, the texts staying solid; 0.85
+as designed; `navigator_opacity` in older files),
 `navigator_corner` (`bottom-left` default, `bottom-right`, `top-left`, `top-right`),
 `boarding`, `detail_textures`, `exact_fare`, `enhanced`, `fullscreen`, `vsync`, `volume`
 and `drive_keys`, plus `render_scale` (`auto` or a fraction: the picture is drawn smaller
@@ -203,7 +209,12 @@ bright an LED destination matrix's dots burn in the enhanced picture, 0 = off - 
 the panel's own light, and the glow draws a halo around them), `led_mips` (the LED
 matrices' masks keep the mip chain `STFilter` asks for; off, they are sampled at full
 resolution and stay dots at a distance, which shimmers a little), `mouse_sens` (mouse steering,
-1 = OMSI's), `steering_linear` and `old_steering` (the two steering switches above),
+1 = OMSI's), `ui_scale` (the size of the game's interface over the picture - its texts,
+the menu, the timetable, the navigator and the city map - from 0.5 to 2, 1 by default, on
+top of the screen's own scaling; on a window taller than 1080 lines the interface grows with
+it as well, up to twice, unless `ui_scale_window` is off; `notes` off hides the notes in the
+top left corner; *Options* in the game menu changes it in quarters while driving, Left
+and Right), `steering_linear` and `old_steering` (the two steering switches above),
 `ff_invert` (force feedback the other way round), `wheel_range` (the wheel's own rotation,
 lock to lock, 900° by default) and `wheel_lock` (how far it is turned for the bus's full
 lock; 0 = the whole wheel, as OMSI), `fov` (degrees for the views from the bus; 0 = the bus's

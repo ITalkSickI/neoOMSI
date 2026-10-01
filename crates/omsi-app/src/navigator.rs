@@ -37,7 +37,9 @@ use crate::traffic::Traffic;
 // neutral dark, half transparent, calm
 const NAV_REDRAW_S: f32 = 1.0 / 30.0;
 const PANEL: Color = Color::rgba(10, 10, 10, 0.70);
-const BAR: Color = Color::rgba(0, 0, 0, 0.35);
+// (the bars under the texts darken whatever the opacity setting leaves of the panel: at a
+// third the cab showed through behind the next stop)
+const BAR: Color = Color::rgba(0, 0, 0, 0.55);
 const ROAD_CASING: Color = Color::rgba(30, 30, 30, 0.9);
 const ROAD: Color = Color::rgba(92, 92, 92, 1.0);
 const ROAD_MAIN: Color = Color::rgba(112, 112, 112, 1.0);
@@ -74,7 +76,8 @@ fn level(score: f32) -> usize {
     }
 }
 const TEXT: Color = Color::rgba(235, 235, 235, 1.0);
-const TEXT_DIM: Color = Color::rgba(150, 150, 150, 1.0);
+// (the second texts - units, the day, the times - bright enough to read on a lit cab)
+const TEXT_DIM: Color = Color::rgba(178, 178, 178, 1.0);
 const LATE: Color = Color::rgba(235, 85, 70, 1.0);
 const EARLY: Color = Color::rgba(90, 160, 240, 1.0);
 const ON_TIME: Color = Color::rgba(110, 200, 120, 1.0);
@@ -119,8 +122,14 @@ pub struct NavFrame<'a> {
     pub time: f64,
     pub weekday: i32,
     pub language: &'a str,
-    /// Window size in physical pixels and the interface scale.
+    /// Window size in physical pixels.
     pub screen: (f32, f32),
+    /// The player's interface size (`Settings::ui_scale`): the panel and the city map's
+    /// texts and buttons grow with it.
+    pub ui_scale: f32,
+    /// The interface grows with a tall window (`Settings::ui_scale_window`); off, the panel
+    /// is held to 480 px, as before.
+    pub follow_window: bool,
     pub dt: f32,
 }
 
@@ -809,7 +818,13 @@ impl Navigator {
 
         // --- size and place on the screen: small, a corner of its own
         let (sw, sh) = f.screen;
-        let pw = (sh * 0.33).clamp(260.0, 480.0).round();
+        // (a third of the window's height however tall it is - held to 480 px, it was a
+        // sixth of a 4K screen's - but 300 px at least, where its smallest texts were 8 px
+        // high on a 720p window; made larger, still short enough to fit the window with its
+        // schedule)
+        let base = (sh * 0.33).max(300.0);
+        let base = if f.follow_window { base } else { base.min(480.0) };
+        let pw = (base * f.ui_scale).min((sh * 0.7).max(300.0)).round();
         let map_h = (pw * 0.62).round();
         let s = pw / 360.0;
         let bars = (34.0 + 46.0) * s;
@@ -971,19 +986,19 @@ impl Navigator {
             let t = if *dist >= 1000.0 { format!("{:.1} km", dist / 1000.0) } else { format!("{:.0} m", ((dist / 10.0).round() * 10.0).max(10.0)) };
             let tw = self.fonts.width(&t, 14.0 * s, Weight::Bold);
             // with the street it turns into, when the map names it
-            let street = street.as_deref().map(|n| self.fonts.fit(n, 11.0 * s, Weight::Medium, map.w * 0.62 - 50.0 * s - tw));
-            let sw_ = street.as_deref().map(|n| self.fonts.width(n, 11.0 * s, Weight::Medium) + 10.0 * s).unwrap_or(0.0);
+            let street = street.as_deref().map(|n| self.fonts.fit(n, 12.0 * s, Weight::Medium, map.w * 0.62 - 50.0 * s - tw));
+            let sw_ = street.as_deref().map(|n| self.fonts.width(n, 12.0 * s, Weight::Medium) + 10.0 * s).unwrap_or(0.0);
             let b = Rect::new(map.x + 8.0 * s, map.y + 8.0 * s, 44.0 * s + tw + sw_, 34.0 * s);
             ui.rounded(b, 5.0 * s, Color::rgba(10, 10, 10, 0.85));
             ui.icon(&mut self.atlas, icon, Vec2::new(b.x + 18.0 * s, b.center().y), 24.0 * s, TEXT);
             ui.text_in(&mut self.atlas, &self.fonts, &t, 14.0 * s, Weight::Bold, Rect::new(b.x + 34.0 * s, b.y, tw + 4.0, b.h), Align::Left, TEXT);
             if let Some(n) = street.as_deref() {
-                ui.text_in(&mut self.atlas, &self.fonts, n, 11.0 * s, Weight::Medium, Rect::new(b.x + 42.0 * s + tw, b.y, sw_, b.h), Align::Left, TEXT_DIM);
+                ui.text_in(&mut self.atlas, &self.fonts, n, 12.0 * s, Weight::Medium, Rect::new(b.x + 42.0 * s + tw, b.y, sw_, b.h), Align::Left, TEXT_DIM);
             }
         }
         // the street the bus is on, bottom middle of the map
         if let Some(n) = self.street_here.as_deref() {
-            let px = 10.5 * s;
+            let px = 11.5 * s;
             let n = self.fonts.fit(n, px, Weight::Medium, map.w * 0.7);
             let w = self.fonts.width(&n, px, Weight::Medium) + 14.0 * s;
             let r = Rect::new(map.center().x - w * 0.5, map.bottom() - 24.0 * s, w, 18.0 * s);
@@ -1029,7 +1044,7 @@ impl Navigator {
         let mut x = pad;
         x += ui.text(&mut self.atlas, &self.fonts, &format!("{:.0}", f.speed_kmh.abs()), 17.0 * s, Weight::Bold, Vec2::new(x, base), Align::Left, TEXT);
         x += 4.0 * s;
-        x += ui.text(&mut self.atlas, &self.fonts, wd.kmh, 11.0 * s, Weight::Medium, Vec2::new(x, base), Align::Left, TEXT_DIM);
+        x += ui.text(&mut self.atlas, &self.fonts, wd.kmh, 12.0 * s, Weight::Medium, Vec2::new(x, base), Align::Left, TEXT_DIM);
         let limit = net.and_then(|n| {
             let lane = if self.route.on_route { self.route.lanes.get(self.route.progress).copied() } else { None };
             let lane = lane.or_else(|| n.nearest_lane_near(f.bus, LaneKind::Street).filter(|l| l.2 < 8.0).map(|l| l.0))?;
@@ -1046,12 +1061,12 @@ impl Navigator {
             ui.text(&mut self.atlas, &self.fonts, &t, px, Weight::Black, Vec2::new(c.x, c.y + self.fonts.cap_height(px, Weight::Black) * 0.5), Align::Center, Color::rgba(15, 15, 15, 1.0));
         }
         if let Some(line) = f.line.as_deref() {
-            ui.text(&mut self.atlas, &self.fonts, line.trim(), 12.0 * s, Weight::Bold, Vec2::new(pw * 0.5, base - 1.0 * s), Align::Center, TEXT_DIM);
+            ui.text(&mut self.atlas, &self.fonts, line.trim(), 13.0 * s, Weight::Bold, Vec2::new(pw * 0.5, base - 1.0 * s), Align::Center, TEXT_DIM);
         }
         let hh = (f.time / 3600.0) as i32 % 24;
         let mm = ((f.time % 3600.0) / 60.0) as i32;
         let tw = ui.text(&mut self.atlas, &self.fonts, &format!("{hh:02}:{mm:02}"), 14.0 * s, Weight::Bold, Vec2::new(pw - pad, base), Align::Right, TEXT);
-        ui.text(&mut self.atlas, &self.fonts, wd.days[f.weekday.clamp(0, 6) as usize], 11.0 * s, Weight::Medium, Vec2::new(pw - pad - tw - 5.0 * s, base), Align::Right, TEXT_DIM);
+        ui.text(&mut self.atlas, &self.fonts, wd.days[f.weekday.clamp(0, 6) as usize], 12.0 * s, Weight::Medium, Vec2::new(pw - pad - tw - 5.0 * s, base), Align::Right, TEXT_DIM);
 
         // bottom bar: the next stop; its distance, the time to it, the planned time and
         // whether the bus is early or late
@@ -1086,14 +1101,14 @@ impl Navigator {
                 let y2 = Rect::new(pad, bottom.y + 24.0 * s, pw - 2.0 * pad, 18.0 * s);
                 match note {
                     Some((t, c)) => {
-                        ui.text_in(&mut self.atlas, &self.fonts, t, 11.5 * s, Weight::Medium, y2, Align::Left, c);
+                        ui.text_in(&mut self.atlas, &self.fonts, t, 12.5 * s, Weight::Medium, y2, Align::Left, c);
                     }
                     None => match &jam_note {
                         Some((t, c)) => {
-                            ui.text_in(&mut self.atlas, &self.fonts, &format!("{line2}  ·  {t}"), 11.5 * s, Weight::Medium, y2, Align::Left, *c);
+                            ui.text_in(&mut self.atlas, &self.fonts, &format!("{line2}  ·  {t}"), 12.5 * s, Weight::Medium, y2, Align::Left, *c);
                         }
                         None => {
-                            ui.text_in(&mut self.atlas, &self.fonts, &line2, 11.5 * s, Weight::Medium, y2, Align::Left, TEXT_DIM);
+                            ui.text_in(&mut self.atlas, &self.fonts, &line2, 12.5 * s, Weight::Medium, y2, Align::Left, TEXT_DIM);
                         }
                     },
                 }
@@ -1105,7 +1120,7 @@ impl Navigator {
                     } else {
                         (wd.on_time.to_string(), ON_TIME)
                     };
-                    ui.text_in(&mut self.atlas, &self.fonts, &txt, 11.5 * s, Weight::Bold, y2, Align::Right, c);
+                    ui.text_in(&mut self.atlas, &self.fonts, &txt, 12.5 * s, Weight::Bold, y2, Align::Right, c);
                 }
             }
             None => {
@@ -1121,12 +1136,12 @@ impl Navigator {
             for st in f.stops.iter().take(5) {
                 let r = Rect::new(pad, y, pw - 2.0 * pad, 22.0 * s);
                 let planned = format!("{:02}:{:02}", (st.arrival / 3600.0) as i32 % 24, ((st.arrival % 3600.0) / 60.0) as i32);
-                ui.text_in(&mut self.atlas, &self.fonts, &planned, 11.5 * s, Weight::Bold, r, Align::Left, TEXT_DIM);
-                ui.text_in(&mut self.atlas, &self.fonts, st.name.trim(), 12.0 * s, Weight::Medium, Rect::new(r.x + 46.0 * s, r.y, r.w - 100.0 * s, r.h), Align::Left, TEXT);
+                ui.text_in(&mut self.atlas, &self.fonts, &planned, 12.5 * s, Weight::Bold, r, Align::Left, TEXT_DIM);
+                ui.text_in(&mut self.atlas, &self.fonts, st.name.trim(), 13.0 * s, Weight::Medium, Rect::new(r.x + 46.0 * s, r.y, r.w - 100.0 * s, r.h), Align::Left, TEXT);
                 // when the bus will be there at this lateness
                 let exp = st.arrival + late;
                 let e = format!("{:02}:{:02}", (exp / 3600.0).rem_euclid(24.0) as i32, ((exp.rem_euclid(3600.0)) / 60.0) as i32);
-                ui.text_in(&mut self.atlas, &self.fonts, &e, 11.5 * s, Weight::Medium, r, Align::Right, if late > 59.0 { LATE } else if late < -59.0 { EARLY } else { TEXT_DIM });
+                ui.text_in(&mut self.atlas, &self.fonts, &e, 12.5 * s, Weight::Medium, r, Align::Right, if late > 59.0 { LATE } else if late < -59.0 { EARLY } else { TEXT_DIM });
                 y += 22.0 * s;
             }
         }
@@ -1150,7 +1165,7 @@ impl Navigator {
         gpu.upload_atlas(queue, &mut self.atlas);
         // (the opacity setting is the background's: the map and the text stay solid)
         let flat = Layer::flat(clip_panel, radius, 1.0);
-        let backdrop = Layer::flat(clip_panel, radius, (self.opacity / 0.85).clamp(0.3, 1.3).min(1.0));
+        let backdrop = Layer::flat(clip_panel, radius, crate::ui::backdrop(self.opacity).min(1.0));
         let mut layers = [flat, map_layer, backdrop];
         for l in layers.iter_mut() {
             l.opacity *= self.shown;
@@ -1189,7 +1204,7 @@ fn congestion_on(net: &Network, traffic: &Network, c: &HashMap<usize, f32>) -> H
 
 impl<'a> NavFrame<'a> {
     fn clone_ref(&self) -> NavFrame<'a> {
-        NavFrame { traffic: self.traffic, bus: self.bus, heading: self.heading, speed_kmh: self.speed_kmh, line: self.line.clone(), terminus: self.terminus.clone(), stops: self.stops.clone(), delay: self.delay, passengers: self.passengers, time: self.time, weekday: self.weekday, language: self.language, screen: self.screen, dt: self.dt }
+        NavFrame { traffic: self.traffic, bus: self.bus, heading: self.heading, speed_kmh: self.speed_kmh, line: self.line.clone(), terminus: self.terminus.clone(), stops: self.stops.clone(), delay: self.delay, passengers: self.passengers, time: self.time, weekday: self.weekday, language: self.language, screen: self.screen, ui_scale: self.ui_scale, follow_window: self.follow_window, dt: self.dt }
     }
 }
 
@@ -1917,7 +1932,7 @@ impl Navigator {
         if self.city.follow {
             self.city.center = f.bus.truncate();
         }
-        let s = (h / 760.0).clamp(0.95, 2.0);
+        let s = (h / 760.0).clamp(0.95, 2.0) * f.ui_scale;
         let global = self.global.clone();
         let net = global.as_deref().or(f.traffic.map(|t| &t.net));
         // roads of the whole map (buffer 3), once per map version
@@ -2002,7 +2017,8 @@ impl Navigator {
         };
         let win = Rect::new(0.0, 0.0, w, h);
         let mut bg = Painter::new();
-        bg.rounded(win, 10.0 * s, Color::rgba(15, 15, 15, 1.0));
+        // (the opacity setting the map's ground too; the roads, names and header stay solid)
+        bg.rounded(win, 10.0 * s, Color::rgba(15, 15, 15, crate::ui::backdrop(self.opacity).min(1.0)));
         let n_bg = bg.len();
         // traffic: blue dots
         let mut dots = Painter::new();
@@ -2029,7 +2045,7 @@ impl Navigator {
             .collect();
         taken.push(Rect::new(0.0, 0.0, w, 50.0 * s));
         if let (Some(st), true) = (self.streets.clone(), self.city.mpp < 3.2 && self.global.is_some()) {
-            let px = 11.0 * s;
+            let px = 12.0 * s;
             for (q, a, id) in &st.labels {
                 let p = to_screen(q.extend(0.0));
                 if !win.pad(60.0 * s, 30.0 * s).contains(p) {
@@ -2068,9 +2084,10 @@ impl Navigator {
             let next = k == 0;
             ui.circle(p, (if next { 6.5 } else { 5.0 }) * s, Color::rgba(12, 12, 12, 0.95));
             ui.circle(p, (if next { 4.5 } else { 3.2 }) * s, if next { TEXT } else if k + 1 == n_stops { ROUTE } else { TEXT_DIM });
-            // names when there is room for them
-            if self.city.mpp < 4.0 || next || k + 1 == n_stops {
-                let px = 11.5 * s;
+            // names when there is room for them (not under the header: they ran into its
+            // line of the next stop)
+            if (self.city.mpp < 4.0 || next || k + 1 == n_stops) && p.y - 10.0 * s > 46.0 * s {
+                let px = 12.5 * s;
                 let name = format!("{}  {:02}:{:02}", st.name.trim(), (st.arrival / 3600.0) as i32 % 24, ((st.arrival % 3600.0) / 60.0) as i32);
                 let lw = self.fonts.width(&name, px, if next { Weight::Bold } else { Weight::Medium }) + 14.0 * s;
                 let lr = Rect::new(p.x + 9.0 * s, p.y - 10.0 * s, lw, 20.0 * s);
@@ -2095,8 +2112,9 @@ impl Navigator {
             ui.tri(tip, m, r, TEXT, TEXT, TEXT);
         }
         // header: the line and where it goes, the next stop; buttons on the right
+        // (opaque: the route and the stops showed through behind its text)
         let head = Rect::new(0.0, 0.0, w, 44.0 * s);
-        ui.rect(head, Color::rgba(0, 0, 0, 0.45));
+        ui.rect(head, Color::rgba(18, 18, 18, 0.96));
         let pad = 16.0 * s;
         let wd = words(f.language);
         let title = match (&f.line, &f.terminus) {
@@ -2107,7 +2125,7 @@ impl Navigator {
         if let Some(st) = f.stops.first() {
             let d = self.next_dist.map(|d| if d >= 1000.0 { format!("{:.1} km", d / 1000.0) } else { format!("{:.0} m", d) }).unwrap_or_default();
             let t = format!("{}  ·  {}  ·  {:02}:{:02}", st.name.trim(), d, (st.arrival / 3600.0) as i32 % 24, ((st.arrival % 3600.0) / 60.0) as i32);
-            ui.text_in(&mut self.atlas, &self.fonts, &t, 12.5 * s, Weight::Medium, Rect::new(pad + title_w + 24.0 * s, head.y, w * 0.45, head.h), Align::Left, TEXT_DIM);
+            ui.text_in(&mut self.atlas, &self.fonts, &t, 13.5 * s, Weight::Medium, Rect::new(pad + title_w + 24.0 * s, head.y, w * 0.45, head.h), Align::Left, TEXT_DIM);
         }
         self.city.buttons.clear();
         let bs = 30.0 * s;
@@ -2125,7 +2143,7 @@ impl Navigator {
         let len = (metres / self.city.mpp) as f32;
         let by = h - 22.0 * s;
         ui.rect(Rect::new(pad, by, len, 2.0 * s), TEXT_DIM);
-        ui.text(&mut self.atlas, &self.fonts, &if metres >= 1000.0 { format!("{:.0} km", metres / 1000.0) } else { format!("{metres:.0} m") }, 11.0 * s, Weight::Medium, Vec2::new(pad + len + 8.0 * s, by + 4.0 * s), Align::Left, TEXT_DIM);
+        ui.text(&mut self.atlas, &self.fonts, &if metres >= 1000.0 { format!("{:.0} km", metres / 1000.0) } else { format!("{metres:.0} m") }, 12.0 * s, Weight::Medium, Vec2::new(pad + len + 8.0 * s, by + 4.0 * s), Align::Left, TEXT_DIM);
         ui.rounded_border(win, 10.0 * s, 1.0, Color::WHITE.alpha(0.08));
 
         // --- to the GPU

@@ -672,18 +672,30 @@ fn general_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, out: &mut Outside, c
         ui.text_in(&st, Rect::new(c.inner.x + 12.0, c.y - 6.0, c.inner.w - 24.0, 16.0), 11.5, omsi_ui::Weight::Regular, TEXT_FAINT, omsi_ui::paint::Align::Left);
         c.y += 14.0;
     }
+    // (the texts over the picture, the menu, the timetable and the navigator: larger for
+    // those who find them hard to read, smaller for more of the picture; on a window taller
+    // than 1080p they grow with it as well, and the launcher grows with its window anyway)
+    let mut size = get(s, "ui_scale").as_f64().unwrap_or(1.0) as f32;
+    if ui.slider("s-uiscale", c.row(), &mut size, 0.5, 2.0, 0.05, "Game interface size", &|v| format!("{:.0}%", v * 100.0)) {
+        s["ui_scale"] = json!((size * 100.0).round() / 100.0);
+        *dirty = 0.3;
+    }
+    toggle_setting(ui, s, dirty, c.row(), "Interface grows with the window", "ui_scale_window");
+    // (the backgrounds of the whole interface - the navigator, the menu, the timetable, the
+    // notes' plates - the texts staying solid; 85 % as designed)
+    let mut op = get(s, "ui_opacity").as_f64().unwrap_or(0.85) as f32;
+    if ui.slider("s-uiop", c.row(), &mut op, 0.2, 1.0, 0.05, "Interface opacity", &|v| format!("{:.0}%", v * 100.0)) {
+        s["ui_opacity"] = json!((op * 100.0).round() / 100.0);
+        *dirty = 0.3;
+    }
     toggle_setting(ui, s, dirty, c.row(), "Name of the button under the mouse", "tooltips");
     toggle_setting(ui, s, dirty, c.row(), "Frame rate in the corner", "show_fps");
+    toggle_setting(ui, s, dirty, c.row(), "Notes in the top-left corner", "notes");
     toggle_setting(ui, s, dirty, c.row(), "Chat in online games", "chat");
     toggle_setting(ui, s, dirty, c.row(), "Other players' names above their buses", "name_tags");
     c.section(ui, "Navigator");
     toggle_setting(ui, s, dirty, c.row(), "Navigator (Shift+N: map, schedule, off)", "navigator");
     toggle_setting(ui, s, dirty, c.row(), "Route arrows (as in OMSI 2)", "nav_arrows");
-    let mut op = get(s, "navigator_opacity").as_f64().unwrap_or(0.85) as f32;
-    if ui.slider("s-navop", c.row(), &mut op, 0.2, 1.0, 0.05, "Opacity", &|v| format!("{:.0}%", v * 100.0)) {
-        s["navigator_opacity"] = json!((op * 100.0).round() / 100.0);
-        *dirty = 0.3;
-    }
     // the corner: a little screen with four corners to click
     let r = Rect::new(c.inner.x, c.y, c.inner.w, 70.0);
     ui.label(Rect::new(r.x, r.y, r.w * 0.45, 24.0), "Corner");
@@ -1926,8 +1938,8 @@ mod settings_tests {
             "s-maint", "set-collision_vehicles", "set-collision_objects", "set-collision_pedestrians", "set-use_real_time", "set-use_real_date", "s-timespeed",
         ];
         let general = vec![
-            "s-lang", "set-machine_translation", "set-tooltips", "set-show_fps", "set-chat", "set-name_tags",
-            "set-navigator", "set-nav_arrows", "s-navop", "corner-top-left", "corner-top-right", "corner-bottom-left", "corner-bottom-right",
+            "s-lang", "set-machine_translation", "s-uiscale", "set-ui_scale_window", "s-uiop", "set-tooltips", "set-show_fps", "set-notes", "set-chat", "set-name_tags",
+            "set-navigator", "set-nav_arrows", "corner-top-left", "corner-top-right", "corner-bottom-left", "corner-bottom-right",
             "set-update_check", "set-update_auto", "s-upd-check", "s-upd-github", "s-reset",
         ];
         vec![graphics, driving, camera, sound, gameplay, general]

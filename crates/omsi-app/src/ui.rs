@@ -26,17 +26,20 @@ pub struct TextCache {
     font: FontVec,
     labels: hashbrown::HashMap<(String, u32, [u8; 4]), Label>,
     frame: u64,
+    /// How strongly the background plates are drawn this frame (`backdrop`).
+    backdrop: f32,
 }
 
 impl TextCache {
     pub fn new() -> Option<TextCache> {
         let font = FontVec::try_from_vec(ROBOTO.to_vec()).ok()?;
-        Some(TextCache { font, labels: hashbrown::HashMap::new(), frame: 0 })
+        Some(TextCache { font, labels: hashbrown::HashMap::new(), frame: 0, backdrop: 1.0 })
     }
 
     /// The texture of `text` at `px` pixels in `color` (alpha = opacity of the outline), and
     /// its size.
     fn label(&mut self, r: &Renderer, scene: &mut Scene, text: &str, px: u32, color: [u8; 4]) -> Label {
+        let color = [color[0], color[1], color[2], outline_for(color, self.backdrop)];
         // (in the interface's language: the menu, the notes, the windows)
         let text = &*omsi_ui::tr(text);
         let key = (text.to_string(), px, color);
@@ -82,6 +85,19 @@ impl TextCache {
                 }
             }
         }
+    }
+}
+
+/// How opaque a label's dark outline is (the alpha of its `color`): as asked, or - for a
+/// panel's text, asked without one - more as the opacity setting thins the panels
+/// (`backdrop` below 1): on a see-through panel over a bright sky the dim lines could not be
+/// read. Light texts only: round a dark one (the highlighted menu line's, on the solid
+/// accent) the outline is as dark as the glyphs and smeared them, like a shadow.
+fn outline_for(color: [u8; 4], backdrop: f32) -> u8 {
+    let light = 0.299 * color[0] as f32 + 0.587 * color[1] as f32 + 0.114 * color[2] as f32 > 100.0;
+    match color[3] {
+        0 if backdrop < 1.0 && light => (((1.0 - backdrop) * 1.6).min(0.9) * 255.0) as u8,
+        a => a,
     }
 }
 
@@ -227,10 +243,34 @@ impl ChatWidget {
     }
 }
 
+/// How much larger than designed the interface is drawn, on top of the screen's scale
+/// `dpi`: on a window taller than 1080 logical pixels as much as it is taller (up to twice),
+/// times the player's `size` (`Settings::ui_scale`). Laid out for 1080p, the texts were half
+/// their size on a 4K screen at 100 % display scaling; a window of 1080 lines or fewer is
+/// drawn as it always was. With `window` off (`Settings::ui_scale_window`) it does not grow
+/// with the window at all.
+pub fn size_factor(height_px: f32, dpi: f32, size: f32, window: bool) -> f32 {
+    let grown = if window { (height_px / dpi.max(0.5) / 1080.0).clamp(1.0, 2.0) } else { 1.0 };
+    grown * size
+}
+
+/// How strongly the interface's backgrounds are drawn for the opacity setting
+/// (`Settings::ui_opacity`): 1 at its default of 85 %, as designed; lower, the picture shows
+/// through them (never less than 0.3), higher a little darker. The texts stay solid.
+pub fn backdrop(opacity: f32) -> f32 {
+    (opacity / 0.85).clamp(0.3, 1.3)
+}
+
 /// Everything the interface draws in a frame.
 pub struct Frame<'a> {
     /// Physical pixels per logical one.
     pub scale: f32,
+    /// How much larger than designed (`size_factor`): everything below is drawn this much
+    /// larger on top of `scale`.
+    pub ui_scale: f32,
+    /// How strongly the backgrounds are drawn (`backdrop`): the menu's and the timetable's
+    /// panels, the chat's box, the plates under the notes, the tooltip and the frame rate.
+    pub opacity: f32,
     pub width: f32,
     pub height: f32,
     pub cursor: (f32, f32),
@@ -266,6 +306,10 @@ pub struct Ui {
     pub chat: ChatWidget,
     /// Where the game menu's lines were drawn this frame (physical pixels), for the mouse.
     pub menu_rects: Vec<[f32; 4]>,
+    /// Per line of `menu_rects`, where the arrows round its value are (a list's setting,
+    /// `game_lists::ADJUST`): `[from, to, plus]` - a click from `from` to `to` steps it
+    /// down, one right of `plus` up.
+    pub menu_arrows: Vec<Option<[f32; 3]>>,
     pub menu_scroll_thumb: Option<[f32; 4]>,
     pub menu_scroll_track: Option<[f32; 4]>,
     /// Overlay entries belonging to the game menu.
@@ -286,12 +330,13 @@ pub struct Ui {
 
 impl Ui {
     pub fn new() -> Option<Ui> {
-        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default() })
+        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default() })
     }
 
     /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
     pub fn draw(&mut self, r: &Renderer, scene: &mut Scene, f: &Frame, dt: f32) {
-        let s = f.scale.max(0.5);
+        let s = f.scale.max(0.5) * f.ui_scale;
+        self.text.backdrop = f.opacity;
         // --- name tags above the other players' buses
         for ((x, y), name, sub, alpha) in &f.tags {
             let a = (alpha.clamp(0.0, 1.0) * 255.0) as u8;
@@ -307,12 +352,34 @@ impl Ui {
                 }
             }
         }
-        // --- the chat, top left under the HUD, as Roblox has it
+        // the top of the windows in the corners: the notes on the left start on the line of
+        // the timetable and a tutorial page on the right (14 px down, they stood higher)
+        let corner_top = 60.0 * s;
+        // --- notes, top left: white on a dark outline, one line each, on a dim plate (the
+        // outline alone left a note hard to read over a bright sky)
+        let notes_bottom = {
+            let px = (16.0 * s) as u32;
+            let x0 = 16.0 * s;
+            // (below the on-screen buttons of a phone, which keep their size when the
+            // interface is made smaller)
+            let mut y = if crate::platform::touch_controls() { (80.0 * f.scale.max(0.5) * f.ui_scale.max(1.0)).max(corner_top) } else { corner_top };
+            for n in f.notes.iter().filter(|n| !n.trim().is_empty()).take(8) {
+                let text = clip_to(&self.text, n, px as f32, f.width * 0.6);
+                let l = self.text.label(r, scene, &text, px, [255, 255, 255, 235]);
+                let plate = self.text.plate(r, scene, 7);
+                scene.overlays.push((plate, [x0 - 5.0 * s, y, x0 + l.w as f32 + 5.0 * s, y + l.h as f32]));
+                scene.overlays.push((l.tex, [x0, y, x0 + l.w as f32, y + l.h as f32]));
+                y += l.h as f32 + 2.0 * s;
+            }
+            y
+        };
+        // --- the chat, top left under the notes, as Roblox has it (from the fourth note
+        // on they ran into it)
         if let Some(c) = f.chat.as_ref().filter(|_| !self.chat.hidden) {
             let px = (17.0 * s) as u32;
             let lh = px as f32 * 1.35;
             let x0 = 14.0 * s;
-            let y0 = 96.0 * s;
+            let y0 = (96.0 * s).max(notes_bottom + 10.0 * s);
             let width = (460.0 * s).min(f.width * 0.5);
             let open = c.typing.is_some();
             let n = c.lines.len();
@@ -349,12 +416,13 @@ impl Ui {
                 let ty = by + (bh - l.h as f32) * 0.5;
                 scene.overlays.push((l.tex, [x0 + 2.0 * s, ty, x0 + 2.0 * s + l.w as f32, ty + l.h as f32]));
                 if self.chat.scroll > 0 && (open || self.chat.hovered) {
-                    let m = self.text.label(r, scene, &format!("{} newer below", self.chat.scroll), (11.0 * s) as u32, [200, 200, 200, 200]);
+                    // (the words translated apart from the number: whole, the text was no key)
+                    let m = self.text.label(r, scene, &format!("{} {}", self.chat.scroll, omsi_ui::tr("newer below")), (11.0 * s) as u32, [200, 200, 200, 200]);
                     scene.overlays.push((m.tex, [x0 + width - m.w as f32, by - m.h as f32, x0 + width, by]));
                 }
             }
             if let Some(e) = c.error {
-                let l = self.text.label(r, scene, &format!("not sent: {e}"), (12.0 * s) as u32, [255, 150, 150, 220]);
+                let l = self.text.label(r, scene, &format!("{}: {}", omsi_ui::tr("Not sent"), omsi_ui::tr(e)), (12.0 * s) as u32, [255, 150, 150, 220]);
                 let ey = y0 + box_h;
                 scene.overlays.push((l.tex, [x0, ey, x0 + l.w as f32, ey + l.h as f32]));
             }
@@ -362,22 +430,12 @@ impl Ui {
             self.chat.hovered = false;
             self.chat.rect = [0.0; 4];
         }
-        // --- notes, top left: white on a dark outline, one line each
-        {
-            let px = (16.0 * s) as u32;
-            let x0 = 16.0 * s;
-            // (below the on-screen buttons of a phone)
-            let mut y = if crate::platform::touch_controls() { 80.0 * s } else { 14.0 * s };
-            for n in f.notes.iter().filter(|n| !n.trim().is_empty()).take(8) {
-                let text = clip_to(&self.text, n, px as f32, f.width * 0.6);
-                let l = self.text.label(r, scene, &text, px, [255, 255, 255, 235]);
-                scene.overlays.push((l.tex, [x0, y, x0 + l.w as f32, y + l.h as f32]));
-                y += l.h as f32 + 2.0 * s;
-            }
-        }
         if let Some(fps) = f.fps {
             let l = self.text.label(r, scene, &format!("{fps:.0} fps"), (13.0 * s) as u32, [255, 255, 255, 200]);
             let x = f.width - l.w as f32 - 12.0 * s;
+            // (on a plate, as the notes are: over a bright sky the outline alone was not enough)
+            let plate = self.text.plate(r, scene, 7);
+            scene.overlays.push((plate, [x - 5.0 * s, 10.0 * s, x + l.w as f32 + 5.0 * s, 10.0 * s + l.h as f32]));
             scene.overlays.push((l.tex, [x, 10.0 * s, x + l.w as f32, 10.0 * s + l.h as f32]));
         }
         // --- the information bar, along the top in the middle
@@ -391,6 +449,7 @@ impl Ui {
             scene.overlays.push((plate, [x, y, x + w, y + h]));
             scene.overlays.push((l.tex, [x + pad, y + pad * 0.4, x + pad + l.w as f32, y + pad * 0.4 + l.h as f32]));
         }
+        let tutorial_w = (420.0 * s).min(f.width * 0.42);
         // --- the timetable window, on the right
         if let Some((title, rows)) = f.timetable.as_ref() {
             let px = (14.0 * s) as u32;
@@ -401,8 +460,10 @@ impl Ui {
             let next = rows.iter().position(|r| r.2 == 1).unwrap_or(0);
             let first = next.saturating_sub(1).min(rows.len().saturating_sub(shown));
             let h = lh * (shown as f32 + 1.6);
-            let x = f.width - w - 16.0 * s;
-            let y = 60.0 * s;
+            // (left of a tutorial page, which has the same corner)
+            let beside = if f.tutorial.is_some() { tutorial_w + 12.0 * s } else { 0.0 };
+            let x = (f.width - w - 16.0 * s - beside).max(16.0 * s);
+            let y = corner_top;
             let plate = self.text.plate(r, scene, 3);
             scene.overlays.push((plate, [x, y, x + w, y + h]));
             let t = self.text.label(r, scene, &clip_to(&self.text, title, px as f32 * 1.1, w - 20.0 * s), (px as f32 * 1.1) as u32, [255, 255, 255, 0]);
@@ -429,9 +490,9 @@ impl Ui {
         }
         // --- a tutorial page, on the right
         if let Some((title, text, image, at, count)) = f.tutorial {
-            let w = (420.0 * s).min(f.width * 0.42);
+            let w = tutorial_w;
             let x = f.width - w - 16.0 * s;
-            let mut y = 60.0 * s;
+            let mut y = corner_top;
             let top = y;
             let pad = 14.0 * s;
             let mut items: Vec<(TextureId, [f32; 4])> = Vec::new();
@@ -472,7 +533,8 @@ impl Ui {
                 }
                 y += 5.0 * s;
             }
-            let foot = format!("Page {} of {}   ·   Enter next   ·   Page Up back   ·   Ctrl+T hide", at + 1, count);
+            let tr = |t: &str| omsi_ui::tr(t).into_owned();
+            let foot = format!("{} {}/{}   ·   {}   ·   {}   ·   {}", tr("Page"), at + 1, count, tr("Enter next"), tr("Page Up back"), tr("Ctrl+T hide"));
             let l = self.text.label(r, scene, &foot, (12.0 * s) as u32, [150, 150, 150, 0]);
             y += 4.0 * s;
             items.push((l.tex, [x + pad, y, x + pad + l.w as f32, y + l.h as f32]));
@@ -494,13 +556,16 @@ impl Ui {
         }
         // --- the game menu, in the middle over a dimmed picture
         self.menu_rects.clear();
+        self.menu_arrows.clear();
         self.menu_scroll_thumb = None;
         self.menu_scroll_track = None;
         let menu_overlay_start = scene.overlays.len();
         if let Some((sel, items)) = f.menu {
             let dim = self.text.plate(r, scene, 6);
             scene.overlays.push((dim, [0.0, 0.0, f.width, f.height]));
-            let w = 340.0 * s;
+            // (wider for a list of settings, whose values stand on the right; a large
+            // interface on a small window: the panel stays on the screen)
+            let w = (if items.iter().any(|i| i.1.contains('\t')) { 470.0 } else { 340.0 } * s).min(f.width * 0.92);
             let title_h = if f.vr { 50.0 * s } else { 56.0 * s };
             // as many lines as fit at a readable height; a longer menu scrolls (the wheel,
             // the arrow keys), the chosen line kept in view
@@ -539,7 +604,8 @@ impl Ui {
                 let thumb_rect = [track[0], t0, track[2], t1];
                 scene.overlays.push((thumb, thumb_rect));
                 self.menu_scroll_thumb = Some(thumb_rect);
-                let more = format!("{} of {}", sel + 1, items.len());
+                // (figures alone: "8 of 34" was English in every language)
+                let more = format!("{}/{}", sel + 1, items.len());
                 let l = self.text.label(r, scene, &more, (12.0 * s) as u32, [150, 150, 150, 0]);
                 scene.overlays.push((l.tex, [x + w - 16.0 * s - l.w as f32, y + 22.0 * s, x + w - 16.0 * s, y + 22.0 * s + l.h as f32]));
             }
@@ -552,6 +618,20 @@ impl Ui {
             for (k, (id, label)) in items.iter().enumerate().skip(start).take(rows) {
                 let ry = y + title_h + row_h * (k - start) as f32;
                 let rect = [x + 8.0 * s, ry, x + w - 12.0 * s, ry + row_h - 6.0 * s];
+                // a heading over the lines of a list (`game_lists::HEADING`): small and dim at
+                // the foot of its line, over those it heads; never lit or chosen
+                if *id == crate::game_lists::HEADING {
+                    if k > start {
+                        let sep = self.text.plate(r, scene, 5);
+                        scene.overlays.push((sep, [x + 16.0 * s, ry - 3.5 * s, x + w - 20.0 * s, ry - 2.5 * s]));
+                    }
+                    let l = self.text.label(r, scene, &label.to_uppercase(), (px as f32 * 0.76) as u32, [150, 150, 150, 0]);
+                    let ly = ry + row_h - 6.0 * s - l.h as f32;
+                    scene.overlays.push((l.tex, [x + 20.0 * s, ly, x + 20.0 * s + l.w as f32, ly + l.h as f32]));
+                    self.menu_rects.push(rect);
+                    self.menu_arrows.push(None);
+                    continue;
+                }
                 let hovered = over(rect);
                 let lit = hovered || (k == sel && !any_hovered);
                 // a thin line above "More..." / "End the session": the everyday lines apart
@@ -564,10 +644,38 @@ impl Ui {
                     scene.overlays.push((hl, rect));
                 }
                 let color = if lit { [20, 20, 20, 0] } else if *id == "quit" { [240, 150, 140, 0] } else { [235, 235, 235, 0] };
-                let l = self.text.label(r, scene, label, px, color);
-                let ly = ry + (row_h - 6.0 * s - l.h as f32) * 0.5;
+                // a setting's line: its name, and its value on the right ("name\tvalue"),
+                // between arrows when Left and Right step it (`game_lists::ADJUST`)
+                let (name, value) = label.split_once('\t').unwrap_or((*label, ""));
+                let line_h = row_h - 6.0 * s;
+                let mut name_end = x + w - 26.0 * s;
+                let mut arrows = None;
+                if !value.is_empty() {
+                    let (arrow_color, value_color) = if lit { (color, color) } else { ([190, 190, 190, 0], [255, 205, 120, 0]) };
+                    // (the arrows a third larger than the text: drawn at its size they were hard to see and to hit)
+                    let apx = (px as f32 * 1.35) as u32;
+                    let adjust = id.ends_with(crate::game_lists::ADJUST);
+                    let mut right = name_end;
+                    let mut plus = right;
+                    if adjust {
+                        plus = self.text_right(r, scene, "›", apx, arrow_color, right, ry, line_h);
+                        right = plus - 8.0 * s;
+                    }
+                    let vx = self.text_right(r, scene, value, px, value_color, right, ry, line_h);
+                    name_end = vx;
+                    if adjust {
+                        let minus = self.text_right(r, scene, "‹", apx, arrow_color, vx - 8.0 * s, ry, line_h);
+                        name_end = minus;
+                        // (the arrows' places, a little wider than they are drawn)
+                        arrows = Some([minus - 10.0 * s, vx - 2.0 * s, plus - 6.0 * s]);
+                    }
+                }
+                let name = clip_to(&self.text, name, px as f32, name_end - 14.0 * s - (x + 20.0 * s));
+                let l = self.text.label(r, scene, &name, px, color);
+                let ly = ry + (line_h - l.h as f32) * 0.5;
                 scene.overlays.push((l.tex, [x + 20.0 * s, ly, x + 20.0 * s + l.w as f32, ly + l.h as f32]));
                 self.menu_rects.push(rect);
+                self.menu_arrows.push(arrows);
             }
         }
         self.menu_overlay_range = menu_overlay_start..scene.overlays.len();
@@ -583,7 +691,13 @@ impl Ui {
             if y + l.h as f32 > f.height {
                 y = f.height - l.h as f32;
             }
-            if f.vr { self.vr_tooltip_overlay = Some(scene.overlays.len()); }
+            if f.vr {
+                self.vr_tooltip_overlay = Some(scene.overlays.len());
+            } else {
+                // (in a headset the text alone is placed in front of the eye)
+                let plate = self.text.plate(r, scene, 7);
+                scene.overlays.push((plate, [x - 5.0 * s, y, x + l.w as f32 + 5.0 * s, y + l.h as f32]));
+            }
             scene.overlays.push((l.tex, [x, y, x + l.w as f32, y + l.h as f32]));
         }
         if f.vr {
@@ -594,6 +708,18 @@ impl Ui {
             self.vr_cursor_overlay = None;
         }
         self.text.end_frame(r, scene);
+    }
+}
+
+impl Ui {
+    /// `text` on a menu line, ending at `right`, in the middle of the line `line_h` high at
+    /// `y`; returns where it begins.
+    #[allow(clippy::too_many_arguments)]
+    fn text_right(&mut self, r: &Renderer, scene: &mut Scene, text: &str, px: u32, color: [u8; 4], right: f32, y: f32, line_h: f32) -> f32 {
+        let l = self.text.label(r, scene, text, px, color);
+        let (lx, ly) = (right - l.w as f32, y + (line_h - l.h as f32) * 0.5);
+        scene.overlays.push((l.tex, [lx, ly, right, ly + l.h as f32]));
+        lx
     }
 }
 
@@ -630,17 +756,13 @@ impl TextCache {
     }
 
     /// A plate of one colour: 0 the chat's dark translucent input box, 1 the loading
-    /// screen's bar track, 2 its fill.
+    /// screen's bar track, 2 its fill, 3 .. 7 as said below.
     fn plate(&mut self, r: &Renderer, scene: &mut Scene, kind: u8) -> TextureId {
-        let key = ("\u{0}plate".to_string(), kind as u32, [0, 0, 0, 0]);
-        if let Some(l) = self.labels.get_mut(&key) {
-            l.used = self.frame;
-            return l.tex;
-        }
-        let rgba = match kind {
+        let mut rgba = match kind {
             1 => vec![255, 255, 255, 38],
             2 => vec![235, 238, 242, 255],
-            // an opaque panel (translucent dark panels show the sky through them)
+            // an opaque panel as designed (translucent dark panels show the sky through
+            // them), unless the opacity setting asks for less
             3 => vec![22, 22, 22, 255],
             // the chosen line: the interface's accent
             4 => vec![232, 160, 48, 255],
@@ -648,8 +770,20 @@ impl TextCache {
             5 => vec![255, 255, 255, 28],
             // the picture dimmed behind the menu
             6 => vec![0, 0, 0, 120],
+            // behind a note or the tooltip (the old HUD's 40 %)
+            7 => vec![0, 0, 0, 102],
             _ => vec![10, 12, 16, 150],
         };
+        // the backgrounds - the panels, the chat's box, the plates - as the opacity setting
+        // has them (`backdrop`); the accent, the lines and the dimming stay as they are
+        if matches!(kind, 0 | 3 | 7) {
+            rgba[3] = (rgba[3] as f32 * self.backdrop).round().clamp(0.0, 255.0) as u8;
+        }
+        let key = ("\u{0}plate".to_string(), kind as u32, [rgba[0], rgba[1], rgba[2], rgba[3]]);
+        if let Some(l) = self.labels.get_mut(&key) {
+            l.used = self.frame;
+            return l.tex;
+        }
         let img = omsi_texture::Image { width: 1, height: 1, rgba, has_alpha: true };
         let tex = r.add_texture(scene, &img, false);
         self.labels.insert(key, Label { tex, w: 1, h: 1, used: u64::MAX / 2 });
@@ -766,6 +900,46 @@ mod tests {
             let ink = img.rgba.chunks(4).filter(|p| p[3] > 128 && p[0] > 128).count();
             assert!(ink > 30, "{t}: {ink}");
         }
+    }
+
+    /// Laid out for 1080p: a lower window as it always was, a taller one in proportion.
+    #[test]
+    fn the_interface_grows_with_tall_windows() {
+        assert_eq!(size_factor(900.0, 1.0, 1.0, true), 1.0);
+        assert_eq!(size_factor(1080.0, 1.0, 1.0, true), 1.0);
+        assert_eq!(size_factor(2160.0, 1.0, 1.0, true), 2.0);
+        assert_eq!(size_factor(4320.0, 1.0, 1.0, true), 2.0);
+        // (4K at 150 % display scaling is 1440 logical lines: with the screen's scale the
+        // same size as at 100 %)
+        assert!((1.5 * size_factor(2160.0, 1.5, 1.0, true) - 2.0).abs() < 1e-5);
+        assert_eq!(size_factor(1080.0, 1.0, 1.5, true), 1.5);
+        assert_eq!(size_factor(2160.0, 1.0, 0.5, true), 1.0);
+        // (switched off: the size alone)
+        assert_eq!(size_factor(2160.0, 1.0, 1.0, false), 1.0);
+        assert_eq!(size_factor(2160.0, 1.0, 1.25, false), 1.25);
+    }
+
+    /// A thinned panel's light texts get an outline; dark ones - the highlighted menu line's,
+    /// on the solid accent - do not (it came out as a smear round them, like a shadow).
+    #[test]
+    fn panel_texts_get_an_outline_only_where_it_helps() {
+        // (full panels: as asked)
+        assert_eq!(outline_for([235, 235, 235, 0], 1.0), 0);
+        // (thinned: the light text gets one, the dark text none)
+        assert!(outline_for([235, 235, 235, 0], 0.47) > 100);
+        assert!(outline_for([140, 140, 140, 0], 0.47) > 100);
+        assert_eq!(outline_for([20, 20, 20, 0], 0.47), 0);
+        // (texts with an outline of their own keep it)
+        assert_eq!(outline_for([255, 255, 255, 235], 0.47), 235);
+    }
+
+    /// The opacity's default is the design; below it the backgrounds fade, never quite away.
+    #[test]
+    fn backgrounds_follow_the_opacity_setting() {
+        assert_eq!(backdrop(0.85), 1.0);
+        assert!((backdrop(0.425) - 0.5).abs() < 1e-6);
+        assert_eq!(backdrop(0.2), 0.3);
+        assert!(backdrop(1.0) > 1.0);
     }
 
     #[test]

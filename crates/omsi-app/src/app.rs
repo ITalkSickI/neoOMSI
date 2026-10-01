@@ -437,7 +437,6 @@ impl App {
                         distance,
                         700.0,
                     ));
-                    self.hud = Some(hud::Hud::new(&mut w.fonts.lock()));
                     self.world = Some(w);
                     self.starting = Some(cam);
                 }
@@ -554,10 +553,9 @@ impl App {
                 if self.camera.is_none() {
                     self.camera = Some(cam);
                 }
-                self.hud = Some(hud::Hud::new(&mut w.fonts.lock()));
                 self.navigator = Some(navigator::Navigator::new(
                     self.settings.navigator,
-                    self.settings.navigator_opacity,
+                    self.settings.ui_opacity,
                     &self.settings.navigator_corner,
                 ));
                 if let Some(n) = self.navigator.as_mut() {
@@ -727,7 +725,8 @@ impl App {
             self.window.as_ref(),
         ) {
             scene.overlays.clear();
-            let scale = win.scale_factor() as f32;
+            let dpi = win.scale_factor() as f32;
+            let scale = dpi * crate::ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
             ui.loading(
                 &renderer,
                 &mut scene,
