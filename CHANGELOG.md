@@ -4,6 +4,17 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.463 - 2026-10-01
+
+### Passengers
+- With the door release on, the SD200's automatic rear door no longer opens on its own
+  while riders board at the front: riders no longer press the outside door opener, which
+  Omsi.exe never does - they only ask for a door through `PAX_Entry<n>_Req` (#416, #415).
+
+### Project
+- Pull requests get a template, and ones opened from a `main` branch or an organisation
+  account are closed with a note (#418).
+
 ## 0.1.455 - 2026-10-01
 
 ### Traffic
