@@ -1168,8 +1168,10 @@ pub struct Renderer {
     /// The same, multisampled: the enhanced main pass's own depth laid first (see
     /// `render_inner`), so that its costly shading runs once per visible surface.
     prepass_msaa_pipelines: Option<[wgpu::RenderPipeline; 6]>,
-    ssao_pipeline: wgpu::RenderPipeline,
-    blur_pipeline: wgpu::RenderPipeline,
+    /// Ambient occlusion and its blur; none on OpenGL (GLES), whose shading language cannot
+    /// read a depth texture texel by texel - the pipelines failed there, AO off or not (#422).
+    ssao_pipeline: Option<wgpu::RenderPipeline>,
+    blur_pipeline: Option<wgpu::RenderPipeline>,
     shadow_view: wgpu::TextureView,
     shadow_view_far: wgpu::TextureView,
     shadow_sampler: wgpu::Sampler,
@@ -2944,8 +2946,9 @@ impl Renderer {
                 cache: None,
             })
         };
-        let ssao_pipeline = make_ao("fs_ssao");
-        let blur_pipeline = make_ao("fs_blur");
+        let gl = GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed);
+        let ssao_pipeline = (!gl).then(|| make_ao("fs_ssao"));
+        let blur_pipeline = (!gl).then(|| make_ao("fs_blur"));
         let prepass_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("prepass"),
             bind_group_layouts: &[Some(&camera_layout), Some(&material_layout)],
@@ -7179,7 +7182,7 @@ impl Renderer {
         self.prepare_coronas(scene, lighting.night);
         self.prepare_smoke(scene, camera.position);
         // ambient occlusion only for the real picture, not for the mirrors
-        let ao_on = with_overlays && self.options.ssao && omsi_cfg::env::var_os("OMSI_NO_AO").is_none();
+        let ao_on = with_overlays && self.options.ssao && self.ssao_pipeline.is_some() && omsi_cfg::env::var_os("OMSI_NO_AO").is_none();
         // the enhanced path's shading is costly: the depth prepass keeps it to the visible
         // surface (without multisampling, see `share_depth`)
         let prepass_on = ao_on || (enhanced && with_overlays);
@@ -8359,9 +8362,9 @@ impl Renderer {
                 (&self.ssao_pipeline, &ao.ssao_bg, &ao.ao_view, "ssao"),
                 (&self.blur_pipeline, &ao.blur_bg, &ao.blur_view, "ssao blur"),
             ] {
-                if !ao_on {
+                let Some(pipe) = pipe.as_ref().filter(|_| ao_on) else {
                     break;
-                }
+                };
                 let mut pass = prepass_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("ssao"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
