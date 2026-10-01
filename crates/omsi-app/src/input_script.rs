@@ -624,7 +624,7 @@ impl App {
                 );
                 // (coming over to it as the host does, not at a stroke - the streets stay
                 // as wet as they are and dry or wet with it)
-                self.change_weather(w, false);
+                self.change_weather(w, false, 240.0);
             }
             lan::WorldUpdate::Tours(tours) => {
                 if let Some(s) = self.schedule.as_mut() {
@@ -2036,17 +2036,19 @@ impl App {
         }
         let cur = self.args.weather.clone().unwrap_or_default().replace('\\', "/").to_ascii_lowercase();
         let i = files.iter().position(|f| f.to_ascii_lowercase() == cur).map(|i| (i + 1) % files.len()).unwrap_or(0);
-        self.change_weather(Some(files[i].clone()), true);
+        self.change_weather(Some(files[i].clone()), true, 1.0);
     }
 
-    /// Go over to weather `file` (None: the map's default) in a few minutes of the day (see
+    /// Go over to weather `file` (None: the map's default) in `secs` of the day (see
     /// `weather_cycle`); a host tells the others (`share`), who come over to it the same way.
-    pub(crate) fn change_weather(&mut self, file: Option<String>, share: bool) {
+    /// The player's own choice comes at once, as in Omsi.exe (the weather dialog loads the
+    /// .owt and applies it straight away, 0x6828e0 -> 0x754c80); the cycle blends it in.
+    pub(crate) fn change_weather(&mut self, file: Option<String>, share: bool, secs: f32) {
         let from = self.weather.clone().unwrap_or_default();
         self.args.weather = file.clone();
         let to = load_weather(&self.args);
         let name = to.name.clone();
-        self.weather_blend = Some(crate::weather_cycle::Blend::new(from, to, 240.0));
+        self.weather_blend = Some(crate::weather_cycle::Blend::new(from, to, secs));
         if share {
             // (a host: the others take it up with its next clock message)
             if let (Some(l), Some(f)) = (self.lan.as_mut(), file.as_ref()) {
@@ -2072,6 +2074,9 @@ impl App {
                 }
             }
         }
+        if let Some(w) = self.weather.as_ref() {
+            crate::weather_setup::cloud_drift_step(&mut self.cloud_drift, w, secs as f64);
+        }
         let follows = self.lan.as_ref().is_some_and(|l| l.role == omsi_net::Role::Client);
         if follows || self.weather_blend.is_some() {
             return;
@@ -2087,7 +2092,7 @@ impl App {
         let now = self.weather.clone().unwrap_or_default();
         let now_file = self.args.weather.clone().unwrap_or_default();
         if let Some(next) = crate::weather_cycle::pick(&all, &now, &now_file, self.clock.day_month().1, r) {
-            self.change_weather(Some(next), true);
+            self.change_weather(Some(next), true, 240.0);
         }
     }
 

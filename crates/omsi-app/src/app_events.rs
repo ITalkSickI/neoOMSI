@@ -1896,8 +1896,7 @@ impl ApplicationHandler for App {
                         weather_lighting(
                             &daylight,
                             w,
-                            // (on over midnight, for the clouds' drift)
-                            self.clock.time + self.clock.day_of_year as f64 * 86400.0,
+                            self.cloud_drift,
                             self.wetness,
                             self.settings.shadows,
                         )
