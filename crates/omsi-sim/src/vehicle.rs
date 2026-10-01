@@ -2691,7 +2691,7 @@ impl PropSource {
 #[derive(Debug, Clone, Default)]
 struct MeshPlan {
     slots: usize,
-    /// `[matl_change]` (default 1) and `[matl_lightmap]` (default 0) per slot.
+    /// `[matl_change]` (default 1) and `[matl_lightmap]` (default 1: a variable the bus does not have is on) per slot.
     night: Vec<(usize, PropSource)>,
     light: Vec<(usize, PropSource)>,
     /// `[visible]` variable and value.
