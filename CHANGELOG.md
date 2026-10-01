@@ -4,6 +4,13 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.486 - 2026-10-01
+
+### Launcher
+- The Settings page is split into six tabs - Graphics, Driving, Camera, Sound, Gameplay,
+  General - each fitting the window, instead of about ninety controls in three long
+  columns; on a phone too (#430).
+
 ## 0.1.483 - 2026-10-01
 
 ### Graphics
