@@ -1076,7 +1076,7 @@ impl Navigator {
         // Cabinair_Temp, while scripts that model heating/air conditioning can overwrite it.
         let temp = format!("EXT {:.0}°C · INT {:.0}°C", f.outside_temp, f.inside_temp);
         let center = match f.line.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
-            Some(line) => format!("{line} · {temp}"),
+            Some(line) => format!("{temp} · {line}"),
             None => temp,
         };
         let left_edge = (if limit.is_some() { x + 24.0 * s } else { x }) + 6.0 * s;
