@@ -123,6 +123,10 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Collisions with objects"), tr(on_off(s.collision_objects))), "coll_objects".into()));
             out.push((format!("{}: {}", tr("Collisions with vehicles"), tr(on_off(s.collision_vehicles))), "coll_vehicles".into()));
             out.push((format!("{}: {}", tr("Steering with the mouse"), tr(on_off(app.mouse_drive))), "mouse".into()));
+            // (how far the wheel turns for the cursor's way across the window: 100% is OMSI's)
+            let sens = format!("{:.0}%", s.mouse_sens * 100.0);
+            out.push((format!("{} + ({})", tr("Mouse steering sensitivity"), sens), "mouse_sens 0.1".into()));
+            out.push((format!("{} - ({})", tr("Mouse steering sensitivity"), sens), "mouse_sens -0.1".into()));
             out.push((format!("{}: {}", tr("Frame rate"), tr(on_off(s.show_fps))), "fps".into()));
             out.push((format!("{}: {}", tr("Camera collisions"), tr(on_off(s.camera_collision))), "camcoll".into()));
             out.push((format!("{}: {}", tr("View turns with steering"), tr(on_off(s.steer_look))), "steer_look".into()));
@@ -362,6 +366,11 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                 "pedal_b" => {
                     s.pedal_brake = next_step(&PEDAL, s.pedal_brake);
                     Some(("pedal_brake", s.pedal_brake.to_string()))
+                }
+                "mouse_sens" => {
+                    let d: f32 = arg.trim().parse().unwrap_or(0.0);
+                    s.mouse_sens = ((s.mouse_sens + d) * 10.0).round().clamp(1.0, 30.0) / 10.0;
+                    Some(("mouse_sens", s.mouse_sens.to_string()))
                 }
                 "seat" => {
                     let mut it = arg.split_whitespace();
