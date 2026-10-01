@@ -3163,6 +3163,12 @@ impl World {
         self.index().stop_enter.get(&id).copied().unwrap_or((1.0, 0.0))
     }
 
+    /// The side stop object `id`'s platform lies on (see `tiles::stop_side`): 0 = right,
+    /// 1 = the other, 2 = both; a stop the map says nothing about: 0.
+    pub fn stop_side(&self, id: i64) -> f32 {
+        self.index().stop_side.get(&id).copied().unwrap_or(0.0)
+    }
+
     pub fn index(&self) -> Arc<MapIndex> {
         let mut g = self.index.lock();
         if let Some(ix) = g.as_ref() {

@@ -245,7 +245,7 @@ struct Choice {
 /// Stops moved `shift` metres back along `route` (the lanes the stops' route indices less
 /// `base` count in): where the vehicle's origin comes to rest (`bus_service::stop_shift`).
 /// One that comes to lie before the route's first lane keeps a distance below zero on it.
-fn shift_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize, f32, f32, f64, i64)], shift: f32) {
+fn shift_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize, f32, f32, f64, i64, f32)], shift: f32) {
     if shift.abs() < 1e-3 {
         return;
     }
@@ -290,7 +290,7 @@ fn bay_for(lat: f32, ty: &omsi_sim::VehicleType, rail: bool, left_hand: bool) ->
 
 /// The stops' raw box offsets (see `bay_offset`) made the vehicle's bay offsets, and the
 /// stops moved to where its origin comes to rest (`shift_stops`).
-fn place_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize, f32, f32, f64, i64)], ty: &omsi_sim::VehicleType, rail: bool) {
+fn place_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize, f32, f32, f64, i64, f32)], ty: &omsi_sim::VehicleType, rail: bool) {
     for st in stops.iter_mut() {
         st.2 = bay_for(st.2, ty, rail, net.left_hand);
     }
@@ -1925,7 +1925,7 @@ impl Schedule {
                         project_stop(&traffic.net, &lanes, pos, Some(STOP_REACH), from)
                     {
                         from = ri;
-                        stops.push((base + ri, ss, bay_offset(lat), *t_dep, *sid));
+                        stops.push((base + ri, ss, bay_offset(lat), *t_dep, *sid, world.stop_side(*sid)));
                         run.served[si] = true;
                     }
                 }
@@ -2117,7 +2117,7 @@ impl Schedule {
                     Some((ri, ss, lat)) => {
                         from = ri;
                         served[si] = true;
-                        stops.push((ri, ss, bay_offset(lat), leave[si], *sid));
+                        stops.push((ri, ss, bay_offset(lat), leave[si], *sid, world.stop_side(*sid)));
                     }
                     None => log::debug!("station {sid}: not near the route"),
                 },
@@ -2193,15 +2193,15 @@ impl Schedule {
             let route: Vec<usize> = prefix.iter().copied().chain(section[from..].iter().copied()).collect();
             let shift = prefix.len() as isize - from as isize;
             // the stops from the bus on; one just behind it on its lane is where it stands
-            let stops: Vec<(usize, f32, f32, f64, i64)> = stops
+            let stops: Vec<(usize, f32, f32, f64, i64, f32)> = stops
                 .into_iter()
                 .filter(|st| st.0 >= from)
-                .filter_map(|(ri, ss, lat, t, id)| {
+                .filter_map(|(ri, ss, lat, t, id, side)| {
                     let nri = (ri as isize + shift) as usize;
                     if nri == 0 && ss <= s0 + 0.3 {
-                        (s0 - ss < 25.0).then_some((0, s0 + 0.3, 0.0, t, id))
+                        (s0 - ss < 25.0).then_some((0, s0 + 0.3, 0.0, t, id, side))
                     } else {
-                        Some((nri, ss, lat, t, id))
+                        Some((nri, ss, lat, t, id, side))
                     }
                 })
                 .collect();
@@ -2296,7 +2296,7 @@ impl Schedule {
         // a bus that would start a few metres short of its next stop stands at it (half a
         // metre short, so that it is served): starting before it, it had to pull over into
         // the stop - often a lane over - in less than its own length
-        if let Some(&(ri, ss, _, _, _)) = stops
+        if let Some(&(ri, ss, _, _, _, _)) = stops
             .iter()
             .find(|st| st.0 > start_index || (st.0 == start_index && st.1 > s))
         {
@@ -2352,10 +2352,10 @@ impl Schedule {
             return Placed::Busy;
         }
         self.startup.remove(&i);
-        let stops: Vec<(usize, f32, f32, f64, i64)> = stops
+        let stops: Vec<(usize, f32, f32, f64, i64, f32)> = stops
             .into_iter()
-            .filter(|(ri, ss, _, _, _)| *ri > start_index || (*ri == start_index && *ss > s))
-            .map(|(ri, ss, lat, t, id)| (ri - start_index, ss, lat, t, id))
+            .filter(|(ri, ss, _, _, _, _)| *ri > start_index || (*ri == start_index && *ss > s))
+            .map(|(ri, ss, lat, t, id, side)| (ri - start_index, ss, lat, t, id, side))
             .collect();
         let route: Vec<usize> = section[start_index..].to_vec();
         // the trip's own line (" 5"), which is what the displays show; the timetable line's
