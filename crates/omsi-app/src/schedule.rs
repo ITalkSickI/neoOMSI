@@ -136,8 +136,8 @@ impl TripTimes {
         for i in 1..n {
             along[i] = along[i - 1]
                 + link_length(stations[i - 1], stations[i])
-                .unwrap_or(500.0)
-                .max(1.0);
+                    .unwrap_or(500.0)
+                    .max(1.0);
         }
         let timed: Vec<usize> = (0..n)
             .filter(|&i| arr[i].is_some() || dep[i].is_some())
@@ -1120,7 +1120,7 @@ impl Schedule {
                 let gap = (b.start() - a.end()).truncate().length();
                 if gap > 2.0
                     || a.key.map(|k| (k.tile, k.id, k.path))
-                    == b.key.map(|k| (k.tile, k.id, k.path))
+                        == b.key.map(|k| (k.tile, k.id, k.path))
                 {
                     log::info!("route: step {k}: lane {} {:?} rev {} -> lane {} {:?} rev {}: gap {gap:.1} m, linked {}, lane change {}", w[0], a.key, a.reversed, w[1], b.key, b.reversed, a.next.contains(&w[1]), net.parallel(w[0], w[1]));
                 }
@@ -1758,11 +1758,11 @@ impl Schedule {
                         };
                         let v = self.served.contains(&first)
                             || self.served.iter().any(|sid| {
-                            positions
-                                .get(sid)
-                                .map(|p| (p.0 - here).length() < 30.0)
-                                .unwrap_or(false)
-                        });
+                                positions
+                                    .get(sid)
+                                    .map(|p| (p.0 - here).length() < 30.0)
+                                    .unwrap_or(false)
+                            });
                         if omsi_cfg::env::var_os("OMSI_DEBUG_TRAFFIC").is_some() {
                             let nearest = self
                                 .served
@@ -2243,12 +2243,12 @@ impl Schedule {
             return Placed::Spawned;
         }
         let Some(Choice {
-                     ty,
-                     number,
-                     hof,
-                     scheme,
-                     train,
-                 }) = self.choose(i, world)
+            ty,
+            number,
+            hof,
+            scheme,
+            train,
+        }) = self.choose(i, world)
         else {
             log::warn!(
                 "trip {trip_name}: no vehicles for AI group '{}'",
@@ -2332,9 +2332,9 @@ impl Schedule {
         // serving the stop and every car behind them waiting as well.)
         if departure > day_time + 30.0
             && traffic
-            .cars
-            .iter()
-            .any(|c| c.is_bus() && !c.gone && (c.vehicle.position - at_pos).length() < 50.0)
+                .cars
+                .iter()
+                .any(|c| c.is_bus() && !c.gone && (c.vehicle.position - at_pos).length() < 50.0)
         {
             log::debug!(
                 "trip {trip_name}: its stand is taken, the bus comes at its departure time"
@@ -2700,8 +2700,8 @@ pub fn player_ibis(
     // number that pushed the destination aside.
     if has_roller_blind(v)
         && v.var("elec_busbar_main_sw")
-        .map(|x| x > 0.5)
-        .unwrap_or(false)
+            .map(|x| x > 0.5)
+            .unwrap_or(false)
     {
         set_line_to(v, line);
         v.set_var("AI_target_index", target.terminus_index as f32);
@@ -2781,11 +2781,11 @@ pub fn ibis_target(
                 let ident = ident.split('#').next().unwrap_or("").trim();
                 ident.eq_ignore_ascii_case(name)
                     || hof.bus_stops.iter().any(|b| {
-                    b.ident.trim().eq_ignore_ascii_case(ident)
-                        && b.strings
-                        .iter()
-                        .any(|s| s.trim().eq_ignore_ascii_case(name))
-                })
+                        b.ident.trim().eq_ignore_ascii_case(ident)
+                            && b.strings
+                                .iter()
+                                .any(|s| s.trim().eq_ignore_ascii_case(name))
+                    })
             };
             list.iter()
                 .enumerate()
@@ -2967,9 +2967,9 @@ pub fn ibis_codes(
         .filter(|(_, t)| {
             omsi_cfg::parse_i32(&t.route) == code
                 && (t.line.trim().eq_ignore_ascii_case(line.trim())
-                || (!line_digits.is_empty() && t.line.trim() == line_digits)
-                || (line_number.is_some()
-                && t.code.trim().parse::<u32>().ok().map(|c| c / 100) == line_number))
+                    || (!line_digits.is_empty() && t.line.trim() == line_digits)
+                    || (line_number.is_some()
+                        && t.code.trim().parse::<u32>().ok().map(|c| c / 100) == line_number))
         })
         .map(|(i, _)| i)
         .collect();
@@ -2983,8 +2983,8 @@ pub fn ibis_codes(
             (Some(f), Some(s)) => {
                 !f.is_empty()
                     && (f == s.trim().to_ascii_lowercase()
-                    || f.starts_with(&s.trim().to_ascii_lowercase())
-                    || s.trim().to_ascii_lowercase().starts_with(&f))
+                        || f.starts_with(&s.trim().to_ascii_lowercase())
+                        || s.trim().to_ascii_lowercase().starts_with(&f))
             }
             _ => false,
         }
@@ -3534,100 +3534,100 @@ impl Schedule {
         player_hof: Option<&omsi_vehicle::Hof>,
     ) -> Vec<(f64, String, String, f64)> {
         let mut list: Vec<(f64, String, String, f64)> = Vec::new();
-        for &(trip, k) in self.visits.get(&stop).map(|v| v.as_slice()).unwrap_or(&[]) {
-            for &i in &self.trip_departures[trip] {
-                if !self.runs(i) {
-                    continue;
-                }
-                let d = &self.departures[i];
-                let tt = &self.times[d.trip][d.profile];
-                if !tt.stops[k] {
-                    continue;
-                }
-                let (arrive, leave) = (d.time + tt.stations[k].0, d.time + tt.stations[k].1);
-                if arrive > now + BOARD_AHEAD || leave < now - BOARD_AHEAD {
-                    continue;
-                }
-                if self.is_player_tour(i) {
-                    continue;
-                }
-                let expected = match on_road.get(&i) {
-                    Some(r) => match r.next {
-                        // the stations before the bus's next stop are behind it
-                        Some(next) if leave < next - 0.5 => continue,
-                        None => continue,
-                        // standing at this stop
-                        Some(next) if r.dwelling && (leave - next).abs() < 0.5 => now,
-                        Some(next) => {
-                            // on its way: at least as late as it left its last stop, and
-                            // later still once its next stop is overdue
-                            let next_arrive = tt
-                                .stations
-                                .iter()
-                                .find(|s| (d.time + s.1 - next).abs() < 0.5)
-                                .map(|s| d.time + s.0)
-                                .unwrap_or(next);
-                            let late = if r.dwelling {
-                                r.late
-                            } else {
-                                r.late.max(now - next_arrive)
-                            };
-                            (arrive + late).max(now)
-                        }
-                    },
-                    // not on the road (still to come, or where no tiles are loaded): on time
-                    None if leave < now => continue,
-                    None => arrive.max(now),
-                };
-                let terminus = &self.data.trips[d.trip].terminus;
-                let hof = self
-                    .depots
-                    .get(&d.ai_group.to_ascii_lowercase())
-                    .and_then(|v| v.iter().find_map(|x| x.2.as_deref()));
-                list.push((expected, self.display_line(i), terminus_text(hof, terminus), (leave - arrive).max(0.0)));
-            }
-        }
-        // the player's bus
-        if let Some(duty) = duty {
-            // a trip not begun leaves on time at the earliest (the bus waits at its
-            // first stop), one under way arrives as early or late as it runs
-            let delay = duty.delay(now);
-            let lateness = if duty.left_late.is_some() || duty.at_stop {
-                delay
-            } else {
-                delay.max(0.0)
-            };
-            for (ti, trip) in duty.trips.iter().enumerate().skip(duty.trip_index) {
-                if trip.departure > now + BOARD_AHEAD {
-                    break;
-                }
-                for (k, s) in trip
-                    .stops
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, s)| s.object_id == stop && s.stops)
-                {
-                    let current = ti == duty.trip_index;
-                    let expected = if current
-                        && (k < duty.next_stop || duty.done && k + 1 < trip.stops.len())
-                    {
+            for &(trip, k) in self.visits.get(&stop).map(|v| v.as_slice()).unwrap_or(&[]) {
+                for &i in &self.trip_departures[trip] {
+                    if !self.runs(i) {
                         continue;
-                    } else if current && k == duty.next_stop && duty.at_stop {
-                        now
-                    } else if current {
-                        (s.arr + lateness).max(now)
-                    } else {
-                        (s.arr + delay.max(0.0)).max(now)
+                    }
+                    let d = &self.departures[i];
+                    let tt = &self.times[d.trip][d.profile];
+                    if !tt.stops[k] {
+                        continue;
+                    }
+                    let (arrive, leave) = (d.time + tt.stations[k].0, d.time + tt.stations[k].1);
+                    if arrive > now + BOARD_AHEAD || leave < now - BOARD_AHEAD {
+                        continue;
+                    }
+                    if self.is_player_tour(i) {
+                        continue;
+                    }
+                    let expected = match on_road.get(&i) {
+                        Some(r) => match r.next {
+                            // the stations before the bus's next stop are behind it
+                            Some(next) if leave < next - 0.5 => continue,
+                            None => continue,
+                            // standing at this stop
+                            Some(next) if r.dwelling && (leave - next).abs() < 0.5 => now,
+                            Some(next) => {
+                                // on its way: at least as late as it left its last stop, and
+                                // later still once its next stop is overdue
+                                let next_arrive = tt
+                                    .stations
+                                    .iter()
+                                    .find(|s| (d.time + s.1 - next).abs() < 0.5)
+                                    .map(|s| d.time + s.0)
+                                    .unwrap_or(next);
+                                let late = if r.dwelling {
+                                    r.late
+                                } else {
+                                    r.late.max(now - next_arrive)
+                                };
+                                (arrive + late).max(now)
+                            }
+                        },
+                        // not on the road (still to come, or where no tiles are loaded): on time
+                        None if leave < now => continue,
+                        None => arrive.max(now),
                     };
-                    list.push((
-                        expected,
-                        trip.line.trim().to_string(),
-                        terminus_text(player_hof, &trip.terminus),
-                        (s.dep - s.arr).max(0.0),
-                    ));
+                    let terminus = &self.data.trips[d.trip].terminus;
+                    let hof = self
+                        .depots
+                        .get(&d.ai_group.to_ascii_lowercase())
+                        .and_then(|v| v.iter().find_map(|x| x.2.as_deref()));
+                list.push((expected, self.display_line(i), terminus_text(hof, terminus), (leave - arrive).max(0.0)));
                 }
             }
-        }
+            // the player's bus
+            if let Some(duty) = duty {
+                // a trip not begun leaves on time at the earliest (the bus waits at its
+                // first stop), one under way arrives as early or late as it runs
+                let delay = duty.delay(now);
+                let lateness = if duty.left_late.is_some() || duty.at_stop {
+                    delay
+                } else {
+                    delay.max(0.0)
+                };
+                for (ti, trip) in duty.trips.iter().enumerate().skip(duty.trip_index) {
+                    if trip.departure > now + BOARD_AHEAD {
+                        break;
+                    }
+                    for (k, s) in trip
+                        .stops
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, s)| s.object_id == stop && s.stops)
+                    {
+                        let current = ti == duty.trip_index;
+                        let expected = if current
+                            && (k < duty.next_stop || duty.done && k + 1 < trip.stops.len())
+                        {
+                            continue;
+                        } else if current && k == duty.next_stop && duty.at_stop {
+                            now
+                        } else if current {
+                            (s.arr + lateness).max(now)
+                        } else {
+                            (s.arr + delay.max(0.0)).max(now)
+                        };
+                        list.push((
+                            expected,
+                            trip.line.trim().to_string(),
+                            terminus_text(player_hof, &trip.terminus),
+                        (s.dep - s.arr).max(0.0),
+                        ));
+                    }
+                }
+            }
         list
     }
 
@@ -3819,13 +3819,13 @@ fn terminus_text(hof: Option<&omsi_vehicle::Hof>, terminus: &str) -> String {
         h.termini.iter().find(|t| {
             t.texture_id.trim().eq_ignore_ascii_case(name)
                 || t.strings
-                .iter()
-                .any(|s| s.trim().eq_ignore_ascii_case(name))
+                    .iter()
+                    .any(|s| s.trim().eq_ignore_ascii_case(name))
         })
     })
-        .and_then(|t| t.strings.first())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| name.to_uppercase())
+    .and_then(|t| t.strings.first())
+    .map(|s| s.trim().to_string())
+    .unwrap_or_else(|| name.to_uppercase())
 }
 
 /// Where a timetable bus on the road is in its trip, for the departure boards.
@@ -4028,7 +4028,7 @@ impl PlayerDuty {
     pub fn skip_to(&mut self, stop: usize) -> bool {
         let last = self.trip().stops.len().saturating_sub(1);
         let stop = stop.min(last);
-        log::info!("duty: page asks for stop {stop} (next {}, at_stop {}, done {})", self.next_stop, self.at_stop, self.done);
+        log::debug!("duty: page asks for stop {stop} (next {}, at_stop {}, done {})", self.next_stop, self.at_stop, self.done);
         if stop == self.next_stop && !self.done {
             return false;
         }
@@ -4226,7 +4226,7 @@ impl PlayerDuty {
                         served = Some((arrived, late));
                     }
                     self.next_stop = (self.next_stop + 1).min(last);
-                    log::info!("duty: left stop, next stop now {}", self.next_stop);
+                    log::debug!("duty: left stop, next stop now {}", self.next_stop);
                 }
             }
         }
@@ -4397,7 +4397,7 @@ mod tests {
                 }),
                 &link
             )
-                .duration,
+            .duration,
             1500.0
         );
     }
