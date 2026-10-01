@@ -173,6 +173,9 @@ struct Door {
     queue_dir: f32,
     /// A passenger who still has to buy a ticket may board here (no `{noticketsale}`).
     sells: bool,
+    /// `{withbutton}`: a door the passenger opens with the request button, worth walking to
+    /// while it is still shut.
+    button: bool,
     /// Where people getting off wait for the door to open: the path point next to it.
     wait: Vec3,
     /// The aisle beyond `wait`, where the others getting off line up.
@@ -287,8 +290,8 @@ impl Cabin {
         let mut links: Vec<(i32, i32, bool)> = Vec::new();
         let mut link_pack: Vec<Option<usize>> = Vec::new();
         let mut step_packs: Vec<Arc<[String]>> = Vec::new();
-        // (merged path point or -1, sells tickets, half width of the section)
-        let mut entry_points: Vec<(i32, bool, f32)> = Vec::new();
+        // (merged path point or -1, sells tickets, {withbutton}, half width of the section)
+        let mut entry_points: Vec<(i32, bool, bool, f32)> = Vec::new();
         let mut exit_points: Vec<(i32, f32)> = Vec::new();
         let mut places: Vec<(omsi_vehicle::cabin::PassPos, Vec3)> = Vec::new();
         let mut cabin_parts: Vec<CabinPart> = Vec::new();
@@ -361,7 +364,7 @@ impl Cabin {
             entry_points.extend(
                 cab.entries
                     .iter()
-                    .map(|e| (shift(e.path_point), !e.no_ticket_sale, half)),
+                    .map(|e| (shift(e.path_point), !e.no_ticket_sale, e.with_button, half)),
             );
             exit_points.extend(cab.exits.iter().map(|e| (shift(*e), half)));
             places.extend(cab.pass_positions.iter().map(|p| (p.clone(), *offset)));
@@ -373,7 +376,7 @@ impl Cabin {
         let graph = PathGraph::new(points.clone(), &links);
         // (the side of the road the stops are on: where a door's own point does not tell)
         let kerb = if LEFT_HAND.load(std::sync::atomic::Ordering::Relaxed) { -1.0f32 } else { 1.0 };
-        let door = |pp: i32, sells: bool, half_width: f32| -> Door {
+        let door = |pp: i32, sells: bool, button: bool, half_width: f32| -> Door {
             let point = (pp >= 0 && (pp as usize) < points.len()).then_some(pp as usize);
             let inside = point
                 .map(|i| points[i])
@@ -420,17 +423,18 @@ impl Cabin {
                 side,
                 queue_dir: -1.0,
                 sells,
+                button,
                 wait,
                 aisle,
             }
         };
         let mut entries: Vec<Door> = entry_points
             .iter()
-            .map(|(pp, sells, half)| door(*pp, *sells, *half))
+            .map(|(pp, sells, button, half)| door(*pp, *sells, *button, *half))
             .collect();
         let exits: Vec<Door> = exit_points
             .iter()
-            .map(|(pp, half)| door(*pp, false, *half))
+            .map(|(pp, half)| door(*pp, false, false, *half))
             .collect();
         // two leaves of one door: the queue of the front leaf runs forwards, the other's back,
         // so that the two lines do not stand in each other
@@ -5820,6 +5824,36 @@ impl Humans {
                     follow: slot > 0,
                     goal_dist: Some(d),
                 };
+                // Omsi.exe re-picks the entry every frame until the passenger reaches the
+                // door (0x62c4c8 -> 0x72506c): a door the driver opens on the way draws the
+                // ones it is nearer to. (A choice at most 2 m nearer is no reason to change
+                // queues: the two leaves of one door, and the pass holders who moved to
+                // the other leaf, stay put.) Somebody at a shut door goes to another door
+                // only once that one is open.
+                let at_door = slot == 0 && (base - pos2).length() <= 1.0;
+                if let Some(other) = self.choose_entry(i, bn).filter(|&e| e != entry) {
+                    let pays = self.pays_on(i, bn);
+                    let here = (bn.world(door.outside).truncate() - pos2).length();
+                    let there = (bn.world(bn.cabin.entries[other].outside).truncate() - pos2).length();
+                    let switch = if at_door {
+                        !bn.entry_open.get(entry).copied().unwrap_or(false) && bn.entry_open.get(other).copied().unwrap_or(false)
+                    } else {
+                        !Self::entry_candidate(bn, entry, pays) || there + 2.0 < here
+                    };
+                    if switch {
+                        self.set_state(
+                            i,
+                            State::Queue {
+                                bus,
+                                entry: other,
+                                stop,
+                                spot,
+                                joined,
+                            },
+                        );
+                        return w;
+                    }
+                }
                 if slot > 0 {
                     self.people[i].why = "in the queue";
                     // A pass holder behind people who pay goes to the other leaf when it is
@@ -5849,25 +5883,6 @@ impl Humans {
                     return w;
                 }
                 if !bn.entry_open.get(entry).copied().unwrap_or(false) {
-                    // another entry of the bus is open: go there - on the way, or when this
-                    // door has stayed shut a while (not the moment it closes behind the one
-                    // before)
-                    if let Some(other) = self
-                        .choose_entry(i, bn)
-                        .filter(|e| *e != entry && bn.entry_open.get(*e).copied().unwrap_or(false))
-                    {
-                        self.set_state(
-                            i,
-                            State::Queue {
-                                bus,
-                                entry: other,
-                                stop,
-                                spot,
-                                joined,
-                            },
-                        );
-                        return w;
-                    }
                     // every door has been shut long enough that none is about to open
                     // either (the driver parked here, or gave up on this stop): back to
                     // the waiting place rather than standing at a door that never opens
@@ -6653,41 +6668,27 @@ impl Humans {
         }
     }
 
-    /// The entry of `bus` person `i` walks to: the nearest open one they may use (one with
-    /// a cash desk for somebody who still has to buy a ticket), else the nearest allowed.
+    /// Whether person `i` may walk to entry `e` of `bn` now: it is open or opens with the
+    /// request button (`{withbutton}`), and, for somebody who still has to buy a ticket
+    /// (`pays`), it is not `{noticketsale}` (Omsi.exe 0x72506c).
+    fn entry_candidate(bn: &BusNow, e: usize, pays: bool) -> bool {
+        let d = &bn.cabin.entries[e];
+        (bn.entry_open.get(e).copied().unwrap_or(false) || d.button) && (!pays || d.sells)
+    }
+
+    /// Whether person `i` still has to buy a ticket at the desk of `bn`.
+    fn pays_on(&self, i: usize, bn: &BusNow) -> bool {
+        self.people[i].ticket.is_some() && !(bn.id == BusId::Player && self.boarding.eq_ignore_ascii_case("walk"))
+    }
+
+    /// The entry of `bus` person `i` walks to, as Omsi.exe 0x72506c picks it: the nearest
+    /// open (or `{withbutton}`) one they may use - one with a cash desk for somebody who
+    /// still has to buy a ticket - else the nearest open one at all, else the first entry.
     fn choose_entry(&self, i: usize, bn: &BusNow) -> Option<usize> {
-        let p = &self.people[i];
-        let pays = p.ticket.is_some()
-            && !(bn.id == BusId::Player && self.boarding.eq_ignore_ascii_case("walk"));
-        let pos = p.position.truncate();
-        let allowed: Vec<usize> = (0..bn.cabin.entries.len())
-            .filter(|&e| !pays || bn.cabin.entries[e].sells)
-            .collect();
-        let allowed = if allowed.is_empty() {
-            (0..bn.cabin.entries.len()).collect()
-        } else {
-            allowed
-        };
+        let pays = self.pays_on(i, bn);
+        let pos = self.people[i].position.truncate();
         let dist = |e: usize| (bn.world(bn.cabin.entries[e].outside).truncate() - pos).length();
-        // A door still shut counts as some metres farther, the more the longer one has
-        // waited at it: an open door not much farther is taken, a far one only once the
-        // near door stays shut. (Only the doors open at the moment counted: a bus whose
-        // rear doors opened a moment before its front one sent the people waiting at the
-        // front to the back.)
-        let waited = if matches!(p.state, State::Queue { .. }) { p.t_state.max(0.0) as f64 } else { 0.0 };
-        let shut = |e: usize| {
-            if bn.entry_open.get(e).copied().unwrap_or(false) {
-                0.0
-            } else {
-                6.0 + 2.0 * waited
-            }
-        };
-        // with both leaves open, spread out: the shorter queue wins at similar distance
-        allowed.iter().copied().min_by(|a, b| {
-            let qa = self.people.iter().filter(|q| matches!(q.state, State::Queue { bus, entry, .. } if bus == bn.id && entry == *a)).count() as f64;
-            let qb = self.people.iter().filter(|q| matches!(q.state, State::Queue { bus, entry, .. } if bus == bn.id && entry == *b)).count() as f64;
-            (dist(*a) + qa * 0.8 + shut(*a)).total_cmp(&(dist(*b) + qb * 0.8 + shut(*b)))
-        })
+        nearest_entry(bn.cabin.entries.len(), |e, pays| Self::entry_candidate(bn, e, pays), pays, dist)
     }
 
     /// The other door leaf a pass holder in place `slot` of the queue at `entry` should move
@@ -9406,6 +9407,24 @@ mod tests {
     }
 
     #[test]
+    fn nearest_open_or_button_entry_is_chosen() {
+        // passenger next to entry 1 (1 m), entry 0 is 8 m away
+        let dist = |e: usize| if e == 1 { 1.0 } else { 8.0 };
+        let pick = |open: [bool; 2], button: [bool; 2]| {
+            nearest_entry(2, |e, _| open[e] || button[e], false, dist)
+        };
+        assert_eq!(pick([true, false], [false, false]), Some(0));
+        assert_eq!(pick([true, true], [false, false]), Some(1));
+        assert_eq!(pick([true, false], [false, true]), Some(1));
+        assert_eq!(pick([false, false], [false, false]), Some(0));
+        // a payer skips the {noticketsale} door, unless nothing else is open
+        let sells = [true, false];
+        let pay = |open: [bool; 2]| nearest_entry(2, |e, pays| open[e] && (!pays || sells[e]), true, dist);
+        assert_eq!(pay([true, true]), Some(0));
+        assert_eq!(pay([false, true]), Some(1));
+    }
+
+    #[test]
     fn doors_open_reads_pax_vars_the_script_writes_without_declaring() {
         let dir = std::env::temp_dir().join(format!("omsi-doors-open-undeclared-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -9427,6 +9446,13 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).ok();
     }
+}
+
+/// Omsi.exe 0x72506c over `n` entries: the nearest one `candidate(e, pays)` lets the
+/// passenger use, else the nearest without the ticket-sale condition, else the first.
+fn nearest_entry(n: usize, candidate: impl Fn(usize, bool) -> bool, pays: bool, dist: impl Fn(usize) -> f64) -> Option<usize> {
+    let nearest = |pays: bool| (0..n).filter(|&e| candidate(e, pays)).min_by(|a, b| dist(*a).total_cmp(&dist(*b)));
+    nearest(pays).or_else(|| nearest(false)).or_else(|| (n > 0).then_some(0))
 }
 
 /// A heading in 0..360 degrees.
