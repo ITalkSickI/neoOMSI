@@ -1815,10 +1815,13 @@ impl App {
         }
         let n = self.game_menu_items().len();
         let sel = self.game_menu.unwrap_or(0);
+        let modified = self.keys.iter().any(|key| {
+            matches!(*key, KeyCode::ControlLeft | KeyCode::ControlRight | KeyCode::AltLeft | KeyCode::AltRight | KeyCode::ShiftLeft | KeyCode::ShiftRight)
+        });
         self.menu_top = None;
         match code {
-            // P: the pause ends, as it began
-            KeyCode::KeyP if (self.paused || self.lan.is_some()) && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::AltLeft) => self.toggle_pause(),
+            // P changes only the simulation state, even while a menu is open.
+            KeyCode::KeyP if !modified => self.toggle_pause(),
             // (from the full list back to the short one first)
             KeyCode::Escape if self.menu_more => {
                 self.menu_more = false;
@@ -2414,27 +2417,10 @@ impl App {
     }
 
     pub(crate) fn toggle_pause(&mut self) {
-        if self.lan.is_some() {
-            // (a LAN session goes on for the others: the menu, without the pause)
-            if self.game_menu.is_some() {
-                self.close_game_menu();
-            } else {
-                self.open_game_menu();
-                self.service_msg = Some(("A LAN session goes on while the menu is open".into(), 3.0));
-            }
-            return;
-        }
-        // the pause shows the pause menu (the everyday lines, "More..." for the rest); P
-        // or Resume go on
+        self.paused = !self.paused;
         if self.game_menu.is_some() {
-            self.close_game_menu();
-            self.paused = false;
-        } else if self.paused {
-            self.paused = false;
-        } else {
-            self.open_game_menu();
-            self.menu_prev_pause = false;
-            self.paused = true;
+            // Keep the state a menu close should restore in step with P.
+            self.menu_prev_pause = self.paused;
         }
     }
 
