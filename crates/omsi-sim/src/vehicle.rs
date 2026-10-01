@@ -951,6 +951,14 @@ impl VehicleInstance {
             })
             .collect();
         host.number_var = program.str_var("number");
+        // The vehicle dialog has already chosen these. They must exist before {init}: many
+        // mods branch on the fleet number to choose equipment, textures or script state.
+        if let (Some(i), Some(number)) = (program.str_var("number"), host.initial_number.as_ref()) {
+            state.str_vars[i as usize] = number.clone();
+        }
+        if let (Some(i), Some(ident)) = (program.str_var("ident"), host.initial_ident.as_ref()) {
+            state.str_vars[i as usize] = ident.clone();
+        }
         // defaults every bus expects before {init}
         let mut var_index = HashMap::new();
         for (i, n) in program.var_names.iter().enumerate() {
