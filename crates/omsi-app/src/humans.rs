@@ -3597,34 +3597,29 @@ impl Humans {
     }
 
     /// `PAX_Entry<i>_Open` / `PAX_Exit<i>_Open` as the bus script reports them. A bus whose
-    /// script never sets them (they are not in every mod, or only the front door uses them)
-    /// falls back to its `door_<i>`.
+    /// script never sets them (or only sets some of them) falls back to its physical `door_<i>`
+    /// or `door<i>` animations.
     fn doors_open(v: &VehicleInstance, n_entry: usize, n_exit: usize) -> (Vec<bool>, Vec<bool>) {
-        let doors: Vec<bool> = (0..8)
-            .map(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.9)
-            .collect();
+        let door_val = |k: usize| -> bool {
+            v.var(&format!("door_{k}"))
+                .or_else(|| v.var(&format!("door{k}")))
+                .unwrap_or(0.0)
+                > 0.5
+        };
+        // Exits in standard OMSI city buses (2 or more front door leaves) begin at door_2 (middle door),
+        // while coaches with a single front door leaf begin at door_1. Exits must not be offset by
+        // n_entry, because buses with all doors configured as entries (e.g. 3-door buses with 6 entries)
+        // still place middle-door exits at door_2/3 and rear-door exits at door_4/5.
+        let exit_door_base = if n_entry <= 1 { 1 } else { 2 };
         let entry: Vec<bool> = (0..n_entry)
             .map(|i| {
-                let name = format!("PAX_Entry{i}_Open");
-                if v.has_script_var(&name) {
-                    v.var(&name).unwrap_or(0.0) > 0.5
-                } else {
-                    doors[i.min(7)]
-                }
+                v.var(&format!("PAX_Entry{i}_Open")).unwrap_or(0.0) > 0.5 || door_val(i.min(7))
             })
             .collect();
         let exit: Vec<bool> = (0..n_exit)
             .map(|i| {
-                let name = format!("PAX_Exit{i}_Open");
-                if v.has_script_var(&name) {
-                    v.var(&name).unwrap_or(0.0) > 0.5
-                } else {
-                    // the exits follow the entries in the door_<i> numbering (door_0/1 the
-                    // front leaves, door_2.. the others): a bus with three or more doors and
-                    // no PAX_Exit vars of its own must still report its middle and rear doors
-                    // separately, not the front leaf's state for every one of them
-                    doors[(n_entry + i).min(7)]
-                }
+                v.var(&format!("PAX_Exit{i}_Open")).unwrap_or(0.0) > 0.5
+                    || door_val((exit_door_base + i).min(7))
             })
             .collect();
         (entry, exit)
@@ -3797,7 +3792,7 @@ impl Humans {
                     vec![false; cabin.exits.len()],
                 );
                 if open {
-                    if c.vehicle.has_script_var("PAX_Entry0_Open") || c.vehicle.has_script_var("door_0") {
+                    if c.vehicle.var("PAX_Entry0_Open").is_some() || c.vehicle.var("door_0").is_some() || c.vehicle.var("door0").is_some() {
                         let (e, x) =
                             Self::doors_open(&c.vehicle, cabin.entries.len(), cabin.exits.len());
                         entry_open = e;
@@ -9395,6 +9390,44 @@ mod tests {
         let (e, x) = Humans::doors_open(&v, 2, 1);
         assert_eq!(e, vec![true, true]);
         assert_eq!(x, vec![true]);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn doors_open_3door_bus_handles_middle_and_rear_exits() {
+        let dir = std::env::temp_dir().join(format!("omsi-doors-3door-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("test.bus"),
+            "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("model.cfg"), "").unwrap();
+        std::fs::write(dir.join("vars.txt"), "door_0\ndoor_1\ndoor_2\ndoor_3\ndoor_4\ndoor_5\n").unwrap();
+        std::fs::write(dir.join("main.osc"), "{init}\n{end}\n").unwrap();
+
+        let ty = std::sync::Arc::new(omsi_sim::VehicleType::load(&dir, &dir.join("test.bus")).unwrap());
+        let mut v = VehicleInstance::new(ty, omsi_sim::VehicleHost::new(Default::default()));
+
+        // 3-door bus: 6 entries (all 3 doors), 4 exits (middle door leaves 2,3; rear door leaves 4,5)
+        let (e, x) = Humans::doors_open(&v, 6, 4);
+        assert_eq!(e, vec![false; 6]);
+        assert_eq!(x, vec![false; 4]);
+
+        // Middle doors (door_2 and door_3) open
+        v.set_var("door_2", 1.0);
+        v.set_var("door_3", 1.0);
+        let (e, x) = Humans::doors_open(&v, 6, 4);
+        assert_eq!(e, vec![false, false, true, true, false, false]);
+        assert_eq!(x, vec![true, true, false, false]);
+
+        // Rear doors (door_4 and door_5) open
+        v.set_var("door_4", 1.0);
+        v.set_var("door_5", 1.0);
+        let (e, x) = Humans::doors_open(&v, 6, 4);
+        assert_eq!(e, vec![false, false, true, true, true, true]);
+        assert_eq!(x, vec![true, true, true, true]);
 
         std::fs::remove_dir_all(&dir).ok();
     }
