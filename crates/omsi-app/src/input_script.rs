@@ -735,6 +735,23 @@ impl App {
         p.action(action, false);
     }
 
+    /// Both mouse buttons held in a view of the bus: start OMSI's mouse zoom (false when
+    /// there is nothing to zoom - a menu, the city map, on foot).
+    pub(crate) fn start_both_drag(&mut self) -> bool {
+        if self.game_menu.is_some() || self.player.is_none() || self.navigator.as_ref().is_some_and(|n| n.map_open()) {
+            return false;
+        }
+        let value = match self.view.as_str() {
+            "outside" => self.orbit,
+            "driver" | "pax" => *self.view_zoom.get(&self.view).unwrap_or(&1.0),
+            _ => return false,
+        };
+        self.both_drag = Some((self.cursor.1, value));
+        self.mouse_look = false;
+        self.update_hover();
+        true
+    }
+
     pub(crate) fn on_mouse_moved(&mut self, x: f32, y: f32) {
         if self.move_cursor(x, y) {
             self.html_move();
@@ -847,6 +864,17 @@ impl App {
     fn move_cursor(&mut self, x: f32, y: f32) -> bool {
         let last = self.cursor;
         self.cursor = (x, y);
+        if let Some((y0, v0)) = self.both_drag {
+            // (0x82c5f8: the value at the press times 1 + the way up over 500 pixels; in the
+            // bus no wider than the seat's own view, as OMSI's zoom never goes below 1)
+            let k = (1.0 + (y0 - y) / 500.0).max(0.05);
+            if self.view == "outside" {
+                self.orbit = (v0 * k).clamp(ORBIT_MIN, ORBIT_MAX);
+            } else {
+                self.view_zoom.insert(self.view.clone(), (v0 / k).clamp(0.2, 1.0_f32.max(v0)));
+            }
+            return false;
+        }
         if self.menu_scroll_drag {
             let Some(ui) = self.ui.as_ref() else {
                 self.menu_scroll_drag = false;
@@ -1199,6 +1227,18 @@ impl App {
                         self.on_left(false);
                     }
                     log::info!("input script: click: placing {:?}, placed at {:?}", self.placing.as_ref().map(|p| (p.at, p.blocked)), self.placed.last().map(|q| (q.vehicle.position, q.vehicle.heading)));
+                }
+                // `both down|up`: both mouse buttons held (OMSI's mouse zoom) or let go
+                "both" => {
+                    if arg == "down" {
+                        self.buttons_held = (true, true);
+                        let started = self.start_both_drag();
+                        log::info!("input script: both buttons: zoom drag {started}");
+                    } else {
+                        self.buttons_held = (false, false);
+                        self.both_drag = None;
+                        log::info!("input script: both buttons up: zoom {:?}, orbit {:.1}", self.view_zoom.get(&self.view), self.orbit);
+                    }
                 }
                 "press" => self.on_left(true),
                 "release" => self.on_left(false),
