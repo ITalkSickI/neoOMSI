@@ -113,6 +113,9 @@ pub fn decode_bytes(bytes: &[u8], path: &Path) -> Result<Image, TextureError> {
         image::ImageFormat::Jpeg
     } else if bytes.starts_with(b"\x89PNG") {
         image::ImageFormat::Png
+    } else if looks_tga {
+        // a TGA under another name (NEOMAN's `W_Bader_KR498_disp.png`): D3DX reads it by content
+        return tga::decode(bytes).map_err(|e| TextureError::Decode(path.to_path_buf(), e));
     } else {
         match ext.as_str() {
             "dds" => image::ImageFormat::Dds,
@@ -551,6 +554,16 @@ mod tests {
         let img = decode_bytes(&bmp32([[1, 2, 3, 0]; 4]), Path::new("x.bmp")).unwrap();
         assert!(!img.has_alpha);
         assert!(img.rgba.chunks_exact(4).all(|p| p[3] == 255));
+    }
+
+    /// A TGA named `.png` (NEOMAN's `W_Bader_KR498_disp.png`, a 24-bit RLE TGA) decodes as TGA.
+    #[test]
+    fn misnamed_tga_by_content() {
+        let mut b = vec![0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 24, 0];
+        b.extend_from_slice(&[0x83, 0x30, 0x20, 0x10]);
+        let img = decode_bytes(&b, Path::new("x.png")).unwrap();
+        assert_eq!((img.width, img.height), (2, 2));
+        assert_eq!(&img.rgba[..4], &[0x10, 0x20, 0x30, 255]);
     }
 
     #[test]
