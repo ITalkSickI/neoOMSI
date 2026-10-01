@@ -1711,7 +1711,7 @@ impl ApplicationHandler for App {
                     // in the interface font, top left.
                     let mut lines: Vec<String> = Vec::new();
                     if self.paused {
-                        lines.push("Paused · P to go on".into());
+                        lines.push(ui::PAUSE_NOTICE.into());
                     }
                     // why the bus is not moving, whenever the throttle is pressed and nothing
                     // happens: the things a driver checks first
