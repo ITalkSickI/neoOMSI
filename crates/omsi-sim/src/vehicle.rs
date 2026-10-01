@@ -1957,29 +1957,6 @@ impl VehicleInstance {
             .fold(0.0, f32::max)
     }
 
-    /// The saloon lamps' light at a point of the model frame (0..1): each lit
-    /// `[interiorlight]` as the Direct3D point light OMSI makes of it (full within its
-    /// range, falling with the square of the distance beyond), summed and saturated. Unlike
-    /// [`Self::interior_light`] a lamp at the far end of the saloon hardly reaches the point,
-    /// and a lamp that is off gives nothing.
-    pub fn interior_light_at(&self, p: Vec3) -> f32 {
-        self.ty
-            .model
-            .interior_lights
-            .iter()
-            .map(|il| {
-                let on = il.variable.trim().parse::<f32>().ok().or_else(|| self.var(&il.variable)).unwrap_or(0.0).clamp(0.0, 1.0);
-                if on <= 0.0 {
-                    return 0.0;
-                }
-                let core = il.range.max(0.05);
-                let d2 = (Vec3::from(il.pos) - p).length_squared().max(1e-4);
-                on * (core * core / d2).min(1.0)
-            })
-            .sum::<f32>()
-            .min(1.0)
-    }
-
     /// Run one simulation frame: physics, scripts, then animations.
     pub fn update(&mut self, dt: f32) {
         self.host.clock.advance(dt);

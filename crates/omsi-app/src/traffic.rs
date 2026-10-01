@@ -6437,7 +6437,7 @@ impl Traffic {
                 }
             }
             if let Some(f) = self.drivers.get_mut(&c.id) {
-                f.update(renderer, scene, &c.vehicle, dt, true, false);
+                f.update(renderer, scene, &c.vehicle, &c.render, dt, true, false);
             }
         }
         let gone: Vec<u64> = self.drivers.keys().copied().filter(|id| !keep.contains(id)).collect();

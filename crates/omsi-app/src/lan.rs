@@ -3035,7 +3035,7 @@ pub fn tick(
             rv.driver = crate::driver::DriverFigure::new_named(w, r, scene, &rv.vehicle, &rv.last.figure, 1000 + *id as u64);
         }
         if let Some(d) = rv.driver.as_mut() {
-            d.update(r, scene, &rv.vehicle, dt.max(1.0 / 120.0), rv.last.walker.is_none(), false);
+            d.update(r, scene, &rv.vehicle, &rv.render, dt.max(1.0 / 120.0), rv.last.walker.is_none(), false);
         }
         // drawn as the own bus is: its outside meshes from outside, its inside ones to
         // whoever stands in it (the outside and the AI meshes together fought over the

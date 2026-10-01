@@ -9189,6 +9189,8 @@ fn sync_materials(
 /// (up to `omsi_render::MAX_LAMPS_PER_MESH`), as OMSI switches those lights on
 /// for just that mesh. Every set of lamps some mesh names gets a run of slots of its own
 /// (the LiAZ 5292 has 32 lamps; only the first eight were drawn, and its saloon stayed dark).
+/// The seats' sets (`PassPos::illumination`, the lamps that light a person sitting there)
+/// get theirs too: see [`VehicleRender::seat_lamps`].
 fn sync_interior_lamps(
     renderer: &Renderer,
     scene: &mut Scene,
@@ -9207,12 +9209,7 @@ fn sync_interior_lamps(
         let mut sets: Vec<(usize, Vec<usize>)> = Vec::new();
         for (i, _) in render.instances.iter().enumerate() {
             let Some(vm) = ty.meshes.get(i) else { continue };
-            let mut set: Vec<usize> = Vec::new();
-            for &k in &ty.model.meshes[vm.def_index].illumination_interior {
-                if k >= 0 && (k as usize) < n && !set.contains(&(k as usize)) && set.len() < omsi_render::MAX_LAMPS_PER_MESH as usize {
-                    set.push(k as usize);
-                }
-            }
+            let set = lamp_set(&ty.model.meshes[vm.def_index].illumination_interior, n);
             if !set.is_empty() {
                 sets.push((i, set));
             }
@@ -9221,6 +9218,14 @@ fn sync_interior_lamps(
         for (_, set) in &sets {
             if !distinct.contains(set) {
                 distinct.push(set.clone());
+            }
+        }
+        if let Some(cabin) = crate::driver::cabin_of(&ty.def) {
+            for seat in cabin.driver_positions.iter().chain(&cabin.pass_positions) {
+                let set = lamp_set(&seat.illumination, n);
+                if !set.is_empty() && !distinct.contains(&set) {
+                    distinct.push(set);
+                }
             }
         }
         let total: u32 = distinct.iter().map(|d| d.len() as u32).sum();
@@ -9274,6 +9279,29 @@ fn sync_interior_lamps(
                 },
             );
         }
+    }
+}
+
+/// The lamps (indices into the model's `[interiorlight]`s) a mesh's or a seat's
+/// `[illumination_interior]` names: those that exist, each once, as many as a mesh may have.
+fn lamp_set(indices: &[i32], n: usize) -> Vec<usize> {
+    let mut set: Vec<usize> = Vec::new();
+    for &k in indices {
+        if k >= 0 && (k as usize) < n && !set.contains(&(k as usize)) && set.len() < omsi_render::MAX_LAMPS_PER_MESH as usize {
+            set.push(k as usize);
+        }
+    }
+    set
+}
+
+impl VehicleRender {
+    /// The lamp slots (first, count) for `set_interior_lamps` that light a person on a seat
+    /// with these four lamps (`PassPos::illumination`) in a vehicle of `n` lamps; None
+    /// before the vehicle's lamps are first synced, or when none of them exists.
+    pub fn seat_lamps(&self, n: usize, lamps: &[i32; 4]) -> Option<(u32, u32)> {
+        let set = lamp_set(lamps, n);
+        let blocks = self.interior_blocks.get()?;
+        blocks.iter().find(|b| b.1 == set).map(|b| (b.0, set.len() as u32))
     }
 }
 

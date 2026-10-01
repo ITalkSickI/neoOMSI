@@ -1598,7 +1598,7 @@ impl Player {
     pub(crate) fn sync_driver_hands(&mut self, renderer: &Renderer, scene: &mut Scene, dt: f32, show: bool, mirror_only: bool, hands: bool) {
         if let Some(d) = self.driver.as_mut() {
             d.show_hands_in_cab = hands;
-            d.update(renderer, scene, &self.vehicle, dt, show, mirror_only);
+            d.update(renderer, scene, &self.vehicle, &self.render, dt, show, mirror_only);
         }
     }
 

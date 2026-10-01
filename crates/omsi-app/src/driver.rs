@@ -108,6 +108,9 @@ pub struct DriverFigure {
     hip: Vec3,
     floor: Vec3,
     heading: f32,
+    /// The seat's four `[interiorlight]`s (see `PassPos::illumination`): the lamps that
+    /// light the figure, as Omsi.exe lights a seated person (0x62f7b8).
+    lamps: [i32; 4],
     wheel: Option<Wheel>,
     /// The sign that turns the wheel variable's angle into the angle seen from the seat
     /// (found by comparing it with the mesh as turned; 0 until then).
@@ -311,6 +314,7 @@ impl DriverFigure {
             hip: Vec3::ZERO,
             floor: Vec3::ZERO,
             heading: 0.0,
+            lamps: [-1; 4],
             wheel: None,
             sign: 0.0,
             lean: 0.0,
@@ -357,6 +361,7 @@ impl DriverFigure {
             hip.z - seat.height.max(0.3),
         );
         self.heading = seat.rot;
+        self.lamps = seat.illumination;
         self.wheel = find_wheel(v, hip);
         let r = self.wheel.as_ref().map(|w| w.tube + FINGER_HALF).unwrap_or(GRIP_RADIUS);
         if (r - self.grip_radius).abs() > 1e-4 {
@@ -399,7 +404,7 @@ impl DriverFigure {
     /// Turn the hands with the wheel, pose, skin and place the figure; `show` false hides it,
     /// `mirror_only` keeps it out of the window's picture but in the mirrors (the driver's
     /// own view: OMSI shows the driver in the mirrors while one looks from his seat).
-    pub fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, dt: f32, show: bool, mirror_only: bool) {
+    pub fn update(&mut self, renderer: &Renderer, scene: &mut Scene, v: &VehicleInstance, render: &crate::scene::VehicleRender, dt: f32, show: bool, mirror_only: bool) {
         if show != self.shown {
             for (_, inst) in &self.meshes {
                 renderer.set_params(scene, *inst, &[], show, &[]);
@@ -466,7 +471,7 @@ impl DriverFigure {
             self.settled = true;
             self.base_lean = self.lean;
             log::debug!("driver: seat slid {:.2} m forward and {:.0} deg of lean to reach the wheel", self.slide, self.lean);
-            return self.update(renderer, scene, v, dt, show, mirror_only);
+            return self.update(renderer, scene, v, render, dt, show, mirror_only);
         }
         let targets = self.hand_targets(v, dt);
         if let (Some(t), true) = (&targets, omsi_cfg::env::var_os("OMSI_DEBUG_DRIVER").is_some()) {
@@ -571,14 +576,15 @@ impl DriverFigure {
         let body = v.body_rotation();
         let at = v.position + body.transform_point3(floor).as_dvec3();
         let xf = body * Mat4::from_rotation_z(-h);
-        // lit by the lamps near the seat as they are (the driver's lamp, the saloon lamps
-        // over the front door), not by the brightest lamp anywhere in the bus: taken as the
-        // saloon's strongest light at full strength the driver glowed evenly all night as
-        // soon as any circuit was on, twice as bright as the passengers (who get half)
-        let interior = v.interior_light_at(self.hip + Vec3::new(0.0, 0.0, 0.55)) * 0.5;
+        // lit by the seat's four lamps as Omsi.exe lights a seated person (0x62f7b8 enables
+        // them as Direct3D lights for the figure): the bus meshes' point lights, coloured,
+        // falling off with distance and only on the side facing them. (A flat warm term of
+        // the lamps' sum lit the figure evenly on every side, glowing in the dark cab.)
+        let (first, count) = render.seat_lamps(v.ty.model.interior_lights.len(), &self.lamps).unwrap_or((0, 0));
         for (_, inst) in &self.meshes {
             renderer.set_transform(scene, *inst, at, xf);
-            renderer.set_interior(scene, *inst, interior);
+            renderer.set_interior(scene, *inst, 0.0);
+            renderer.set_interior_lamps(scene, *inst, first, count);
         }
     }
 }
@@ -837,21 +843,25 @@ impl DriverFigure {
     }
 }
 
-/// The vehicle's first `[drivpos]` (its passenger cabin is read once per type).
+/// The vehicle's first `[drivpos]`.
 fn seat_of(v: &VehicleInstance) -> Option<omsi_vehicle::cabin::PassPos> {
-    static SEATS: std::sync::Mutex<Option<std::collections::HashMap<std::path::PathBuf, Option<omsi_vehicle::cabin::PassPos>>>> =
+    cabin_of(&v.ty.def)?.driver_positions.first().cloned()
+}
+
+/// A vehicle type's passenger cabin, read once per type.
+pub fn cabin_of(def: &omsi_vehicle::Vehicle) -> Option<Arc<omsi_vehicle::PassengerCabin>> {
+    static CABINS: std::sync::Mutex<Option<std::collections::HashMap<std::path::PathBuf, Option<Arc<omsi_vehicle::PassengerCabin>>>>> =
         std::sync::Mutex::new(None);
-    let key = v.ty.def.path.clone();
-    let mut seats = SEATS.lock().unwrap_or_else(|e| e.into_inner());
-    seats
+    let mut cabins = CABINS.lock().unwrap_or_else(|e| e.into_inner());
+    cabins
         .get_or_insert_with(Default::default)
-        .entry(key)
+        .entry(def.path.clone())
         .or_insert_with(|| {
-            let rel = v.ty.def.passenger_cabin.as_ref()?;
-            let cabin = omsi_vehicle::PassengerCabin::load(&omsi_cfg::resolve_path(v.ty.def.dir(), rel))
+            let rel = def.passenger_cabin.as_ref()?;
+            omsi_vehicle::PassengerCabin::load(&omsi_cfg::resolve_path(def.dir(), rel))
                 .map_err(|e| log::warn!("driver: {e}"))
-                .ok()?;
-            cabin.driver_positions.first().cloned()
+                .ok()
+                .map(Arc::new)
         })
         .clone()
 }

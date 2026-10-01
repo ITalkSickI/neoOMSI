@@ -8,6 +8,11 @@ pub struct PassPos {
     pub pos: [f32; 3],
     pub height: f32,
     pub rot: f32,
+    /// The four `[interiorlight]`s (by index, -1 none) that light a person on this seat, as
+    /// Omsi.exe keeps them in the seat record (+0x24..+0x27, 0x5ce680): the first seat of
+    /// the file, `[passpos]` or `[drivpos]`, has 0 1 2 3, every later one those of the seat
+    /// before it, and an `[illumination_interior]` sets those of the seat written last.
+    pub illumination: [i32; 4],
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -42,7 +47,6 @@ pub struct PassengerCabin {
     pub change_points: Vec<VarPoint>,
     pub pass_positions: Vec<PassPos>,
     pub driver_positions: Vec<PassPos>,
-    pub illumination_interior: Vec<i32>,
 }
 
 impl PassengerCabin {
@@ -54,6 +58,9 @@ impl PassengerCabin {
     pub fn parse(f: &CfgFile) -> PassengerCabin {
         let mut c = PassengerCabin::default();
         let mut r = f.reader().disabled_blocks();
+        // the seat written last (driver's or not, and which): Omsi.exe keeps both kinds in
+        // one list, in the order of the file
+        let mut last: Option<(bool, usize)> = None;
         while let Some(k) = r.next_keyword() {
             match k.as_str() {
                 "entry" => {
@@ -92,17 +99,54 @@ impl PassengerCabin {
                     let pos = r.f32s::<3>();
                     let height = r.f32();
                     let rot = r.f32();
-                    let p = PassPos { pos, height, rot };
+                    let illumination = match last {
+                        Some((true, i)) => c.driver_positions[i].illumination,
+                        Some((false, i)) => c.pass_positions[i].illumination,
+                        None => [0, 1, 2, 3],
+                    };
+                    let p = PassPos { pos, height, rot, illumination };
                     if k == "passpos" {
                         c.pass_positions.push(p);
+                        last = Some((false, c.pass_positions.len() - 1));
                     } else {
                         c.driver_positions.push(p);
+                        last = Some((true, c.driver_positions.len() - 1));
                     }
                 }
-                "illumination_interior" => c.illumination_interior = r.i32_list(4),
+                "illumination_interior" => {
+                    // (exactly four lines, each a signed byte in the record)
+                    let l = [r.i32(), r.i32(), r.i32(), r.i32()];
+                    let seat = match last {
+                        Some((true, i)) => Some(&mut c.driver_positions[i]),
+                        Some((false, i)) => Some(&mut c.pass_positions[i]),
+                        None => None,
+                    };
+                    if let Some(seat) = seat {
+                        seat.illumination = l;
+                    }
+                }
                 _ => {}
             }
         }
         c
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seat_lamps_follow_the_seat_before() {
+        let text = "[drivpos]\n-0.8\n4.5\n1.0\n0.5\n0\n\n[illumination_interior]\n4\n5\n-1\n-1\n\n\
+                    [passpos]\n0.5\n2\n1\n0.5\n0\n\n[passpos]\n0.5\n1\n1\n0.5\n0\n\n\
+                    [illumination_interior]\n6\n7\n8\n9\n\n[passpos]\n0.5\n0\n1\n0.5\n0\n";
+        let c = PassengerCabin::parse(&CfgFile::from_str("passengercabin.cfg", text));
+        assert_eq!(c.driver_positions[0].illumination, [4, 5, -1, -1]);
+        assert_eq!(c.pass_positions[0].illumination, [4, 5, -1, -1]);
+        assert_eq!(c.pass_positions[1].illumination, [6, 7, 8, 9]);
+        assert_eq!(c.pass_positions[2].illumination, [6, 7, 8, 9]);
+        let c = PassengerCabin::parse(&CfgFile::from_str("passengercabin.cfg", "[passpos]\n0\n0\n1\n0.5\n0\n"));
+        assert_eq!(c.pass_positions[0].illumination, [0, 1, 2, 3]);
     }
 }
