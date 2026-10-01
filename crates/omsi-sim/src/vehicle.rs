@@ -1722,6 +1722,11 @@ impl VehicleInstance {
             .map(|&i| self.state.vars[i as usize])
     }
 
+    /// Whether variable `name` was declared in the vehicle's script set (as opposed to built-in host variables).
+    pub fn has_script_var(&self, name: &str) -> bool {
+        self.ty.program.has_script_var(name)
+    }
+
     /// The name of script variable `index` (lower case), for diagnostics and key helpers.
     pub fn var_name(&self, index: usize) -> Option<&str> {
         self.var_index

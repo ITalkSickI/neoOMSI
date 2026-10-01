@@ -3579,31 +3579,36 @@ impl Humans {
     }
 
     /// `PAX_Entry<i>_Open` / `PAX_Exit<i>_Open` as the bus script reports them. A bus whose
-    /// script never sets them (they are not in every mod) falls back to its `door_<i>`.
+    /// script never sets them (they are not in every mod, or only the front door uses them)
+    /// falls back to its `door_<i>`.
     fn doors_open(v: &VehicleInstance, n_entry: usize, n_exit: usize) -> (Vec<bool>, Vec<bool>) {
-        let mut entry: Vec<bool> = (0..n_entry)
-            .map(|i| v.var(&format!("PAX_Entry{i}_Open")).unwrap_or(0.0) > 0.5)
+        let doors: Vec<bool> = (0..8)
+            .map(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.9)
             .collect();
-        let mut exit: Vec<bool> = (0..n_exit)
-            .map(|i| v.var(&format!("PAX_Exit{i}_Open")).unwrap_or(0.0) > 0.5)
+        let entry: Vec<bool> = (0..n_entry)
+            .map(|i| {
+                let name = format!("PAX_Entry{i}_Open");
+                if v.has_script_var(&name) {
+                    v.var(&name).unwrap_or(0.0) > 0.5
+                } else {
+                    doors[i.min(7)]
+                }
+            })
             .collect();
-        if v.var("PAX_Entry0_Open").is_none() && v.var("PAX_Exit0_Open").is_none() {
-            let doors: Vec<bool> = (0..8)
-                .map(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.9)
-                .collect();
-            if doors.iter().any(|o| *o) {
-                for (i, e) in entry.iter_mut().enumerate() {
-                    *e = doors[i.min(7)];
+        let exit: Vec<bool> = (0..n_exit)
+            .map(|i| {
+                let name = format!("PAX_Exit{i}_Open");
+                if v.has_script_var(&name) {
+                    v.var(&name).unwrap_or(0.0) > 0.5
+                } else {
+                    // the exits follow the entries in the door_<i> numbering (door_0/1 the
+                    // front leaves, door_2.. the others): a bus with three or more doors and
+                    // no PAX_Exit vars of its own must still report its middle and rear doors
+                    // separately, not the front leaf's state for every one of them
+                    doors[(n_entry + i).min(7)]
                 }
-                // the exits follow the entries in the door_<i> numbering (door_0/1 the
-                // front leaves, door_2.. the others): a bus with three or more doors and
-                // no PAX_Exit vars of its own must still report its middle and rear doors
-                // separately, not the front leaf's state for every one of them
-                for (i, e) in exit.iter_mut().enumerate() {
-                    *e = doors[(n_entry + i).min(7)];
-                }
-            }
-        }
+            })
+            .collect();
         (entry, exit)
     }
 
@@ -3774,7 +3779,7 @@ impl Humans {
                     vec![false; cabin.exits.len()],
                 );
                 if open {
-                    if c.vehicle.var("PAX_Entry0_Open").is_some() {
+                    if c.vehicle.has_script_var("PAX_Entry0_Open") || c.vehicle.has_script_var("door_0") {
                         let (e, x) =
                             Self::doors_open(&c.vehicle, cabin.entries.len(), cabin.exits.len());
                         entry_open = e;
@@ -9350,6 +9355,49 @@ mod tests {
         assert!((p.y - 7.0).abs() < 1e-6);
         assert!((h - 180.0).abs() < 1e-6);
         assert!((back.project(&net, DVec3::new(0.3, 5.0, 0.0), 2.5) - 3.0).abs() < 0.11);
+    }
+
+    #[test]
+    fn doors_open_falls_back_when_exit_vars_are_undeclared() {
+        let dir = std::env::temp_dir().join(format!("omsi-doors-open-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("test.bus"),
+            "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("model.cfg"), "").unwrap();
+        // Front door leaf 0 uses PAX_Entry0_Open. Rear door (door_2) has no PAX_Exit0_Open in varlist.
+        std::fs::write(dir.join("vars.txt"), "door_0\ndoor_1\ndoor_2\nPAX_Entry0_Open\n").unwrap();
+        std::fs::write(dir.join("main.osc"), "{init}\n{end}\n").unwrap();
+
+        let ty = std::sync::Arc::new(omsi_sim::VehicleType::load(&dir, &dir.join("test.bus")).unwrap());
+        let mut v = VehicleInstance::new(ty, omsi_sim::VehicleHost::new(Default::default()));
+
+        // Initially both entries and exit closed
+        let (e, x) = Humans::doors_open(&v, 2, 1);
+        assert_eq!(e, vec![false, false]);
+        assert_eq!(x, vec![false]);
+
+        // Front door leaf 0 opens via PAX_Entry0_Open
+        v.set_var("PAX_Entry0_Open", 1.0);
+        let (e, x) = Humans::doors_open(&v, 2, 1);
+        assert_eq!(e, vec![true, false]);
+        assert_eq!(x, vec![false]);
+
+        // Rear door leaf 2 opens (falls back to door_2 since PAX_Exit0_Open is not in varlist)
+        v.set_var("door_2", 1.0);
+        let (e, x) = Humans::doors_open(&v, 2, 1);
+        assert_eq!(e, vec![true, false]);
+        assert_eq!(x, vec![true]);
+
+        // Front door leaf 1 opens via door_1 fallback
+        v.set_var("door_1", 1.0);
+        let (e, x) = Humans::doors_open(&v, 2, 1);
+        assert_eq!(e, vec![true, true]);
+        assert_eq!(x, vec![true]);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 
