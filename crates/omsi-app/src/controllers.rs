@@ -827,7 +827,7 @@ fn wheel_force(f: &FfInput, x: f32, x0: f32, t: &mut f32, k_springs: f32, k_effe
     // otherwise stop the return. Compensate wheel friction near the centre with
     // a smooth extra torque, tapered away at larger angles. It crosses zero
     // continuously so there is no fixed kick when the wheel passes the centre.
-    let centre_return = 0.045 * x / (x * x + 0.004 * 0.004).sqrt() / (1.0 + (x / 0.12).powi(4));
+    let centre_return = 0.025 * x / (x * x + 0.004 * 0.004).sqrt() / (1.0 + (x / 0.12).powi(4));
     let spring = -(spring_strength * x / (0.5 + 1.15 * x.abs()) + centre_return) * rolling;
     let road_align = -(f.lateral_accel / 9.81).clamp(-0.45, 0.45) * 0.25 * (v / 5.0).clamp(0.0, 1.0) * rolling;
     // Assisted steering should not demand ever more hand force near full lock.
@@ -843,13 +843,18 @@ fn wheel_force(f: &FfInput, x: f32, x0: f32, t: &mut f32, k_springs: f32, k_effe
     // force. At a standstill, resist motion equally in either direction.
     let returning = x * turning_speed < 0.0;
     let drag = -turning_speed * parking_drag * if returning { 1.0 - 0.8 * rolling } else { 1.0 };
+    // Keep some damping on return as well as when turning out. Reducing all
+    // resistance on return lets a quick wheel overshoot and oscillate around
+    // the centre, especially when force commands arrive at a low frame rate.
+    // This only resists motion: it adds no holding force or parked centring.
+    let damping = -0.03 * turning_speed * rolling;
     *t += dt;
     let period = (f.vib_period * 0.01).max(0.02);
     let shake = f.vib_amp.clamp(0.0, 1.0) * VIB_SHARE * (std::f32::consts::TAU * *t / period).sin();
     // Preserve small road details while softening kerb-sized peaks. One short
     // kick and rebound feels less like a continuously shaking wheel mount.
     let bump = f.wheel_bump.clamp(0.0, 1.0).sqrt() * 0.46 * (std::f32::consts::TAU * f.wheel_bump_age * 6.5).cos();
-    let steering = ((spring + road_align) * lock_assist * assist + drag) * moving_steering_gain;
+    let steering = ((spring + road_align) * lock_assist * assist + drag) * moving_steering_gain + damping;
     (steering * k_springs.clamp(0.0, 2.0) + (shake + bump) * k_effects.clamp(0.0, 2.0)).clamp(-1.0, 1.0)
 }
 
@@ -1400,6 +1405,41 @@ mod button_tests {
     }
 
     #[test]
+    fn a_moving_wheel_is_damped_when_it_crosses_the_centre() {
+        let mut t = 0.0;
+        for kmh in [5.0, 20.0, 70.0] {
+            let f = super::FfInput { on: true, kmh, dt: 0.02, ..Default::default() };
+            // At the centre there is no spring torque. The remaining force must
+            // slow a crossing wheel in either direction rather than accelerate it.
+            let right = super::wheel_force(&f, 0.0, -0.01, &mut t, 1.0, 0.0);
+            let left = super::wheel_force(&f, 0.0, 0.01, &mut t, 1.0, 0.0);
+            assert!(right < -0.015 && left > 0.015, "kmh={kmh}: {right} {left}");
+            assert!((right + left).abs() < 1e-6);
+            assert_eq!(super::wheel_force(&f, 0.0, 0.0, &mut t, 1.0, 0.0), 0.0);
+            // Steering strength controls damping too, independently of vibration.
+            assert_eq!(super::wheel_force(&f, 0.0, -0.01, &mut t, 0.0, 0.0), 0.0);
+        }
+    }
+
+    #[test]
+    fn the_same_wheel_velocity_gives_the_same_force_at_different_frame_rates() {
+        let mut t = 0.0;
+        for velocity in [-0.5, 0.5] {
+            let mut reference: Option<f32> = None;
+            for fps in [20.0, 30.0, 60.0, 144.0] {
+                let dt = 1.0 / fps;
+                let f = super::FfInput { on: true, kmh: 30.0, dt, ..Default::default() };
+                let force = super::wheel_force(&f, 0.05, 0.05 - velocity * dt, &mut t, 1.0, 0.0);
+                if let Some(previous) = reference {
+                    assert!((force - previous).abs() < 1e-6, "fps={fps}: {force} {previous}");
+                } else {
+                    reference = Some(force);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_real_turn_adds_aligning_torque_but_a_parked_bus_does_not() {
         let mut t = 0.0;
         let mut f = super::FfInput { on: true, kmh: 30.0, dt: 0.016, ..Default::default() };
@@ -1415,12 +1455,16 @@ mod button_tests {
     }
 
     #[test]
-    fn steering_assist_lightens_turning_out_without_weakening_return() {
+    fn steering_assist_lightens_turning_out() {
         let mut t = 0.0;
         let f = super::FfInput { on: true, kmh: 25.0, lateral_accel: 2.0, dt: 0.016, ..Default::default() };
+        let held = super::wheel_force(&f, 0.5, 0.5, &mut t, 1.0, 0.0);
         let turning_out = super::wheel_force(&f, 0.5, 0.48, &mut t, 1.0, 0.0);
         let returning = super::wheel_force(&f, 0.5, 0.52, &mut t, 1.0, 0.0);
-        assert!(returning < turning_out && turning_out < 0.0, "{turning_out} {returning}");
+        // Assistance still lightens turning out. A moving return also includes
+        // damping, so its net torque need not exceed the outward-turning torque.
+        assert!(held < turning_out && turning_out < 0.0, "{held} {turning_out}");
+        assert!(returning < 0.0, "{returning}");
     }
 
     #[test]
