@@ -4340,10 +4340,9 @@ impl Humans {
         }
     }
 
-    /// Use the map's explicit passenger/pedestrian paths, preserving repeated entries.
-    /// Without a list keep the installed fallback types. With a nonempty list use only
-    /// definitions that load successfully, even if none do: another map's people must
-    /// not silently replace a missing passenger pack.
+    /// Keep only the people the map's `humans.txt` names, an entry listed twice counting
+    /// twice, as OMSI draws a map's pedestrians and passengers from that list alone. A map
+    /// without the file, or whose list names nobody to be found, keeps everybody.
     fn use_map_humans(&mut self, world: &World) {
         if self.map_humans_done {
             return;
@@ -4354,7 +4353,30 @@ impl Humans {
         if list.is_empty() {
             return;
         }
-        let picked = map_human_types(&world.root, &list);
+        // the people installed already (any content root, mods too), matched by the path
+        // below `Humans/`; an entry not among them (a pack nested deeper than the scan) is
+        // loaded from its own path
+        let key = |p: &str| -> String {
+            let p = p.replace('\\', "/").to_ascii_lowercase();
+            match p.rfind("humans/") {
+                Some(k) => p[k + 7..].to_string(),
+                None => p,
+            }
+        };
+        let mut picked: Vec<Arc<HumanType>> = Vec::new();
+        for line in &list {
+            let want = key(line.trim());
+            match self.types.iter().find(|t| key(&t.def.path.to_string_lossy()) == want) {
+                Some(t) => picked.push(t.clone()),
+                None => picked.extend(map_human_types(&world.root, std::slice::from_ref(line))),
+            }
+        }
+        // (a list that names nobody to be found keeps everybody: a map without people
+        // looked broken)
+        if picked.is_empty() {
+            log::warn!("humans.txt of the map names nobody installed: keeping all people");
+            return;
+        }
         log::info!(
             "humans: {} of {} map entries loaded from {}",
             picked.len(),
