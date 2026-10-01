@@ -808,6 +808,15 @@ pub(crate) fn run_offscreen(
             }
         }
         if let Some(h) = humans_off.as_mut() {
+            // keep density and time_of_day up to date every tick, as app_events.rs does
+            // (stop_target = enter_mean * density; without this it stays at the startup
+            // value and the new formula returns 0 for the whole session when the map has
+            // a low hourly density at the start time)
+            h.density = world
+                .global
+                .passenger_density((run_clock.time / 3600.0) as f32)
+                * settings.pax_density;
+            h.time_of_day = run_clock.time;
             // what the passengers must not be seen appearing in front of
             let followed = traffic
                 .as_ref()
