@@ -1619,7 +1619,7 @@ pub fn mods(l: &mut Launcher, area: Rect) {
         }
     }
     y += 52.0;
-    l.ui.label(Rect::new(inner.x, y, inner.w, 20.0), "ZIP mode (7z and RAR are always unpacked)");
+    l.ui.label(Rect::new(inner.x, y, inner.w, 20.0), "Archive install mode");
     y += 22.0;
     let mut m = l.state.mod_mode;
     if l.ui.segmented("mod-mode", Rect::new(inner.x, y, inner.w, 34.0), &mut m, &["Auto", "Unpacked", "Used in place"]) {
