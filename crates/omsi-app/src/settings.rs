@@ -47,7 +47,8 @@ pub struct Settings {
     pub vr_scale: f32,
     /// Optional VR head pose smoothing time in milliseconds; zero uses raw tracking.
     pub vr_head_smoothing_ms: f32,
-    /// Total bus mirror redraws per second in VR; zero freezes them.
+    /// Total bus mirror redraws per second in VR; zero freezes them,
+    /// and -1 redraws every mirror once per game frame.
     pub vr_mirror_rate: f32,
     /// Copy the left eye to the desktop while VR is active.
     pub vr_desktop_mirror: bool,
@@ -323,7 +324,7 @@ impl Settings {
                 "vr" => s.vr = b(v),
                 "vr_scale" => s.vr_scale = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.5, 1.0)).unwrap_or(s.vr_scale),
                 "vr_head_smoothing_ms" => s.vr_head_smoothing_ms = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 30.0)).unwrap_or(s.vr_head_smoothing_ms),
-                "vr_mirror_rate" => s.vr_mirror_rate = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(0.0, 60.0)).unwrap_or(s.vr_mirror_rate),
+                "vr_mirror_rate" => s.vr_mirror_rate = v.parse::<f32>().ok().filter(|x| x.is_finite()).map(|x| x.clamp(-1.0, 360.0)).unwrap_or(s.vr_mirror_rate),
                 "vr_desktop_mirror" => s.vr_desktop_mirror = b(v),
                 "fullscreen" => s.fullscreen = b(v),
                 "vsync" => s.vsync = b(v),
@@ -554,6 +555,16 @@ mod tests {
         assert_eq!(Settings::from_text("mirror_size=32\n").mirror_size, 64);
         let off = Settings { mirror_size: 0, ..Default::default() };
         assert_eq!(Settings::from_text(&off.to_text()).mirror_size, 0);
+    }
+
+    #[test]
+    fn vr_mirror_rates_round_trip_including_every_frame() {
+        for rate in [-1.0, 0.0, 16.0, 60.0, 120.0, 240.0, 360.0] {
+            let s = Settings { vr_mirror_rate: rate, ..Default::default() };
+            assert_eq!(Settings::from_text(&s.to_text()).vr_mirror_rate, rate);
+        }
+        assert_eq!(Settings::from_text("vr_mirror_rate=NaN\n").vr_mirror_rate, 16.0);
+        assert_eq!(Settings::from_text("vr_mirror_rate=999\n").vr_mirror_rate, 360.0);
     }
 
     #[test]
