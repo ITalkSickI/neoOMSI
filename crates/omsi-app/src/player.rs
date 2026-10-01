@@ -1606,6 +1606,10 @@ impl Player {
     /// The driver's chosen camera as it is fixed in the bus (before the bus's own motion), turned
     /// by the look and the steering: what a glide between two cameras mixes.
     pub(crate) fn driver_local(&self, look: (f32, f32)) -> Option<omsi_vehicle::Camera> {
+        // (no glide onto a coupled part's camera: it is not in the front's frame)
+        if self.trailer_driver_camera().is_some() {
+            return None;
+        }
         let def = &self.vehicle.ty.def;
         let n = def.cameras_driver.len().max(1);
         let c = def.cameras_driver.get((def.camera_std + self.cam_choice.0) % n).or(def.cameras_driver.first())?;
@@ -1692,6 +1696,31 @@ impl Player {
         self.vehicle.ty.def.cameras_pax.len() + self.vehicle.trailers.iter().map(|t| t.ty.def.cameras_pax.len()).sum::<usize>()
     }
 
+    /// How many driver cameras the bus has, its coupled parts' included: Omsi.exe's
+    /// interior-camera keys go on from the last of one part's into the next part's
+    /// (0x706278 @0x7067d1, @0x706a3c).
+    pub(crate) fn driver_camera_count(&self) -> usize {
+        self.vehicle.ty.def.cameras_driver.len() + self.vehicle.trailers.iter().map(|t| t.ty.def.cameras_driver.len()).sum::<usize>()
+    }
+
+    /// The driver camera chosen past the front's own: the coupled part it is on and the
+    /// camera (None while one of the front's is chosen).
+    pub(crate) fn trailer_driver_camera(&self) -> Option<(&omsi_sim::vehicle::TrailerPart, &omsi_vehicle::Camera)> {
+        let front = self.vehicle.ty.def.cameras_driver.len();
+        let mut k = self.cam_choice.0 % self.driver_camera_count().max(1);
+        if k < front {
+            return None;
+        }
+        k -= front;
+        for t in &self.vehicle.trailers {
+            if let Some(c) = t.ty.def.cameras_driver.get(k) {
+                return Some((t, c));
+            }
+            k -= t.ty.def.cameras_driver.len();
+        }
+        None
+    }
+
     /// `look`: yaw/pitch the player has turned the head (or the orbit) by; `dist`: how far
     /// the outside camera sits from the vehicle.
     pub(crate) fn camera_look(&self, view: &str, fallback: &Camera, look: (f32, f32), dist: f32) -> Camera {
@@ -1706,6 +1735,12 @@ impl Player {
         }
         let cam = match view {
             "driver" => {
+                // (a coupled part's driver camera, on that part's body)
+                if let Some((t, c)) = self.trailer_driver_camera() {
+                    let turned = omsi_vehicle::Camera { yaw: c.yaw + look.0, pitch: (c.pitch + look.1).clamp(-89.0, 89.0), ..c.clone() };
+                    let (eye, yaw, pitch, roll) = t.camera_world_full(&turned);
+                    return Camera { position: eye, yaw, pitch: pitch.clamp(-89.0, 89.0), roll, fov_deg: c.fov, near: 0.25, far: 6000.0 };
+                }
                 let n = def.cameras_driver.len().max(1);
                 def.cameras_driver
                     .get((def.camera_std + self.cam_choice.0) % n)
