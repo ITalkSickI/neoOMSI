@@ -1811,18 +1811,18 @@ impl VehicleInstance {
         self.update_driver_seat(dt);
         // `[kmcounter_init] year km`: in service since that year, so many kilometres a year -
         // the odometer starts at what that comes to on the day driven (it stood at 0 on
-        // every bus that has one, #305), a little different from bus to bus of the kind
+        // every bus that has one, #305), a little different from bus to bus of the kind.
+        // Omsi.exe 0x7d18e8: Random(100)/10 + 8 + max(0, years) * km * (1 + 0.2 *
+        // (Random(100) - 50) / 50), and 1980 / 60000 km a year without the keyword
+        // (TRoadVehicle.LoadFromFile's defaults).
         if !self.km_started {
             self.km_started = true;
-            if let (Some((year, per_year)), true) = (self.ty.def.km_counter_init, self.host.km_base == 0.0) {
-                // (a map whose day lies before the bus was built: the part of this year)
-                let part = self.host.clock.day_of_year as f64 / 365.0;
-                let years = ((self.host.clock.year - year) as f64 + part).max(part);
-                if years > 0.0 && per_year > 0.0 {
-                    let seed = (std::ptr::addr_of!(self.host) as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40;
-                    let spread = 0.85 + 0.3 * (seed % 1000) as f64 / 1000.0;
-                    self.host.km_base = years * per_year as f64 * spread;
-                }
+            if self.host.km_base == 0.0 {
+                let (year, per_year) = self.ty.def.km_counter_init.unwrap_or((1980, 60000.0));
+                let years = ((self.host.clock.year - year) as f64 + self.host.clock.day_of_year as f64 / 365.0).max(0.0);
+                let seed = (std::ptr::addr_of!(self.host) as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40;
+                let (r1, r2) = ((seed % 100) as f64, ((seed / 100) % 100) as f64);
+                self.host.km_base = r1 / 10.0 + 8.0 + years * per_year as f64 * (1.0 + 0.2 * (r2 - 50.0) / 50.0);
             }
         }
         // (the sum is split, not the parts: 0.7 km + 0.5 km is 1 km 200 m, not 0 km 1200 m)
@@ -1992,7 +1992,8 @@ impl VehicleInstance {
             self.host.coll_energy = 0.0;
         }
         self.update_dirt(dt);
-        self.driven_km += (self.physics.velocity_kmh().abs() as f64 / 3600.0) * dt as f64;
+        // (signed, as Omsi.exe 0x7e5163 adds it: reversing takes it back)
+        self.driven_km += (self.physics.velocity_kmh() as f64 / 3600.0) * dt as f64;
         self.update_engine_vars(dt);
         let p = self.ty.program.clone();
         self.vm.run_frame(&p, &mut self.state, &mut self.host);
@@ -3862,6 +3863,32 @@ mod tests {
             .map(|(p, r)| (*p - *r).length())
             .fold(0.0f32, f32::max);
         assert!(worst < 1e-3, "straight bellows off by {worst}");
+    }
+
+    /// A bus without `[kmcounter_init]` starts with Omsi.exe's defaults (in service since
+    /// 1980, 60000 km a year, +-20 %), not at 0 km; reversing takes the counter back.
+    #[test]
+    fn odometer_starts_at_the_default_service_life() {
+        let root = omsi_cfg::env::var_os("OMSI_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+        let bus = root.join("Vehicles/MAN_SD200/MAN_SD77.bus");
+        if !bus.exists() {
+            eprintln!("skipped: no {}", bus.display());
+            return;
+        }
+        let mut ty = VehicleType::load(&root, &bus).expect("SD77");
+        ty.def.km_counter_init = None;
+        let mut v = VehicleInstance::new(Arc::new(ty), VehicleHost::new(crate::SimClock::default()));
+        v.host.clock.year = 2011;
+        v.host.clock.day_of_year = 0;
+        v.update_engine_vars(0.02);
+        let base = v.host.km_base;
+        assert!((31.0 * 60000.0 * 0.8 + 8.0..=31.0 * 60000.0 * 1.2 + 18.0).contains(&base), "{base}");
+        v.driven_km = -0.5;
+        v.update_engine_vars(0.02);
+        let km = v.var("kmcounter_km").unwrap() as f64 + v.var("kmcounter_m").unwrap() as f64 / 1000.0;
+        assert!((km - (base - 0.5)).abs() < 1.0, "{km} for {base}");
     }
 
     /// The GN92's joint stops at `[coupling_front_character]`'s 52.5 degrees: the front
