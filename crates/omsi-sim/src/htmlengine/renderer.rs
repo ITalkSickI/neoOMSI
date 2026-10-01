@@ -361,4 +361,14 @@ impl HtmlRenderer for EngineRenderer {
     fn take_requests(&mut self) -> Vec<crate::htmltex::HtmlRequest> {
         std::mem::take(&mut self.js.requests)
     }
+
+    fn set_departures(&mut self, departures: &crate::vehicle_api::ApiValue) {
+        if let Some(omsi) = self.omsi() {
+            omsi.lock().unwrap().insert("departures".to_string(), api_to_val(departures));
+        }
+    }
+
+    fn take_departure_wants(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.js.departure_wants)
+    }
 }

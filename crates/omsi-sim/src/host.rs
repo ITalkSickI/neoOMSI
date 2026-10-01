@@ -97,6 +97,13 @@ pub struct VehicleHost {
     /// Route, line and destination requests of the vehicle's HTML pages, taken by the game
     /// (`VehicleInstance::take_html_requests`).
     pub html_requests: Vec<crate::htmltex::HtmlRequest>,
+    /// The departures the game made for the stops the pages asked for (`omsi.getDepartures`),
+    /// by key (trimmed, lower case): (line, destination, timestamp), soonest first.
+    pub html_departures: std::collections::HashMap<String, Vec<(String, String, f64)>>,
+    /// Which board generation of the game `html_departures` is from.
+    pub html_departures_gen: u64,
+    /// The stops the pages asked departures for, taken by the game.
+    pub html_departure_wants: Vec<String>,
 }
 
 /// A bus due at a stop (`GetArrBusLine`, `GetArrBusTerminus`, `GetArrBusTimeDiff`).

@@ -67,6 +67,15 @@ pub fn locale() -> String {
     if l.is_empty() { "en".to_string() } else { l.clone() }
 }
 
+/// A time of day (seconds, `tod`) on the clock's date as a timestamp: seconds since 1970-01-01
+/// 00:00:00 of the simulation's calendar, without a time zone.
+pub fn timestamp(clock: &SimClock, tod: f64) -> f64 {
+    let leaps_before = |y: i64| (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400;
+    let y = clock.year as i64;
+    let days = (y - 1970) * 365 + leaps_before(y) - leaps_before(1970) + (clock.day_of_year.max(1) - 1) as i64;
+    (days * 86_400) as f64 + tod
+}
+
 /// `window.omsi.time`, `.date` and `.locale`: the simulation clock and the interface language.
 /// `asString` of the time is `HH:MM:SS`; of the date `DD.MM.YYYY` (`MM/DD/YYYY` for `en`).
 pub fn environment(clock: &SimClock, locale: &str) -> ApiValue {
@@ -96,7 +105,32 @@ pub fn environment(clock: &SimClock, locale: &str) -> ApiValue {
             ]),
         ),
         ("locale", ApiValue::Str(locale.to_string())),
+        ("timestamp", ApiValue::Num(timestamp(clock, secs.rem_euclid(86_400) as f64))),
     ])
+}
+
+/// `window.omsi.departures`: per stop key the departures as `{ line, destination, time }`, `time`
+/// being a timestamp on the scale of `omsi.timestamp` (see [`timestamp`]).
+pub fn departures(by_key: &std::collections::HashMap<String, Vec<(String, String, f64)>>) -> ApiValue {
+    let mut keys: Vec<&String> = by_key.keys().collect();
+    keys.sort();
+    ApiValue::Map(
+        keys.into_iter()
+            .map(|k| {
+                let list = by_key[k]
+                    .iter()
+                    .map(|(line, destination, time)| {
+                        map(vec![
+                            ("line", ApiValue::Str(line.clone())),
+                            ("destination", ApiValue::Str(destination.clone())),
+                            ("time", ApiValue::Num(time.round())),
+                        ])
+                    })
+                    .collect();
+                (k.clone(), ApiValue::List(list))
+            })
+            .collect(),
+    )
 }
 
 /// A value of the snapshot tree.

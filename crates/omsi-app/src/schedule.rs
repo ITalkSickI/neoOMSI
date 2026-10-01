@@ -3188,6 +3188,8 @@ const LEFT_STOP: f64 = 35.0;
 
 /// How far ahead (s) the departure displays look.
 const BOARD_AHEAD: f64 = 2.0 * 3600.0;
+/// Most departures a page gets for a stop (`omsi.getDepartures`).
+const MAX_PAGE_DEPARTURES: usize = 20;
 
 /// The player's tour: its trips with planned stop times, and the progress along them.
 pub struct PlayerDuty {
@@ -3495,6 +3497,115 @@ impl Schedule {
         })
     }
 
+    /// The buses due at one bus stop (map object id) within the next two hours, unsorted, as
+    /// (expected arrival, line, terminus, time it stands at the stop), all in seconds of the day:
+    /// the timetable buses with the delay they run with, and the player's.
+    fn stop_list(
+        &self,
+        stop: i64,
+        now: f64,
+        on_road: &HashMap<usize, OnRoad>,
+        duty: Option<&PlayerDuty>,
+        player_hof: Option<&omsi_vehicle::Hof>,
+    ) -> Vec<(f64, String, String, f64)> {
+        let mut list: Vec<(f64, String, String, f64)> = Vec::new();
+        for &(trip, k) in self.visits.get(&stop).map(|v| v.as_slice()).unwrap_or(&[]) {
+            for &i in &self.trip_departures[trip] {
+                if !self.runs(i) {
+                    continue;
+                }
+                let d = &self.departures[i];
+                let tt = &self.times[d.trip][d.profile];
+                if !tt.stops[k] {
+                    continue;
+                }
+                let (arrive, leave) = (d.time + tt.stations[k].0, d.time + tt.stations[k].1);
+                if arrive > now + BOARD_AHEAD || leave < now - BOARD_AHEAD {
+                    continue;
+                }
+                if self.is_player_tour(i) {
+                    continue;
+                }
+                let expected = match on_road.get(&i) {
+                    Some(r) => match r.next {
+                        // the stations before the bus's next stop are behind it
+                        Some(next) if leave < next - 0.5 => continue,
+                        None => continue,
+                        // standing at this stop
+                        Some(next) if r.dwelling && (leave - next).abs() < 0.5 => now,
+                        Some(next) => {
+                            // on its way: at least as late as it left its last stop, and
+                            // later still once its next stop is overdue
+                            let next_arrive = tt
+                                .stations
+                                .iter()
+                                .find(|s| (d.time + s.1 - next).abs() < 0.5)
+                                .map(|s| d.time + s.0)
+                                .unwrap_or(next);
+                            let late = if r.dwelling {
+                                r.late
+                            } else {
+                                r.late.max(now - next_arrive)
+                            };
+                            (arrive + late).max(now)
+                        }
+                    },
+                    // not on the road (still to come, or where no tiles are loaded): on time
+                    None if leave < now => continue,
+                    None => arrive.max(now),
+                };
+                let terminus = &self.data.trips[d.trip].terminus;
+                let hof = self
+                    .depots
+                    .get(&d.ai_group.to_ascii_lowercase())
+                    .and_then(|v| v.iter().find_map(|x| x.2.as_deref()));
+                list.push((expected, self.display_line(i), terminus_text(hof, terminus), (leave - arrive).max(0.0)));
+            }
+        }
+        // the player's bus
+        if let Some(duty) = duty {
+            // a trip not begun leaves on time at the earliest (the bus waits at its
+            // first stop), one under way arrives as early or late as it runs
+            let delay = duty.delay(now);
+            let lateness = if duty.left_late.is_some() || duty.at_stop {
+                delay
+            } else {
+                delay.max(0.0)
+            };
+            for (ti, trip) in duty.trips.iter().enumerate().skip(duty.trip_index) {
+                if trip.departure > now + BOARD_AHEAD {
+                    break;
+                }
+                for (k, s) in trip
+                    .stops
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| s.object_id == stop && s.stops)
+                {
+                    let current = ti == duty.trip_index;
+                    let expected = if current
+                        && (k < duty.next_stop || duty.done && k + 1 < trip.stops.len())
+                    {
+                        continue;
+                    } else if current && k == duty.next_stop && duty.at_stop {
+                        now
+                    } else if current {
+                        (s.arr + lateness).max(now)
+                    } else {
+                        (s.arr + delay.max(0.0)).max(now)
+                    };
+                    list.push((
+                        expected,
+                        trip.line.trim().to_string(),
+                        terminus_text(player_hof, &trip.terminus),
+                        (s.dep - s.arr).max(0.0),
+                    ));
+                }
+            }
+        }
+        list
+    }
+
     /// Make the departure boards of the stops whose displays are near
     /// (`World::timetable_boards`), and hand the scenery the time of day. The boards are
     /// made at most once a second: the buses due at each stop in the next two hours,
@@ -3510,7 +3621,7 @@ impl Schedule {
         let now = clock.time;
         let mut boards = world.timetable_boards.lock();
         boards.clock = Some(clock.clone());
-        if (now - self.boards_made).abs() < 1.0 || boards.wanted.is_empty() {
+        if (now - self.boards_made).abs() < 1.0 || (boards.wanted.is_empty() && boards.wanted_names.is_empty()) {
             return;
         }
         self.boards_made = now;
@@ -3547,100 +3658,7 @@ impl Schedule {
         let wanted = boards.wanted.clone();
         let mut made = HashMap::new();
         for stop in wanted {
-            let mut list: Vec<(f64, String, String)> = Vec::new();
-            for &(trip, k) in self.visits.get(&stop).map(|v| v.as_slice()).unwrap_or(&[]) {
-                for &i in &self.trip_departures[trip] {
-                    if !self.runs(i) {
-                        continue;
-                    }
-                    let d = &self.departures[i];
-                    let tt = &self.times[d.trip][d.profile];
-                    if !tt.stops[k] {
-                        continue;
-                    }
-                    let (arrive, leave) = (d.time + tt.stations[k].0, d.time + tt.stations[k].1);
-                    if arrive > now + BOARD_AHEAD || leave < now - BOARD_AHEAD {
-                        continue;
-                    }
-                    if self.is_player_tour(i) {
-                        continue;
-                    }
-                    let expected = match on_road.get(&i) {
-                        Some(r) => match r.next {
-                            // the stations before the bus's next stop are behind it
-                            Some(next) if leave < next - 0.5 => continue,
-                            None => continue,
-                            // standing at this stop
-                            Some(next) if r.dwelling && (leave - next).abs() < 0.5 => now,
-                            Some(next) => {
-                                // on its way: at least as late as it left its last stop, and
-                                // later still once its next stop is overdue
-                                let next_arrive = tt
-                                    .stations
-                                    .iter()
-                                    .find(|s| (d.time + s.1 - next).abs() < 0.5)
-                                    .map(|s| d.time + s.0)
-                                    .unwrap_or(next);
-                                let late = if r.dwelling {
-                                    r.late
-                                } else {
-                                    r.late.max(now - next_arrive)
-                                };
-                                (arrive + late).max(now)
-                            }
-                        },
-                        // not on the road (still to come, or where no tiles are loaded): on time
-                        None if leave < now => continue,
-                        None => arrive.max(now),
-                    };
-                    let terminus = &self.data.trips[d.trip].terminus;
-                    let hof = self
-                        .depots
-                        .get(&d.ai_group.to_ascii_lowercase())
-                        .and_then(|v| v.iter().find_map(|x| x.2.as_deref()));
-                    list.push((expected, self.display_line(i), terminus_text(hof, terminus)));
-                }
-            }
-            // the player's bus
-            if let Some(duty) = duty {
-                // a trip not begun leaves on time at the earliest (the bus waits at its
-                // first stop), one under way arrives as early or late as it runs
-                let delay = duty.delay(now);
-                let lateness = if duty.left_late.is_some() || duty.at_stop {
-                    delay
-                } else {
-                    delay.max(0.0)
-                };
-                for (ti, trip) in duty.trips.iter().enumerate().skip(duty.trip_index) {
-                    if trip.departure > now + BOARD_AHEAD {
-                        break;
-                    }
-                    for (k, s) in trip
-                        .stops
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, s)| s.object_id == stop && s.stops)
-                    {
-                        let current = ti == duty.trip_index;
-                        let expected = if current
-                            && (k < duty.next_stop || duty.done && k + 1 < trip.stops.len())
-                        {
-                            continue;
-                        } else if current && k == duty.next_stop && duty.at_stop {
-                            now
-                        } else if current {
-                            (s.arr + lateness).max(now)
-                        } else {
-                            (s.arr + delay.max(0.0)).max(now)
-                        };
-                        list.push((
-                            expected,
-                            trip.line.trim().to_string(),
-                            terminus_text(player_hof, &trip.terminus),
-                        ));
-                    }
-                }
-            }
+            let mut list = self.stop_list(stop, now, &on_road, duty, player_hof);
             list.sort_by(|a, b| a.0.total_cmp(&b.0));
             list.truncate(8);
             if omsi_cfg::env::var_os("OMSI_DEBUG_BOARDS").is_some() {
@@ -3648,13 +3666,46 @@ impl Schedule {
                     "board of stop {stop} at {:.0} s: {:?}",
                     now,
                     list.iter()
-                        .map(|(t, l, d)| format!("{l} {d} in {:.1} min", (t - now) / 60.0))
+                        .map(|(t, l, d, _)| format!("{l} {d} in {:.1} min", (t - now) / 60.0))
                         .collect::<Vec<_>>()
                 );
             }
-            made.insert(stop, list.into_iter().map(|(t, l, d)| (l, d, t)).collect());
+            made.insert(stop, list.into_iter().map(|(t, l, d, _)| (l, d, t)).collect());
         }
         boards.by_stop = made;
+        // the departures the pages asked for by stop name (`omsi.getDepartures`): the next two
+        // hours, at most 20, as (line, destination, timestamp)
+        let mut departures = std::collections::HashMap::new();
+        for key in boards.wanted_names.clone() {
+            let mut ids: Vec<i64> = self
+                .data
+                .bus_stops
+                .iter()
+                .filter(|b| b.name.trim().eq_ignore_ascii_case(&key))
+                .map(|b| b.object_id)
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            let mut list: Vec<(f64, String, String)> = Vec::new();
+            for id in ids {
+                for (expected, line, terminus, dwell) in self.stop_list(id, now, &on_road, duty, player_hof) {
+                    let leaves = expected + dwell;
+                    if leaves <= now + BOARD_AHEAD {
+                        list.push((leaves, line, terminus));
+                    }
+                }
+            }
+            list.sort_by(|a, b| a.0.total_cmp(&b.0));
+            list.truncate(MAX_PAGE_DEPARTURES);
+            departures.insert(
+                key,
+                list.into_iter()
+                    .map(|(t, l, d)| (l, d, omsi_sim::vehicle_api::timestamp(clock, t)))
+                    .collect(),
+            );
+        }
+        boards.departures = departures;
+        boards.departures_gen = boards.departures_gen.wrapping_add(1);
     }
 
     /// The line a departure's displays show: its trip's own (" 5"), else the timetable

@@ -919,3 +919,21 @@ fn hit_test_follows_layout_changes_and_idle_updates_draw_nothing() {
     assert_eq!(r.hit_node(5.0, 15.0), a, "the cached layout is dropped when the page changes");
     assert!(r.poll_frame().is_some());
 }
+
+#[test]
+fn departures_are_asked_by_stop_and_handed_back() {
+    use crate::vehicle_api::ApiValue;
+    let html = "<body><p id=o></p><script>window.omsi.update = function (d) { var l = omsi.getDepartures('Central '); document.getElementById('o').textContent = l.length + ':' + (l.length ? l[0].line + '|' + l[0].destination + '|' + l[0].time : ''); };</script></body>";
+    let mut r = EngineRenderer::new(8, 8, html);
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("o").as_deref(), Some("0:"));
+    assert_eq!(r.take_departure_wants(), vec!["central".to_string()]);
+    let entry = ApiValue::Map(vec![
+        ("line".into(), ApiValue::Str("5".into())),
+        ("destination".into(), ApiValue::Str("Hbf".into())),
+        ("time".into(), ApiValue::Num(1000.0)),
+    ]);
+    r.set_departures(&ApiValue::Map(vec![("central".into(), ApiValue::List(vec![entry]))]));
+    r.set_vars(&[], &[]);
+    assert_eq!(r.text_of("o").as_deref(), Some("1:5|Hbf|1000"));
+}

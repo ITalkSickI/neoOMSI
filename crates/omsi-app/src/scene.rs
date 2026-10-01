@@ -229,6 +229,14 @@ pub struct StopBoards {
     pub by_stop: HashMap<i64, Vec<(String, String, f64)>>,
     /// The stops whose displays asked in the last scenery update.
     pub wanted: Vec<i64>,
+    /// The stop names the HTML pages asked departures for (`omsi.getDepartures`): trimmed,
+    /// lower case.
+    pub wanted_names: Vec<String>,
+    /// Per stop name of `wanted_names`: the departures of the next two hours, soonest first,
+    /// at most 20, as (line, destination, timestamp).
+    pub departures: std::collections::HashMap<String, Vec<(String, String, f64)>>,
+    /// Counts up whenever `departures` was made anew.
+    pub departures_gen: u64,
 }
 
 /// A placed `[trafficlight]` object: its render instances follow the light state of
@@ -8493,6 +8501,28 @@ impl World {
         }
     }
 
+    /// The departures for the HTML pages of the player's vehicle: the stop names its pages asked
+    /// for go to the boards, and the departures made for them come back into its host.
+    pub fn sync_html_departures(&self, host: &mut omsi_sim::host::VehicleHost) {
+        if host.html_departure_wants.is_empty() {
+            return;
+        }
+        let mut boards = self.timetable_boards.lock();
+        for k in &host.html_departure_wants {
+            if !boards.wanted_names.contains(k) {
+                boards.wanted_names.push(k.clone());
+            }
+        }
+        if host.html_departures_gen != boards.departures_gen {
+            host.html_departures = host
+                .html_departure_wants
+                .iter()
+                .filter_map(|k| boards.departures.get(k).map(|l| (k.clone(), l.clone())))
+                .collect();
+            host.html_departures_gen = boards.departures_gen;
+        }
+    }
+
     /// Run the scripts and animations of the placed objects near `center` and push their
     /// mesh transforms / visibility to the renderer. `phase_of(controller, light)` gives the
     /// light's current state (the `TrafficLightPhase` value) and whether a vehicle is
@@ -8515,6 +8545,7 @@ impl World {
         let mut scripted = self.scripted.lock();
         let mut boards = self.timetable_boards.lock();
         let mut wanted: Vec<i64> = Vec::new();
+        let mut wanted_names: Vec<String> = Vec::new();
         let mut texture_updates: Vec<(
             Arc<ObjectType>,
             Vec<usize>,
@@ -8578,6 +8609,24 @@ impl World {
                             .collect()
                     })
                     .unwrap_or_default();
+            }
+            // an HTML page that asks for departures by stop name
+            if !o.htmls.is_empty() && dist < HTML_OBJECT_NEAR && !o.inst.host.html_departure_wants.is_empty() {
+                for k in &o.inst.host.html_departure_wants {
+                    if !wanted_names.contains(k) {
+                        wanted_names.push(k.clone());
+                    }
+                }
+                if o.inst.host.html_departures_gen != boards.departures_gen {
+                    o.inst.host.html_departures = o
+                        .inst
+                        .host
+                        .html_departure_wants
+                        .iter()
+                        .filter_map(|k| boards.departures.get(k).map(|l| (k.clone(), l.clone())))
+                        .collect();
+                    o.inst.host.html_departures_gen = boards.departures_gen;
+                }
             }
             inputs.push(Some(vars));
         }
@@ -8702,6 +8751,7 @@ impl World {
         wanted.sort_unstable();
         wanted.dedup();
         boards.wanted = wanted;
+        boards.wanted_names = wanted_names;
         drop(scripted);
         drop(boards);
         // Scenery placement takes the GPU-cache lock before the script list. Apply dynamic

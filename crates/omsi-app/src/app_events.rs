@@ -1633,6 +1633,9 @@ impl ApplicationHandler for App {
                         traffic.map(|t| t.light_vars(c, li)).unwrap_or((-1.0, 0.0))
                     };
                     let __tb = Instant::now();
+                    if let Some(p) = self.player.as_mut() {
+                        w.sync_html_departures(&mut p.vehicle.host);
+                    }
                     match self.schedule.as_mut() {
                         Some(s) => s.update_boards(
                             w,
