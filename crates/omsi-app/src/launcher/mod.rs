@@ -591,6 +591,42 @@ impl Launcher {
         if self.recover_device() {
             return;
         }
+        let desktop = !mobile::mobile() && self.window.is_some();
+        if let Some(d) = self.state.queued_launch.take() {
+            if desktop && self.renderer.is_some() {
+                log::info!("launcher: the graphics device is given up before the game starts");
+                self.surface = None;
+                self.gpu = None;
+                self.preview_tex = None;
+                self.showroom = showroom::Showroom::new();
+                self.preview_gen = 0;
+                self.renderer = None;
+            }
+            self.state.spawn_launch(d);
+        }
+        if desktop {
+            let starting = self.state.launch_hold.is_some_and(|t| t.elapsed().as_secs_f32() < 15.0);
+            if starting || self.state.instances.iter().any(|i| i.running) {
+                if self.renderer.is_some() {
+                    log::info!("launcher: a game runs, the graphics device is given up until it ends");
+                    self.surface = None;
+                    self.gpu = None;
+                    self.preview_tex = None;
+                    self.showroom = showroom::Showroom::new();
+                    self.preview_gen = 0;
+                    self.renderer = None;
+                }
+                let now = Instant::now();
+                let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
+                self.last = now;
+                self.state.update(dt);
+                return;
+            }
+            if self.renderer.is_none() {
+                log::info!("launcher: no game runs any more, the graphics device is opened again");
+                self.make_surface();
+            }
+        }
         let now = Instant::now();
         let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
         self.last = now;
