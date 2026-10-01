@@ -2436,11 +2436,14 @@ pub(crate) fn run_offscreen(
                 let g = nav.global_version + (1 << 40);
                 nav.set_route(&key, lanes, true, g);
             }
+            let (outside_temp, inside_temp) = crate::app_events::vehicle_temperatures(p);
             let frame = navigator::NavFrame {
                 traffic: traffic.as_ref(),
                 bus: p.vehicle.position,
                 heading: p.vehicle.heading,
                 speed_kmh: p.vehicle.physics.velocity_kmh(),
+                outside_temp,
+                inside_temp,
                 line,
                 terminus,
                 stops,

@@ -1769,11 +1769,14 @@ impl ApplicationHandler for App {
                             }
                             _ => nav.clear_route(),
                         }
+                        let (outside_temp, inside_temp) = vehicle_temperatures(p);
                         let frame = navigator::NavFrame {
                             traffic: self.traffic.as_ref(),
                             bus: p.vehicle.position,
                             heading: p.vehicle.heading,
                             speed_kmh: p.vehicle.physics.velocity_kmh(),
+                            outside_temp,
+                            inside_temp,
                             line,
                             terminus,
                             stops,
@@ -2560,12 +2563,26 @@ fn timetable_rows(duty: Option<&crate::schedule::PlayerDuty>, delay: Option<f64>
     Some((title, rows))
 }
 
-/// OMSI's information bar: the time, the speed, and the trip with its next stop and delay.
+/// The outside air from the weather and the cabin air the vehicle scripts/engine maintain.
+/// OMSI exposes both to every bus as Weather_Temperature and Cabinair_Temp.
+pub(crate) fn vehicle_temperatures(p: &Player) -> (f32, f32) {
+    let outside = p.vehicle.host.temperature;
+    let inside = p
+        .vehicle
+        .var("Cabinair_Temp")
+        .filter(|v| v.is_finite())
+        .unwrap_or_else(|| outside.clamp(18.0, 25.0));
+    (outside, inside)
+}
+
+/// OMSI's information bar: the time, the speed, temperatures, and the trip with its next stop and delay.
 fn info_line(clock: &omsi_sim::SimClock, player: Option<&Player>, duty: Option<&crate::schedule::PlayerDuty>) -> String {
     let t = clock.time;
     let mut parts = vec![format!("{:02}:{:02}:{:02}", ((t / 3600.0) as i64).rem_euclid(24), ((t % 3600.0) / 60.0) as i64, (t % 60.0) as i64)];
     if let Some(p) = player {
         parts.push(format!("{:.0} km/h", p.vehicle.physics.velocity_kmh().abs()));
+        let (outside, inside) = vehicle_temperatures(p);
+        parts.push(format!("EXT {:.0} °C / INT {:.0} °C", outside, inside));
         // the tank as the bus's script says it (OMSI's RL_TankContent: tank_percent)
         if let Some(tank) = p.vehicle.var("tank_percent").filter(|v| v.is_finite()) {
             parts.push(format!("tank {:.0} %", (tank * 100.0).round()));
