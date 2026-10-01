@@ -5849,18 +5849,26 @@ impl Humans {
                     self.people[i].why = "the door is shut";
                     return w;
                 }
-                if d > 0.6 {
+                // `spot_pos` for slot 0 is `door.outside`, which lies on the bus body.
+                // The crowd sim keeps people ~0.5–0.8 m away from it, so `d` (distance to
+                // `door.outside`) is never below ~0.5 m. Use the direct distance to
+                // `door.outside` with a threshold that accounts for body radius + the
+                // physical standoff (≈ 1.0 m), so a person who has reached the front of
+                // the queue boards without the stuck fallback. Beyond that the stuck
+                // fallback still handles genuine obstruction (a shelter wall, a bollard).
+                let door_dist = (base - pos2).length();
+                if door_dist > 1.0 {
                     // held off the door by something of the map in the way (a railing, a
                     // pole, a shelter's wall: people are kept out of its collision boxes)
                     // - as close as they get is close enough. They stood a metre from the
                     // open door until the bus left without them.
-                    let held = d < 2.0 && self.people[i].stuck > 1.0;
+                    let held = door_dist < 2.0 && self.people[i].stuck > 1.0;
                     if !held {
                         self.people[i].why = "";
                         return w;
                     }
                     if debug_pax() {
-                        log::info!("t={:.1} pax {} cannot get closer to entry {entry} than {d:.1} m: boards from there", self.time, self.people[i].label());
+                        log::info!("t={:.1} pax {} cannot get closer to entry {entry} than {door_dist:.1} m: boards from there", self.time, self.people[i].label());
                     }
                 }
                 if self.door_busy.contains_key(&(bus, false, entry)) {
