@@ -2482,9 +2482,10 @@ impl Traffic {
             // (a truck keeps to the limit like the cars, up to a truck's own 80-90 km/h: it
             // took 38-47 on every road, crawling along 80 km/h roads, #327)
             80.0 + (seed % 10) as f32
-        } else if kind == LaneKind::Street && ty.def.mass > 0.0 && ty.def.mass < 0.3 {
-            // a bicycle (or a moped): at the pace of one, not at the town's limit (#327)
-            20.0 + (seed % 8) as f32
+        } else if kind == LaneKind::Street && ty.def.mass > 0.0 && ty.def.mass <= 0.3 {
+            // a bicycle (stock ones weigh exactly 0.3 t): 15-21 km/h, the `vmax` range their
+            // script cuts the drive at (#327)
+            15.0 + (seed % 7) as f32
         } else {
             100.0
         };
