@@ -354,9 +354,8 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         }
         tex.a = select(1.0, tm.a, material.params.w > 0.5);
         if (terrain && material.params.x > 1.5) {
-            let lum = dot(tex.rgb, vec3<f32>(0.333, 0.333, 0.333));
-            let m = tex.a + (lum - 0.5) * 0.45;
-            tex.a = smoothstep(0.32, 0.68, m);
+            // Coverage belongs to the brush mask, not the angle-dependent diffuse mip.
+            tex.a = smoothstep(0.32, 0.68, tex.a);
         }
     }
     let mode = material.params.x;
