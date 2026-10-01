@@ -41,6 +41,8 @@ const RANGE: i32 = 10_000;
 pub(crate) struct Device {
     pub name: String,
     guid: GUID,
+    /// USB vendor and product from DirectInput's product GUID, when available.
+    pub hardware_id: Option<(u16, u16)>,
     dev: IDirectInputDevice8W,
     /// The slots the device has (an axis it lacks is not in the list).
     has_axis: [bool; 8],
@@ -200,7 +202,7 @@ fn format_objects(objects: &[InputObject]) -> (Vec<DIOBJECTDATAFORMAT>, [bool; 8
     let mut has_axis = [false; 8];
     let mut ff_axis = None;
     let mut pov = 0;
-    let mut button = 0;
+    let mut buttons = [false; 128];
     for object in objects {
         let (offset, flags) = if object.ty & DIDFT_AXIS != 0 {
             let Some(slot) = axis_slot(object.guid, &has_axis) else { continue };
@@ -217,9 +219,13 @@ fn format_objects(objects: &[InputObject]) -> (Vec<DIOBJECTDATAFORMAT>, [bool; 8
             let offset = (32 + pov * 4) as u32;
             pov += 1;
             (offset, 0)
-        } else if object.ty & DIDFT_BUTTON != 0 && button < 128 {
+        } else if object.ty & DIDFT_BUTTON != 0 {
+            let button = ((object.ty >> 8) & 0xFFFF) as usize;
+            if button >= buttons.len() || buttons[button] {
+                continue;
+            }
+            buttons[button] = true;
             let offset = (48 + button) as u32;
-            button += 1;
             (offset, 0)
         } else {
             continue;
@@ -268,6 +274,7 @@ impl DirectInput {
     pub fn new(hwnd: isize, ff: bool) -> Option<DirectInput> {
         let di = create()?;
         let first = list(&di);
+        let initially_empty = first.is_empty();
         log::info!("game controllers (DirectInput): {}", if first.is_empty() { "none".to_string() } else { first.iter().map(|d| d.1.as_str()).collect::<Vec<_>>().join(", ") });
         let found = Arc::new(Mutex::new(Some(first)));
         let f2 = found.clone();
@@ -280,6 +287,7 @@ impl DirectInput {
             }
             let mut seen = HID_CHANGES.load(Ordering::Relaxed);
             let mut last = Instant::now();
+            let mut empty = initially_empty;
             // (a device plugged in raises several notifications: look once they settle)
             let mut pending: Option<Instant> = None;
             loop {
@@ -312,11 +320,16 @@ impl DirectInput {
                 }
                 if window.is_none() && last.elapsed() > Duration::from_secs(3) {
                     pending = Some(Instant::now() - Duration::from_secs(1));
+                } else if empty && last.elapsed() > Duration::from_secs(5) {
+                    // Some older wheel drivers appear after the first enumeration
+                    // without sending a HID arrival notification.
+                    pending = Some(Instant::now() - Duration::from_secs(1));
                 }
                 if pending.is_some_and(|t| t.elapsed() > Duration::from_millis(300)) {
                     pending = None;
                     last = Instant::now();
                     let v = list(&di);
+                    empty = v.is_empty();
                     log::info!("game controllers found: {}", v.iter().map(|d| d.1.as_str()).collect::<Vec<_>>().join(", "));
                     *f2.lock().unwrap() = Some(v);
                 }
@@ -359,6 +372,12 @@ impl DirectInput {
             let mut dev: Option<IDirectInputDevice8W> = None;
             self.di.CreateDevice(guid, &mut dev, None).ok()?;
             let dev = dev?;
+            let mut info = DIDEVICEINSTANCEW { dwSize: std::mem::size_of::<DIDEVICEINSTANCEW>() as u32, ..Default::default() };
+            let hardware_id = dev.GetDeviceInfo(&mut info).ok().and_then(|_| {
+                let vid = info.guidProduct.data1 as u16;
+                let pid = (info.guidProduct.data1 >> 16) as u16;
+                (vid != 0 && pid != 0).then_some((vid, pid))
+            });
             let Some((mut objs, mut fmt, has_axis, ff_axis)) = data_format(&dev) else {
                 log::warn!("{name}: DirectInput could not list the device's controls");
                 return None;
@@ -434,7 +453,7 @@ impl DirectInput {
                 }
             }
             log::info!("game controller (DirectInput): {name}, {} axes, {} buttons{}", has_axis.iter().filter(|a| **a).count(), caps.dwButtons, if ff.is_some() { format!(", force feedback on axis {}", ff_axis / 4) } else if ff_capable && self.ff { ", force feedback capable (effect unavailable)".into() } else if ff_capable { ", force feedback capable".into() } else { String::new() });
-            Some(Device { name: name.to_string(), guid: *guid, dev, has_axis, ff_capable, ff_axis, state: RawState::default(), ff, ff_error_logged: false, buttons: caps.dwButtons as usize })
+            Some(Device { name: name.to_string(), guid: *guid, hardware_id, dev, has_axis, ff_capable, ff_axis, state: RawState::default(), ff, ff_error_logged: false, buttons: caps.dwButtons as usize })
         }
     }
 
@@ -570,6 +589,17 @@ impl Drop for DirectInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn button_offsets_follow_instances_not_enumeration_order() {
+        let objects = [7, 1, 7].map(|n| InputObject {
+            guid: GUID_Button,
+            ty: DIDFT_BUTTON | (n << 8),
+            flags: 0,
+        });
+        let (format, _, _) = format_objects(&objects);
+        assert_eq!(format.iter().map(|o| o.dwOfs).collect::<Vec<_>>(), [55, 49]);
+    }
 
     /// The window that hears of devices plugged in or out opens (it is a thread's own).
     #[test]
