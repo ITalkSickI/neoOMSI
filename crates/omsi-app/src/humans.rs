@@ -3596,6 +3596,12 @@ impl Humans {
         }
     }
 
+    /// Whether the bus script reports `name`: it writes it (`PAX_*` are engine variables every
+    /// vehicle has, so stock scripts set them without a varlist entry) or declares it.
+    fn script_reports(v: &VehicleInstance, name: &str) -> bool {
+        v.has_script_var(name) || v.ty.program.var(name).is_some_and(|id| v.ty.program.stores(id))
+    }
+
     /// `PAX_Entry<i>_Open` / `PAX_Exit<i>_Open` as the bus script reports them. A bus whose
     /// script never sets them (they are not in every mod, or only the front door uses them)
     /// falls back to its `door_<i>`.
@@ -3606,7 +3612,7 @@ impl Humans {
         let entry: Vec<bool> = (0..n_entry)
             .map(|i| {
                 let name = format!("PAX_Entry{i}_Open");
-                if v.has_script_var(&name) {
+                if Self::script_reports(v, &name) {
                     v.var(&name).unwrap_or(0.0) > 0.5
                 } else {
                     doors[i.min(7)]
@@ -3616,7 +3622,7 @@ impl Humans {
         let exit: Vec<bool> = (0..n_exit)
             .map(|i| {
                 let name = format!("PAX_Exit{i}_Open");
-                if v.has_script_var(&name) {
+                if Self::script_reports(v, &name) {
                     v.var(&name).unwrap_or(0.0) > 0.5
                 } else {
                     // the exits follow the entries in the door_<i> numbering (door_0/1 the
@@ -3797,7 +3803,7 @@ impl Humans {
                     vec![false; cabin.exits.len()],
                 );
                 if open {
-                    if c.vehicle.has_script_var("PAX_Entry0_Open") || c.vehicle.has_script_var("door_0") {
+                    if Self::script_reports(&c.vehicle, "PAX_Entry0_Open") || c.vehicle.has_script_var("door_0") {
                         let (e, x) =
                             Self::doors_open(&c.vehicle, cabin.entries.len(), cabin.exits.len());
                         entry_open = e;
@@ -9395,6 +9401,29 @@ mod tests {
         let (e, x) = Humans::doors_open(&v, 2, 1);
         assert_eq!(e, vec![true, true]);
         assert_eq!(x, vec![true]);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn doors_open_reads_pax_vars_the_script_writes_without_declaring() {
+        let dir = std::env::temp_dir().join(format!("omsi-doors-open-undeclared-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("test.bus"),
+            "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("model.cfg"), "").unwrap();
+        std::fs::write(dir.join("vars.txt"), "door_0\n").unwrap();
+        std::fs::write(dir.join("main.osc"), "{frame}\n1 (S.L.PAX_Entry0_Open)\n{end}\n").unwrap();
+
+        let ty = std::sync::Arc::new(omsi_sim::VehicleType::load(&dir, &dir.join("test.bus")).unwrap());
+        let mut v = VehicleInstance::new(ty, omsi_sim::VehicleHost::new(Default::default()));
+        v.set_var("door_0", 0.0);
+        v.set_var("PAX_Entry0_Open", 1.0);
+        let (e, _) = Humans::doors_open(&v, 1, 0);
+        assert_eq!(e, vec![true]);
 
         std::fs::remove_dir_all(&dir).ok();
     }
