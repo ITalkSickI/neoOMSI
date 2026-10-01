@@ -145,7 +145,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let lit = camera.sun_color.rgb * 1.1 * sun_up + camera.ambient.rgb * mix(0.5, 1.5, sun_up) + camera.sky_color.rgb * 0.3;
         var cloud_col = max(min(lit, vec3<f32>(0.97)) * core, col * 1.12);
         // the deck greys over
-        cloud_col = cloud_col * (1.0 - 0.3 * closed) * mix(1.0, 0.85 + 0.3 * c.x, closed);
+        // At full overcast the coverage mask saturates to 1 everywhere. Sample the
+        // underlying field for soft variations in the underside of the cloud deck;
+        // otherwise a rainy sky becomes one featureless grey sheet.
+        let deck_uv = p / CLOUD_FIELD_TILE + camera.clouds.yz * (2500.0 / CLOUD_FIELD_TILE);
+        let deck = textureSampleLevel(t_clouds, s_repeat, deck_uv, max(lod, 0.0));
+        let deck_shade = 0.78 + 0.28 * deck.g + 0.14 * deck.r;
+        cloud_col = cloud_col * (1.0 - 0.3 * closed) * mix(1.0, deck_shade, closed);
         col = mix(col, cloud_col, cover);
     }
     // fog swallows the horizon, and a thick fog (a few hundred metres of sight) the whole

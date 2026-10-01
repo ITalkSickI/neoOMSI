@@ -6,13 +6,18 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/turbo-devv/openOMSI/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/turbo-devv/openOMSI?label=version&color=f47f30&style=for-the-badge"></a>
-  <a href="https://github.com/turbo-devv/openOMSI/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/turbo-devv/openOMSI/release.yml?branch=main&style=for-the-badge&label=build"></a>
+  <a href="https://github.com/Shiko215/openOMSI_Aurora/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/Shiko215/openOMSI_Aurora?label=version&color=f47f30&style=for-the-badge"></a>
+  <a href="https://github.com/Shiko215/openOMSI_Aurora/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Shiko215/openOMSI_Aurora/release.yml?branch=main&style=for-the-badge&label=build"></a>
   <a href="https://turbo-devv.github.io/openOMSI/"><img alt="Docs" src="https://img.shields.io/badge/docs-website-2d3138?style=for-the-badge"></a>
   <a href="https://discord.gg/VG2EKVafYG"><img alt="Discord" src="https://img.shields.io/badge/discord-join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
   <a href="https://buymeacoffee.com/usonskyyy"><img alt="Buy me a coffee" src="https://img.shields.io/badge/buy%20me%20a%20coffee-support-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
-  <a href="https://ko-fi.com/usonance"><img alt="Ko-fi" src="https://img.shields.io/badge/ko--fi-support-29abe0?style=for-the-badge&logo=kofi&logoColor=white"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/turbo-devv/openOMSI?style=for-the-badge"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Shiko215/openOMSI_Aurora?style=for-the-badge"></a>
+  <a href="https://discord.gg/nHgQWHrTXy">
+  <img alt="Aurora Discord" src="https://img.shields.io/badge/Aurora-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white">
+</a>
+<a href="https://member.aurora-studio.org/">
+  <img alt="Aurora Member Portal" src="https://img.shields.io/badge/Aurora-Member_Portal-f47f30?style=for-the-badge">
+</a>
 </p>
 
 > [!WARNING]
@@ -190,3 +195,11 @@ coffee or support it on Ko-fi - thank you!
 
 openOMSI is released under the [MIT License](LICENSE). OMSI and OMSI 2 are trademarks of their
 respective owners. openOMSI is an independent project and is not affiliated with them.
+
+## Aurora Studio Community
+
+Connect with the Aurora Studio community for discussions,
+feedback, development updates and project-related support.
+
+- 💬 **Discord Community:** https://discord.gg/nHgQWHrTXy
+- 🌐 **Aurora Member Portal:** https://member.aurora-studio.org/

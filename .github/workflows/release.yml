@@ -26,6 +26,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify Cargo.lock matches workspace manifests
+        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - id: v
         run: echo "version=$(sh scripts/version.sh)" >> "$GITHUB_OUTPUT"
       - run: echo "### openOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
@@ -182,6 +185,14 @@ jobs:
         env:
           RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
         run: cargo test --locked --release -p omsi-render shaders_validate_and_match_the_uniforms
+      - name: Passenger and placement regression tests
+        if: matrix.arch == 'x64'
+        env:
+          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+        run: |
+          cargo test --locked --release -p omsi-app --lib map_humans_load_nested_paths_and_preserve_weights
+          cargo test --locked --release -p omsi-sim placement_tests
+          cargo test --locked --release -p omsi-sim aurora_pool_tests
       - name: Package
         run: |
           mkdir -p out

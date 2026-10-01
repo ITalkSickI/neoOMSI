@@ -2015,6 +2015,36 @@ pub struct Humans {
     claimed: HashMap<u32, f64>,
 }
 
+/// Resolve each map entry directly, including human packs with nested folders.
+/// Keep duplicate entries as spawn weights, but load each definition only once.
+fn map_human_types(root: &Path, list: &[String]) -> Vec<Arc<HumanType>> {
+    let mut loaded: HashMap<PathBuf, Option<Arc<HumanType>>> = HashMap::new();
+    let mut picked = Vec::new();
+    for line in list {
+        let rel = line.trim().replace('\\', "/");
+        // Lists normally include Humans/, but also accept paths relative to that folder.
+        let rel = if rel.to_ascii_lowercase().starts_with("humans/") {
+            rel
+        } else {
+            format!("Humans/{rel}")
+        };
+        let path = omsi_cfg::resolve_path(root, &rel);
+        let ty = loaded.entry(path.clone()).or_insert_with(|| {
+            match HumanType::load(&path) {
+                Ok(t) => Some(Arc::new(t)),
+                Err(e) => {
+                    log::warn!("map human {}: {e:#}", path.display());
+                    None
+                }
+            }
+        });
+        if let Some(t) = ty {
+            picked.push(t.clone());
+        }
+    }
+    picked
+}
+
 impl Humans {
     /// LAN uses the room id as the shared source of randomness.  This keeps the
     /// initial pedestrian selection and their generated identities identical on
@@ -4310,53 +4340,26 @@ impl Humans {
         }
     }
 
-    /// Keep only the people the map's `humans.txt` names (once). OMSI draws a map's
-    /// pedestrians and passengers from that list alone: Berlin-Spandau and Grundorf name 15
-    /// of the stock types - not the uniformed DBC staff, not the aXYZ man01 - and certainly
-    /// not an add-on's people installed for another map (the GSPNS ones of Novi Sad, whose
-    /// man02 had no texture on Spandau and whose man04 walked with crossed legs). An entry
-    /// may be listed more than once to make it more common. A map without the file, or
-    /// whose list names nobody installed, keeps everybody.
+    /// Use the map's explicit passenger/pedestrian paths, preserving repeated entries.
+    /// Without a list keep the installed fallback types. With a nonempty list use only
+    /// definitions that load successfully, even if none do: another map's people must
+    /// not silently replace a missing passenger pack.
     fn use_map_humans(&mut self, world: &World) {
         if self.map_humans_done {
             return;
         }
         self.map_humans_done = true;
-        let list = omsi_map::ailists::load_list(&world.map_dir.join("humans.txt"));
+        let path = omsi_cfg::resolve_path(&world.map_dir, "humans.txt");
+        let list = omsi_map::ailists::load_list(&path);
         if list.is_empty() {
             return;
         }
-        // the path below `Humans/`, lower case with forward slashes
-        let key = |p: &str| -> String {
-            let p = p.replace('\\', "/").to_ascii_lowercase();
-            match p.rfind("humans/") {
-                Some(k) => p[k + 7..].to_string(),
-                None => p,
-            }
-        };
-        let mut picked: Vec<Arc<HumanType>> = Vec::new();
-        let mut missing: Vec<&str> = Vec::new();
-        for line in &list {
-            let want = key(line.trim());
-            match self
-                .types
-                .iter()
-                .find(|t| key(&t.def.path.to_string_lossy()) == want)
-            {
-                Some(t) => picked.push(t.clone()),
-                None => missing.push(line),
-            }
-        }
-        if !missing.is_empty() {
-            log::warn!("humans.txt of the map names people not installed: {missing:?}");
-        }
-        if picked.is_empty() {
-            return;
-        }
+        let picked = map_human_types(&world.root, &list);
         log::info!(
-            "humans: {} of {} types from the map's humans.txt",
+            "humans: {} of {} map entries loaded from {}",
             picked.len(),
-            self.types.len()
+            list.len(),
+            path.display()
         );
         self.types = picked;
     }
@@ -9053,6 +9056,35 @@ impl Humans {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn map_humans_load_nested_paths_and_preserve_weights() {
+        let root = std::env::temp_dir().join(format!(
+            "omsi-map-human-paths-{}", std::process::id()
+        ));
+        let nested = root.join("Humans/JP_Test/Child_1");
+        std::fs::create_dir_all(&nested).unwrap();
+        // Synthetic definitions: no original passenger assets are required.
+        std::fs::write(nested.join("Child_1.hum"), "[model]\nmodel.cfg\n").unwrap();
+        std::fs::write(nested.join("model.cfg"), "").unwrap();
+        let other = root.join("Humans/Other");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("Man.hum"), "[model]\nmodel.cfg\n").unwrap();
+        std::fs::write(other.join("model.cfg"), "").unwrap();
+        let list = vec![
+            "humans\\jp_test\\child_1\\child_1.hum".into(),
+            "Humans/JP_Test/Child_1/Child_1.hum".into(),
+            "JP_Test/Child_1/Child_1.hum".into(),
+            "Humans/JP_Test/Missing.hum".into(),
+        ];
+        let picked = map_human_types(&root, &list);
+        assert_eq!(picked.len(), 3);
+        assert!(Arc::ptr_eq(&picked[0], &picked[1]));
+        assert!(Arc::ptr_eq(&picked[1], &picked[2]));
+        assert!(picked.iter().all(|t| t.def.path.starts_with(&nested)));
+        assert!(map_human_types(&root, &["Humans/Missing/None.hum".into()]).is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     /// Berlin 1991's pack: full fare, short haul, day ticket (adults), and two reduced
     /// fares for 6..13.
