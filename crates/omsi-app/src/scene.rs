@@ -2848,7 +2848,16 @@ impl World {
             let animated = mesh_def_index.iter().any(|d| {
                 !model.meshes[*d].animations.is_empty() || model.meshes[*d].visible.is_some()
             });
-            let program = if !sco.scripts.scripts.is_empty() || animated || sco.sound.is_some() {
+            let has_freetex = mesh_def_index.iter().any(|d| {
+                model.meshes[*d].materials.iter().any(|o| !o.item && o.freetex.is_some())
+            });
+            let program = if !sco.scripts.scripts.is_empty()
+                || !sco.scripts.stringvarlists.is_empty()
+                || !sco.scripts.varlists.is_empty()
+                || has_freetex
+                || animated
+                || sco.sound.is_some()
+            {
                 Some(Arc::new(omsi_sim::scenery::compile_scenery(
                     &self.root,
                     &sco.scripts,
@@ -6495,11 +6504,16 @@ impl World {
                         || ot.meshes.iter().any(|(_, _, overrides)| {
                             overrides.iter().any(|o| !o.item && o.freetex.is_some())
                         });
-                    // (a model with `[htmltexture]` pages needs a script instance to feed them,
+                    // (a model with `[htmltexture]` pages or `[matl_freetex]` needs a script instance to feed them,
                     // also when the object has no script of its own)
                     let has_pages = lamp.is_none() && !ot.model.html_textures.is_empty();
+                    let has_freetex = ot.meshes.iter().any(|(_, _, overrides)| {
+                        overrides.iter().any(|o| !o.item && o.freetex.is_some())
+                    });
                     let mut object_script = if needs_own_script {
-                        let program = ot.program.clone().or_else(|| has_pages.then(|| Arc::new(omsi_script::Program::default())));
+                        let program = ot.program.clone().or_else(|| {
+                            (has_pages || (has_freetex && !strings.is_empty())).then(|| Arc::new(omsi_script::Program::default()))
+                        });
                         program.map(|program| {
                             let mut inst = omsi_sim::scenery::SceneryInstance::new(
                                 program,
@@ -6633,15 +6647,16 @@ impl World {
                             for override_ in overrides.iter().filter(|o| !o.item && o.freetex.is_some()) {
                                 let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, override_) else { continue };
                                 let Some((_, var)) = &override_.freetex else { continue };
-                                let Some(started) = object_script.as_ref() else { continue };
-                                let initial = started.str_var(var).trim();
-                                let name = if initial.is_empty() {
-                                    freetex_probe.as_ref().map(|p| p.str_var(var).trim()).unwrap_or("")
-                                } else { initial }.to_string();
-                                if name.is_empty() {
+                                let Some(name) = resolve_scenery_freetex_name(
+                                    var,
+                                    override_,
+                                    overrides,
+                                    object_script.as_ref(),
+                                    freetex_probe.as_ref(),
+                                    &strings,
+                                ) else {
                                     continue;
-                                }
-                                let name = name.as_str();
+                                };
                                 let dirs = texture_dirs(&self.root, &ot.model_dir);
                                 let Some((tex, path)) = gpu.texture(renderer, scene, name, &dirs, images) else { continue };
                                 let Some(base) = mats.get(slot).and_then(|id| scene.materials.get(*id)) else {
@@ -11914,6 +11929,41 @@ fn object_lanes(
     out
 }
 
+/// Resolve the texture name for a scenery object's `[matl_freetex]` slot.
+/// Tries the object's script variable first, then freetex probe, and falls back to
+/// tile placement strings (by explicit numeric index or by freetex declaration order).
+pub(crate) fn resolve_scenery_freetex_name<'a>(
+    var: &str,
+    override_: &MaterialDef,
+    overrides: &[MaterialDef],
+    object_script: Option<&'a omsi_sim::scenery::SceneryInstance>,
+    freetex_probe: Option<&'a omsi_sim::scenery::SceneryInstance>,
+    strings: &'a [String],
+) -> Option<&'a str> {
+    let script_name = object_script.map(|s| s.str_var(var).trim()).unwrap_or("");
+    let probe_name = freetex_probe.map(|p| p.str_var(var).trim()).unwrap_or("");
+    let string_by_idx = var.parse::<usize>().ok().and_then(|idx| strings.get(idx)).map(|s| s.trim()).unwrap_or("");
+    let freetex_idx = overrides.iter().filter(|o| !o.item && o.freetex.is_some()).position(|o| std::ptr::eq(o, override_)).unwrap_or(0);
+    let string_by_order = strings.get(freetex_idx).map(|s| s.trim()).unwrap_or("");
+    let name = if !script_name.is_empty() {
+        script_name
+    } else if !probe_name.is_empty() {
+        probe_name
+    } else if !string_by_idx.is_empty() {
+        string_by_idx
+    } else if !string_by_order.is_empty() {
+        string_by_order
+    } else {
+        return None;
+    };
+    let name = name.trim_matches('"');
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -12594,6 +12644,47 @@ mod material_tests {
         assert_eq!(tex_addressing([&clamped, &mirror, &plain].into_iter()), R::Mirror);
         assert_eq!(tex_addressing([&mirror, &once].into_iter()), R::MirrorOnce);
         assert_eq!(tex_addressing([&once, &roller].into_iter()), R::Clamp);
+    }
+
+    #[test]
+    fn scenery_freetex_name_resolution() {
+        let ov1 = MaterialDef {
+            freetex: Some(("placeholder.bmp".into(), "Textur".into())),
+            ..Default::default()
+        };
+        let ov2 = MaterialDef {
+            freetex: Some(("placeholder2.bmp".into(), "Textur2".into())),
+            ..Default::default()
+        };
+        let overrides = vec![ov1.clone(), ov2.clone()];
+
+        // 1. Script variable takes precedence when available
+        let mut prog = omsi_script::Program::default();
+        prog.declare_str_var("Textur");
+        let script = omsi_sim::scenery::SceneryInstance::new(
+            Arc::new(prog),
+            &[],
+            omsi_sim::SimClock::default(),
+            &["from_script.bmp".into()],
+        );
+        let from_strings = vec!["from_strings.bmp".to_string()];
+        let name = resolve_scenery_freetex_name("Textur", &ov1, &overrides, Some(&script), None, &from_strings);
+        assert_eq!(name, Some("from_script.bmp"));
+
+        // 2. Fallback to strings by explicit numeric index (e.g. var = "1")
+        let strings = vec!["zero.bmp".to_string(), "\"quoted_one.bmp\"".to_string()];
+        let name = resolve_scenery_freetex_name("1", &ov1, &overrides, None, None, &strings);
+        assert_eq!(name, Some("quoted_one.bmp"));
+
+        // 3. Fallback to strings by freetex declaration order
+        let name_first = resolve_scenery_freetex_name("Textur", &overrides[0], &overrides, None, None, &strings);
+        assert_eq!(name_first, Some("zero.bmp"));
+        let name_second = resolve_scenery_freetex_name("Textur2", &overrides[1], &overrides, None, None, &strings);
+        assert_eq!(name_second, Some("quoted_one.bmp"));
+
+        // 4. Returns None when no matching string exists
+        let name_empty = resolve_scenery_freetex_name("Missing", &ov1, &overrides, None, None, &[]);
+        assert_eq!(name_empty, None);
     }
 }
 
