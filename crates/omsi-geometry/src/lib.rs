@@ -724,15 +724,20 @@ pub fn compute_normals(mesh: &mut MeshData) {
 /// Smooth vertex normals from the faces as D3DXComputeNormals makes them for a mesh read
 /// from a file: (v1 - v0) x (v2 - v0) in the file's Direct3D frame, which the y/z swap of
 /// `mesh_from_o3d` mirrors, hence (v2 - v0) x (v1 - v0) here. Omsi.exe rebuilds the normals
-/// of every mesh of an object with `[crossing_heightdeformation]` this way.
+/// of every mesh of an object with `[crossing_heightdeformation]` this way. Each face's unit
+/// normal counts with the face's angle at the vertex, D3DX's default weighting (neither
+/// D3DXTANGENT_WEIGHT_BY_AREA nor _EQUAL), not with its area.
 pub fn compute_normals_d3d(mesh: &mut MeshData) {
     let mut acc = vec![Vec3::ZERO; mesh.positions.len()];
     for tri in mesh.indices.chunks_exact(3) {
-        let (a, b, c) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
-        let n = (mesh.positions[c] - mesh.positions[a]).cross(mesh.positions[b] - mesh.positions[a]);
-        acc[a] += n;
-        acc[b] += n;
-        acc[c] += n;
+        let i = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+        let p = i.map(|k| mesh.positions[k]);
+        let n = (p[2] - p[0]).cross(p[1] - p[0]).normalize_or_zero();
+        for k in 0..3 {
+            let e1 = (p[(k + 1) % 3] - p[k]).normalize_or_zero();
+            let e2 = (p[(k + 2) % 3] - p[k]).normalize_or_zero();
+            acc[i[k]] += n * e1.dot(e2).clamp(-1.0, 1.0).acos();
+        }
     }
     for (n, a) in mesh.normals.iter_mut().zip(acc) {
         if a.length_squared() > 0.0 {
