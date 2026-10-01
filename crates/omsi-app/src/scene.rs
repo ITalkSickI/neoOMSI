@@ -3490,12 +3490,20 @@ impl World {
         let Some(tile) = crate::tiles::read_tile(path, &self.chrono_dirs.read()) else {
             return out;
         };
-        // a tile with water carries one surface with a height at each corner
-        out.water = omsi_cfg::vfs::read(&PathBuf::from(format!("{}.water", path.display())))
-            .ok()
-            .map(|b| omsi_map::terrain::Water::parse(&b))
-            .filter(|w| w.count > 0 && w.values.len() >= 4)
-            .map(|w| [w.values[0], w.values[1], w.values[2], w.values[3]]);
+        // a tile with water carries one surface with a height at each corner. As in Omsi.exe
+        // (TMapKachel.loadMapFile 0x792188) only a `[water]` tile has it: the editor never
+        // deletes the `.water` file of a tile whose water was removed. The corners start at
+        // -5 m (TFileWater 0x7ab6f0) and take the file's heights only when its count is 1
+        // (0x7ab760).
+        out.water = tile.has_water.then(|| {
+            match omsi_cfg::vfs::read(&PathBuf::from(format!("{}.water", path.display())))
+                .ok()
+                .map(|b| omsi_map::terrain::Water::parse(&b))
+            {
+                Some(w) if w.count == 1 && w.values.len() >= 4 => [w.values[0], w.values[1], w.values[2], w.values[3]],
+                _ => [-5.0; 4],
+            }
+        });
         let debug_splines = omsi_cfg::env::var_os("OMSI_DEBUG_SPLINES").is_some();
         let mut lanes: Vec<Lane> = Vec::new();
         let mut meshes: Vec<Arc<MeshData>> = Vec::new();
