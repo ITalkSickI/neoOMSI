@@ -4,6 +4,25 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.455 - 2026-10-01
+
+### Traffic
+- Emergency vehicles have right of way at crossings: a vehicle whose script sets
+  `TrafficPriority` goes before the others and they give way to it, as Omsi.exe does for
+  any vehicle, not only the player's bus (#356).
+- Timetable buses stop at the stop on their own side of the road: on a route back along
+  the same street, they stopped at the stop across the road on the way out. Stops are
+  matched in the trip's order, on the lane they stand beside.
+
+### Graphics
+- Enhanced: the far road and ground no longer go dark at grazing angles - what reflects
+  nothing keeps its light, and a wet road reflects the sky (#374).
+
+### Graphics cards
+- Cards of up to 4 GB use the allocator's small memory blocks, and a texture budget larger
+  than the card holds is taken down to its size: 2 GB cards lost their device to "out of
+  memory" in the first frames (#332, #295, #323).
+
 ## 0.1.451 - 2026-10-01
 
 ### Vehicles
