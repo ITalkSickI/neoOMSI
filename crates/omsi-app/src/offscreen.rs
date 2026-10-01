@@ -749,7 +749,7 @@ pub(crate) fn run_offscreen(
                 // what the window's HUD would say about a bus that does not move
                 // (once per reason: the numbers in a line change all the time)
                 if i % 30 == 0 {
-                    let why = standing_reasons(&player.vehicle);
+                    let why = standing_reasons(&player.vehicle, &|a| crate::diagnostics::rebound_key(&player.bindings, a));
                     let key = |l: &String| l.split('(').next().unwrap_or_default().to_string();
                     for line in why
                         .iter()

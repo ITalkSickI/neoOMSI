@@ -811,28 +811,6 @@ fn action_label(a: &str) -> String {
     known.iter().find(|k| k.0 == a).map(|k| k.1.to_string()).unwrap_or_else(|| a.trim_start_matches("kw_").trim_start_matches("cp_").trim_start_matches("bus_").replace('_', " "))
 }
 
-fn key_name(scan: i64, modifier: i64) -> String {
-    if scan == 0 {
-        return "(unbound)".into();
-    }
-    let k = crate::keys::scan_name(scan as i32).unwrap_or_else(|| format!("scan {scan}"));
-    let mut mods = Vec::new();
-    if modifier & omsi_content::input::KEY_SHIFT as i64 != 0 {
-        mods.push("Shift");
-    }
-    if modifier & omsi_content::input::KEY_CTRL as i64 != 0 {
-        mods.push("Ctrl");
-    }
-    if modifier & omsi_content::input::KEY_ALT as i64 != 0 {
-        mods.push("Alt");
-    }
-    if mods.is_empty() {
-        k
-    } else {
-        format!("{}+{k}", mods.join("+"))
-    }
-}
-
 pub fn controls(l: &mut Launcher, area: Rect) {
     let body = l.page_title(area, "Controls", if l.pages.controls_tab == 0 { "Click a key and press the new one (hold Shift, Ctrl or Alt for a combination); Escape leaves it as it is." } else { "What each axis and button of a wheel, pedals or joystick does - OMSI 2's gamectrler.cfg, kept in the content folder." });
     let mut tab = l.pages.controls_tab;
@@ -910,10 +888,10 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         let list: Vec<(usize, String, i64, i64)> = l.state.keybindings.get(*key).and_then(|a| a.as_array()).map(|a| a.iter().enumerate().map(|(i, b)| (i, b.get("action").and_then(|x| x.as_str()).unwrap_or("").to_string(), b.get("scan_code").and_then(|x| x.as_i64()).unwrap_or(0), b.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0))).collect()).unwrap_or_default();
         let mut shown: Vec<(usize, String, String, bool)> = list
             .iter()
-            .filter(|(_, a, s, m)| q.is_empty() || action_label(a).to_lowercase().contains(&q) || key_name(*s, *m).to_lowercase().contains(&q))
+            .filter(|(_, a, s, m)| q.is_empty() || action_label(a).to_lowercase().contains(&q) || crate::keys::key_name(*s, *m).to_lowercase().contains(&q))
             .map(|(i, a, s, m)| {
                 let clash = *s != 0 && list.iter().any(|(j, _, s2, m2)| j != i && s2 == s && m2 == m);
-                (*i, action_label(a), key_name(*s, *m), clash)
+                (*i, action_label(a), crate::keys::key_name(*s, *m), clash)
             })
             .collect();
         if sec == 1 {
