@@ -49,7 +49,7 @@ page); the original installation is never written to.
 
 From 0.1.7 on the launcher updates itself: when a newer release is out it asks at the start
 and, with your yes, downloads it, replaces the program and starts again (on Android through
-the system's installer). Settings → Updates switches the check off or installs without
+the system's installer). Settings → General → Updates switches the check off or installs without
 asking.
 
 ## Installation
@@ -89,10 +89,10 @@ to.
   message says what the chosen folder lacks.
 * **The game closes after a few seconds, or "the graphics device was lost"** - update the
   graphics driver (NVIDIA, AMD or Intel's own, not the one Windows installs). On Windows you
-  can also switch to DirectX 12: Settings → Graphics API (the launcher offers it after such a
+  can also switch to DirectX 12: Settings → Graphics → Graphics API (the launcher offers it after such a
   crash).
 * **An older graphics card** (no Vulkan): openOMSI falls back to DirectX 12 and then OpenGL by
-  itself; Settings → Graphics API chooses one.
+  itself; Settings → Graphics → Graphics API chooses one.
 * **Stuck at a bridge or an invisible wall** on a mod map: Esc → Options → *Collisions with
   objects* switches collisions with the map's objects off (Settings has it too).
 * **Multiplayer: you do not meet the others** - both players need the host's map (a map in

@@ -98,7 +98,7 @@ installs over the previous one.
 
 ## Updates
 
-The launcher looks for a newer GitHub release when it starts (Settings → Updates) and offers
+The launcher looks for a newer GitHub release when it starts (Settings → General → Updates) and offers
 it; **Update now** downloads the APK and hands it to Android's package installer. The first
 time Android asks to allow openOMSI to install apps. Then Android asks "Do you want to update
 this app?": **Update** replaces openOMSI and starts it again, **Cancel** comes back to the
