@@ -4,6 +4,18 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.479 - 2026-10-01
+
+### Maps
+- Objects placed along a spline that follow its slope and cant (railings, posts, signs,
+  lights) turn within the spline's inclined surface: one turned sideways to the road no
+  longer leans across it and off the ground on a sloped or canted street, and one on a
+  chain running backwards no longer tips downhill (from #409).
+
+### Android
+- No "fs_blur" shader error on OpenGL devices: the ambient occlusion pipelines, which
+  OpenGL ES cannot compile, are left out there - AO stays available on Vulkan (#422).
+
 ## 0.1.476 - 2026-10-01
 
 ### Controls
