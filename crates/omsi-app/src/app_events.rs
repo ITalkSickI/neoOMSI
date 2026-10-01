@@ -1027,10 +1027,6 @@ impl ApplicationHandler for App {
                             // rear door opened again whenever it was shut)
                             p.vehicle.trigger("door_haltewunsch_off");
                         }
-                        if std::mem::take(&mut h.door_request) {
-                            p.vehicle.trigger("door_aussenoeffner");
-                            p.vehicle.trigger("door_aussenoeffner_off");
-                        }
                         h.write_pax_vars(&mut p.vehicle);
                         p.vehicle.host.humans_on_path_link = h.path_link_counts();
                         p.vehicle.host.humans_on_seat = h.seat_counts();
