@@ -43,8 +43,8 @@ mouse movement and returns in the centre when moved again. When mouse steering i
 active, the cockpit pointer is hidden so the mouse can steer the bus.
 
 In VR, **right-click** toggles a smooth zoom; the next right-click returns to the
-normal view. The mouse remains usable while zoomed. Outside VR, right-drag retains
-its normal camera control.
+normal view. The mouse remains usable while zoomed. Outside VR, a right-drag zooms
+as in OMSI.
 
 The headset runtime controls its own reprojection settings. No runtime debug tool
 setting is needed to enable openOMSI's VR mode.

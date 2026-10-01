@@ -96,8 +96,11 @@ and comes up slowly (0.7 per second) when the key is released.
 Left-click a cockpit switch to operate it, hold the button and move the mouse to turn a knob,
 or roll the mouse wheel over it (that is the `<event>_drag` OMSI fires); the name of the switch
 under the cursor is shown in the HUD.
-Right-drag the mouse (or drag with the wheel pressed, OMSI's pan) to look around in any view (the head turns inside, the camera swings
-around the bus outside), I/J/K/L does the same from the keyboard; each view keeps its own
+Drag with the wheel pressed (OMSI's pan) to look around in any view (the head turns inside, the camera swings
+around the bus outside), I/J/K/L does the same from the keyboard; a right-drag zooms, as in OMSI
+(up: the outside camera backs away, the view inside widens up to the seat's own; with OMSI's
+`[altView]`, the Camera setting "Right mouse button turns the view", the right button turns the
+view and Shift+right zooms); each view keeps its own
 direction (turning the outside camera leaves the driver's head where it was), **Space** looks
 ahead again in every view (OMSI's `view_reset_all_directions`), Home recentres the view shown.
 The mouse wheel (and **=** / **-**, a pinch on a phone) zooms: outside the camera comes closer,

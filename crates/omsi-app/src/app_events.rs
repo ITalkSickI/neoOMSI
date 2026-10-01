@@ -122,7 +122,7 @@ impl ApplicationHandler for App {
                 }
             }
             // In VR right-click zooms; with mouse steering it first releases the steering.
-            // On the desktop it retains OMSI's mouse-look and mouse-steering behaviour.
+            // On the desktop a right-drag zooms, as in OMSI (`on_right`).
             WindowEvent::MouseInput {
                 state,
                 button: winit::event::MouseButton::Right,
@@ -145,28 +145,7 @@ impl ApplicationHandler for App {
                         }
                     }
                 } else {
-                    self.buttons_held.1 = state == ElementState::Pressed;
-                    // the left button already down on nothing it works: both held zoom
-                    if state == ElementState::Pressed && self.buttons_held.0 && !self.dragging && self.start_both_drag() {
-                        return;
-                    }
-                    // (a switch held with the left button keeps the mouse: looking round
-                    // took the cursor's movement away from it, and the drag stopped)
-                    if state == ElementState::Pressed && self.dragging {
-                        return;
-                    }
-                    if state == ElementState::Released {
-                        self.both_drag = None;
-                    }
-                    // a right click lets go of the mouse steering, as in OMSI (#162)
-                    if state == ElementState::Pressed && self.mouse_drive && self.game_menu.is_none() {
-                        self.mouse_drive = false;
-                        crate::player::keep_wheel(self.player.as_mut());
-                        self.service_msg = Some(("Mouse steering off".into(), 3.0));
-                    }
-                    self.mouse_look = state == ElementState::Pressed;
-                    // (the cursor shows it at once, not with the next look at what is under it)
-                    self.update_hover();
+                    self.on_right(state == ElementState::Pressed);
                 }
             }
             // (the middle button - the wheel pressed - turns the view as well: OMSI's pan)
@@ -226,7 +205,10 @@ impl ApplicationHandler for App {
                     if pressed && self.buttons_held.1 && self.start_both_drag() {
                         return;
                     }
-                    if !pressed && self.both_drag.take().is_some() {
+                    // (the right button still held goes on zooming by itself, unless with
+                    // `[altView]` it turns the view)
+                    if !pressed && self.both_drag.is_some() && !(self.buttons_held.1 && self.right_zooms()) {
+                        self.both_drag = None;
                         self.mouse_look = self.buttons_held.1;
                     }
                     self.left_button(event_loop, pressed);

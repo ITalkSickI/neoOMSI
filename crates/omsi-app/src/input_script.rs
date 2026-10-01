@@ -735,8 +735,8 @@ impl App {
         p.action(action, false);
     }
 
-    /// Both mouse buttons held in a view of the bus: start OMSI's mouse zoom (false when
-    /// there is nothing to zoom - a menu, the city map, on foot).
+    /// The right mouse button (or both) held in a view of the bus: start OMSI's mouse zoom
+    /// (false when there is nothing to zoom - a menu, the city map, on foot).
     pub(crate) fn start_both_drag(&mut self) -> bool {
         if self.game_menu.is_some() || self.player.is_none() || self.navigator.as_ref().is_some_and(|n| n.map_open()) {
             return false;
@@ -750,6 +750,43 @@ impl App {
         self.mouse_look = false;
         self.update_hover();
         true
+    }
+
+    /// The right button alone zooms, as in Omsi.exe (TForm_main.Panel1MouseMove 0x82c5f8:
+    /// ssRight without `[altView]`, or Shift+right with it); otherwise it turns the view.
+    pub(crate) fn right_zooms(&self) -> bool {
+        !self.settings.alt_view || self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight)
+    }
+
+    /// The right mouse button on the desktop: held, it zooms (the outside camera's distance,
+    /// the view in the bus), or with OMSI's `[altView]` turns the view; the middle button
+    /// turns it in any case. Where there is nothing to zoom it turns the view.
+    pub(crate) fn on_right(&mut self, pressed: bool) {
+        self.buttons_held.1 = pressed;
+        // the left button already down on nothing it works: both held zoom
+        if pressed && self.buttons_held.0 && !self.dragging && self.start_both_drag() {
+            return;
+        }
+        // (a switch held with the left button keeps the mouse: looking round
+        // took the cursor's movement away from it, and the drag stopped)
+        if pressed && self.dragging {
+            return;
+        }
+        if !pressed {
+            self.both_drag = None;
+        }
+        // a right click lets go of the mouse steering, as in OMSI (#162)
+        if pressed && self.mouse_drive && self.game_menu.is_none() {
+            self.mouse_drive = false;
+            crate::player::keep_wheel(self.player.as_mut());
+            self.service_msg = Some(("Mouse steering off".into(), 3.0));
+        }
+        if pressed && self.right_zooms() && self.start_both_drag() {
+            return;
+        }
+        self.mouse_look = pressed;
+        // (the cursor shows it at once, not with the next look at what is under it)
+        self.update_hover();
     }
 
     pub(crate) fn on_mouse_moved(&mut self, x: f32, y: f32) {
@@ -865,13 +902,15 @@ impl App {
         let last = self.cursor;
         self.cursor = (x, y);
         if let Some((y0, v0)) = self.both_drag {
-            // (0x82c5f8: the value at the press times 1 + the way up over 500 pixels; in the
-            // bus no wider than the seat's own view, as OMSI's zoom never goes below 1)
-            let k = (1.0 + (y0 - y) / 500.0).max(0.05);
+            // (0x82c5f8: outside, the distance at the press times 1 + the way up over 500
+            // pixels; in the bus the field of view at the press plus the way up over 500
+            // pixels times the camera's own, which is also its widest (+0x31c, 0x7edde4):
+            // moving up widens the view as it backs the outside camera away)
             if self.view == "outside" {
+                let k = (1.0 + (y0 - y) / 500.0).max(0.05);
                 self.orbit = (v0 * k).clamp(ORBIT_MIN, ORBIT_MAX);
             } else {
-                self.view_zoom.insert(self.view.clone(), (v0 / k).clamp(0.2, 1.0_f32.max(v0)));
+                self.view_zoom.insert(self.view.clone(), (v0 + (y0 - y) / 500.0).clamp(0.2, 1.0_f32.max(v0)));
             }
             return false;
         }
@@ -1239,6 +1278,11 @@ impl App {
                         self.both_drag = None;
                         log::info!("input script: both buttons up: zoom {:?}, orbit {:.1}", self.view_zoom.get(&self.view), self.orbit);
                     }
+                }
+                // `right down|up`: the right mouse button, through the window's own path
+                "right" => {
+                    self.on_right(arg == "down");
+                    log::info!("input script: right button {arg}: zoom drag {}, look {}, zoom {:?}, orbit {:.1}", self.both_drag.is_some(), self.mouse_look, self.view_zoom.get(&self.view), self.orbit);
                 }
                 "press" => self.on_left(true),
                 "release" => self.on_left(false),
