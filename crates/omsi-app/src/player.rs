@@ -14,7 +14,7 @@ pub(crate) struct Player {
     pub(crate) axes: omsi_sim::KeyboardAxes,
     /// A game controller's pedals and steering this frame (they win over the keys).
     pub(crate) analog: crate::controllers::Analog,
-    /// The interior cameras chosen (OMSI's `view_toggle_viewpoint`,
+    /// The interior cameras chosen (OMSI's
     /// `view_interiorcam_minus`/`_plus`): the driver's and the passengers' camera numbers.
     pub(crate) cam_choice: (usize, usize),
     /// (scan code, modifier bits) → action name, from `Inputs/keyboard.cfg` `[vehicles]`.
