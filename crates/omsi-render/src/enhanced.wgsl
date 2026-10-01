@@ -348,7 +348,7 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     if (material.params.z > 0.5) {
         // (an LED panel's `\S:n` mask is taken the same way: the dots stay dots when the
         // panel is small, without the full-resolution shimmer)
-        var tm = textureSample(t_trans, s_diffuse, buv);
+        var tm = sample_transmap(buv);
         if (material.emissive.w < -1.5 && enh.led.y < msk_lod) {
             tm = textureSampleLevel(t_trans, s_diffuse, buv, enh.led.y);
         }
@@ -409,8 +409,9 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     // not either, and OMSI's foliage points every leaf's normal up so the whole crown is lit
     // evenly - turned round, the crown went dark above the horizon line)
     var n = safe_normal(in.normal);
-    // leaves and fences: thin, cut out by their texture
-    let thin = mode > 0.5 && mode < 1.5;
+    // Leaves and fences transmit light. A terrain road-cut mask only removes ground:
+    // its remaining pixels must shade like the uncut ground on terrain-mapped splines.
+    let thin = !terrain && mode > 0.5 && mode < 1.5;
     let has_env = material.params2.y > 0.0;
     // A blended transmap body is a masked paint surface, not glass. Traffic cars often
     // use this material layout for their body; depth-disabled blends remain glass.
@@ -770,7 +771,7 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         let night = select(camera.sun_color.w, 1.0, switched);
         // (a switched one is the display's own state: not dimmed with the instance's night
         // lighting, which is 0 by day and left the Procity's pressure screen black)
-        let nm = textureSample(t_night, s_diffuse, nuv).rgb * night * select(clamp(in.params2.y, 0.0, 1.0), 1.0, switched);
+        let nm = sample_nightmap(nuv).rgb * night * select(clamp(in.params2.y, 0.0, 1.0), 1.0, switched);
         if (terrain) {
             // the tile's light map: the lamps' light on the ground
             rgb = rgb + sf.albedo / PI * nm * enh.lights.y * 3.0 * pre;

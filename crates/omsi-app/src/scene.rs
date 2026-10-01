@@ -800,10 +800,10 @@ struct Placing {
     objects: usize,
     /// Seconds per phase (OMSI_PROFILE).
     secs: [f64; 4],
-    /// The tile's ground materials for `[terrainmapping]` slots: the base layer (without
-    /// the roads' cut, which would punch holes into a traffic island) and every painted
-    /// layer (`true`), as the ground itself is drawn.
-    ground_mats: Vec<(MaterialId, bool)>,
+    /// `[terrainmapping]` uses the first [groundtex], without the roads' cut (which
+    /// would punch holes into a traffic island). Painted terrain layers belong to the
+    /// ground itself and must not be projected onto a spline verge or object.
+    terrain_mapping_mat: Option<MaterialId>,
 }
 
 impl PendingUpload {
@@ -1626,11 +1626,11 @@ fn bilinear_alpha(img: &Image, u: f32, v: f32) -> f32 {
 /// Split the material slots of an object mesh whose texture carries `[terrainmapping]`
 /// off into a mesh of their own. OMSI does not draw such a slot with its texture (the
 /// stock ones are a 1x1 placeholder, TH_Wald's Gras01.dds a single green pixel): the slot
-/// takes on the ground of the tile it stands on, so that the grass on top of a rock, a
+/// takes on the map's first ground texture, so that the grass on top of a rock, a
 /// traffic island or a roundabout runs on seamlessly from the meadow around it. The split
 /// mesh therefore gets the terrain's own uv (tile space, see `build_terrain_mesh`) for
 /// the object placed at `pos`/`xf` on the tile at `origin`, and is drawn with the tile's
-/// ground materials. Returns the mesh without those slots and the split-off one.
+/// uncut base material. Returns the mesh without those slots and the split-off one.
 #[cfg(test)]
 fn split_terrain_mapped(
     src: &MeshData,
@@ -6152,8 +6152,7 @@ impl World {
                                 m
                             }
                         };
-                        pl.ground_mats.clear();
-                        pl.ground_mats.push((uncut, false));
+                        pl.terrain_mapping_mat = Some(uncut);
                         // The painted ground: every further [groundtex] the editor's brush put on this
                         // tile is the same tile mesh once more, blended in through its own mask - which
                         // is how OMSI's car parks get their asphalt, its side streets their cobbles and
@@ -6192,7 +6191,6 @@ impl World {
                             );
                             let m = gpu.material(renderer, scene, m);
                             tg.materials.push(m);
-                            pl.ground_mats.push((m, true));
                             let li = instance!(renderer.add_surface_instance(
                                 scene,
                                 id,
@@ -6251,7 +6249,7 @@ impl World {
                         let id = gpu.add_mesh(renderer, scene, mesh);
                         scene.meshes[id].source = Some("terrain-mapped spline cells".to_string());
                         tg.meshes.push(id);
-                        for &(mat, _) in &pl.ground_mats {
+                        if let Some(mat) = pl.terrain_mapping_mat {
                             let si = instance!(renderer.add_surface_instance(scene, id, p.origin, Mat4::from_translation(glam::Vec3::Z * OMSI_SURFACE_LIFT), vec![mat]));
                             if let Some(inst) = scene.instances.get_mut(si) {
                                 inst.render_phase = RenderPhase::Spline;
@@ -6345,9 +6343,9 @@ impl World {
                             / mesh.normals.len().max(1) as f32;
                         log::info!("upload spline {} origin={:?} ranges={:?} mats={:?} mean normal z={mean_nz:+.2} verts={} first positions {:?}", st.def.path.display(), p.origin, &mesh.ranges[..mesh.ranges.len().min(3)], mats, mesh.positions.len(), &mesh.positions[..mesh.positions.len().min(3)]);
                     }
-                    // [terrainmapping] slots take the ground of the tile: the spline's mesh
-                    // is in tile space already, so the ground's uv is its own position
-                    let terrain: Vec<usize> = if pl.ground_mats.is_empty() {
+                    // [terrainmapping] slots take only the first ground texture. The
+                    // spline mesh is already in tile space, which supplies the ground UVs.
+                    let terrain: Vec<usize> = if pl.terrain_mapping_mat.is_none() {
                         Vec::new()
                     } else {
                         sg.terrain.iter().copied().filter(|t| mesh.ranges.iter().any(|r| r.2 as usize == *t)).collect()
@@ -6359,7 +6357,7 @@ impl World {
                         let gid = gpu.add_mesh(renderer, scene, &ground);
                         scene.meshes[gid].source = Some(st.def.path.display().to_string());
                         tg.meshes.push(gid);
-                        for &(mat, _) in &pl.ground_mats {
+                        if let Some(mat) = pl.terrain_mapping_mat {
                             let terrain_instance = instance!(renderer.add_surface_instance(
                                 scene,
                                 gid,
@@ -6560,10 +6558,10 @@ impl World {
                     });
                     let mut mesh_list: Vec<(MeshId, Vec<MaterialId>)> =
                         own_meshes.unwrap_or_else(|| type_meshes.clone());
-                    // [terrainmapping] slots: drawn with the ground of this tile, from a mesh
+                    // [terrainmapping] slots: drawn with the uncut base ground, from a mesh
                     // of this placement's own (see split_terrain_mapped); (level, mesh, id)
                     let mut ground_meshes: Vec<(usize, usize, MeshId)> = Vec::new();
-                    if !pl.ground_mats.is_empty() {
+                    if pl.terrain_mapping_mat.is_some() {
                         let mut parts: Vec<(usize, usize)> =
                             terrain_slots.iter().map(|t| (t.0, t.1)).collect();
                         parts.dedup();
@@ -6880,18 +6878,16 @@ impl World {
                         } else {
                             continue;
                         };
-                        // the ground as the tile draws it: the base layer, then every painted
-                        // layer blended over it; on a surface object (a crossing) all of them
-                        // pulled towards the eye like the object itself
-                        for &(mat, layer) in &pl.ground_mats {
-                            let inst = if surface || layer {
+                        // Keep the first ground texture on the object even where the map
+                        // author painted asphalt or another layer on the terrain below it.
+                        if let Some(mat) = pl.terrain_mapping_mat {
+                            let inst = if surface {
                                 instance!(renderer.add_surface_instance(scene, ground_id, draw_pos, xf, vec![mat]))
                             } else {
                                 instance!(renderer.add_instance(scene, ground_id, draw_pos, xf, vec![mat]))
                             };
                             if let Some(x) = scene.instances.get_mut(inst) {
                                 x.decal = surface;
-                                x.ground_layer = layer && !surface;
                                 x.render_phase = render_phase;
                                 if surface {
                                     x.surface_bias = false;
@@ -12426,6 +12422,10 @@ mod tests {
     }
 
 }
+
+#[cfg(test)]
+#[path = "scene/terrain_mapping_tests.rs"]
+mod terrain_mapping_tests;
 
 #[cfg(test)]
 mod material_tests {
