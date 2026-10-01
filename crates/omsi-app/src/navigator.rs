@@ -1079,7 +1079,7 @@ impl Navigator {
             Some(line) => format!("{line} · {temp}"),
             None => temp,
         };
-        let left_edge = if limit.is_some() { x + 24.0 * s } else { x } + 6.0 * s;
+        let left_edge = (if limit.is_some() { x + 24.0 * s } else { x }) + 6.0 * s;
         let right_edge = pw - pad - time_w - 5.0 * s - day_w - 6.0 * s;
         if right_edge > left_edge {
             let rect = Rect::new(left_edge, top.y, right_edge - left_edge, top.h);
