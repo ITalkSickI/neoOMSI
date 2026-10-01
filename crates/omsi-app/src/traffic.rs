@@ -1892,20 +1892,22 @@ impl Traffic {
         let density = self.street_density();
         // ... and so does how much road there is around: the same number of cars looks
         // empty on a six-lane Berlin junction and crowded on a village lane, so the count
-        // asked for is per a neighbourhood of about 250 lanes
-        let near = self.net.lanes_starting_near(center, self.spawn_radius)
+        // asked for is per a neighbourhood of about 250 lanes; and as Omsi spawns on each
+        // path at a rate of its [rule] trafficdensity, paths of low density bring fewer cars
+        // and those of density 0 (or kept clear of cars) none
+        let near_density: Vec<f32> = self.net.lanes_starting_near(center, self.spawn_radius)
             .into_iter()
-            .filter(|&i| {
-                let l = &self.net.lanes[i];
+            .map(|i| &self.net.lanes[i])
+            .filter(|l| {
                 l.kind == LaneKind::Street
                     && l.points
                         .first()
                         .map(|p| (*p - center).length() < self.spawn_radius)
                         .unwrap_or(false)
             })
-            .count();
-        let road = (near as f32 / 250.0).clamp(1.0, 4.0);
-        let street_target = (self.target as f32 * density * road).round() as usize;
+            .map(|l| if l.no_cars { 0.0 } else { l.density.clamp(0.0, 4.0) })
+            .collect();
+        let street_target = (self.target as f32 * density * road_scale(&near_density)).round() as usize;
         // the cars that come into range again, where they have got to
         self.wake_dormant(world, renderer, scene, center, street_target);
         // the whole map's population: as dense as around the player, on every street the
@@ -7038,6 +7040,31 @@ impl Traffic {
             ctl.time = time;
             ctl.held = held;
         }
+    }
+}
+
+/// How many times the base street target the neighbourhood asks for, from the trafficdensity
+/// of each street lane starting near the player (0 for a no_cars lane): the count of lanes
+/// per about 250 (1 to 4) times their mean density (0 to 2).
+fn road_scale(near_density: &[f32]) -> f32 {
+    let road = (near_density.len() as f32 / 250.0).clamp(1.0, 4.0);
+    if near_density.is_empty() {
+        return road;
+    }
+    let mean = near_density.iter().sum::<f32>() / near_density.len() as f32;
+    road * mean.clamp(0.0, 2.0)
+}
+
+#[cfg(test)]
+mod road_scale_tests {
+    use super::road_scale;
+
+    #[test]
+    fn path_density_scales_the_street_target() {
+        assert!((road_scale(&[1.0; 100]) - 1.0).abs() < 1e-6);
+        assert!((road_scale(&[0.2; 100]) - 0.2).abs() < 1e-6);
+        assert_eq!(road_scale(&[0.0; 100]), 0.0);
+        assert!((road_scale(&[1.0; 500]) - 2.0).abs() < 1e-6);
     }
 }
 
