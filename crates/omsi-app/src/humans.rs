@@ -5886,13 +5886,9 @@ impl Humans {
                     return w;
                 }
                 if !bn.entry_open.get(entry).copied().unwrap_or(false) {
-                    // every door has been shut long enough that none is about to open
-                    // either (the driver parked here, or gave up on this stop): back to
-                    // the waiting place rather than standing at a door that never opens
-                    if !self.doors_open_or_arriving(bn) {
-                        back(self, "every door is shut and none looks about to open");
-                        return Want::stand(None, Activity::Stand);
-                    }
+                    // Omsi.exe (0x62a6a0 state 3) waits at the shut door and presses the
+                    // request (PAX_Entry<n>_Req) until the bus moves off; only the 120 s
+                    // cap above sends them back
                     self.people[i].why = "the door is shut";
                     return w;
                 }
