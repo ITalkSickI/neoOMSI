@@ -363,6 +363,11 @@ impl DirectInput {
                     if let Some(e) = d.ff.as_ref() {
                         let _ = e.Stop();
                     }
+                    // (the shaking is started again once the focus is back)
+                    if let Some(e) = d.vib.as_ref() {
+                        let _ = e.Stop();
+                    }
+                    d.vib_last = (0, 0);
                     let _ = d.dev.Unacquire();
                 }
             }
@@ -624,7 +629,10 @@ impl DirectInput {
                 let result = if magnitude == 0 {
                     e.Stop()
                 } else {
-                    let r = e.SetParameters(&mut eff, DIEP_TYPESPECIFICPARAMS | DIEP_START);
+                    // (DIEP_START restarts a playing sine from its phase 0: only when it
+                    // starts, or an amplitude changing every frame cut it to its first 10 ms)
+                    let flags = if switching { DIEP_TYPESPECIFICPARAMS | DIEP_START } else { DIEP_TYPESPECIFICPARAMS };
+                    let r = e.SetParameters(&mut eff, flags);
                     if r.is_err() {
                         reacquire(&d.dev, true);
                         e.SetParameters(&mut eff, DIEP_TYPESPECIFICPARAMS | DIEP_START)
