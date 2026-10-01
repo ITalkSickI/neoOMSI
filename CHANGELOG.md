@@ -4,6 +4,15 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.481 - 2026-10-01
+
+### Controls
+- Holding both mouse buttons and moving the mouse zooms as in OMSI (its "M_Zoom"): up
+  zooms in on the dashboard, down back out to the seat's view; outside, the camera moves
+  further away or closer. It did nothing - the right button only looked round.
+- Pressing the right button while a switch or lever is held with the left one no longer
+  turns the view and stops the drag.
+
 ## 0.1.479 - 2026-10-01
 
 ### Maps
