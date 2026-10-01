@@ -1165,8 +1165,10 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         }
         let lab_w = if w < 520.0 { 84.0 } else { 110.0 };
         let inv_w = 110.0;
-        let sel_w = (w - lab_w - inv_w - 60.0 - 3.0 * GAP).clamp(120.0, 200.0);
-        let bar_w = (w - lab_w - sel_w - inv_w - 3.0 * GAP).max(30.0);
+        let shp_w = 140.0;
+        let sel_w = (w - lab_w - inv_w - shp_w - 60.0 - 4.0 * GAP).clamp(120.0, 200.0);
+        let bar_w = (w - lab_w - sel_w - inv_w - shp_w - 4.0 * GAP).max(30.0);
+        let shapes: Vec<String> = crate::controllers::AXIS_SHAPES.iter().map(|s| s.0.to_string()).collect();
         for a in 0..8 {
             let r = Rect::new(x0, y, w, ROW);
             ui.label(Rect::new(r.x, r.y, lab_w, r.h), AXES[a]);
@@ -1188,6 +1190,15 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                     x.1 = inv;
                 }
                 dirty = true;
+            }
+            if d.axes[a].is_some() {
+                // the characteristic: the curve bits of the flags, the range extension kept
+                let curve = d.axis_flags[a] & (4 | 8 | 0x10);
+                let mut shp = crate::controllers::AXIS_SHAPES.iter().position(|s| s.1 == curve).unwrap_or(0);
+                if ui.select(&format!("pad-shape-{a}"), Rect::new(bar.right() + GAP + sel_w + GAP + inv_w + GAP, r.y, shp_w, r.h), &mut shp, &shapes) {
+                    d.axis_flags[a] = (d.axis_flags[a] & !(4 | 8 | 0x10)) | crate::controllers::AXIS_SHAPES[shp].1;
+                    dirty = true;
+                }
             }
             y += ROW + 6.0;
         }
