@@ -229,6 +229,7 @@ impl ApplicationHandler for App {
                     if !pressed && self.both_drag.is_some() && !(self.buttons_held.1 && self.right_zooms()) {
                         self.both_drag = None;
                         self.mouse_look = self.buttons_held.1;
+                        self.update_hover();
                     }
                     self.left_button(event_loop, pressed);
                 }
