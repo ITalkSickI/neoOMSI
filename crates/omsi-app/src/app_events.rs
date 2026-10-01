@@ -2375,8 +2375,11 @@ impl ApplicationHandler for App {
             }
         }
         if let DeviceEvent::MouseMotion { delta } = event {
+            // (in a view of the bus the cursor's own way turns it: move_cursor)
             if self.mouse_look {
-                self.look_by(delta.0 as f32 * 0.15, delta.1 as f32 * 0.15);
+                if !self.cursor_looks() {
+                    self.look_by(delta.0 as f32 * 0.15, delta.1 as f32 * 0.15);
+                }
             } else if self.mouse_drive && self.game_menu.is_none() {
                 self.mouse_past_edge(delta.0 as f32);
             }
