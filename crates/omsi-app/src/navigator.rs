@@ -111,6 +111,9 @@ pub struct NavFrame<'a> {
     /// Compass heading (degrees, 0 = +y, clockwise).
     pub heading: f64,
     pub speed_kmh: f32,
+    /// Outside weather and cabin air temperatures (°C).
+    pub outside_temp: f32,
+    pub inside_temp: f32,
     /// Line, terminus, and the trip's stops from the next one on (the next is first).
     pub line: Option<String>,
     pub terminus: Option<String>,
@@ -1060,13 +1063,29 @@ impl Navigator {
             let px = if t.len() > 2 { 7.5 } else { 9.0 } * s;
             ui.text(&mut self.atlas, &self.fonts, &t, px, Weight::Black, Vec2::new(c.x, c.y + self.fonts.cap_height(px, Weight::Black) * 0.5), Align::Center, Color::rgba(15, 15, 15, 1.0));
         }
-        if let Some(line) = f.line.as_deref() {
-            ui.text(&mut self.atlas, &self.fonts, line.trim(), 13.0 * s, Weight::Bold, Vec2::new(pw * 0.5, base - 1.0 * s), Align::Center, TEXT_DIM);
-        }
         let hh = (f.time / 3600.0) as i32 % 24;
         let mm = ((f.time % 3600.0) / 60.0) as i32;
-        let tw = ui.text(&mut self.atlas, &self.fonts, &format!("{hh:02}:{mm:02}"), 14.0 * s, Weight::Bold, Vec2::new(pw - pad, base), Align::Right, TEXT);
-        ui.text(&mut self.atlas, &self.fonts, wd.days[f.weekday.clamp(0, 6) as usize], 12.0 * s, Weight::Medium, Vec2::new(pw - pad - tw - 5.0 * s, base), Align::Right, TEXT_DIM);
+        let time_text = format!("{hh:02}:{mm:02}");
+        let day_text = wd.days[f.weekday.clamp(0, 6) as usize];
+        let time_w = self.fonts.width(&time_text, 14.0 * s, Weight::Bold);
+        let day_w = self.fonts.width(day_text, 12.0 * s, Weight::Medium);
+        ui.text(&mut self.atlas, &self.fonts, &time_text, 14.0 * s, Weight::Bold, Vec2::new(pw - pad, base), Align::Right, TEXT);
+        ui.text(&mut self.atlas, &self.fonts, day_text, 12.0 * s, Weight::Medium, Vec2::new(pw - pad - time_w - 5.0 * s, base), Align::Right, TEXT_DIM);
+
+        // Temperatures stay in the navigator header on every bus. The simulator always keeps
+        // Cabinair_Temp, while scripts that model heating/air conditioning can overwrite it.
+        let temp = format!("EXT {:.0}°C · INT {:.0}°C", f.outside_temp, f.inside_temp);
+        let center = match f.line.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
+            Some(line) => format!("{line} · {temp}"),
+            None => temp,
+        };
+        let left_edge = if limit.is_some() { x + 24.0 * s } else { x } + 6.0 * s;
+        let right_edge = pw - pad - time_w - 5.0 * s - day_w - 6.0 * s;
+        if right_edge > left_edge {
+            let rect = Rect::new(left_edge, top.y, right_edge - left_edge, top.h);
+            let center = self.fonts.fit(&center, 11.5 * s, Weight::Bold, rect.w);
+            ui.text_in(&mut self.atlas, &self.fonts, &center, 11.5 * s, Weight::Bold, rect, Align::Center, TEXT_DIM);
+        }
 
         // bottom bar: the next stop; its distance, the time to it, the planned time and
         // whether the bus is early or late
@@ -1204,7 +1223,7 @@ fn congestion_on(net: &Network, traffic: &Network, c: &HashMap<usize, f32>) -> H
 
 impl<'a> NavFrame<'a> {
     fn clone_ref(&self) -> NavFrame<'a> {
-        NavFrame { traffic: self.traffic, bus: self.bus, heading: self.heading, speed_kmh: self.speed_kmh, line: self.line.clone(), terminus: self.terminus.clone(), stops: self.stops.clone(), delay: self.delay, passengers: self.passengers, time: self.time, weekday: self.weekday, language: self.language, screen: self.screen, ui_scale: self.ui_scale, follow_window: self.follow_window, dt: self.dt }
+        NavFrame { traffic: self.traffic, bus: self.bus, heading: self.heading, speed_kmh: self.speed_kmh, outside_temp: self.outside_temp, inside_temp: self.inside_temp, line: self.line.clone(), terminus: self.terminus.clone(), stops: self.stops.clone(), delay: self.delay, passengers: self.passengers, time: self.time, weekday: self.weekday, language: self.language, screen: self.screen, ui_scale: self.ui_scale, follow_window: self.follow_window, dt: self.dt }
     }
 }
 
