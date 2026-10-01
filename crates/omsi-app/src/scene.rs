@@ -6822,12 +6822,14 @@ impl World {
                                         },
                                         false,
                                     );
+                                    // (lit like the rest of the object: Omsi.exe only swaps
+                                    // the slot's texture, a sign does not shine at night)
                                     let mat = renderer.add_material(
                                         scene,
                                         Some(tex),
                                         alpha,
                                         [1.0; 4],
-                                        true,
+                                        false,
                                     );
                                     let mat = gpu.material(renderer, scene, mat);
                                     gpu.text_textures.insert(key.clone(), (tex, mat, 1));
@@ -7458,7 +7460,7 @@ impl World {
                     None => vec![0u8; (w * h * 4) as usize],
                 };
                 let tex = gpu.add_image(renderer, scene, &Image { width: w, height: h, rgba, has_alpha: true }, false);
-                let mat = renderer.add_material(scene, Some(tex), alpha, [1.0; 4], true);
+                let mat = renderer.add_material(scene, Some(tex), alpha, [1.0; 4], false);
                 let mat = gpu.material(renderer, scene, mat);
                 gpu.text_textures.insert(key.clone(), (tex, mat, 1));
                 tg.texts.push(key);
