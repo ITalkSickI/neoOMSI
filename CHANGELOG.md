@@ -4,12 +4,19 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
-## 0.1.473 - 2026-10-01
+## 0.1.476 - 2026-10-01
+
+### Controls
+- Mouse steering sensitivity can be set in the pause menu's Options (Mouse steering
+  sensitivity + / -, 10% to 300%; 100% is OMSI's), and the launcher's slider goes as far.
+- The log says how each game controller came in (its layout, DirectInput or the system's)
+  and, the first time a stick or axis moves, whether it steers - for reports of sticks
+  that do nothing.
 
 ### Windows
-- The game starts on a PC without the Visual C++ Redistributable: the C runtime is linked
-  into `openomsi.exe`, and the runtime DLLs ship beside the DirectX shader compiler
-  ("The code execution cannot proceed because VCRUNTIME140_1.dll was not found").
+- The game and the dedicated server start on a PC without the Visual C++ Redistributable:
+  its runtime DLLs ship beside `openomsi.exe` ("The code execution cannot proceed because
+  VCRUNTIME140_1.dll was not found").
 
 ## 0.1.471 - 2026-10-01
 

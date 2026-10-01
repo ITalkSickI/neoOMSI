@@ -1,12 +1,10 @@
 # The main thread's stack on Windows is 1 MB unless the program says otherwise; macOS and
 # Linux give 8 MB. The game does the same work on every system, so Windows gets 8 MB too.
-# The C runtime is linked into the program (crt-static): without it a PC lacking the Visual
-# C++ Redistributable refused to start it ("VCRUNTIME140_1.dll was not found").
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
 
 [target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
 
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
