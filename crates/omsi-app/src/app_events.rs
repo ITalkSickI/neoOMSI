@@ -143,6 +143,19 @@ impl ApplicationHandler for App {
                         }
                     }
                 } else {
+                    self.buttons_held.1 = state == ElementState::Pressed;
+                    // the left button already down on nothing it works: both held zoom
+                    if state == ElementState::Pressed && self.buttons_held.0 && !self.dragging && self.start_both_drag() {
+                        return;
+                    }
+                    // (a switch held with the left button keeps the mouse: looking round
+                    // took the cursor's movement away from it, and the drag stopped)
+                    if state == ElementState::Pressed && self.dragging {
+                        return;
+                    }
+                    if state == ElementState::Released {
+                        self.both_drag = None;
+                    }
                     // a right click lets go of the mouse steering, as in OMSI (#162)
                     if state == ElementState::Pressed && self.mouse_drive && self.game_menu.is_none() {
                         self.mouse_drive = false;
@@ -204,7 +217,17 @@ impl ApplicationHandler for App {
                         self.finger_up(event_loop, 0, p, false);
                     }
                 } else {
-                    self.left_button(event_loop, state == ElementState::Pressed);
+                    let pressed = state == ElementState::Pressed;
+                    self.buttons_held.0 = pressed;
+                    // the right button already down (looking round): both held zoom, and
+                    // the click works nothing in the cab
+                    if pressed && self.buttons_held.1 && self.start_both_drag() {
+                        return;
+                    }
+                    if !pressed && self.both_drag.take().is_some() {
+                        self.mouse_look = self.buttons_held.1;
+                    }
+                    self.left_button(event_loop, pressed);
                 }
             }
             // a finger (a phone; see touch.rs)

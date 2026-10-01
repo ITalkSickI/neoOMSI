@@ -86,6 +86,12 @@ pub(crate) struct App {
     pub(crate) last: Instant,
     pub(crate) speed: f32,
     pub(crate) mouse_look: bool,
+    /// The left and right mouse buttons held (`both_drag` needs both).
+    pub(crate) buttons_held: (bool, bool),
+    /// Both buttons held: OMSI's M_Zoom (0x82c5f8) - moving the mouse up zooms in (in the
+    /// bus) or takes the outside camera further away, by the value at the press over 500
+    /// pixels: (the cursor's height then, the zoom or distance then).
+    pub(crate) both_drag: Option<(f32, f32)>,
     /// Right mouse button toggles the headset picture zoom.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) vr_zoom_active: bool,
