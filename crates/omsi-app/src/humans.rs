@@ -214,6 +214,11 @@ struct Cabin {
     data: PassengerCabin,
     graph: PathGraph,
     links: Vec<(i32, i32, bool)>,
+    /// Each link's footstep sounds: its section's `[stepsoundpack]` named by the link's
+    /// `[next_stepsound]` (index into `step_packs`), none where the paths.cfg gives none -
+    /// Omsi.exe hears no steps there - and on the joint between two sections.
+    link_pack: Vec<Option<usize>>,
+    step_packs: Vec<Arc<[String]>>,
     entries: Vec<Door>,
     exits: Vec<Door>,
     /// Where a passenger stands at the cash desk, its path point, and the heading (bus
@@ -280,6 +285,8 @@ impl Cabin {
         let data = load_cabin(lead)?;
         let mut points: Vec<Vec3> = Vec::new();
         let mut links: Vec<(i32, i32, bool)> = Vec::new();
+        let mut link_pack: Vec<Option<usize>> = Vec::new();
+        let mut step_packs: Vec<Arc<[String]>> = Vec::new();
         // (merged path point or -1, sells tickets, half width of the section)
         let mut entry_points: Vec<(i32, bool, f32)> = Vec::new();
         let mut exit_points: Vec<(i32, f32)> = Vec::new();
@@ -294,15 +301,17 @@ impl Cabin {
                 load_cabin(def)
             };
             let Some(cab) = cab else { break };
-            let (own, own_links): (Vec<Vec3>, Vec<(i32, i32, bool)>) = match load_paths(def) {
+            let (own, own_links, own_steps, own_packs): (Vec<Vec3>, Vec<(i32, i32, bool)>, Vec<i32>, Vec<Vec<String>>) = match load_paths(def) {
                 Some(p) => (
                     p.points
                         .iter()
                         .map(|q| Vec3::from(q.pos) + *offset)
                         .collect(),
                     p.links,
+                    p.link_step_sound,
+                    p.step_sound_packs,
                 ),
-                None => (Vec::new(), Vec::new()),
+                None => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
             };
             let base = points.len();
             let valid = |i: i32| (i >= 0 && (i as usize) < own.len()).then_some(base + i as usize);
@@ -323,7 +332,10 @@ impl Cabin {
                 // one's [linkToNextVeh] point (the frontmost aisle point when it has none)
                 let front = cab.link_to_next_veh.and_then(valid).or_else(|| end(true));
                 match (rear_link, front) {
-                    (Some(a), Some(b)) => links.push((a as i32, b as i32, false)),
+                    (Some(a), Some(b)) => {
+                        links.push((a as i32, b as i32, false));
+                        link_pack.push(None);
+                    }
                     // no way through: the section stays empty
                     _ => break,
                 }
@@ -334,6 +346,12 @@ impl Cabin {
                     .iter()
                     .map(|(a, b, o)| (a + base as i32, b + base as i32, *o)),
             );
+            let pack_base = step_packs.len();
+            link_pack.extend((0..own_links.len()).map(|i| {
+                let n = own_steps.get(i).copied().unwrap_or(-1);
+                (n >= 0 && (n as usize) < own_packs.len()).then(|| pack_base + n as usize)
+            }));
+            step_packs.extend(own_packs.into_iter().map(Arc::from));
             rear_link = cab.link_to_prev_veh.and_then(valid).or_else(|| end(false));
             let half = def
                 .bounding_box
@@ -516,6 +534,8 @@ impl Cabin {
             data,
             graph,
             links,
+            link_pack,
+            step_packs,
             entries,
             exits,
             desk,
@@ -528,9 +548,14 @@ impl Cabin {
     /// The point of the walkways (the path links) nearest `p` (bus frame; height weighs
     /// three times), and how far away it is.
     fn on_walkways(&self, p: Vec3) -> Option<(Vec3, f32)> {
+        self.nearest_link(p).map(|(_, q, d)| (q, d))
+    }
+
+    /// [`Cabin::on_walkways`] with the index of the link the point lies on.
+    fn nearest_link(&self, p: Vec3) -> Option<(usize, Vec3, f32)> {
         let pts = &self.graph.points;
-        let mut best: Option<(f32, Vec3)> = None;
-        for &(a, b, _) in &self.links {
+        let mut best: Option<(f32, Vec3, usize)> = None;
+        for (i, &(a, b, _)) in self.links.iter().enumerate() {
             let (Some(pa), Some(pb)) = (pts.get(a.max(0) as usize), pts.get(b.max(0) as usize)) else { continue };
             let ab = *pb - *pa;
             let t = if ab.length_squared() > 1e-6 { ((p - *pa).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
@@ -538,10 +563,19 @@ impl Cabin {
             let v = q - p;
             let d = (v.x * v.x + v.y * v.y + 9.0 * v.z * v.z).sqrt();
             if best.map(|x| d < x.0).unwrap_or(true) {
-                best = Some((d, q));
+                best = Some((d, q, i));
             }
         }
-        best.map(|(d, q)| (q, d))
+        best.map(|(d, q, i)| (i, q, d))
+    }
+
+    /// The footstep sounds of the link someone at `p` (bus frame) walks on: Omsi.exe plays
+    /// a step from the `[stepsoundpack]` of the passenger's link (0x6274c9), nothing where
+    /// the link has none.
+    fn step_pack_at(&self, p: Vec3) -> Option<Arc<[String]>> {
+        let (i, _, _) = self.nearest_link(p)?;
+        let k = (*self.link_pack.get(i)?)?;
+        self.step_packs.get(k).filter(|pk| !pk.is_empty()).cloned()
     }
 
     /// Place `k` of the queue at exit door `x` for somebody coming from `from_y`: one
@@ -7697,14 +7731,14 @@ impl Humans {
             // plants a foot while walking, so people standing at a stop stay quiet)
             let step = if p.anim.landed() && p.vel.length() > 0.3 {
                 match p.place {
-                    Place::Ground => Some((p.position, false, false)),
-                    Place::Bus(b, l) => world_of(l).map(|w| (w, true, b == BusId::Player)),
+                    Place::Ground => Some((p.position, false, false, None)),
+                    Place::Bus(b, l) => world_of(l).map(|w| (w, true, b == BusId::Player, bn.and_then(|bb| bb.cabin.step_pack_at(l)))),
                 }
             } else {
                 None
             };
-            if let Some((position, inside, own_bus)) = step {
-                self.footfalls.push(ambience::Footfall { position, inside, own_bus });
+            if let Some((position, inside, own_bus, pack)) = step {
+                self.footfalls.push(ambience::Footfall { position, inside, own_bus, pack });
             }
             let log_it = match debug_pose() {
                 Some(Some(id)) => id == p.id,
@@ -9219,6 +9253,27 @@ mod tests {
         assert!(
             (train_heading(0.0, &frames, Vec3::new(0.0, back.y, 0.5)) - bent * 0.5).abs() < 1e-9
         );
+    }
+
+    /// The SD200's footsteps as its paths.cfg gives them to the links (#311): the stairs
+    /// sound as stairs, the front of the upper deck as its own floor, the aisle below as
+    /// the plain floor.
+    #[test]
+    fn footsteps_come_from_the_links_step_sound_pack() {
+        let root = omsi_cfg::env::var_os("OMSI_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
+        let bus = root.join("Vehicles/MAN_SD200/MAN_SD80.bus");
+        if !bus.exists() {
+            eprintln!("skipped: no {}", bus.display());
+            return;
+        }
+        let def = omsi_vehicle::Vehicle::load(&bus).expect("SD200");
+        let cabin = Cabin::load_train(&[(&def, Vec3::ZERO, f32::INFINITY)]).expect("cabin");
+        let first = |p: Vec3| cabin.step_pack_at(p).map(|k| k[0].to_ascii_lowercase());
+        assert_eq!(first(Vec3::new(-0.89, -1.61, 1.63)).as_deref(), Some("step_st_01.wav"), "the rear stairs");
+        assert_eq!(first(Vec3::new(0.0, 4.35, 2.5)).as_deref(), Some("step_ov_01.wav"), "the upper deck's front");
+        assert_eq!(first(Vec3::new(0.0, 0.84, 0.57)).as_deref(), Some("step_01.wav"), "the aisle below");
     }
 
     /// The SD202's cabin: the stairs down from the upper deck end beside the rear exits.

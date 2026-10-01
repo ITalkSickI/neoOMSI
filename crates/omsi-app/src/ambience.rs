@@ -4,30 +4,36 @@
 //! is the rain as it sounds in the street (the bus plays its own `regen.wav` on the roof,
 //! `[viewpoint] 2`, inside the cab), and `Sounds\Passengers\sound.cfg` holds the footstep
 //! entry with its volume and its `[3d]` range - one metre, so a step is only heard from a
-//! few metres away. The wet-road hiss (`Sounds\WetLane_1.wav`, `WetLane_2.wav`) belongs to
+//! few metres away; which file a step plays is the vehicle's: the `[stepsoundpack]` of the
+//! path link the passenger walks on (its `paths.cfg`). The wet-road hiss (`Sounds\WetLane_1.wav`, `WetLane_2.wav`) belongs to
 //! the vehicles and comes out of their own sound configurations once `StreetCond` is fed.
 
 use glam::DVec3;
 use omsi_audio::{AudioEngine, Clip, VoiceId, VoiceParams};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// A footfall to be heard: where it happened and whether it is on a bus floor.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Footfall {
     pub position: DVec3,
     pub inside: bool,
     /// On the floor of the player's own bus.
     pub own_bus: bool,
+    /// The files (in `Sounds\Passengers\`) of the `[stepsoundpack]` of the path link the
+    /// step is on, one picked at random as Omsi.exe does (0x6274c9); none, no sound - a
+    /// link without a pack, a bus whose paths.cfg has none, the street.
+    pub pack: Option<Arc<[String]>>,
 }
 
 pub struct Ambience {
     /// `Sounds\rain_outside.wav`, the rain in the open.
     rain: Option<Arc<Clip>>,
     rain_voice: Option<VoiceId>,
-    /// The step samples of `Sounds\Passengers\` and what the sound configuration there says
-    /// about them (volume, `[3d]` range).
-    steps: Vec<Arc<Clip>>,
+    /// `Sounds\Passengers\`, the step samples read from it as the packs name them, and
+    /// what the sound configuration there says about a step (volume, `[3d]` range).
+    step_dir: PathBuf,
+    steps: hashbrown::HashMap<String, Option<Arc<Clip>>>,
     step_volume: f32,
     step_range: f32,
     /// Steps still allowed this second: a crowd getting off would otherwise fire a dozen
@@ -80,7 +86,8 @@ impl Ambience {
         let mut a = Ambience {
             rain: None,
             rain_voice: None,
-            steps: Vec::new(),
+            step_dir: PathBuf::new(),
+            steps: hashbrown::HashMap::new(),
             step_volume: 1.0,
             step_range: 1.0,
             step_budget: 0.0,
@@ -94,8 +101,7 @@ impl Ambience {
         }
         a.rain = engine.load_clip(&omsi_cfg::resolve_path(root, "Sounds\\rain_outside.wav"));
         let dir = omsi_cfg::resolve_path(root, "Sounds\\Passengers");
-        // the configuration names one file; OMSI ships fourteen of them and a walking crowd
-        // that repeats a single sample sounds like a machine, so the whole folder is the pool
+        // (the configuration's own file is only a stand-in: TSoundPack plays the pack's)
         if let Ok(cfg) = omsi_vehicle::SoundCfg::load(&dir.join("sound.cfg")) {
             if let Some(step) = cfg
                 .sounds
@@ -106,26 +112,12 @@ impl Ambience {
                 a.step_range = if step.range > 0.0 { step.range } else { 1.0 };
             }
         }
-        let mut files: Vec<std::path::PathBuf> = omsi_cfg::vfs::read_dir_paths(&dir)
-            .into_iter()
-            .filter(|p| {
-                let n = p
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_ascii_lowercase())
-                    .unwrap_or_default();
-                // (not `Step_St_*`, steps on a stair: every step of the crowd sounded as if
-                // it climbed one)
-                n.starts_with("step") && n.ends_with(".wav") && !n.starts_with("step_st")
-            })
-            .collect();
-        files.sort();
-        a.steps = files.iter().filter_map(|p| engine.load_clip(p)).collect();
         log::info!(
-            "environment sounds: rain {}, {} footstep samples in {}",
+            "environment sounds: rain {}, footsteps from {}",
             if a.rain.is_some() { "yes" } else { "missing" },
-            a.steps.len(),
             dir.display()
         );
+        a.step_dir = dir;
         a
     }
 
@@ -244,9 +236,6 @@ impl Ambience {
         listener_inside: bool,
         footfalls: &[Footfall],
     ) {
-        if self.steps.is_empty() {
-            return;
-        }
         self.step_budget = (self.step_budget + dt * STEPS_PER_SECOND).min(STEPS_PER_SECOND);
         let snow = ((street_cond - 1.0) * 2.0).clamp(0.0, 1.0);
         let wet = street_cond.clamp(0.0, 1.0) * (1.0 - snow);
@@ -257,16 +246,25 @@ impl Ambience {
             }
             // (the samples are steps on a bus's floor, `Sounds\Passengers` - the passengers'
             // sound in OMSI; people in the street walked with them as if still aboard, #236)
-            if !f.inside {
+            let Some(pack) = f.pack.as_ref().filter(|p| f.inside && !p.is_empty()) else {
                 continue;
-            }
+            };
             let d = (f.position - listener).length();
             if d > self.step_range as f64 * 12.0 {
                 continue;
             }
+            let k = ((self.rand() * pack.len() as f32) as usize).min(pack.len() - 1);
+            let file = pack[k].trim();
+            let dir = &self.step_dir;
+            let Some(clip) = self
+                .steps
+                .entry(file.to_ascii_lowercase())
+                .or_insert_with(|| engine.load_clip(&omsi_cfg::resolve_path(dir, file)))
+                .clone()
+            else {
+                continue;
+            };
             self.step_budget -= 1.0;
-            let k = (self.rand() * self.steps.len() as f32) as usize;
-            let clip = self.steps[k.min(self.steps.len() - 1)].clone();
             // indoors the floor is a hard panel however deep the snow outside is
             let (gain, pitch) = if f.inside {
                 (1.0, 1.0)
