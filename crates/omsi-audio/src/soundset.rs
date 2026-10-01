@@ -314,8 +314,16 @@ impl SoundSet {
         active: f32,
         facing: f32,
     ) -> Option<f32> {
+        // (an outside sound of the bus the camera sits in - no bit 2, the SD200's exterior
+        // engine at `[viewpoint] 5` - comes into the cab through what is open, at
+        // `Snd_OutsideVol`: TSound update 0x750340, played when that is over 0.01 and its
+        // volume multiplied by it)
+        let mut through = 1.0;
         if def.viewpoint != 0 && def.viewpoint & view == 0 {
-            return None;
+            match outside_open() {
+                Some(o) if view == 2 && def.viewpoint & 2 == 0 && o > 0.01 => through = o,
+                _ => return None,
+            }
         }
         if def.triggers.is_empty() && !Self::conditions_hold(def, var) {
             return None;
@@ -330,7 +338,7 @@ impl SoundSet {
         // dB and the buffer takes at most 0, so a factor over 1 plays at 1. The MB 412D's
         // `[sound] start2.wav` carries a loop sound's lines - "44100" read as its volume -
         // and its start-up roared 44 100 times too loud.
-        Some(vol.clamp(0.0, 1.0))
+        Some((vol * through).clamp(0.0, 1.0))
     }
 
     /// What a `[volcurve]` reads. The exe (`TSound` load, 0x74e408) looks the name up in the
@@ -527,7 +535,7 @@ impl SoundSet {
                 } else {
                     "no clip".into()
                 };
-            } else if s.def.viewpoint != 0 && s.def.viewpoint & view == 0 {
+            } else if s.def.viewpoint != 0 && s.def.viewpoint & view == 0 && !(view == 2 && s.def.viewpoint & 2 == 0 && outside_open().is_some_and(|o| o > 0.01)) {
                 why = format!("viewpoint {} (listener {view})", s.def.viewpoint);
             } else if let Some(c) = s
                 .def
@@ -600,6 +608,22 @@ mod tests {
         set_outside_open(Some(0.5));
         assert_eq!(SoundSet::outside_gain(true, true), 1.0, "doors open: all of it");
         assert!(SoundSet::lowpass_of(true, true) > 5000.0);
+        // (in the same test: the variable is one for all) the own bus's outside-only
+        // entry, `[viewpoint] 5`, heard from the cab at `Snd_OutsideVol` (TSound update
+        // 0x750340), not at all with everything shut
+        let engine = SoundEntry { volume: 0.8, viewpoint: 5, ..Default::default() };
+        let none = |_: &str| None;
+        set_outside_open(Some(0.0));
+        assert_eq!(SoundSet::volume(&engine, &none, 2, 0.0, 1.0), None);
+        set_outside_open(Some(0.5));
+        assert_eq!(SoundSet::volume(&engine, &none, 2, 0.0, 1.0), Some(0.4));
+        assert_eq!(SoundSet::volume(&engine, &none, 1, 0.0, 1.0), Some(0.8), "outside: as it is");
+        let outside = SoundEntry { volume: 0.8, viewpoint: 1, ..Default::default() };
+        assert_eq!(SoundSet::volume(&outside, &none, 2, 0.0, 1.0), Some(0.4));
+        assert_eq!(SoundSet::volume(&outside, &none, 2 | 4, 0.0, 1.0), None, "not an AI bus's");
+        let cab = SoundEntry { volume: 0.8, viewpoint: 2, ..Default::default() };
+        assert_eq!(SoundSet::volume(&cab, &none, 1, 0.0, 1.0), None, "a cab sound stays in");
         set_outside_open(None);
+        assert_eq!(SoundSet::volume(&engine, &none, 2, 0.0, 1.0), None);
     }
 }
