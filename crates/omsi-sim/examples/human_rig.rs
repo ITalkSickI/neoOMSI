@@ -28,7 +28,7 @@ fn report(t: &HumanType) {
     println!("== {} (model {}, height {}, walk {:?})", t.def.path.display(), t.def.model, t.def.height, t.def.walk_param);
     println!("   links hip {:?} knee {:?} waist {:?} shoulder {:?} elbow {:?} neck {:?} hand {:?} finger {:?}", j.hip, j.knee, j.waist, j.shoulder, j.elbow, j.neck, j.hand, j.finger);
     let r = &t.rig;
-    println!("   rig: ankle {:?} sole {:.3} ankle_h {:.3} heel {:.3} ball {:.3} toe {:.3} thigh {:.3} shin {:.3} arm {:.3}+{:.3} head_top {:.2} seat_lift {:.2} cadence(1.35) {:.2}/s walk {} {} {} {}", r.ankle[1], r.sole, r.ankle_h, r.heel, r.ball, r.toe, r.thigh, r.shin, r.upper_arm, r.forearm, r.head_top, r.seat_lift, r.cadence(1.35), r.walk_speed, r.walk_step, r.arm_swing, r.hip_sway);
+    println!("   rig: ankle {:?} sole {:.3} ankle_h {:.3} heel {:.3} ball {:.3} toe {:.3} thigh {:.3} shin {:.3} arm {:.3}+{:.3} head_top {:.2} seat_lift {:.2} cadence(1.35) {:.2}/s walk {} {} {}", r.ankle[1], r.sole, r.ankle_h, r.heel, r.ball, r.toe, r.thigh, r.shin, r.upper_arm, r.forearm, r.head_top, r.seat_lift, r.cadence(1.35), r.walk_step, r.arm_swing, r.hip_sway);
     // how far the thigh-weighted vertices lie from the thigh (skirts are far out)
     for m in &t.meshes {
         let mut d: Vec<f32> = Vec::new();

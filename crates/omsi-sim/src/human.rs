@@ -174,8 +174,8 @@ pub struct Rig {
     pub seat_lift: f32,
     /// Size relative to a 1.75 m adult.
     pub scale: f32,
-    /// `[walk_param]`: preferred speed (m/s), step length (m), arm swing and hip sway.
-    pub walk_speed: f32,
+    /// From `[walk_param]`: the step length at full stride (m) - half the file's first
+    /// line, the stride ({schrittweite}, 1.4 by default) -, the arm swing and the hip sway.
     pub walk_step: f32,
     pub arm_swing: f32,
     pub hip_sway: f32,
@@ -315,17 +315,10 @@ impl Rig {
             head_top,
             seat_lift,
             scale,
-            walk_speed: if wp[0] > 0.3 {
-                wp[0].clamp(0.6, 2.0)
-            } else {
-                1.4
-            },
-            // read as the step length in cm at that speed (66 … 83 in the stock files)
-            walk_step: if wp[1] > 20.0 {
-                (wp[1] / 100.0).clamp(0.5, 0.9)
-            } else {
-                0.75 * scale
-            },
+            // (line 1 is the stride, hum+0x2d8: Omsi.exe's walk phase 0x626ae8 runs 2.0 per
+            // two strides and sets a foot down at 0.2, 0.7, 1.2 and 1.7, one step per half a
+            // stride; line 2, {upper_arm_beta}, is an angle of the arm)
+            walk_step: 0.5 * if wp[0] > 0.3 { wp[0] } else { 1.4 },
             arm_swing: if wp[2] > 0.0 {
                 wp[2].clamp(0.2, 1.6)
             } else {
@@ -360,15 +353,13 @@ impl Rig {
         (self.thigh * 0.85).clamp(0.25, 0.4)
     }
 
-    /// Steps per second at `speed`, from `[walk_param]` and the leg length, never with a
-    /// step longer than the legs allow.
+    /// Steps per second at `speed`, as Omsi.exe times the walk (0x626ae8): the stride is
+    /// the full one from 1.2 m/s on and shortens with the speed below that, so the steps
+    /// keep one pace when walking slowly; never with a step longer than the legs allow.
     pub fn cadence(&self, speed: f32) -> f32 {
         let v = speed.max(0.05);
-        let own = self.walk_speed / self.walk_step;
-        let by_leg = 2.0 * (0.9 / self.leg().max(0.4)).sqrt();
-        let f0 = (0.5 * own + 0.5 * by_leg).clamp(1.5, 2.3);
-        let f = f0 * (v / self.walk_speed).powf(0.45);
-        f.max(v / (0.8 * self.leg())).clamp(0.9, 3.4)
+        let f = v / (self.walk_step * (v / 1.2).min(1.0));
+        f.max(v / (0.8 * self.leg())).min(3.4)
     }
 }
 
@@ -2289,6 +2280,10 @@ mod tests {
         assert!(r.seat_lift > 0.05 && r.seat_lift < 0.15);
         let c = r.cadence(1.35);
         assert!(c > 1.7 && c < 2.1, "cadence {c} steps/s at 1.35 m/s");
+        // `[walk_param]` 1.4 (the stride) / 80 (an arm angle): 0.7 m steps
+        assert!((r.walk_step - 0.7).abs() < 1e-6, "{}", r.walk_step);
+        // slower than 1.2 m/s the stride shortens and the pace stays: 2.4 / 1.4 steps a second
+        assert!((r.cadence(0.6) - 2.4 / 1.4).abs() < 1e-4, "{}", r.cadence(0.6));
     }
 
     #[test]

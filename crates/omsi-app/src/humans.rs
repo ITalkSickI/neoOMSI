@@ -2890,8 +2890,9 @@ impl Humans {
             let inst = renderer.add_instance(scene, id, position, Mat4::IDENTITY, mats);
             meshes.push((id, inst));
         }
-        // walking pace from the human's `[walk_param]` (1.4 m/s by default), a little varied
-        let pace = (ty.def.walk_param[0] as f64).clamp(0.9, 1.8) * (0.85 + self.rand_f() * 0.25);
+        // walking pace 1.1 m/s +- 0.2, as Omsi.exe draws it for everybody (0x625758:
+        // sub_7f08b0(0.2, 1.1)); `[walk_param]` holds the stride, not a speed
+        let pace = 1.1 + (self.rand_f() * 2.0 - 1.0) * 0.2;
         let age = ty.def.age.map(|a| a as f32).unwrap_or(40.0);
         let target = self.rand_f() as f32;
         let id = self.next_id;
@@ -8001,7 +8002,7 @@ impl Humans {
         pp.t += dt;
         let t = pp.t;
         let rig = self.people[i].ty.rig.clone();
-        let pace = rig.walk_speed.min(1.4) as f64;
+        let pace = 1.4;
         let ramp = |a: f32, b: f32| ((t - a) / (b - a)).clamp(0.0, 1.0) as f64;
         let mut activity = Activity::Stand;
         let (mut seat, mut look, mut reach, mut hold, mut sway) =
