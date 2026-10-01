@@ -580,7 +580,7 @@ fn fleet_numbers(v: &omsi_sim::VehicleInstance) -> Vec<(String, String)> {
     def.numbers_with_plates()
         .into_iter()
         .map(|(n, _)| {
-            let reg = if def.registration_mode == 1 { String::new() } else { def.plate_of_number(&n) };
+            let reg = if def.registration_mode == 1 { String::new() } else { def.chosen_plate_of_number(&n) };
             (n, reg)
         })
         .collect()

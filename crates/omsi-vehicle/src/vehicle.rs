@@ -517,12 +517,26 @@ impl Vehicle {
             .collect()
     }
 
-    /// The plate of fleet number `number`, as Omsi.exe gives it to a vehicle not in the
-    /// `[registration_free]` mode (Tform_selectVeh.Edit1Change, AI buses at 0x70aff0): the
-    /// `[registration_list]` file's plate of that number when it has one, else prefix,
-    /// number and postfix of the list or automatic mode - the number alone without a mode.
+    /// The plate of fleet number `number`, as Omsi.exe gives it to an AI bus not in the
+    /// `[registration_free]` mode (0x7e7a80, from the depot buses' 0x70a174): the
+    /// `[registration_list]` file's plate of that number when it has one, whatever the mode,
+    /// else prefix, number and postfix of the list or automatic mode - the number alone
+    /// without a mode.
     pub fn plate_of_number(&self, number: &str) -> String {
-        if self.registration_list.is_some() {
+        self.plate_from(number, self.registration_list.is_some())
+    }
+
+    /// The plate the vehicle dialog gives the player's bus for fleet number `number`
+    /// (Tform_selectVeh.Edit1Change, which Button1Click writes over the AI's): the list
+    /// file's plate only in the list mode, the last plate keyword's - a repaint's
+    /// `[registration_list]` followed by the template's `[registration_automatic]` gives
+    /// the player prefix and number, its AI copies the list's plate.
+    pub fn chosen_plate_of_number(&self, number: &str) -> String {
+        self.plate_from(number, self.registration_mode == 2)
+    }
+
+    fn plate_from(&self, number: &str, list: bool) -> String {
+        if list {
             if let Some((_, p)) = self.numbers_with_plates().into_iter().find(|(n, p)| n == number.trim() && !p.is_empty()) {
                 return p;
             }
@@ -593,6 +607,8 @@ mod tests {
         assert_eq!(v.registration_mode, 3);
         assert_eq!(v.plate_of_number("E1"), "AB12 CDE");
         assert_eq!(v.plate_of_number("E2"), "B-V E2");
+        // (the player's bus from the dialog: the automatic mode's plate, Edit1Change)
+        assert_eq!(v.chosen_plate_of_number("E1"), "B-V E1");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
