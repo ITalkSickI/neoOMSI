@@ -4,6 +4,41 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.576 - 2026-10-01
+
+### Passengers
+- People no longer freeze at an open door before boarding (#498).
+- Buses whose scripts set `PAX_Entry0_Open` for the front door only (the SD200, SD202) let
+  people out of the rear doors again: an exit without a `PAX_Exit` variable follows its
+  `door_<i>` (#486).
+
+### Controls
+- Steering wheels (G27, G29, Driving Force GT...): the pedals no longer act as buttons and
+  buttons no longer fire twice (#480).
+- The weather's METAR airport can be typed as an ICAO code (#492).
+
+### Interface
+- In-game interface size and opacity, and the notes in the corner, are settings; sharper
+  text; the pause menu's Options list one line a setting (#446).
+- The in-cab schedule sheet shows the player's timetable (#491).
+- AI-only lines are no longer offered for driving (#483).
+
+### Graphics
+- LED panels: a "LED mip strength" slider (0-4) instead of the on/off switch (#490).
+- Dashboard lamps built as `[visible]` meshes with a plain `[matl_nightmap]` light up by
+  day as well, as in OMSI (#507).
+- `[terrainmapping]` takes the map's first ground texture only, as Omsi.exe does; ground
+  lighting and tile seams fixed (#436).
+- VR: the bus mirrors are no longer black when looking round (#487).
+- The driver figure's arms and the hand on a manual gear lever (#465).
+
+### Maps
+- Surface objects modelled away from their origin (bridges) stand at the road's height
+  (#496); scenery `[matl_freetex]` works without a script (#474).
+
+### Traffic
+- AI cyclists ride at 15-21 km/h and no longer show green boxes on the rider (#502).
+
 ## 0.1.538 - 2026-10-01
 
 ### Graphics
