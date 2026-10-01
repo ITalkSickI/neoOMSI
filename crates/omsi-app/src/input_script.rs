@@ -217,10 +217,11 @@ impl App {
                     && !own
                     && (fallback_action(code, &self.args.drive_keys).is_some()
                     || matches!(code, KeyCode::KeyZ | KeyCode::KeyX | KeyCode::KeyC | KeyCode::KeyI | KeyCode::KeyL));
-                // the arrows are never the camera keys without Ctrl (they move: drive, or turn the
-                // head when held, with any other modifier and in every layout); only Ctrl+Left/Right
-                // switch the interior camera, below.
-                let plain_arrow = matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight) && !ctrl;
+                // plain Left/Right are OMSI's view_interiorcam_minus/plus, except when a wheel
+                // steers: then the arrows glance (held, the head turns) and only Ctrl+Left/Right
+                // switch the interior camera, below. (Where the arrows drive, `ours` skips this.)
+                let plain_arrow = matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight) && !ctrl
+                    && self.controllers.as_ref().is_some_and(|c| c.wheel_steering());
                 if let Some(scan) = keys::dik_code(code).filter(|_| !ours) {
                     let action = self.game_keys.iter().find(|b| b.scan_code == scan && b.matches(m)
                         && !b.action.starts_with("vr_")
