@@ -2009,11 +2009,11 @@ impl ApplicationHandler for App {
                             self.mirrors_seen = 0;
                         } else {
                             let mirrors = self.player.as_ref().map(|p| p.vehicle.ty.def.cameras_reflexion.len()).unwrap_or(0) as f32;
+                            #[cfg(windows)]
+                            let vr_active = self.vr.is_some();
+                            #[cfg(not(windows))]
+                            let vr_active = false;
                             let rate = {
-                                #[cfg(windows)]
-                                let vr_active = self.vr.is_some();
-                                #[cfg(not(windows))]
-                                let vr_active = false;
                                 if vr_active {
                                     // Each VR frame already draws two full-size eyes. Keep bus
                                     // mirrors useful without spending two more scene renders
@@ -2026,6 +2026,15 @@ impl ApplicationHandler for App {
                                 } else {
                                     MIRROR_RATE.max(mirrors * MIRROR_MIN_HZ).min(MIRROR_MAX_HZ * self.mirrors_seen.max(1) as f32)
                                 }
+                            };
+                            // The desktop camera does not follow the headset. Culling by
+                            // its frustum can leave a mirror visible in VR uninitialised
+                            // (black). Refresh all bus mirrors in VR, still taking turns
+                            // within the configured budget; keep desktop visibility culling.
+                            let mirror_view = if vr_active {
+                                None
+                            } else {
+                                Some((*cam, s.config.width as f32 / s.config.height.max(1) as f32))
                             };
                             self.mirror_budget = (self.mirror_budget + raw_dt.min(0.1) * rate).min(2.5);
                             let mut drawn = 0;
@@ -2044,7 +2053,7 @@ impl ApplicationHandler for App {
                                     p,
                                     &lighting,
                                     Some(self.mirror_turn),
-                                    Some((*cam, s.config.width as f32 / s.config.height.max(1) as f32)),
+                                    mirror_view,
                                 );
                             }
                         }
