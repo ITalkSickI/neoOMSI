@@ -206,7 +206,8 @@ omsi.update = function () {
 
 * The first call for a stop returns `[]`. The game fills the stop a moment later and then calls
   `omsi.update` again, so ask inside `update`.
-* A page keeps up to 8 different stops. The list is renewed about once a second.
+* The game keeps the 8 stops a page asked for most recently. Asking for a ninth pushes out the one asked longest ago;
+  asking for that one again later gives `[]` for a moment until it is made anew. The list is renewed about once a second.
 * Without a timetable on the map the list stays empty.
 
 ## Acting on the vehicle

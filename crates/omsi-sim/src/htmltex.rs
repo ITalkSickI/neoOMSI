@@ -497,9 +497,7 @@ impl VehicleInstance {
         let departures = (!self.host.html_departures.is_empty()).then(|| crate::vehicle_api::departures(&self.host.html_departures));
         let out = drive_pages(&mut self.html_textures, &num, &strs, Some(&api), &env, depot.as_ref(), departures.as_ref());
         for key in out.departure_wants {
-            if !self.host.html_departure_wants.contains(&key) && self.host.html_departure_wants.len() < 8 {
-                self.host.html_departure_wants.push(key);
-            }
+            self.host.want_departures(key);
         }
         let (events, triggers, frames) = (out.events, out.triggers, out.frames);
         requests.extend(out.requests);
