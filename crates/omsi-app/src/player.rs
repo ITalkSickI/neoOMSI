@@ -1709,14 +1709,15 @@ impl Player {
                         let mut found = None;
                         for t in &self.vehicle.trailers {
                             if let Some(c) = t.ty.def.cameras_pax.get(k) {
-                                let (eye, yaw, pitch) = t.camera_world(c);
-                                found = Some((eye, yaw, pitch, c.fov));
+                                // (on the part's body like the front's: `dist`, pitch and roll)
+                                let turned = omsi_vehicle::Camera { yaw: c.yaw + look.0, pitch: (c.pitch + look.1).clamp(-89.0, 89.0), ..c.clone() };
+                                found = Some((t.camera_world_full(&turned), c.fov));
                                 break;
                             }
                             k -= t.ty.def.cameras_pax.len();
                         }
-                        if let Some((eye, yaw, pitch, fov)) = found {
-                            return Camera { position: eye, yaw: yaw + look.0, pitch: (pitch + look.1).clamp(-89.0, 89.0), roll: 0.0, fov_deg: fov, near: 0.25, far: 6000.0 };
+                        if let Some(((eye, yaw, pitch, roll), fov)) = found {
+                            return Camera { position: eye, yaw, pitch: pitch.clamp(-89.0, 89.0), roll, fov_deg: fov, near: 0.25, far: 6000.0 };
                         }
                         def.cameras_pax.first()
                     }

@@ -3172,13 +3172,11 @@ impl TrailerPart {
         Mat4::from_translation(self.position.as_vec3()) * self.body_rotation()
     }
 
-    /// Position/direction of one of the part's own `.bus` cameras in world space: (eye,
-    /// yaw, pitch) - as `VehicleInstance::camera_world` for the front part.
-    pub fn camera_world(&self, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32) {
-        let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
-        let eye = self.position + self.body_rotation().transform_point3(local).as_dvec3();
-        let heading = if self.reversed { self.heading + 180.0 } else { self.heading };
-        (eye, heading as f32 + cam.yaw, cam.pitch)
+    /// One of the part's own `.bus` cameras fixed to its body: (eye, yaw, pitch, roll), as
+    /// `VehicleInstance::camera_world_full` for the front part (`dist` and the body's pitch
+    /// and bank included).
+    pub fn camera_world_full(&self, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32, f32) {
+        camera_in_body(self.position, self.body_rotation(), cam)
     }
 
     /// Transform for mesh `i` relative to the part's position; a shadow blob lies on the
@@ -3532,23 +3530,28 @@ impl VehicleInstance {
     /// of its view with the body's pitch and bank in them - a mirror leans with the bus. A
     /// `dist` above zero puts the eye that far behind the point along the view.
     pub fn camera_world_full(&self, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32, f32) {
-        let rot = self.body_rotation();
-        let (sy, cy) = cam.yaw.to_radians().sin_cos();
-        let (sp, cp) = cam.pitch.to_radians().sin_cos();
-        let f_local = Vec3::new(sy * cp, cy * cp, sp);
-        let r_local = Vec3::new(cy, -sy, 0.0);
-        let f = rot.transform_vector3(f_local).normalize_or(Vec3::Y);
-        let up = rot.transform_vector3(r_local.cross(f_local)).normalize_or(Vec3::Z);
-        let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
-        let eye = self.position + rot.transform_point3(local).as_dvec3() - (f * cam.dist.max(0.0)).as_dvec3();
-        let yaw = f.x.atan2(f.y).to_degrees();
-        let pitch = f.z.clamp(-1.0, 1.0).asin().to_degrees();
-        // (the roll the renderer's `Camera::up` turns back into this up)
-        let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or(Vec3::X);
-        let u0 = r0.cross(f);
-        let roll = up.dot(r0).atan2(up.dot(u0)).to_degrees();
-        (eye, yaw, pitch, roll)
+        camera_in_body(self.position, self.body_rotation(), cam)
     }
+}
+
+/// A camera in a body's own matrix (`rot`, at `position`): see
+/// `VehicleInstance::camera_world_full`.
+fn camera_in_body(position: DVec3, rot: Mat4, cam: &omsi_vehicle::Camera) -> (DVec3, f32, f32, f32) {
+    let (sy, cy) = cam.yaw.to_radians().sin_cos();
+    let (sp, cp) = cam.pitch.to_radians().sin_cos();
+    let f_local = Vec3::new(sy * cp, cy * cp, sp);
+    let r_local = Vec3::new(cy, -sy, 0.0);
+    let f = rot.transform_vector3(f_local).normalize_or(Vec3::Y);
+    let up = rot.transform_vector3(r_local.cross(f_local)).normalize_or(Vec3::Z);
+    let local = Vec3::new(cam.pos[0], cam.pos[1], cam.pos[2]);
+    let eye = position + rot.transform_point3(local).as_dvec3() - (f * cam.dist.max(0.0)).as_dvec3();
+    let yaw = f.x.atan2(f.y).to_degrees();
+    let pitch = f.z.clamp(-1.0, 1.0).asin().to_degrees();
+    // (the roll the renderer's `Camera::up` turns back into this up)
+    let r0 = Vec3::new(f.y, -f.x, 0.0).normalize_or(Vec3::X);
+    let u0 = r0.cross(f);
+    let roll = up.dot(r0).atan2(up.dot(u0)).to_degrees();
+    (eye, yaw, pitch, roll)
 }
 
 fn skin_key(ty: &VehicleType, i: usize, transforms: &[Mat4]) -> Vec<Mat4> {
