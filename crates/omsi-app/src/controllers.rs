@@ -273,6 +273,7 @@ impl Devices {
     pub fn poll(&mut self) -> Vec<(String, usize, bool)> {
         let mut out = Vec::new();
         let di = self.direct_input();
+        #[cfg(windows)]
         let xinput_pads = self.gilrs.as_ref().is_some_and(|g| g.gamepads().any(|(_, p)| xinput_name(p.name())));
         #[cfg(windows)]
         let is_di = |pad: &gilrs::Gamepad<'_>| -> bool {
