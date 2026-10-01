@@ -720,9 +720,12 @@ impl Cabin {
     fn nearest_exit(&self, p: Vec3) -> usize {
         (0..self.exits.len())
             .min_by(|a, b| {
-                (self.exits[*a].inside - p)
-                    .length()
-                    .total_cmp(&(self.exits[*b].inside - p).length())
+                // Omsi.exe weights the height difference by 5 (sub_7f3a24)
+                let d = |e: usize| {
+                    let v = self.exits[e].inside - p;
+                    Vec3::new(v.x, v.y, v.z * 5.0).length()
+                };
+                d(*a).total_cmp(&d(*b))
             })
             .unwrap_or(0)
     }
@@ -6389,27 +6392,8 @@ impl Humans {
                     return w;
                 }
                 if !bn.exit_open.get(exit).copied().unwrap_or(false) {
-                    // another exit is open: go there
-                    if let Some(other) = (0..bn.cabin.exits.len()).find(|&x| bn.exit_open[x]) {
-                        let o = &bn.cabin.exits[other];
-                        let mut route = bn.cabin.route(door.wait, o.wait);
-                        route.retain(|p| (p.truncate() - door.wait.truncate()).length() > 0.05);
-                        if route.is_empty() {
-                            route.push(o.wait);
-                        }
-                        let start = self.people[i].local().unwrap_or(door.wait);
-                        self.set_state(
-                            i,
-                            State::Aboard {
-                                bus,
-                                route,
-                                idx: 0,
-                                seg: start,
-                                goal: Goal::ExitWait(other),
-                            },
-                        );
-                        return w;
-                    }
+                    // Omsi.exe keeps the exit picked at the stop request and waits for
+                    // that door (it does not switch to whichever door opens first)
                     self.people[i].why = "the exit door is shut";
                     let t = self.people[i].t_state;
                     if bus == BusId::Player
