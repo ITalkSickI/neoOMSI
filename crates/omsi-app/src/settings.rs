@@ -459,7 +459,7 @@ impl Settings {
             self.shadow_size = 1024;
             self.render_scale = if self.render_scale > 0.0 { self.render_scale.min(0.75) } else { 0.75 };
             self.texture_memory = self.texture_memory.min(700);
-            self.mirror_size = 128;
+            self.mirror_size = self.mirror_size.min(128);
         }
         log::warn!("safer graphics after a lost graphics device ({n}): msaa 1, SSAO off, shadows {} ({}), textures {} MB, render scale {}", self.shadows, self.shadow_size, self.texture_memory, self.render_scale_text());
     }
