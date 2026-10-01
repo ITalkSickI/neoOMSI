@@ -217,9 +217,14 @@ fn format_objects(objects: &[InputObject]) -> (Vec<DIOBJECTDATAFORMAT>, [bool; 8
             let offset = (32 + pov * 4) as u32;
             pov += 1;
             (offset, 0)
-        } else if object.ty & DIDFT_BUTTON != 0 && button < 128 {
-            let offset = (48 + button) as u32;
-            button += 1;
+        } else if object.ty & DIDFT_BUTTON != 0 {
+            let inst = ((object.ty >> 8) & 0xFFFF) as usize;
+            let idx = if inst < 128 { inst } else { button };
+            if idx >= 128 {
+                continue;
+            }
+            let offset = (48 + idx) as u32;
+            button = button.max(idx + 1);
             (offset, 0)
         } else {
             continue;
