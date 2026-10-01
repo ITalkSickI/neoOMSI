@@ -3263,8 +3263,23 @@ impl TrailerPart {
             let h = main.heading.to_radians();
             dir = glam::DVec2::new(h.sin(), h.cos());
         }
-        let dir = dir.normalize();
-        self.heading = dir.x.atan2(dir.y).to_degrees();
+        let mut dir = dir.normalize();
+        let mut heading = dir.x.atan2(dir.y).to_degrees();
+        // `[coupling_front_character]`: a bus joint (type != 0) stops hard at its max
+        // alpha (Omsi.exe 0x7e0848); the rear section's axle is dragged sideways there
+        // instead of jackknifing through the part in front.
+        if let Some([amax, _, _, kind]) = self.ty.def.coupling_front_character {
+            if kind != 0.0 && amax > 0.0 {
+                let a = amax as f64;
+                let rel = ((lead_heading - heading + 540.0) % 360.0) - 180.0;
+                if rel.abs() > a {
+                    heading = lead_heading - rel.clamp(-a, a);
+                    let h = heading.to_radians();
+                    dir = glam::DVec2::new(h.sin(), h.cos());
+                }
+            }
+        }
+        self.heading = heading;
         let new_pivot = c - DVec3::new(dir.x, dir.y, 0.0) * self.length as f64;
         let ds = (new_pivot - pivot).truncate().length() as f32;
         self.odometer += ds * (main.physics.velocity_kmh().signum().max(0.0) * 2.0 - 1.0).max(-1.0);
@@ -3847,6 +3862,35 @@ mod tests {
             .map(|(p, r)| (*p - *r).length())
             .fold(0.0f32, f32::max);
         assert!(worst < 1e-3, "straight bellows off by {worst}");
+    }
+
+    /// The GN92's joint stops at `[coupling_front_character]`'s 52.5 degrees: the front
+    /// section swinging round 90 degrees drags the rear section's axle with it.
+    #[test]
+    fn articulation_stops_at_the_coupling_max_alpha() {
+        let root = omsi_cfg::env::var_os("OMSI_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+        let bus = root.join("Vehicles/MAN_NL_NG/MAN_GN92_main.bus");
+        let trail = root.join("Vehicles/MAN_NL_NG/MAN_GN92_trail.bus");
+        if !bus.exists() || !trail.exists() {
+            eprintln!("skipped: no {}", bus.display());
+            return;
+        }
+        let ty = Arc::new(VehicleType::load(&root, &bus).expect("GN92"));
+        let mut v = VehicleInstance::new(ty, VehicleHost::new(crate::SimClock::default()));
+        v.attach_trailer_ex(
+            Arc::new(VehicleType::load(&root, &trail).expect("GN92 trail")),
+            false,
+        );
+        v.heading = 10.0;
+        v.update_visuals(0.02);
+        for h in [100.0, -80.0] {
+            v.heading = h;
+            v.update_visuals(0.02);
+            let alpha = v.var("articulation_0_alpha").unwrap();
+            assert!((alpha.abs() - 52.5).abs() < 1e-3, "alpha {alpha} at heading {h}");
+        }
     }
 
     /// A timetable duty and a random traffic car load their bus with `VehicleType::load_ai`,
