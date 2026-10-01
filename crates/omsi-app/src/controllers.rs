@@ -185,6 +185,7 @@ pub fn gamepad_steering(x: f32, kmh: f32) -> f32 {
 #[derive(Debug, Clone)]
 pub(crate) struct Connected {
     pub name: String,
+    pub hardware_id: Option<(u16, u16)>,
     pub axes: Vec<(usize, f32)>,
     pub gamepad: bool,
     pub ff: bool,
@@ -272,12 +273,19 @@ impl Devices {
     pub fn poll(&mut self) -> Vec<(String, usize, bool)> {
         let mut out = Vec::new();
         let di = self.direct_input();
+        let xinput_pads = self.gilrs.as_ref().is_some_and(|g| g.gamepads().any(|(_, p)| xinput_name(p.name())));
         #[cfg(windows)]
-        let is_di = |name: &str| -> bool {
-            self.di.as_ref().is_some_and(|d| d.devices.iter().any(|dev| names_match(&dev.name, name)))
+        let is_di = |pad: &gilrs::Gamepad<'_>| -> bool {
+            let id = pad.vendor_id().zip(pad.product_id());
+            self.di.as_ref().is_some_and(|d| {
+                d.devices.iter().any(|dev| {
+                    include_direct_input_device(&dev.name, dev.ff_capable(), xinput_pads)
+                        && (names_match(&dev.name, pad.name()) || id.is_some_and(|id| dev.hardware_id == Some(id)))
+                })
+            })
         };
         #[cfg(not(windows))]
-        let is_di = |_name: &str| -> bool { false };
+        let is_di = |_pad: &gilrs::Gamepad<'_>| -> bool { false };
 
         if let Some(g) = self.gilrs.as_mut() {
             while let Some(ev) = g.next_event() {
@@ -287,7 +295,7 @@ impl Devices {
                     // DirectInput handles wheels on Windows; system-mapped gamepads
                     // such as Xbox controllers are listed through gilrs.
                     EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code)
-                        if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(pad.name()))) => {
+                        if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) => {
                         out.push((pad.name().to_string(), button_number(&pad, code), matches!(ev.event, EventType::ButtonPressed(..))));
                     }
                     _ => {}
@@ -297,7 +305,10 @@ impl Devices {
         #[cfg(windows)]
         if let Some(d) = self.di.as_mut() {
             d.poll();
-            out.append(&mut d.events);
+            out.extend(d.events.drain(..).filter(|(name, ..)| {
+                d.devices.iter().find(|dev| &dev.name == name)
+                    .map_or(true, |dev| include_direct_input_device(&dev.name, dev.ff_capable(), xinput_pads))
+            }));
         }
         #[cfg(target_os = "macos")]
         if let Some(h) = self.hid.as_mut() {
@@ -322,7 +333,15 @@ impl Devices {
                     // A G920's DirectInput name contains "Xbox One", but it is the
                     // force-feedback wheel. Keep it even when gilrs also lists a pad.
                     .filter(|d| include_direct_input_device(&d.name, d.ff_capable(), xinput_pads))
-                    .map(|d| Connected { name: d.name.clone(), axes: d.axes(), gamepad: false, ff: d.has_ff(), ff_capable: d.ff_capable(), buttons: d.buttons.min(128) }),
+                    .map(|d| Connected {
+                        name: d.name.clone(),
+                        hardware_id: d.hardware_id,
+                        axes: d.axes(),
+                        gamepad: false,
+                        ff: d.has_ff(),
+                        ff_capable: d.ff_capable(),
+                        buttons: d.buttons.min(128),
+                    }),
             );
         }
         let _ = xinput_pads;
@@ -337,7 +356,9 @@ impl Devices {
                 if self.hid_wheel(pad.name()) {
                     gamepad = false;
                 }
-                if self.direct_input() && (v.iter().any(|c: &Connected| names_match(&c.name, pad.name())) || !xinput_name(pad.name())) {
+                let id = pad.vendor_id().zip(pad.product_id());
+                let is_di = v.iter().any(|c: &Connected| names_match(&c.name, pad.name()) || (id.is_some() && c.hardware_id == id));
+                if self.direct_input() && (is_di || !xinput_name(pad.name())) {
                     continue;
                 }
                 if v.iter().any(|c: &Connected| names_match(&c.name, pad.name())) {
@@ -357,7 +378,7 @@ impl Devices {
                 let buttons = declared_button_count(pad.name());
                 #[cfg(not(target_os = "linux"))]
                 let buttons = 0;
-                v.push(Connected { name: pad.name().to_string(), axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), ff_capable: pad.is_ff_supported(), buttons });
+                v.push(Connected { name: pad.name().to_string(), hardware_id: id, axes: di_slots(&axes), gamepad, ff: pad.is_ff_supported(), ff_capable: pad.is_ff_supported(), buttons });
             }
         }
         // (and a wheel gilrs does not list at all: one whose only axes are the simulation
@@ -365,7 +386,7 @@ impl Devices {
         #[cfg(target_os = "macos")]
         for (name, axes) in &self.hid_axes {
             if !v.iter().any(|c| names_match(&c.name, name)) {
-                v.push(Connected { name: name.clone(), axes: di_slots(axes), gamepad: false, ff: false, ff_capable: false, buttons: 0 });
+                v.push(Connected { name: name.clone(), hardware_id: None, axes: di_slots(axes), gamepad: false, ff: false, ff_capable: false, buttons: 0 });
             }
         }
         v
@@ -998,6 +1019,19 @@ mod tests {
     fn an_xbox_named_ff_wheel_stays_visible_in_the_launcher() {
         assert!(super::include_direct_input_device("G920 Driving Force Racing Wheel for Xbox One", true, true));
         assert!(!super::include_direct_input_device("Controller (Xbox One)", false, true));
+    }
+
+    #[test]
+    fn xbox_gamepad_with_direct_input_twin_is_not_claimed_by_direct_input() {
+        let xinput_pads = true;
+        let is_claimed_by_di = |name: &str, ff_capable: bool| {
+            super::include_direct_input_device(name, ff_capable, xinput_pads)
+        };
+        assert!(!is_claimed_by_di("Controller (XBOX 360 For Windows)", false));
+        assert!(!is_claimed_by_di("Xbox Wireless Controller", false));
+        assert!(is_claimed_by_di("Logitech G29 Driving Force Racing Wheel", true));
+        assert!(is_claimed_by_di("HORI Racing Wheel APEX", false));
+        assert!(is_claimed_by_di("G920 Driving Force Racing Wheel for Xbox One", true));
     }
 
     #[test]
