@@ -4,6 +4,15 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.483 - 2026-10-01
+
+### Graphics
+- PBR maps (`_nn`, `_rr`, `_ao`, ...) work on map textures: roads, splines and scenery
+  objects were drawn flat - only the textures loaded on the spot got their maps, not the
+  ones a tile's preparation brought, which are nearly all of a map's. Maps put into the
+  same folder in the openOMSI content folder, beside a texture of the OMSI install, are
+  found too.
+
 ## 0.1.481 - 2026-10-01
 
 ### Controls
