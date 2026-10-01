@@ -2584,6 +2584,16 @@ impl Renderer {
             },
             alpha: wgpu::BlendComponent::REPLACE,
         };
+        // Omsi's lamp sprites: SRCBLEND ONE, DESTBLEND INVSRCCOLOR (src + dst * (1 - src)),
+        // which keeps a coloured sprite's hue over a lit background instead of washing it to white
+        let screen = wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent::REPLACE,
+        };
         let alpha_blend = wgpu::BlendState {
             color: wgpu::BlendComponent {
                 src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -2771,7 +2781,7 @@ impl Renderer {
         };
         let pass = PassPipelines {
             pipelines: scene_pipelines(format, "fs_main"),
-            corona_pipeline: corona_pipeline_for(format, "fs_main", additive),
+            corona_pipeline: corona_pipeline_for(format, "fs_main", screen),
             smoke_pipeline: corona_pipeline_for(format, "fs_smoke", alpha_blend),
             sky_pipeline: sky_pipeline_for(format, "fs_main"),
         };
