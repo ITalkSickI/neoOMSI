@@ -128,6 +128,9 @@ pub struct Ui {
     /// Rects the mouse is over UI in (the rest of the window is the 3D showroom).
     pub over_ui: bool,
     tooltip: Option<(String, Vec2)>,
+    /// (tests) Where each clickable widget was this frame, by id.
+    #[cfg(test)]
+    pub drawn: HashMap<Id, Rect>,
 }
 
 impl Ui {
@@ -158,6 +161,8 @@ impl Ui {
             clipboard_in: None,
             over_ui: false,
             tooltip: None,
+            #[cfg(test)]
+            drawn: HashMap::new(),
         }
     }
 
@@ -175,6 +180,8 @@ impl Ui {
         self.cursor = winit::window::CursorIcon::Default;
         self.over_ui = false;
         self.tooltip = None;
+        #[cfg(test)]
+        self.drawn.clear();
         self.push_layer(Rect::new(0.0, 0.0, size.x, size.y), 0.0);
         // a click outside the open dropdown closes it (the click does nothing else)
         if self.input.pressed {
@@ -284,6 +291,8 @@ impl Ui {
 
     /// Hover/press behaviour of a clickable area: (hovered, pressed now, clicked).
     pub fn interact(&mut self, id: Id, r: Rect) -> (bool, bool, bool) {
+        #[cfg(test)]
+        self.drawn.insert(id, r);
         let h = self.hover(r);
         if h {
             self.hot = Some(id);
