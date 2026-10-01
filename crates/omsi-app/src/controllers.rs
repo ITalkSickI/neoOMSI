@@ -1042,6 +1042,11 @@ fn code_button(code: u32) -> Option<usize> {
             _ => None,
         }
     } else if cfg!(windows) {
+        // gilrs' D-pad (Button codes u32::MAX-3.. up, right, down, left) is the pad's hat,
+        // numbered as DirectInput's first hat
+        if code >= u32::MAX - 3 {
+            return Some(HAT_BUTTONS + (code - (u32::MAX - 3)) as usize);
+        }
         (hi == 0).then_some(lo)
     } else {
         None
@@ -1291,6 +1296,9 @@ mod button_tests {
             assert_eq!(super::code_button(3), Some(3));
             // an analog trigger (WGI axis code) is no numbered button
             assert_eq!(super::code_button(0x1_0004), None);
+            // the D-pad is the first hat, not dropped
+            assert_eq!(super::code_button(u32::MAX - 3), Some(super::HAT_BUTTONS));
+            assert_eq!(super::code_button(u32::MAX), Some(super::HAT_BUTTONS + 3));
         }
     }
 
