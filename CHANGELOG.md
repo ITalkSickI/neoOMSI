@@ -4,6 +4,53 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.538 - 2026-10-01
+
+### Graphics
+- Enhanced: flipdot destination displays (the stock MAN NL/NG Krueger matrix, the flipdot
+  variants of the NEOMAN and Sprinter mods), whose light map is a picture of their dots, no
+  longer glow and bloom like LED panels. LED panels (a plain white light map) still glow,
+  and go dark when the bus's power or lights are switched off (#413).
+- Enhanced: the mirrors are no longer far darker than the view through the windscreen at
+  dusk and in daytime rain; they dim only once the sun is below the horizon (#432).
+- The driver figure is lit by the four interior lamps of its seat, as OMSI lights a seated
+  person - coloured, by distance and from the lamp's side - instead of a flat glow of every
+  lamp in the bus that left it overexposed (#206).
+- `[matl_texadress_mirror]` and `[matl_texadress_mirroronce]` mirror the textures beyond
+  their edges as in OMSI, instead of smearing the edge (#145).
+- A TGA picture under a `.png`, `.bmp` or `.jpg` name is read by its content, as OMSI does;
+  it used to leave the slot without a texture (#414).
+
+### Maps
+- A tile has water only when its `.map` says `[water]`: a leftover `.water` file no longer
+  floods a tile whose water was removed (#414).
+
+### Controls
+- New setting "Dynamic steering" (Driving tab), OMSI's `redSteerSpd`: the steering keys and
+  the wheel's return to centre slow down with speed (#347).
+- Camera tab: "Right mouse button turns the view" switched off gives OMSI's own mouse: the
+  right button zooms (up widens the cab view, backs the outside camera away) and the wheel
+  button turns the view. On (the default) right-drag looks round as before and Shift+right
+  zooms (#398, #104).
+
+### Sound
+- Passenger footsteps in a bus use the step sounds its `paths.cfg` gives each walkway: on the
+  SD200 the stairs sound like stairs and the upper deck has its own floor. Before, every
+  step picked from all of OMSI's floor samples (#311).
+- The bus's outside sounds (the SD200's exterior engine) are heard from the cab through an
+  open door or window, at the level the bus script gives (`Snd_OutsideVol`), as in OMSI.
+- The cab no longer plays a made-up low engine rumble under the bus's own sounds: OMSI makes
+  no vehicle sound of its own.
+
+### People
+- `[walk_param]` is read as OMSI reads it (stride, then arm angle), and people walk at OMSI's
+  1.1 m/s ± 0.2: the stride was taken for a speed (#393).
+
+### Vehicles
+- Script callbacks round their arguments to the nearest whole number as OMSI does, instead of
+  cutting them off: a terminus code of 1100.9999 out of a script's arithmetic now finds
+  terminus 1101, not 1100 (#312, #197).
+
 ## 0.1.523 - 2026-10-01
 
 ### Controls
