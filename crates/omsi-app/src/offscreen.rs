@@ -72,6 +72,10 @@ pub(crate) fn run_offscreen(
     let spawn_z = player.as_ref().map(|p| p.vehicle.position.z).unwrap_or(0.0);
     if let Some(p) = player.as_mut() {
         p.vehicle.host.auto_clutch = if settings.auto_clutch { 1.0 } else { 0.0 };
+        // OMSI_PAX_CAM=n: `--view pax` from the bus's n-th passenger camera
+        if let Some(k) = omsi_cfg::env::var("OMSI_PAX_CAM").ok().and_then(|v| v.parse().ok()) {
+            p.cam_choice.1 = k;
+        }
     }
     let center = player
         .as_ref()
