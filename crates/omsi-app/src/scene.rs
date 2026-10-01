@@ -440,6 +440,34 @@ fn scenery_draw_position(authored: DVec3, surface: bool) -> DVec3 {
     authored + if surface { DVec3::Z * OMSI_SURFACE_LIFT as f64 } else { DVec3::ZERO }
 }
 
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ObjectHeightConvention {
+    /// Current/standard OMSI map records: z is an offset from the terrain.
+    RelativeTerrain,
+    /// Legacy/add-on records seen in the wild: z is already a world height.
+    Absolute,
+}
+
+/// Strong per-object evidence for the two height conventions. This is intentionally
+/// conservative: ordinary current maps keep the documented terrain-relative rule unless
+/// several objects on a tile clearly look like absolute-world-height records.
+fn plain_object_height_evidence(map_z: f64, terrain_height: f64) -> Option<ObjectHeightConvention> {
+    const NEAR_GROUND: f64 = 2.0;
+    const EVIDENCE_MARGIN: f64 = 1.5;
+    let relative_error = map_z.abs();
+    let absolute_error = (map_z - terrain_height).abs();
+    if absolute_error <= NEAR_GROUND && absolute_error + EVIDENCE_MARGIN < relative_error {
+        Some(ObjectHeightConvention::Absolute)
+    } else if relative_error <= NEAR_GROUND
+        && relative_error + EVIDENCE_MARGIN < absolute_error
+    {
+        Some(ObjectHeightConvention::RelativeTerrain)
+    } else {
+        None
+    }
+}
+
 /// A spline whose profiles all hang this far (m) over its line - wires, catenaries, a
 /// canopy - is no ground surface: it neither cuts the terrain nor carries anything.
 const SPLINE_OVERHEAD: f32 = 2.0;
@@ -3837,6 +3865,68 @@ impl World {
         )
     }
 
+
+    /// Some older/custom maps write ordinary object z values as absolute world heights even
+    /// without [absheight], while current OMSI content writes a terrain-relative offset.
+    /// Infer that old convention only from several strong examples on the same tile; one
+    /// unusual object is not enough to change a whole modern tile.
+    fn plain_object_height_convention(
+        st: &StagedTile,
+        src: &HashMap<(i32, i32), Arc<StagedTile>>,
+    ) -> ObjectHeightConvention {
+        let mut absolute = 0usize;
+        let mut relative = 0usize;
+        for o in &st.objects {
+            if o.ot.sco.surface {
+                continue;
+            }
+            let Placement::Ground { x, y, z, .. } = &o.place else {
+                continue;
+            };
+            let Some(terrain) = Self::base_ground(src, *x, *y) else {
+                continue;
+            };
+            match plain_object_height_evidence(*z, terrain) {
+                Some(ObjectHeightConvention::Absolute) => absolute += 1,
+                Some(ObjectHeightConvention::RelativeTerrain) => relative += 1,
+                None => {}
+            }
+        }
+        if absolute >= 3 && absolute >= relative.saturating_mul(2).max(3) {
+            ObjectHeightConvention::Absolute
+        } else {
+            ObjectHeightConvention::RelativeTerrain
+        }
+    }
+
+    fn ground_object_terrain_relative(
+        o: &StagedObject,
+        src: &HashMap<(i32, i32), Arc<StagedTile>>,
+        x: f64,
+        y: f64,
+        map_z: f64,
+        terrain_height: f64,
+        plain_mode: ObjectHeightConvention,
+    ) -> bool {
+        if o.ot.sco.surface {
+            // [surface] objects have both conventions in real content. Keep the existing
+            // spline-supported compatibility rule: the candidate that actually meets the
+            // nearby road wins, otherwise the authored absolute height is preserved.
+            return surface_object_terrain_relative(src, x, y, map_z, terrain_height);
+        }
+        match plain_mode {
+            ObjectHeightConvention::RelativeTerrain => true,
+            ObjectHeightConvention::Absolute => {
+                // A tile inferred as legacy-absolute can still contain a newly edited/current
+                // object. Clear per-object relative evidence wins so both methods can coexist.
+                matches!(
+                    plain_object_height_evidence(map_z, terrain_height),
+                    Some(ObjectHeightConvention::RelativeTerrain)
+                )
+            }
+        }
+    }
+
     /// Where a staged object stands before the ground is edited: crossings are warped and
     /// the ground deformed from there.
     fn provisional_pose(
@@ -3853,8 +3943,16 @@ impl World {
                 );
                 let base_height = Self::base_ground(src, *x, *y)
                     .unwrap_or_else(|| st.base_terrain.sample(lx, ly) as f64);
-                let terrain_relative = !o.ot.sco.surface
-                    || surface_object_terrain_relative(src, *x, *y, *z, base_height);
+                let plain_mode = Self::plain_object_height_convention(st, src);
+                let terrain_relative = Self::ground_object_terrain_relative(
+                    o,
+                    src,
+                    *x,
+                    *y,
+                    *z,
+                    base_height,
+                    plain_mode,
+                );
                 Some(Pose {
                     pos: DVec3::new(
                         *x,
@@ -3891,10 +3989,26 @@ impl World {
         let key = (st.tx, st.ty);
         let (terrain, aligned_points, biggest, deformed) = self.final_ground(key, src);
         let warped = self.warp_crossings(st, src);
+        let plain_mode = Self::plain_object_height_convention(st, src);
         let ground_at = |x: f64, y: f64| -> f64 {
-            let lx = (x - st.origin.x).clamp(0.0, tile_size()) as f32;
-            let ly = (y - st.origin.y).clamp(0.0, tile_size()) as f32;
-            terrain.sample(lx, ly) as f64
+            let actual_key = (
+                (x / tile_size()).floor() as i32,
+                (y / tile_size()).floor() as i32,
+            );
+            if actual_key == key {
+                let lx = (x - st.origin.x).clamp(0.0, tile_size()) as f32;
+                let ly = (y - st.origin.y).clamp(0.0, tile_size()) as f32;
+                terrain.sample(lx, ly) as f64
+            } else {
+                // Old maps and converted maps can keep an object in the neighbouring tile's
+                // file with local coordinates past the edge. Sample the terrain actually
+                // under the object instead of pinning it to this tile's border height.
+                Self::base_ground(src, x, y).unwrap_or_else(|| {
+                    let lx = (x - st.origin.x).clamp(0.0, tile_size()) as f32;
+                    let ly = (y - st.origin.y).clamp(0.0, tile_size()) as f32;
+                    terrain.sample(lx, ly) as f64
+                })
+            }
         };
         // poses of everything that can carry an attachment: objects by id, spline rows by
         // their first object
@@ -3910,14 +4024,17 @@ impl World {
                 // it, a car at the kerb of a hill street stood crooked on a road that runs
                 // on a different grade from the ground beneath.
                 Placement::Ground { x, y, z, rot } => {
-                    let terrain_relative = !o.ot.sco.surface
-                        || surface_object_terrain_relative(
-                            src,
-                            *x,
-                            *y,
-                            *z,
-                            Self::base_ground(src, *x, *y).unwrap_or(0.0),
-                        );
+                    let base_height =
+                        Self::base_ground(src, *x, *y).unwrap_or_else(|| ground_at(*x, *y));
+                    let terrain_relative = Self::ground_object_terrain_relative(
+                        o,
+                        src,
+                        *x,
+                        *y,
+                        *z,
+                        base_height,
+                        plain_mode,
+                    );
                     Some(Pose {
                         pos: DVec3::new(
                             *x,
@@ -4918,7 +5035,12 @@ impl World {
                     // what the wheels roll on: the splines' height profiles
                     for (hp, b) in &q.drive {
                         if !outside(b) {
-                            ts.add_height_profiles(hp, q.origin, tx, ty);
+                            ts.add_height_profiles(
+                                hp,
+                                scenery_draw_position(q.origin, true),
+                                tx,
+                                ty,
+                            );
                             wheel_meshes += 1;
                         }
                     }
@@ -4993,7 +5115,13 @@ impl World {
                             });
                             ts.rasterize_kind(mesh, &pose.rot, pose.pos, tx, ty, true);
                             if Some(k) == ground_mesh {
-                                ts.add_drive_mesh(mesh, &pose.rot, pose.pos, tx, ty);
+                                ts.add_drive_mesh(
+                                    mesh,
+                                    &pose.rot,
+                                    scenery_draw_position(pose.pos, true),
+                                    tx,
+                                    ty,
+                                );
                                 wheel_meshes += 1;
                             }
                         }
@@ -11762,6 +11890,29 @@ mod tests {
             assert!((at(0, x, 1) - expect(x)).abs() <= 1.0, "row {x}");
         }
         assert!((0..n * n).all(|i| own.rgba[i * 4 + 2] == 0));
+    }
+
+    #[test]
+    fn plain_object_height_evidence_accepts_old_and_current_map_styles() {
+        // Current maps: z is a small offset from a 37 m terrain.
+        assert_eq!(
+            plain_object_height_evidence(0.25, 37.0),
+            Some(ObjectHeightConvention::RelativeTerrain)
+        );
+        // Legacy/custom maps: the same object's z is already the 37 m world height.
+        assert_eq!(
+            plain_object_height_evidence(37.1, 37.0),
+            Some(ObjectHeightConvention::Absolute)
+        );
+        // An elevated/buried object is ambiguous by itself and must follow its tile's mode.
+        assert_eq!(plain_object_height_evidence(-5.0, 37.0), None);
+    }
+
+    #[test]
+    fn surface_contact_height_matches_the_visible_surface_lift() {
+        let authored = DVec3::new(12.0, 18.0, 3.5);
+        let contact = scenery_draw_position(authored, true);
+        assert!((contact.z - authored.z - OMSI_SURFACE_LIFT as f64).abs() < 1e-8);
     }
 
     #[test]
