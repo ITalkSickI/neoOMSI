@@ -16,7 +16,7 @@ jobs:
         github.head_ref == 'main' ||
         github.event.pull_request.head.repo.owner.type != 'User'
       )
-    runs-on: namespace-profile-linux-small
+    runs-on: ubuntu-latest
     steps:
       - uses: superbrothers/close-pull-request@v3
         id: "main_branch"
