@@ -2418,6 +2418,11 @@ impl App {
     }
 
     pub(crate) fn toggle_pause(&mut self) {
+        // (a LAN session goes on for the others: it cannot be paused)
+        if self.lan.is_some() {
+            self.service_msg = Some(("A LAN session cannot be paused".into(), 3.0));
+            return;
+        }
         self.paused = !self.paused;
         if self.game_menu.is_some() {
             // Keep the state a menu close should restore in step with P.
