@@ -4,6 +4,21 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.471 - 2026-10-01
+
+### Physics
+- Buses no longer fall through the road at junctions over a buried embankment slope
+  (Cotterell, the junction by the park): a road face lying more than a metre under the
+  drawn ground beneath the wheel is no road there, and the bus stands on the ground, as
+  with Omsi.exe's highest-face query (#424, #423).
+- The wheels roll on the road where it is drawn: splines and `[surface]` objects are drawn
+  8 cm over their authored height and the bus now stands on them there, not 8 cm into
+  the asphalt (#421).
+
+### Maps
+- An object stored in a neighbouring tile's file, past its own tile's edge, stands on the
+  ground under it instead of the height at its tile's border (#421).
+
 ## 0.1.463 - 2026-10-01
 
 ### Passengers
