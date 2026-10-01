@@ -48,7 +48,11 @@
 //!   destination of `depot.routes[index]`), `omsi.setLine(text)` (the first route of that
 //!   line) and `omsi.setDestination(index)` (only the destination sign, `depot.destinations`).
 //!   `omsi.setNextStop(index)` moves the duty on to stop `index` of its trip (`route.stops[index]`;
-//!   the stops before it are skipped, backwards is ignored).
+//!   the stops before it are skipped; going back to an earlier stop makes the stops from there on due again).
+//! * `window.omsi.getDepartures(stop)` returns the departures of the next two hours at the bus stop
+//!   with that name (at most 20, soonest first) as `{ line, destination, time }`, `time` a
+//!   timestamp on the scale of `window.omsi.timestamp`. The first call for a stop returns `[]`; the
+//!   host fills `window.omsi.departures` (see [`crate::vehicle_api::departures`]) and calls `update`.
 //! * More JavaScript for such pages: `setTimeout`/`setInterval`/`clear*`, `classList`,
 //!   `createElement`/`appendChild`/`removeChild`/`remove`, `innerHTML` with markup, `getAttribute`,
 //!   `parentNode`, `Object.keys`, `Array.forEach/map/filter/indexOf/includes/pop/shift/slice`,

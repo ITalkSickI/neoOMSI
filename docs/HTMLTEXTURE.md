@@ -2,14 +2,17 @@
 
 **Note:** This API is still under development, so breaking changes may occur at any time.
 
-Previously, you had to use `scriptTexture` in Omsi 2; to make things easier for both modders and developers, openOmsi now offers `htmlTexture`.
+Previously, you had to use `scriptTexture` in Omsi 2; to make things easier for both modders and developers, openOmsi
+now offers `htmlTexture`.
 These can be used, for example, as IBIS or other information in vehicles, giving you a few more design options.
 
-This documentation explains how to use the API in HTML. If anything is missing or you encounter any issues, please feel free to open an issue with relevant information and steps to reproduce the problem.
+This documentation explains how to use the API in HTML. If anything is missing or you encounter any issues, please feel
+free to open an issue with relevant information and steps to reproduce the problem.
 
 Working html example: `docs/examples/htmltexture/demo.html`.
 
 ### Example model config:
+
 ```
 [htmltexture]
 1024
@@ -50,11 +53,13 @@ AFR4_ST_texture
 `[useHtmlTexture]` describes which `[htmlTexture]` it is; `\S:7` is the corresponding script texture ID in this case.
 Note: An `[htmlTexture]` is registered as a `[scriptTexture]`, but it is also registered as an `[htmlTexture]`.
 
-This means: If an `htmlTexture` follows `scriptTexture 6`, the `htmlTexture` is automatically `scriptTexture 7`. But it is not `htmlTexture 7`.
+This means: If an `htmlTexture` follows `scriptTexture 6`, the `htmlTexture` is automatically `scriptTexture 7`. But it
+is not `htmlTexture 7`.
 
 ### Html file
 
-`html\index.html` is the relative path from the bus path. Example: `Data\Vehicles\MAN_NewLionsCity\html\index.html` = `html\index.html`
+`html\index.html` is the relative path from the bus path. Example: `Data\Vehicles\MAN_NewLionsCity\html\index.html` =
+`html\index.html`
 
 ## The basic idea
 
@@ -112,13 +117,14 @@ standardised by OMSI. Read those with `omsi.getVar("their_variable_name")`.
 
 ## Time, date, locale
 
-|                                        |                                                          |
-|----------------------------------------|----------------------------------------------------------|
-| `omsi.time.hour`, `.minute`, `.second` | Simulation clock, as numbers                             |
-| `omsi.time.asString`                   | `HH:MM:SS`                                               |
-| `omsi.date.day`, `.month`, `.year`     | Simulation date, as numbers                              |
-| `omsi.date.asString`                   | `DD.MM.YYYY`, or `MM/DD/YYYY` when `locale` is `en`      |
-| `omsi.locale`                          | Interface language as an ISO 639-1 code (`en`, `de` ...) |
+|                                        |                                                                                         |
+|----------------------------------------|-----------------------------------------------------------------------------------------|
+| `omsi.time.hour`, `.minute`, `.second` | Simulation clock, as numbers                                                            |
+| `omsi.time.asString`                   | `HH:MM:SS`                                                                              |
+| `omsi.timestamp`                       | Now as a timestamp: seconds since 1970-01-01 on the simulation's calendar, no time zone |
+| `omsi.date.day`, `.month`, `.year`     | Simulation date, as numbers                                                             |
+| `omsi.date.asString`                   | `DD.MM.YYYY`, or `MM/DD/YYYY` when `locale` is `en`                                     |
+| `omsi.locale`                          | Interface language as an ISO 639-1 code (`en`, `de` ...)                                |
 
 These are set before `omsi.update` runs and change with the simulation clock, once per second.
 Use `omsi.locale` to pick your texts, and fall back to English for languages you didn't write.
@@ -176,6 +182,35 @@ A few things worth knowing:
 * Without a duty (`active` is `false`) the game doesn't advance the stops on its own. A page
   that wants to show progress then has to keep its own counter.
 
+## Departures of a stop
+
+`omsi.getDepartures(stop)` gives the departures at a bus stop for the next 2 hours, soonest
+first, at most 20. `stop` is the stop's name as in the timetable (`Busstops.cfg`), any letter
+case. Works on vehicle and scenery pages.
+
+```js
+omsi.update = function () {
+    var list = omsi.getDepartures('Hauptbahnhof');
+    for (var i = 0; i < list.length; i++) {
+        var minutes = Math.round((list[i].time - omsi.timestamp) / 60);
+        console.log(list[i].line + ' ' + list[i].destination + ' in ' + minutes + ' min');
+    }
+};
+```
+
+| field         | meaning                                                                  |
+|---------------|--------------------------------------------------------------------------|
+| `line`        | the line text                                                            |
+| `destination` | the destination text                                                     |
+| `time`        | departure as a timestamp, same scale as `omsi.timestamp`, delay included |
+
+* The first call for a stop returns `[]`. The game fills the stop a moment later and then calls
+  `omsi.update` again, so ask inside `update`.
+* The game keeps the 8 stops a page asked for most recently. Asking for a ninth pushes out the one asked longest ago;
+  asking for that one again later gives `[]` for a moment until it is made anew. The list is renewed about once a
+  second.
+* Without a timetable on the map the list stays empty.
+
 ## Acting on the vehicle
 
 |                              |                                                                                                                                                           |
@@ -186,13 +221,14 @@ A few things worth knowing:
 | `omsi.setLine(text)`         | Set a line by its text. The game takes the first route of that line in the depot file. It matches the whole text (any letter case) or the leading digits. |
 | `omsi.setDestination(index)` | Only change the destination sign, using `omsi.depot.destinations[index]`. The line and route stay as they are.                                            |
 | `omsi.clearLine()`           | Clear the IBIS: no line, no route. Use it before a route is chosen, or to throw the current one away.                                                     |
-| `omsi.setNextStop(index)`    | With a timetable: jump to stop `index` of the trip. The stops before it are skipped.                                                                      |
+| `omsi.setNextStop(index)`    | With a timetable: jump to stop `index` of the trip, forwards or backwards. Skipped stops are not served; going back makes them due again.                 |
 
 Two details that trip people up:
 
-* `setNextStop` **only goes forward**. A request for an earlier stop (or the stop you are
-  already heading for) is ignored. If your page needs a "back one stop" button, remember the
-  stop in your own variable and show that, until the game catches up.
+* `setNextStop` goes **both ways**. Forwards, the stops in between are skipped. Backwards (a "back
+  one stop" button), the stops from `index` on are due again and `served` is `false` for them. A
+  request for the stop the bus is already heading for changes nothing. The game applies it on its
+  next tick, so `route.nextIndex` follows a moment later.
 * `clearLine()` only touches the IBIS. It does not end the duty in the game. If the page
   reads `route.active` afterwards it may still be `true`, so don't switch screens based on
   that alone.
@@ -279,8 +315,8 @@ model folder, then in the folder of the `.sco`.
 
 A scenery page only gets the basic API: `omsi.setVar`, `omsi.trigger`, `omsi.getVar`,
 `omsi.vars`, `omsi.time`, `omsi.date` and `omsi.locale`. `omsi.vehicle`, `omsi.depot` and
-`setRoute`, `setLine`, `setDestination`, `clearLine` and `setNextStop` do not exist there
-(`d.vehicle` in `update` neither). The variables are those of the object's script; an object
+`setRoute`, `setLine`, `setDestination`, `clearLine` and `setNextStop` do not exist there (`d.vehicle` in `update`
+neither). The variables are those of the object's script; an object
 without a script still shows its page.
 
 The pages run only within 60 m of the camera. Clicks reach them from up to 4 m away, unless the
@@ -301,8 +337,8 @@ need a few changes. When something doesn't show up, check this list first.
 * `<button>` comes with a default look (grey, rounded, padded). Boxes with
   `display:inline-block` are laid out in rows that wrap, which is what you want for keypads
   and lists. A box without a `width` is as wide as its content.
-* `<img src width height>` (bmp, dds, tga, jpg, png). The file is looked up next to the page
-  (see `htmlengine/images.rs`). `img.src` can be changed from a script. Pictures are cached,
+* `<img src width height>` (bmp, dds, tga, jpg, png). The file is looked up next to the page (see
+  `htmlengine/images.rs`). `img.src` can be changed from a script. Pictures are cached,
   a missing file is cached too.
 * `<head>`, `<title>`, `<meta>`, `<link>` are read and then ignored.
 

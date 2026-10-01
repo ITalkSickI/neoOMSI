@@ -25,7 +25,7 @@ pub enum HtmlRequest {
     /// `omsi.clearLine()`: the IBIS shows no line (before a route is started).
     ClearLine,
     /// `omsi.setNextStop(index)`: the duty goes on with stop `index` of its trip (stops
-    /// before it are skipped).
+    /// before it are skipped; an earlier stop makes the stops from there on due again).
     SetNextStop(usize),
 }
 
@@ -70,6 +70,14 @@ pub trait HtmlRenderer: Send {
     fn set_asset_dirs(&mut self, _dirs: Vec<PathBuf>) {}
     /// Route, line and destination requests the page made since the last call.
     fn take_requests(&mut self) -> Vec<HtmlRequest> {
+        Vec::new()
+    }
+    /// The departures of the stops the page asked for (`window.omsi.departures`, see
+    /// [`crate::vehicle_api::departures`]). Called before [`Self::set_vars`] whenever it changed.
+    fn set_departures(&mut self, _departures: &crate::vehicle_api::ApiValue) {}
+    /// The stops the page asked departures for (`omsi.getDepartures(stop)`) since the last call,
+    /// as keys: trimmed, lower case.
+    fn take_departure_wants(&mut self) -> Vec<String> {
         Vec::new()
     }
 }
@@ -257,6 +265,8 @@ pub struct HtmlTexture {
     last_api: Option<crate::vehicle_api::ApiValue>,
     /// The time, date and locale the page has seen.
     last_env: Option<crate::vehicle_api::ApiValue>,
+    /// The departures the page has seen.
+    last_departures: Option<crate::vehicle_api::ApiValue>,
     started: bool,
 }
 
@@ -278,6 +288,7 @@ impl HtmlTexture {
             last_str: HashMap::new(),
             last_api: None,
             last_env: None,
+            last_departures: None,
             started: false,
         }
     }
@@ -302,6 +313,8 @@ pub struct PageOutput {
     pub events: Vec<(String, f32)>,
     pub triggers: Vec<String>,
     pub requests: Vec<HtmlRequest>,
+    /// The stops the pages asked departures for (keys: trimmed, lower case).
+    pub departure_wants: Vec<String>,
     /// New pictures: (script texture index, width, height, RGBA).
     pub frames: Vec<(usize, u32, u32, Vec<u8>)>,
 }
@@ -316,14 +329,16 @@ pub(crate) fn drive_pages(
     api: Option<&crate::vehicle_api::ApiValue>,
     env: &crate::vehicle_api::ApiValue,
     depot: Option<&crate::vehicle_api::ApiValue>,
+    departures: Option<&crate::vehicle_api::ApiValue>,
 ) -> PageOutput {
     let mut out = PageOutput::default();
     for t in pages.iter_mut() {
         let api_changed = api.is_some_and(|a| t.last_api.as_ref() != Some(a));
         let env_changed = t.last_env.as_ref() != Some(env);
+        let departures_changed = departures.is_some_and(|d| t.last_departures.as_ref() != Some(d));
         let dn: Vec<(String, f32)> = num.iter().filter(|(n, v)| t.last_num.get(n) != Some(v)).cloned().collect();
         let ds: Vec<(String, String)> = strs.iter().filter(|(n, v)| t.last_str.get(n) != Some(v)).cloned().collect();
-        if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed || env_changed {
+        if !t.started || !dn.is_empty() || !ds.is_empty() || api_changed || env_changed || departures_changed {
             log::debug!(
                 "htmltexture #{}: {} numeric and {} string variable(s) to the page{}",
                 t.script_index,
@@ -348,6 +363,10 @@ pub(crate) fn drive_pages(
                 t.renderer.set_env(env);
                 t.last_env = Some(env.clone());
             }
+            if let Some(d) = departures.filter(|_| departures_changed) {
+                t.renderer.set_departures(d);
+                t.last_departures = Some(d.clone());
+            }
             t.renderer.set_vars(&dn, &ds);
             for (n, v) in dn {
                 t.last_num.insert(n, v);
@@ -364,6 +383,11 @@ pub(crate) fn drive_pages(
         out.events.extend(page_events);
         out.triggers.extend(t.renderer.take_triggers());
         out.requests.extend(t.renderer.take_requests());
+        for key in t.renderer.take_departure_wants() {
+            if !out.departure_wants.contains(&key) {
+                out.departure_wants.push(key);
+            }
+        }
         if let Some(rgba) = t.renderer.poll_frame() {
             log::debug!("htmltexture #{}: new frame of {} bytes", t.script_index, rgba.len());
             out.frames.push((t.script_index, t.width, t.height, rgba));
@@ -470,7 +494,11 @@ impl VehicleInstance {
         // one snapshot of the vehicle for all pages
         let api = self.html_api_snapshot();
         let env = self.html_env_snapshot();
-        let out = drive_pages(&mut self.html_textures, &num, &strs, Some(&api), &env, depot.as_ref());
+        let departures = (!self.host.html_departures.is_empty()).then(|| crate::vehicle_api::departures(&self.host.html_departures));
+        let out = drive_pages(&mut self.html_textures, &num, &strs, Some(&api), &env, depot.as_ref(), departures.as_ref());
+        for key in out.departure_wants {
+            self.host.want_departures(key);
+        }
         let (events, triggers, frames) = (out.events, out.triggers, out.frames);
         requests.extend(out.requests);
         self.queue_html_requests(requests);

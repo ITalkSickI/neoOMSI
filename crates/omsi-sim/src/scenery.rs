@@ -201,7 +201,11 @@ impl SceneryInstance {
         let strs: Vec<(String, String)> = self.program.str_var_names.iter().enumerate().map(|(i, n)| (n.clone(), self.state.str_vars[i].clone())).collect();
         // (the basic API only: no vehicle, no depot)
         let env = crate::vehicle_api::environment(&self.host.clock, &crate::vehicle_api::locale());
-        let out = crate::htmltex::drive_pages(&mut self.html_textures, &num, &strs, None, &env, None);
+        let departures = (!self.host.html_departures.is_empty()).then(|| crate::vehicle_api::departures(&self.host.html_departures));
+        let out = crate::htmltex::drive_pages(&mut self.html_textures, &num, &strs, None, &env, None, departures.as_ref());
+        for key in out.departure_wants {
+            self.host.want_departures(key);
+        }
         self.apply_page_output(out.events, out.triggers);
         out.frames
     }

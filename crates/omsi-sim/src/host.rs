@@ -8,6 +8,9 @@ use omsi_vehicle::hof::Hof;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
+/// How many stops a page's departures are kept for at the same time (`omsi.getDepartures`).
+pub const MAX_HTML_DEPARTURE_STOPS: usize = 8;
+
 /// `wearlifespan` of a vehicle that does not wear (OMSI: every AI vehicle, and the
 /// player's with the maintenance option "infinite").
 pub const AI_WEAR_LIFESPAN: f32 = 1.5e6;
@@ -97,6 +100,14 @@ pub struct VehicleHost {
     /// Route, line and destination requests of the vehicle's HTML pages, taken by the game
     /// (`VehicleInstance::take_html_requests`).
     pub html_requests: Vec<crate::htmltex::HtmlRequest>,
+    /// The departures the game made for the stops the pages asked for (`omsi.getDepartures`),
+    /// by key (trimmed, lower case): (line, destination, timestamp), soonest first.
+    pub html_departures: std::collections::HashMap<String, Vec<(String, String, f64)>>,
+    /// Which board generation of the game `html_departures` is from.
+    pub html_departures_gen: u64,
+    /// The stops the pages asked departures for, taken by the game: the `MAX_HTML_DEPARTURE_STOPS`
+    /// asked most recently, the oldest first (see [`VehicleHost::want_departures`]).
+    pub html_departure_wants: Vec<String>,
 }
 
 /// A bus due at a stop (`GetArrBusLine`, `GetArrBusTerminus`, `GetArrBusTimeDiff`).
@@ -149,6 +160,22 @@ fn ambient_weather() -> Option<(f32, f32)> {
 }
 
 impl VehicleHost {
+    /// A page asked for the departures of stop `key` (trimmed, lower case). The game keeps the
+    /// stops asked most recently: one asked again moves to the back, a new one past the limit
+    /// pushes out the one asked longest ago. (A fixed first-come list stayed full for good, and
+    /// every later stop - the bus drives on to new ones - got no departures at all.)
+    pub fn want_departures(&mut self, key: String) {
+        if let Some(i) = self.html_departure_wants.iter().position(|k| *k == key) {
+            let k = self.html_departure_wants.remove(i);
+            self.html_departure_wants.push(k);
+            return;
+        }
+        if self.html_departure_wants.len() >= MAX_HTML_DEPARTURE_STOPS {
+            self.html_departure_wants.remove(0);
+        }
+        self.html_departure_wants.push(key);
+    }
+
     pub fn new(clock: SimClock) -> Self {
         // the weather is there before {init} runs: made at 0 °C (the value before the first
         // weather update) every engine was cold, and the PAZ's carburettor engine, which
@@ -660,6 +687,22 @@ mod tests {
     use super::*;
     use crate::scripttex::ScriptTexture;
     use omsi_script::{compile, CompileInput, Vm};
+
+    #[test]
+    fn departure_wants_keep_the_stops_asked_most_recently() {
+        let mut host = VehicleHost::new(SimClock::default());
+        for i in 0..MAX_HTML_DEPARTURE_STOPS + 3 {
+            host.want_departures(format!("stop {i}"));
+        }
+        assert_eq!(host.html_departure_wants.len(), MAX_HTML_DEPARTURE_STOPS);
+        assert_eq!(host.html_departure_wants.first().map(String::as_str), Some("stop 3"));
+        assert_eq!(host.html_departure_wants.last().map(String::as_str), Some("stop 10"));
+        // asked again: moves to the back and nothing is pushed out
+        host.want_departures("stop 3".to_string());
+        assert_eq!(host.html_departure_wants.len(), MAX_HTML_DEPARTURE_STOPS);
+        assert_eq!(host.html_departure_wants.last().map(String::as_str), Some("stop 3"));
+        assert_eq!(host.html_departure_wants.first().map(String::as_str), Some("stop 4"));
+    }
 
     #[test]
     fn stfilter_marks_a_script_texture_for_mipmaps() {

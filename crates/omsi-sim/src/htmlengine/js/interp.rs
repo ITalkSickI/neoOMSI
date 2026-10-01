@@ -3,6 +3,9 @@
 
 use super::*;
 
+/// Most stops one page keeps asking departures for.
+const MAX_DEPARTURE_WANTS: usize = 8;
+
 pub(crate) enum Flow {
     Next,
     Ret(Val),
@@ -36,6 +39,9 @@ pub(crate) struct Interp {
     pub(crate) pending_err: Option<String>,
     /// Route, line, destination and next-stop requests of the page (`omsi.setRoute(...)` ...).
     pub(crate) requests: Vec<crate::htmltex::HtmlRequest>,
+    /// The stops the page asked departures for (`omsi.getDepartures(stop)`), as keys: trimmed,
+    /// lower case. Taken by the game, which fills `omsi.departures`.
+    pub(crate) departure_wants: Vec<String>,
 }
 
 impl Interp {
@@ -47,7 +53,10 @@ impl Interp {
             ("setVar", Val::Nat(Nat::SetVar)),
             ("trigger", Val::Nat(Nat::Trigger)),
             ("getVar", Val::Nat(Nat::GetVar)),
+            ("getDepartures", Val::Nat(Nat::GetDepartures)),
+            ("departures", Val::Obj(obj_of(&[]))),
             ("apiVersion", Val::Num(1.0)),
+            ("timestamp", Val::Num(0.0)),
             (
                 "time",
                 Val::Obj(obj_of(&[
@@ -104,6 +113,7 @@ impl Interp {
             now: 0.0,
             pending_err: None,
             requests: Vec::new(),
+            departure_wants: Vec::new(),
         };
         let math = obj_of(&[
             ("round", Val::Nat(Nat::Round)),
@@ -861,6 +871,35 @@ impl Interp {
             Nat::GetVar => {
                 let name = args.first().map(to_str).unwrap_or_default();
                 self.omsi_var(&name).unwrap_or(Val::Undef)
+            }
+            Nat::GetDepartures => {
+                let key = args.first().map(to_str).unwrap_or_default().trim().to_ascii_lowercase();
+                let mut list = Vec::new();
+                if !key.is_empty() {
+                    if !self.departure_wants.contains(&key) && self.departure_wants.len() < MAX_DEPARTURE_WANTS {
+                        self.departure_wants.push(key.clone());
+                    }
+                    let omsi = match self.window.lock().unwrap().get("omsi") {
+                        Some(Val::Obj(o)) => Some(o.clone()),
+                        _ => None,
+                    };
+                    let mut all = None;
+                    if let Some(o) = omsi {
+                        let g = o.lock().unwrap();
+                        if let Some(Val::Obj(d)) = g.get("departures") {
+                            all = Some(d.clone());
+                        }
+                    }
+                    let mut found = None;
+                    if let Some(d) = all {
+                        let g = d.lock().unwrap();
+                        found = g.get(&key).cloned();
+                    }
+                    if let Some(Val::Arr(a)) = found {
+                        list = a.lock().unwrap().clone();
+                    }
+                }
+                Val::Arr(Arc::new(Mutex::new(list)))
             }
             Nat::Trigger => {
                 if let Some(name) = args.first().map(to_str).filter(|n| !n.is_empty()) {

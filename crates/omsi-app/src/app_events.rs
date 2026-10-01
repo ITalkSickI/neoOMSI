@@ -1154,7 +1154,10 @@ impl ApplicationHandler for App {
                 self.foot_after_humans();
                 if let (Some(d), Some(p), false) = (self.duty.as_mut(), self.player.as_mut(), self.paused) {
                     if let Some(stop) = p.html_next_stop.take() {
-                        d.skip_to(stop);
+                        if d.skip_to(stop) {
+                            let (trip, k) = d.trip_for_ibis();
+                            p.ibis_to_stop(trip, k);
+                        }
                     }
                     if let Some((arrival, departure)) = d.update(&mut p.vehicle, self.clock.time) {
                         self.career.stop_served(arrival, departure);
@@ -1653,6 +1656,9 @@ impl ApplicationHandler for App {
                         traffic.map(|t| t.light_vars(c, li)).unwrap_or((-1.0, 0.0))
                     };
                     let __tb = Instant::now();
+                    if let Some(p) = self.player.as_mut() {
+                        w.sync_html_departures(&mut p.vehicle.host);
+                    }
                     match self.schedule.as_mut() {
                         Some(s) => s.update_boards(
                             w,
