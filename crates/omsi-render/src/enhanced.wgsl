@@ -240,6 +240,19 @@ const RIPPLE_CELLS: f32 = 8.0;
 const RIPPLE_MAX: f32 = 0.4;
 const RIPPLE_WIDTH: f32 = 0.06;
 
+/// The mip level a pixel's footprint asks for, in levels of the texture whose size is
+/// `texels` (the usual `log2` of the larger derivative, held at 0 and up). An LED panel is
+/// sampled with this, held at `enh.led.y` (`Lighting::led_mips`): 0 point-samples it, which
+/// is the sharpest and shimmers worst - a regular dot grid is the worst case for a point
+/// sample - and every level the chain is allowed to take is a 2x2 average that a point
+/// sample of the level below does not have. (The derivatives have to be taken in uniform
+/// control flow: the panels are per draw, so a call inside the material's branch is not.)
+fn led_lod(uv: vec2<f32>, texels: vec2<f32>) -> f32 {
+    let dx = dpdx(uv) * texels;
+    let dy = dpdy(uv) * texels;
+    return max(0.5 * log2(max(dot(dx, dx), dot(dy, dy))), 0.0);
+}
+
 // A tangent-space normal `tn` (a PBR normal map's) turned into the world about the
 // surface normal `n`, with the tangent frame taken from how the position and the uv change
 // across the pixel (no tangents in OMSI's meshes). `tn.y` down the texture, as Direct3D's
@@ -310,21 +323,34 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     if (terrain) {
         duv = in.uv * material.extra.z;
     }
+    // An LED panel is sampled at the level its screen footprint asks for, held at
+    // `enh.led.y` (`Led mip strength`): its dots keep their gaps much further out than the
+    // full chain allows, and the shimmer is a fraction of a full-resolution sample's. The
+    // levels are worked out here and not inside the branch: derivatives are undefined in
+    // non-uniform control flow, and which of the two samples runs is per draw. When the
+    // setting does not bite, the plain (anisotropic) sample of the hardware is the better
+    // one and stays.
+    let pic_lod = led_lod(duv, vec2<f32>(textureDimensions(t_diffuse)));
+    let led_pic = material.emissive.w < -1.5 && enh.led.y < pic_lod;
     var tex = diffuse_border(textureSample(t_diffuse, s_diffuse, duv), duv);
+    if (led_pic) {
+        tex = diffuse_border(textureSampleLevel(t_diffuse, s_diffuse, duv, enh.led.y), duv);
+    }
     let diffuse_a = tex.a;
     // (without the [texcoordtransX/Y] offset: the transmap, night map and light map stay
     // in place, see fs_main)
     let buv = tex_address(in.uv - in.params.zw);
+    let msk_lod = led_lod(buv, vec2<f32>(textureDimensions(t_trans)));
     if (terrain && material.extra.y > 0.0) {
         let det = textureSample(t_light, s_diffuse, in.uv * material.extra.y);
         tex = vec4<f32>(clamp(tex.rgb * det.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), tex.a);
     }
     if (material.params.z > 0.5) {
-        // (an LED panel with the mip path switched off - `Lighting::led_mips` - takes its
-        // `\S:n` mask at full resolution: its dots stay dots when the panel is small)
+        // (an LED panel's `\S:n` mask is taken the same way: the dots stay dots when the
+        // panel is small, without the full-resolution shimmer)
         var tm = textureSample(t_trans, s_diffuse, buv);
-        if (material.emissive.w < -1.5 && enh.led.y < 0.5) {
-            tm = textureSampleLevel(t_trans, s_diffuse, buv, 0.0);
+        if (material.emissive.w < -1.5 && enh.led.y < msk_lod) {
+            tm = textureSampleLevel(t_trans, s_diffuse, buv, enh.led.y);
         }
         tex.a = select(1.0, tm.a, material.params.w > 0.5);
         if (terrain && material.params.x > 1.5) {

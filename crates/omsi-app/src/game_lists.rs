@@ -134,9 +134,9 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             out.push((format!("{}: {}", tr("Force feedback and vibration"), tr(on_off(s.ff_enabled))), "ff".into()));
             out.push((format!("{}: {}", tr("Keyboard brake stays on until the throttle"), tr(on_off(s.brake_hold))), "brake_hold".into()));
             out.push((format!("{}: {}", tr("Automatic clutch"), tr(on_off(s.auto_clutch))), "auto_clutch".into()));
-            // (the LED panels' dots glow, and whether their mask keeps its mip chain)
+            // (the LED panels' dots glow, and how much of the mip chain they are held at)
             out.push((format!("{}: {}/15", tr("LED glow"), s.led_glow), "led_glow".into()));
-            out.push((format!("{}: {}", tr("LED masks keep their mipmaps"), tr(on_off(s.led_mips))), "led_mips".into()));
+            out.push((format!("{}: {:.2}", tr("LED mip strength"), s.led_mips), "led_mips".into()));
             out.push((format!("{} (opentrack UDP {}): {}", tr("Head tracking"), s.head_tracking_port, tr(on_off(s.head_tracking))), "headtrack".into()));
             out.push((format!("{}: x{}", tr("Throttle pedal strength"), s.pedal_throttle), "pedal_t".into()));
             out.push((format!("{}: x{}", tr("Brake pedal strength"), s.pedal_brake), "pedal_b".into()));
@@ -399,9 +399,11 @@ pub(crate) fn run(app: &mut App, kind: &ListKind, action: &str) -> Option<ListKi
                     s.led_glow = (s.led_glow + 1) % 16;
                     Some(("led_glow", s.led_glow.to_string()))
                 }
+                // (the launcher's slider steps by 0.05; on the menu every press is a 0.25
+                // step, and after 4 it starts at 0 again)
                 "led_mips" => {
-                    s.led_mips = !s.led_mips;
-                    Some(("led_mips", (s.led_mips as u8).to_string()))
+                    s.led_mips = if s.led_mips >= 4.0 { 0.0 } else { ((s.led_mips + 0.25) * 100.0).round() / 100.0 };
+                    Some(("led_mips", s.led_mips.to_string()))
                 }
                 "seat_reset" => {
                     s.seat = [0.0; 3];
