@@ -88,8 +88,8 @@ struct EnhancedUniform {
     /// xyz where the sky cube was drawn from, relative to the camera (the dome looks the
     /// clouds up through it with the parallax taken out)
     eye: [f32; 4],
-    /// x how bright an LED panel's dots burn (`Lighting::led_glow`), y whether the LED
-    /// panels' masks keep their mip chain (`Lighting::led_mips`)
+    /// x how bright an LED panel's dots burn (`Lighting::led_glow`), y how much of the
+    /// mip chain an LED panel is held at (`Lighting::led_mips`)
     led: [f32; 4],
 }
 
@@ -540,10 +540,14 @@ pub struct Lighting {
     /// give 0 = off .. 3.75): the enhanced picture draws them this much above their own
     /// colour, bright enough for the glow to bloom a halo around the panel.
     pub led_glow: f32,
-    /// The LED panels' `\S:n` masks keep the mip chain `STFilter` asks for. Off, they are
-    /// sampled at full resolution: the dots stay visible when the panel is small on the
-    /// screen, at the cost of the shimmer the mip chain exists to prevent.
-    pub led_mips: bool,
+    /// How much of the mip chain an LED panel is held at - the `\S:n` mask's (`STFilter`)
+    /// and the panel's own grid picture's: both are sampled at the level their screen
+    /// footprint asks for, never coarser than this. 0 point-samples them (the sharpest
+    /// dots, and the worst shimmer - a regular grid is the worst case for a point sample);
+    /// 1.3 (the default) keeps a matrix's dots a couple of pixels across where the full
+    /// chain has run them together, and what shimmer is left is a fraction of a
+    /// full-resolution sample's; 4 is near the calm of the full chain.
+    pub led_mips: f32,
     /// The player's vehicle's velocity (m/s, world): at speed the airstream drives the drops
     /// on its glass up the windscreen and back along the side windows.
     pub glass_wind: Vec3,
@@ -590,7 +594,7 @@ impl Default for Lighting {
             fog_base: None,
             envir_tint: [Vec3::ONE; 3],
             led_glow: 1.5,
-            led_mips: true,
+            led_mips: 1.3,
             glass_wind: Vec3::ZERO,
         }
     }
@@ -6156,7 +6160,7 @@ impl Renderer {
             // x how bright an LED panel's dots burn (see `MaterialExtra::led`; the settings'
             // 16 levels give 0 = off .. 3.75), y whether the LED panels' `\S:n` masks keep
             // their mip chain (0: at full resolution, the dots stay visible when small)
-            led: [lighting.led_glow, if lighting.led_mips { 1.0 } else { 0.0 }, 0.0, 0.0],
+            led: [lighting.led_glow, lighting.led_mips, 0.0, 0.0],
         };
         self.queue
             .write_buffer(&self.enh_buf, 0, bytemuck::bytes_of(&u));

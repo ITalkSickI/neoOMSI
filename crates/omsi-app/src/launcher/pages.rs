@@ -455,15 +455,20 @@ fn graphics_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
         toggle_setting(ui, s, dirty, c.row(), "Sun shadows", "shadows");
         sel_setting(ui, s, dirty, "s-casters", c.row(), "Shadows cast by", "shadow_casters", &[("all", "Every solid mesh"), ("omsi", "[shadow] meshes, as OMSI")]);
         toggle_setting(ui, s, dirty, c.row(), "Detail texturing up close", "detail_textures");
-        // (an LED panel's dots are its own light: how bright they burn, and whether their
-        // mask keeps the mip chain `STFilter` asks for - off keeps them dots when the panel
-        // is small, at the cost of the shimmer the chain exists to prevent)
+        // (an LED panel's dots are its own light: how bright they burn, and how much of the
+        // mip chain the panel's picture and its mask are held at - 0 point-samples them,
+        // the sharpest dots and the worst shimmer; higher holds them at the level the
+        // screen footprint asks for at most)
         let mut led = get(s, "led_glow").as_i64().unwrap_or(6) as f32;
         if ui.slider("s-led", c.row(), &mut led, 0.0, 15.0, 1.0, "LED glow", &|v| if v < 0.5 { "Off".to_string() } else { format!("{}", v as i64) }) {
             s["led_glow"] = json!(led.round() as i64);
             *dirty = 0.3;
         }
-        toggle_setting(ui, s, dirty, c.row(), "LED masks keep their mipmaps", "led_mips");
+        let mut mip = get(s, "led_mips").as_f64().unwrap_or(1.3) as f32;
+        if ui.slider("s-led-mip", c.row(), &mut mip, 0.0, 4.0, 0.05, "LED mip strength", &|v| if v < 0.005 { "Off".to_string() } else { format!("{v:.2}") }) {
+            s["led_mips"] = json!((mip / 0.05).round() * 0.05);
+            *dirty = 0.3;
+        }
     }
     toggle_setting(ui, s, dirty, c.row(), "Reflection maps (paint, chrome, glass)", "reflections");
     toggle_setting(ui, s, dirty, c.row(), "Clouds", "clouds");
@@ -1905,7 +1910,7 @@ mod settings_tests {
     /// `set-<key>`). Taken from the page as it was before the tabs: nothing may go missing.
     fn by_tab() -> Vec<Vec<&'static str>> {
         let mut graphics = vec![
-            "s-preset", "s-graphics", "s-msaa", "s-scale", "s-af", "s-shadow", "set-ssao", "set-shadows", "s-casters", "set-detail_textures", "s-led", "set-led_mips", "set-reflections", "set-clouds",
+            "s-preset", "s-graphics", "s-msaa", "s-scale", "s-af", "s-shadow", "set-ssao", "set-shadows", "s-casters", "set-detail_textures", "s-led", "s-led-mip", "set-reflections", "set-clouds",
             "set-fullscreen", "set-vsync", "s-fps", "s-view", "s-maxobj", "s-minobj", "s-mirror", "s-texmem", "set-texture_compression",
         ];
         if !cfg!(target_os = "macos") {

@@ -1863,8 +1863,8 @@ impl ApplicationHandler for App {
                 lighting.detail = self.settings.detail_textures;
                 lighting.glass_wind = self.player.as_ref().map(|p| crate::lights::vehicle_velocity(&p.vehicle)).unwrap_or_default();
                 // an LED panel's dots burn this much above their own colour (16 levels,
-                // see `Settings::led_glow`); the masks keep their mip chain unless the
-                // player asks for the sharper look (`Settings::led_mips`)
+                // see `Settings::led_glow`); the panel's picture and its mask are held at
+                // this mip level at most (`Settings::led_mips`)
                 lighting.led_glow = self.settings.led_glow as f32 * 0.25;
                 lighting.led_mips = self.settings.led_mips;
                 let mut finish = false;
