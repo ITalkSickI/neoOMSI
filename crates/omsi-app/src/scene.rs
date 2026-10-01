@@ -9055,7 +9055,8 @@ fn sync_materials(
     render: &mut VehicleRender,
 ) {
     for v in &mut render.variants {
-        if let Some(f) = &mut v.free {
+        let item_has_freetex = v.free.iter().any(|f| f.item_only);
+        for f in &mut v.free {
             let name = vehicle.str_var(&f.var);
             let name = name.trim().to_string();
             let key = name.to_ascii_lowercase();
@@ -9090,14 +9091,21 @@ fn sync_materials(
                         // texture from the mesh (with its addressing): a roller blind's idle
                         // "next" band then stays out of sight in its transparent border
                         // instead of covering the display as an untextured white plane.
-                        let tex = found.or(v.base_tex);
-                        let p = v.spec.build(renderer, scene, tex);
+                        let spec = match found {
+                            Some(tex) => v.spec.with_freetex(f.key, tex, f.diffuse, f.item_only),
+                            None => v.spec.clone(),
+                        };
+                        let p = spec.build(renderer, scene, v.base_tex);
                         f.cache.insert(key, p);
                         p
                     }
                 };
-                v.base = pair.0;
-                v.item = pair.1;
+                if !f.item_only {
+                    v.base = pair.0;
+                }
+                if f.item_only || !item_has_freetex {
+                    v.item = pair.1;
+                }
             }
         }
         if let Some(l) = &mut v.lights {
@@ -9698,8 +9706,8 @@ pub struct VariantSlot {
     pub entries: Vec<(MaterialId, MaterialId)>,
     /// `[texchanges]` variable: its integer value picks the entry.
     pub tex_var: String,
-    /// `[matl_freetex]`: the texture is the file a string variable names.
-    pub free: Option<FreeTex>,
+    /// Free textures for the plain material and, independently, its switched item.
+    pub free: Vec<FreeTex>,
     /// How to build a material of this slot for a texture loaded later.
     pub spec: SlotSpec,
     /// The textures `base`/`item` and each entry were made with (made again per vehicle
@@ -9785,9 +9793,28 @@ impl MultiLight {
 
 /// `[matl_freetex]`: the slot shows the texture file named by a string variable - the
 /// SD200's destination roller reads the terminus pictures of the map's `.hof` this way.
+fn free_texture_defs(overrides: &[&MaterialDef]) -> Vec<(bool, String, String)> {
+    [false, true]
+        .into_iter()
+        .filter_map(|item| {
+            overrides.iter().filter(|o| o.item == item).find_map(|o| {
+                o.freetex
+                    .as_ref()
+                    .map(|(key, var)| (item, key.clone(), var.clone()))
+            })
+        })
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct FreeTex {
     pub var: String,
+    /// The original named texture can be used by several stages (a display commonly
+    /// names the same black texture as its diffuse and its switched night map).
+    pub key: Option<TextureId>,
+    pub diffuse: bool,
+    /// A declaration inside `[matl_item]` must not change the unpowered material.
+    pub item_only: bool,
     /// Where the file name is looked up (the vehicle's texture folders).
     pub dirs: Vec<PathBuf>,
     pub textures: Arc<omsi_texture::TextureCache>,
@@ -9938,6 +9965,47 @@ impl Look {
 }
 
 impl SlotSpec {
+    fn with_freetex(
+        &self,
+        key: Option<TextureId>,
+        tex: TextureId,
+        diffuse: bool,
+        item_only: bool,
+    ) -> Self {
+        let mut spec = self.clone();
+        let replace = |look: &mut Look| {
+            // A per-vehicle text/script texture has already replaced the original
+            // diffuse and is not the file named by this free-texture declaration.
+            if (diffuse && look.diffuse.is_none()) || (key.is_some() && look.diffuse == key) {
+                look.diffuse = Some(tex);
+            }
+            if let Some(key) = key {
+                for stage in [&mut look.night, &mut look.lightmap] {
+                    if *stage == Some(key) {
+                        *stage = Some(tex);
+                    }
+                }
+                if let Some((id, _)) = &mut look.transmap {
+                    if *id == key {
+                        *id = tex;
+                    }
+                }
+                if let Some((id, _)) = &mut look.envmap {
+                    if *id == key {
+                        *id = tex;
+                    }
+                }
+            }
+        };
+        if !item_only {
+            replace(&mut spec.base);
+        }
+        if let Some(item) = &mut spec.item {
+            replace(item);
+        }
+        spec
+    }
+
     /// (plain material, `[matl_item]` material) for one diffuse texture; without a
     /// `[matl_item]` both are the same material.
     pub fn build(
@@ -10421,7 +10489,7 @@ impl World {
                 }
             }
             for v in render.variants {
-                if let Some(f) = v.free {
+                for f in v.free {
                     for (b, it) in f.cache.into_values() {
                         own_materials.push(b);
                         own_materials.push(it);
@@ -11242,7 +11310,7 @@ impl World {
                     let bump = ov.iter().find_map(|o| o.bumpmap.clone()).filter(|_| envmap.is_some() && omsi_cfg::env::var_os("OMSI_NO_BUMP").is_none()).and_then(|(t, f)| tex!(&subst(&t), &dirs_ref, vehicle_bump_texture).map(|id| (id, f)));
                     // a [matl_freetex] slot gets its texture from a string variable at run
                     // time, so an empty slot here is not a missing file
-                    let freetex = ov.iter().any(|o| o.freetex.is_some());
+                    let freetex = ov_all.iter().any(|o| o.freetex.is_some());
                     if tex.is_none() && !is_null_texture(&m.texture) && text_slot.is_none() && script_slot.is_none() && !freetex && vt.texchange(&m.texture).is_none() {
                         missing_tex.push(format!("{} ({})", tex_name, def.file));
                     }
@@ -11401,8 +11469,11 @@ impl World {
                     materials.extend(more.iter().copied());
                     // [matl_freetex]: the file is only known at run time (the destination
                     // roller builds its path from the map's depot and terminus strings)
-                    let free = ov.iter().find_map(|o| o.freetex.clone()).map(|(_, var)| FreeTex {
+                    let free: Vec<FreeTex> = free_texture_defs(&ov_all).into_iter().map(|(item_only, key, var)| FreeTex {
                         var,
+                        diffuse: key.eq_ignore_ascii_case(&m.texture),
+                        key: tex!(&subst(&key), &dirs_ref),
+                        item_only,
                         dirs: dirs.clone(),
                         textures: self.textures.clone(),
                         cache: HashMap::new(),
@@ -11410,7 +11481,7 @@ impl World {
                         shared: self.vehicle_textures.clone(),
                         held: Vec::new(),
                         wants_upgrade: self.freetex_upgrades.clone(),
-                    });
+                    }).collect();
                     let multi_light = |base: MaterialId, item: MaterialId| -> Option<MultiLight> {
                         let list = ov.iter().map(|o| &o.lightmaps).find(|l| !l.is_empty())?;
                         let maps: Vec<(PathBuf, String)> = list
@@ -11426,11 +11497,11 @@ impl World {
                             held: Vec::new(),
                         })
                     };
-                    if spec.item.is_some() || !entries.is_empty() || free.is_some() {
+                    if spec.item.is_some() || !entries.is_empty() || !free.is_empty() {
                         let tex_var = master.map(|m| m.variable.clone()).unwrap_or_default();
                         variants.push(VariantSlot { mesh: instances.len(), slot, base, item, more, var: change_var.unwrap_or_default(), more_vars: change_vars.iter().skip(1).cloned().collect(), entries, tex_var, free, spec, base_tex, entry_tex, lights: multi_light(base, item) });
                     } else if let Some(lights) = multi_light(base, item) {
-                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, more: Vec::new(), var: String::new(), more_vars: Vec::new(), entries, tex_var: String::new(), free: None, spec, base_tex, entry_tex, lights: Some(lights) });
+                        variants.push(VariantSlot { mesh: instances.len(), slot, base, item, more: Vec::new(), var: String::new(), more_vars: Vec::new(), entries, tex_var: String::new(), free: Vec::new(), spec, base_tex, entry_tex, lights: Some(lights) });
                     } else if base_dyn.any() {
                         dyn_slots.push(DynSlot { mesh: instances.len(), slot, text: text_slot, script: script_slot, script_trans, tex, alpha, transmap, night, lightmap, envmap, clamp, extra, color, emissive });
                     }
@@ -11727,6 +11798,108 @@ fn object_lanes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn freetex_test_look() -> Look {
+        Look {
+            alpha: AlphaMode::Opaque,
+            color: [1.0; 4],
+            emissive: [0.0; 3],
+            unlit: false,
+            diffuse: None,
+            transmap: None,
+            night: None,
+            lightmap: None,
+            envmap: None,
+            extra: MaterialExtra::default(),
+            dyn_tex: DynTex::default(),
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the installed SOR NB content in OMSI_TEST_CONTENT"]
+    fn installed_sor_ois_retains_powered_freetex() {
+        let root = PathBuf::from(
+            std::env::var_os("OMSI_TEST_CONTENT")
+                .expect("set OMSI_TEST_CONTENT to the OMSI content root"),
+        );
+        let model =
+            omsi_model::Model::load(&root.join("Vehicles/SOR NB/model/1_2011.cfg")).unwrap();
+        let definitions: Vec<_> = model
+            .meshes
+            .iter()
+            .flat_map(|mesh| {
+                let refs: Vec<_> = mesh.materials.iter().collect();
+                free_texture_defs(&refs)
+            })
+            .filter(|(_, _, var)| var == "mypoldisplej")
+            .collect();
+        assert!(!definitions.is_empty());
+        assert!(
+            definitions
+                .iter()
+                .any(|(item, key, _)| *item && key.eq_ignore_ascii_case("cerna.bmp")),
+            "{definitions:?}"
+        );
+        println!("SOR NB OIS: {definitions:?}");
+    }
+
+    #[test]
+    fn powered_terminal_freetex_is_kept_and_replaces_its_black_nightmap() {
+        // The vehicle's OIS declares the free texture in the powered item, not in
+        // the base [matl]. The black key is also used as its self-lit night map.
+        let model = omsi_model::Model::parse(&omsi_cfg::CfgFile::from_str(
+            "model.cfg",
+            concat!(
+                "[mesh]\nterminal.o3d\n[matl]\nblack.bmp\n0\n",
+                "[matl_change]\nblack.bmp\n0\npower\n[matl_item]\n",
+                "[matl_nightmap]\nblack.bmp\n[matl_freetex]\nblack.bmp\nscreen\n",
+            ),
+        ));
+        let defs: Vec<&MaterialDef> = model.meshes[0].materials.iter().collect();
+        assert_eq!(
+            free_texture_defs(&defs),
+            vec![(true, "black.bmp".into(), "screen".into())]
+        );
+        let base = freetex_test_look();
+        let mut powered = base.clone();
+        powered.night = Some(10);
+        let spec = SlotSpec {
+            base,
+            item: Some(powered),
+            more: Vec::new(),
+        };
+        let changed = spec.with_freetex(Some(10), 20, true, true);
+        assert_eq!(changed.base.diffuse, None); // unpowered remains black
+        assert_eq!(changed.item.as_ref().unwrap().diffuse, Some(20));
+        assert_eq!(changed.item.as_ref().unwrap().night, Some(20));
+        assert_eq!(spec.item.as_ref().unwrap().night, Some(10)); // reusable template
+    }
+
+    #[test]
+    fn freetex_preserves_other_stages_and_per_vehicle_script_textures() {
+        let mut base = freetex_test_look();
+        base.night = Some(10);
+        base.lightmap = Some(11);
+        base.transmap = Some((10, true));
+        base.envmap = Some((12, 0.5));
+        let mut item = base.clone();
+        item.diffuse = Some(99); // a script texture is not the file being replaced
+        let spec = SlotSpec {
+            base,
+            item: Some(item),
+            more: Vec::new(),
+        };
+        let changed = spec.with_freetex(Some(10), 20, true, false);
+        assert_eq!(changed.base.diffuse, Some(20));
+        assert_eq!(changed.base.night, Some(20));
+        assert_eq!(changed.base.lightmap, Some(11));
+        assert_eq!(changed.base.transmap, Some((20, true)));
+        assert_eq!(changed.base.envmap, Some((12, 0.5)));
+        assert_eq!(changed.item.as_ref().unwrap().diffuse, Some(99));
+        let missing_key = spec.with_freetex(None, 21, true, true);
+        assert_eq!(missing_key.item.as_ref().unwrap().night, Some(10));
+        assert_eq!(missing_key.item.as_ref().unwrap().diffuse, Some(99));
+    }
 
     #[test]
     fn spline_batches_keep_materials_cells_shadows_and_long_segments_separate() {
