@@ -207,7 +207,8 @@ omsi.update = function () {
 * The first call for a stop returns `[]`. The game fills the stop a moment later and then calls
   `omsi.update` again, so ask inside `update`.
 * The game keeps the 8 stops a page asked for most recently. Asking for a ninth pushes out the one asked longest ago;
-  asking for that one again later gives `[]` for a moment until it is made anew. The list is renewed about once a second.
+  asking for that one again later gives `[]` for a moment until it is made anew. The list is renewed about once a
+  second.
 * Without a timetable on the map the list stays empty.
 
 ## Acting on the vehicle
@@ -220,13 +221,14 @@ omsi.update = function () {
 | `omsi.setLine(text)`         | Set a line by its text. The game takes the first route of that line in the depot file. It matches the whole text (any letter case) or the leading digits. |
 | `omsi.setDestination(index)` | Only change the destination sign, using `omsi.depot.destinations[index]`. The line and route stay as they are.                                            |
 | `omsi.clearLine()`           | Clear the IBIS: no line, no route. Use it before a route is chosen, or to throw the current one away.                                                     |
-| `omsi.setNextStop(index)`    | With a timetable: jump to stop `index` of the trip. The stops before it are skipped.                                                                      |
+| `omsi.setNextStop(index)`    | With a timetable: jump to stop `index` of the trip, forwards or backwards. Skipped stops are not served; going back makes them due again.                 |
 
 Two details that trip people up:
 
-* `setNextStop` **only goes forward**. A request for an earlier stop (or the stop you are
-  already heading for) is ignored. If your page needs a "back one stop" button, remember the
-  stop in your own variable and show that, until the game catches up.
+* `setNextStop` goes **both ways**. Forwards, the stops in between are skipped. Backwards (a "back
+  one stop" button), the stops from `index` on are due again and `served` is `false` for them. A
+  request for the stop the bus is already heading for changes nothing. The game applies it on its
+  next tick, so `route.nextIndex` follows a moment later.
 * `clearLine()` only touches the IBIS. It does not end the duty in the game. If the page
   reads `route.active` afterwards it may still be `true`, so don't switch screens based on
   that alone.

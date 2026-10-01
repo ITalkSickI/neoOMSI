@@ -25,7 +25,7 @@ pub enum HtmlRequest {
     /// `omsi.clearLine()`: the IBIS shows no line (before a route is started).
     ClearLine,
     /// `omsi.setNextStop(index)`: the duty goes on with stop `index` of its trip (stops
-    /// before it are skipped).
+    /// before it are skipped; an earlier stop makes the stops from there on due again).
     SetNextStop(usize),
 }
 

@@ -320,8 +320,8 @@ pub(crate) fn run_offscreen(
             args,
             &world,
             traffic.as_ref().map(|t| &t.net),
-                        lan::WELCOME_WAIT,
-                    );
+            lan::WELCOME_WAIT,
+        );
     }
     let run_clock = start_clock(args);
     // a dedicated server's administration and clock (see `admin`)
@@ -500,7 +500,10 @@ pub(crate) fn run_offscreen(
             player.tick_startup(dt);
             if let Some(d) = duty.as_mut() {
                 if let Some(stop) = player.html_next_stop.take() {
-                    d.skip_to(stop);
+                    if d.skip_to(stop) {
+                        let (trip, k) = d.trip_for_ibis();
+                        player.ibis_to_stop(trip, k);
+                    }
                 }
                 if let Some((arrival, departure)) =
                     d.update(&mut player.vehicle, parse_time(&args.time) + t_s as f64)

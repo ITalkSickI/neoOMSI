@@ -859,6 +859,21 @@ impl Player {
         }
     }
 
+    /// A page moved the duty to stop `stop` of `trip` (`omsi.setNextStop`): the IBIS follows,
+    /// forwards or backwards, by `IBIS_busstop` (its keys only count up, so the typist cannot
+    /// do this). Without a route in the IBIS there is nothing to move.
+    pub(crate) fn ibis_to_stop(&mut self, trip: &schedule::PlannedTrip, stop: usize) {
+        let Some(hof) = self.vehicle.host.hof.clone() else { return };
+        let Some(route) = self.vehicle.var("IBIS_RouteIndex").filter(|r| *r >= 0.0) else { return };
+        if self.vehicle.var("IBIS_busstop").is_none() {
+            return;
+        }
+        let Some(name) = trip.stops.get(stop).map(|s| s.name.clone()) else { return };
+        if let Some(i) = schedule::ibis_stop_index(&hof, route.round() as usize, &name, stop) {
+            self.vehicle.set_var("IBIS_busstop", i as f32);
+        }
+    }
+
     /// Put the duty's trip on the IBIS, at the stop the bus is at: now, or when the running
     /// auto-start is done.
     pub(crate) fn set_duty_destination(&mut self, trip: &schedule::PlannedTrip, stop: usize) {
@@ -935,6 +950,7 @@ impl Player {
         }
         let (stops, requests): (Vec<_>, Vec<_>) = requests.into_iter().partition(|r| matches!(r, omsi_sim::htmltex::HtmlRequest::SetNextStop(_)));
         if let Some(omsi_sim::htmltex::HtmlRequest::SetNextStop(i)) = stops.last() {
+            log::info!("HTML page: setNextStop({i}) received");
             self.html_next_stop = Some(*i);
         }
         if requests.is_empty() {

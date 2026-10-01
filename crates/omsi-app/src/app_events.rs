@@ -1154,7 +1154,10 @@ impl ApplicationHandler for App {
                 self.foot_after_humans();
                 if let (Some(d), Some(p), false) = (self.duty.as_mut(), self.player.as_mut(), self.paused) {
                     if let Some(stop) = p.html_next_stop.take() {
-                        d.skip_to(stop);
+                        if d.skip_to(stop) {
+                            let (trip, k) = d.trip_for_ibis();
+                            p.ibis_to_stop(trip, k);
+                        }
                     }
                     if let Some((arrival, departure)) = d.update(&mut p.vehicle, self.clock.time) {
                         self.career.stop_served(arrival, departure);
