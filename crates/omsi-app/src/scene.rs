@@ -604,6 +604,7 @@ pub struct PlacedObject {
     parked: bool,
     /// A tile's own `[object]` record standing on the ground: the object editor may move it.
     editable: bool,
+    script: Option<omsi_sim::scenery::SceneryInstance>,
 }
 
 /// A scenery object the object editor can take hold of (see [`World::edit_objects`]).
@@ -1041,6 +1042,11 @@ impl GpuCache {
         mipmaps: bool,
     ) -> TextureId {
         let id = renderer.add_texture(scene, img, mipmaps);
+        self.take_texture_slot(renderer, scene, id)
+    }
+
+    fn add_blank(&mut self, renderer: &Renderer, scene: &mut Scene, width: u32, height: u32) -> TextureId {
+        let id = renderer.add_blank_texture(scene, width, height);
         self.take_texture_slot(renderer, scene, id)
     }
 
@@ -4722,6 +4728,7 @@ impl World {
                 var_parent: o.lamp_parent,
                 parked: o.parked,
                 editable: o.map_object && matches!(o.place, Placement::Ground { .. }),
+                script: None,
             });
         }
         if first_load {
@@ -5176,6 +5183,17 @@ impl World {
         // decoded here instead of on the thread that draws. A big batch (a whole map at
         // once) decodes them as it uploads instead: all at once they would not fit.
         if prepared.len() <= 16 {
+            for p in prepared.iter_mut() {
+                for o in p.objects.iter_mut() {
+                    let freetex = o.ot.meshes.iter().any(|(_, _, ov)| ov.iter().any(|m| !m.item && m.freetex.is_some()));
+                    if o.lamp.is_some() || (o.ot.dynamic_textures.is_empty() && !freetex) {
+                        continue;
+                    }
+                    if let Some(program) = o.ot.program.clone() {
+                        o.script = Some(omsi_sim::scenery::SceneryInstance::new(program, &o.ot.mesh_defs(), self.script_clock(), &o.strings));
+                    }
+                }
+            }
             let mut wanted: Vec<(String, Vec<PathBuf>)> = prepared
                 .iter()
                 .flat_map(|p| self.wanted_textures(p))
@@ -5240,6 +5258,26 @@ impl World {
         };
         let mut seen: hashbrown::HashSet<*const ObjectType> = hashbrown::HashSet::new();
         for o in &p.objects {
+            if let Some(inst) = &o.script {
+                let selection = scenery_texture_selection(&o.ot, inst);
+                for (group, &index) in o.ot.dynamic_textures.iter().zip(&selection) {
+                    for (_, file, dir) in group.choices.get(index).into_iter().flatten() {
+                        let mut dirs = texture_dirs(&self.root, &o.ot.model_dir);
+                        dirs.insert(0, dir.clone());
+                        push(file, &dirs, &mut names);
+                    }
+                }
+            }
+            if o.lamp.is_none() {
+                for (_, _, overrides) in &o.ot.meshes {
+                    for ov in overrides.iter().filter(|m| !m.item && m.freetex.is_some()) {
+                        let Some((_, var)) = &ov.freetex else { continue };
+                        if let Some(name) = resolve_scenery_freetex_name(var, ov, overrides, o.script.as_ref(), None, &o.strings) {
+                            push(name, &texture_dirs(&self.root, &o.ot.model_dir), &mut names);
+                        }
+                    }
+                }
+            }
             let key = Arc::as_ptr(&o.ot);
             if have_types.contains(&(key as usize)) || !seen.insert(key) {
                 continue;
@@ -6377,6 +6415,7 @@ impl World {
                         var_parent,
                         parked,
                         editable,
+                        script: mut early_script,
                     } = o;
                     let tkey = self.type_gpu(renderer, scene, gpu, &ot, images, ground_mat);
                     if !tg.types.contains(&tkey) {
@@ -6419,12 +6458,12 @@ impl World {
                             (has_pages || (has_freetex && !strings.is_empty())).then(|| Arc::new(omsi_script::Program::default()))
                         });
                         program.map(|program| {
-                            let mut inst = omsi_sim::scenery::SceneryInstance::new(
+                            let mut inst = early_script.take().unwrap_or_else(|| omsi_sim::scenery::SceneryInstance::new(
                                 program,
                                 &ot.mesh_defs(),
                                 self.script_clock(),
                                 &strings,
-                            );
+                            ));
                             if has_pages {
                                 let object_dir = ot.sco.path.parent().unwrap_or(std::path::Path::new(""));
                                 inst.init_html_textures(&ot.model.html_textures, &ot.model_dir, object_dir);
@@ -6639,17 +6678,7 @@ impl World {
                                         );
                                         let (w, h) =
                                             (tt.width.max(1) as u32, tt.height.max(1) as u32);
-                                        let tex = gpu.add_image(
-                                            renderer,
-                                            scene,
-                                            &Image {
-                                                width: w,
-                                                height: h,
-                                                rgba: vec![0u8; (w * h * 4) as usize],
-                                                has_alpha: true,
-                                            },
-                                            false,
-                                        );
+                                        let tex = gpu.add_blank(renderer, scene, w, h);
                                         let mat = renderer.add_material(
                                             scene,
                                             Some(tex),
@@ -9298,6 +9327,7 @@ pub fn sync_vehicle_textures(
     scene: &mut Scene,
     vehicle: &mut omsi_sim::VehicleInstance,
     render: &VehicleRender,
+    budget: &mut usize,
 ) {
     vehicle.update_html_textures();
     sync_interior_lamps(
@@ -9332,7 +9362,11 @@ pub fn sync_vehicle_textures(
         // (far away what the scripts redraw goes up every half second: `displays_far`)
         if !render.displays_far {
             if let Some(Some(tex)) = render.script_textures.get(i) {
+                if *budget == 0 {
+                    continue;
+                }
                 let Some(rgba) = st.take_upload() else { continue };
+                *budget = budget.saturating_sub(rgba.len());
                 let img = Image {
                     width: st.width,
                     height: st.height,
@@ -10897,14 +10931,7 @@ impl World {
     ) -> VehicleRender {
         let mut gpu = self.gpu.lock();
         let blank = |gpu: &mut GpuCache, scene: &mut Scene, w: i32, h: i32| {
-            let (w, h) = (w.max(1) as u32, h.max(1) as u32);
-            let img = Image {
-                width: w,
-                height: h,
-                rgba: vec![0; (w * h * 4) as usize],
-                has_alpha: true,
-            };
-            Some(gpu.add_image(renderer, scene, &img, false))
+            Some(gpu.add_blank(renderer, scene, w.max(1) as u32, h.max(1) as u32))
         };
         let sizes: Vec<(i32, i32)> = vt
             .model

@@ -29,6 +29,7 @@ use std::sync::Arc;
 /// bus's textures the first time it appears, which used to cost a frame of 100-200 ms
 /// each and a minute of stutter after loading Spandau.
 pub const AI_SCHEMES: usize = 4;
+const SCRIPT_UPLOAD_BUDGET: usize = 4 << 20;
 
 /// Start a vehicle of type `ty` once and throw it away: its `{init}` and its displays read
 /// the files they need (depot data, fonts) into the caches before the first real one of the
@@ -1425,6 +1426,11 @@ impl Traffic {
         renders
     }
 
+    pub fn prime_pull_out_room(&mut self, ty: &VehicleType, bus: bool) {
+        let (front, rear, half_width) = extents(ty, if bus { 12.0 } else { 4.5 });
+        self.pull_out_room(ty, front, rear, half_width);
+    }
+
     /// How far behind something standing a vehicle of `ty` stops so that it can pull out
     /// round it later (`omsi_sim::ai_motion::pull_out_room` against a standing bus with the
     /// oncoming lane 3.3 m over; by vehicle file).
@@ -2650,6 +2656,31 @@ impl Traffic {
             scheme,
         });
         id
+    }
+
+    pub fn precache_random(&mut self, world: &World, renderer: &Renderer, scene: &mut Scene) {
+        let t0 = std::time::Instant::now();
+        let mut sets: Vec<(Arc<VehicleType>, Option<usize>)> = Vec::new();
+        for (ty, ..) in &self.types {
+            let n = ty.paint_schemes.len().min(AI_SCHEMES);
+            let schemes: Vec<Option<usize>> = if n == 0 { vec![None] } else { (0..n).map(Some).collect() };
+            for scheme in schemes {
+                if !sets.iter().any(|(t, s)| t.def.path == ty.def.path && *s == scheme) {
+                    sets.push((ty.clone(), scheme));
+                }
+            }
+        }
+        for chunk in sets.chunks(3) {
+            world.prefetch_vehicle_sets(renderer, chunk);
+            for (ty, scheme) in chunk {
+                world.precache_vehicle(renderer, scene, ty, *scheme);
+            }
+        }
+        world.forget_prefetched();
+        for (ty, _) in &sets {
+            self.prime_pull_out_room(ty, false);
+        }
+        log::info!("traffic: {} vehicle/paint sets of the random traffic read and uploaded in {:.1} s", sets.len(), t0.elapsed().as_secs_f32());
     }
 
     /// Put a timetable bus on the road: an AI car like any other (`create_car`), on its
@@ -6635,6 +6666,7 @@ impl Traffic {
         // a blank sign until it was almost there.) What a far car's scripts redraw goes to
         // the GPU at most every half second, a slice of the cars per frame.
         let tick = (self.time as f64 * 2.0) as u64;
+        let mut budget = SCRIPT_UPLOAD_BUDGET;
         for c in &mut self.cars {
             // out of sight (`tick` decided): hidden once, then left alone until it comes
             // into view again - its many per-mesh updates were a third of this stage
@@ -6661,7 +6693,7 @@ impl Traffic {
                     c.render.display_tick = tick;
                 }
             }
-            crate::scene::sync_vehicle_textures(renderer, scene, &mut c.vehicle, &c.render);
+            crate::scene::sync_vehicle_textures(renderer, scene, &mut c.vehicle, &c.render, &mut budget);
             crate::scene::sync_vehicle_materials(renderer, scene, &c.vehicle, &mut c.render);
             // a coupled part runs no scripts of its own: its plates, its displays and its
             // switched materials follow the leading vehicle's, as the player's own rear

@@ -1168,6 +1168,7 @@ impl Schedule {
                 continue;
             }
             crate::traffic::warm_up(world, ty, hof.clone());
+            t.prime_pull_out_room(ty, true);
             for (tr, _) in t.trailer_chain(ty) {
                 if seen.insert(tr.def.path.clone()) {
                     crate::traffic::warm_up(world, &tr, None);
@@ -1854,7 +1855,7 @@ impl Schedule {
         // a handful per call: spawning a bus builds its meshes, and a whole rush hour at
         // once is a frame that lasts seconds (a departure that has to wait costs little)
         let (mut spawned, mut tried) = (0, 0);
-        while spawned < 3 && tried < 24 {
+        while spawned < if loading { 3 } else { 1 } && tried < 24 {
             let Some(i) = self.pending.pop_front() else {
                 break;
             };
