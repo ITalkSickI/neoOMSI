@@ -299,20 +299,17 @@ fn place_stops(net: &Network, route: &[usize], base: usize, stops: &mut [(usize,
 
 /// Where on `route` the bus stop at `pos` is: (route index, distance along that lane, lateral
 /// offset); None when it is further than `reach` from the route.
+/// Where the stop at `pos` lies on `route`, not before route index `from` (the stops come
+/// in the trip's order): on the side of the road it stands, see
+/// `Network::project_stop_on_route`.
 fn project_stop(
     net: &Network,
     route: &[usize],
     pos: glam::DVec3,
     reach: Option<f64>,
+    from: usize,
 ) -> Option<(usize, f32, f32)> {
-    let (ri, s, lat) = net.project_on_route_lateral(route, pos)?;
-    if let Some(r) = reach {
-        let (q, _) = net.lanes[route[ri]].at(s);
-        if (q - pos).truncate().length() > r {
-            return None;
-        }
-    }
-    Some((ri, s, lat))
+    net.project_stop_on_route(route, pos, reach, from)
 }
 
 pub struct Schedule {
@@ -1916,6 +1913,7 @@ impl Schedule {
             if !lanes.is_empty() {
                 let base = traffic.cars[ci].state.route.len();
                 let mut stops = Vec::new();
+                let mut from = 0;
                 for (si, (sid, t_dep)) in run.stations.iter().enumerate() {
                     if run.served[si] {
                         continue;
@@ -1924,8 +1922,9 @@ impl Schedule {
                         continue;
                     };
                     if let Some((ri, ss, lat)) =
-                        project_stop(&traffic.net, &lanes, pos, Some(STOP_REACH))
+                        project_stop(&traffic.net, &lanes, pos, Some(STOP_REACH), from)
                     {
+                        from = ri;
                         stops.push((base + ri, ss, bay_offset(lat), *t_dep, *sid));
                         run.served[si] = true;
                     }
@@ -2101,6 +2100,7 @@ impl Schedule {
         let reach = if whole { None } else { Some(STOP_REACH) };
         let mut served = vec![false; stations.len()];
         let mut stops = Vec::new();
+        let mut from = 0;
         for (si, sid) in stations.iter().enumerate() {
             // a station the trip runs through is none of its stops
             if !tt.stops[si] {
@@ -2113,8 +2113,9 @@ impl Schedule {
             }
             let found = world.object_positions.lock().get(sid).copied();
             match found {
-                Some((pos, _)) => match project_stop(net, &section, pos, reach) {
+                Some((pos, _)) => match project_stop(net, &section, pos, reach, from) {
                     Some((ri, ss, lat)) => {
+                        from = ri;
                         served[si] = true;
                         stops.push((ri, ss, bay_offset(lat), leave[si], *sid));
                     }

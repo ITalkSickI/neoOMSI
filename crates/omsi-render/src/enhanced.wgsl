@@ -706,7 +706,14 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
     let spec_occ = clamp(pow(nv + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
     // (a PBR set's roughness or metalness map says how it reflects: the probe, as for an envmap)
     let pbr_reflects = (material.pbr.z > 0.5 || material.pbr.w > 0.5) && !terrain;
-    var reflection = select(vec3<f32>(0.0), env * env_brdf(f0, rough, nv) * spec_occ, reflective_env || glass || pbr_reflects);
+    // (a wet road mirrors the sky probe as well; and what reflects nothing keeps the light
+    // the Fresnel term took off its ambient above - at a grazing angle that term is near 1,
+    // and the far road and ground went dark with no reflection in its place, #374)
+    let reflects = reflective_env || glass || pbr_reflects || wet_road > 0.0;
+    var reflection = select(vec3<f32>(0.0), env * env_brdf(f0, rough, nv) * spec_occ * select(1.0, wet_road, !(reflective_env || glass || pbr_reflects)), reflects);
+    if (!reflects) {
+        ambient = e_amb * sf.albedo / PI;
+    }
     if (glass) {
         // Transparent bus panes need a readable outside reflection from the driver's
         // viewpoint; opaque paint must never receive this boost.

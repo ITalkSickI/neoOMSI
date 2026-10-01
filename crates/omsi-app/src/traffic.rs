@@ -4057,6 +4057,11 @@ impl Traffic {
         let mut why: Vec<String> = Vec::new();
         let mut stop_at = if jn.inside { None } else { Some(entry) };
         let me_id = car.id;
+        // (Omsi.exe: a vehicle whose script sets `TrafficPriority` claims a crossing with
+        // priority 1000, above any vehicle type's, FUN_007d9128 - the AI ambulance as much
+        // as the player; ours honoured it for the player's bus only)
+        let prio = |c: &AiCar| c.vehicle.var("TrafficPriority").is_some_and(|v| v > 0.5);
+        let me_prio = prio(car);
         // A driver who has waited long accepts a shorter gap (the critical gap shrinks with
         // the wait, by up to a third after forty seconds): a bus that needed twelve seconds
         // of a busy main road stood at the mouth of its side road for minutes.
@@ -4202,7 +4207,10 @@ impl Traffic {
                         }
                         continue;
                     }
-                    if jn.inside || committed || !self.net.must_yield(l, m) {
+                    // a vehicle with priority goes before one without, whatever the lanes say;
+                    // one without gives way to it
+                    let o_prio = prio(o);
+                    if jn.inside || committed || (me_prio && !o_prio) || (!self.net.must_yield(l, m) && !(o_prio && !me_prio)) {
                         continue;
                     }
                     // the gap a driver takes in the main road's traffic: the critical gap of

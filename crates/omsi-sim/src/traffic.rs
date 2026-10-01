@@ -571,6 +571,48 @@ impl Network {
         best.map(|(ri, s, _, lat)| (ri, s, lat))
     }
 
+    /// Where a bus stop at `p` lies on `route`: like [`Network::project_on_route_lateral`],
+    /// but among the points within `reach` (when given) and not before route index
+    /// `from`, a lane with the stop on its kerb side (right, or left with left-hand traffic)
+    /// goes before a nearer one with the stop across it - a route back along the same
+    /// street passes each stop twice, once from the other side, and the bus stopped at the
+    /// stop across the road on its way out. Falls back to the nearest point.
+    pub fn project_stop_on_route(&self, route: &[usize], p: DVec3, reach: Option<f64>, from: usize) -> Option<(usize, f32, f32)> {
+        // (index, s, distance, lateral) of the best on the kerb side, and of any
+        let mut kerb: Option<(usize, f32, f64, f32)> = None;
+        let mut any: Option<(usize, f32, f64, f32)> = None;
+        for (ri, &li) in route.iter().enumerate().skip(from.min(route.len())) {
+            let l = &self.lanes[li];
+            for k in 0..l.points.len().saturating_sub(1) {
+                let a = l.points[k];
+                let b = l.points[k + 1];
+                let ab = b - a;
+                let t = ((p - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
+                let q = a + ab * t;
+                let d = (q - p).truncate().length();
+                if reach.is_some_and(|r| d > r) {
+                    continue;
+                }
+                let dir = ab.truncate().normalize_or_zero();
+                let rel = (p - q).truncate();
+                let lateral = (rel.x * dir.y - rel.y * dir.x) as f32;
+                let cand = (ri, l.dist[k] + (l.dist[k + 1] - l.dist[k]) * t as f32, d, lateral);
+                let kerb_side = if self.left_hand { lateral < -0.3 } else { lateral > 0.3 };
+                if kerb_side && kerb.map(|b| d < b.2).unwrap_or(true) {
+                    kerb = Some(cand);
+                }
+                if any.map(|b| d < b.2).unwrap_or(true) {
+                    any = Some(cand);
+                }
+            }
+        }
+        match kerb.or(any) {
+            Some((ri, s, _, lat)) => Some((ri, s, lat)),
+            None if from > 0 => self.project_stop_on_route(route, p, reach, 0),
+            None => None,
+        }
+    }
+
     /// Geometric conflicts between the lanes of each crossing object (paths that intersect
     /// or end at the same point, with where they meet), and the footpaths crossing its
     /// street lanes. AI cars sort out who goes first from these (`Network::must_yield`).
@@ -2480,6 +2522,24 @@ impl AiState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_stop_is_matched_to_the_lane_it_stands_beside() {
+        // out along y = 0 (east), back along y = 6 (west); the stop stands north of the
+        // way back: on its right, across the road from the way out
+        let out = LaneBuilder::polyline(vec![DVec3::new(0.0, 0.0, 0.0), DVec3::new(100.0, 0.0, 0.0)], LaneKind::Street, 3.0);
+        let back = LaneBuilder::polyline(vec![DVec3::new(100.0, 6.0, 0.0), DVec3::new(0.0, 6.0, 0.0)], LaneKind::Street, 3.0);
+        let net = Network { lanes: vec![out, back], ..Default::default() };
+        let stop = DVec3::new(50.0, 9.0, 0.0);
+        // nearer to the way back anyway: matched there
+        assert_eq!(net.project_stop_on_route(&[0, 1], stop, Some(25.0), 0).unwrap().0, 1);
+        // a stop on the right of the way out, nearer the middle of the road
+        let stop2 = DVec3::new(50.0, -2.0, 0.0);
+        assert_eq!(net.project_stop_on_route(&[0, 1], stop2, Some(25.0), 0).unwrap().0, 0);
+        // the route out, back and out again: a stop on the way out, once the trip is past
+        // its first leg, is the one on the second way out
+        assert_eq!(net.project_stop_on_route(&[0, 1, 0], stop2, Some(25.0), 1).unwrap().0, 2);
+    }
+
     use super::*;
 
     /// A straight lane of 60 m running north, then a right-hand bend of radius 14 m over
