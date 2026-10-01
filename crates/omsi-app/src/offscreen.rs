@@ -280,7 +280,8 @@ pub(crate) fn run_offscreen(
                 .ok()
                 .as_ref(),
         )
-        .lamps_on;
+        .brightness
+            < 0.75;
         t.populate(&world, &renderer, &mut scene, center);
     }
     // OMSI_GROUND_SAMPLE=<csv>: what the wheels stand on every metre along the street lanes

@@ -528,8 +528,11 @@ impl ApplicationHandler for App {
                         let (kind, rate) = precip_of(w);
                         w.fog.0 < 600.0 || (kind != 0 && rate > 0.05) || w.clouds.0.trim().to_ascii_lowercase().starts_with("overcast")
                     }).unwrap_or(false);
+                    // Omsi switches the AI's lights on below a light value of 0.75, before
+                    // the street lamps (0.6), and off after them in the morning
                     t.night = omsi_sim::Daylight::compute(&self.clock, self.envir.as_ref())
-                        .lamps_on
+                        .brightness
+                        < 0.75
                         || gloomy;
                     let __t2 = Instant::now();
                     t.others = lan_outlines(&self.remotes);
