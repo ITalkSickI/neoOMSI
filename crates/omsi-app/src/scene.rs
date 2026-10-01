@@ -11374,8 +11374,10 @@ impl World {
                     // (Omsi.exe keeps every [matl_item] of a [matl_change] as a material of its
                     // own and shows item round(x): a door button at 2 - lit while its door is
                     // open - showed the plain dark material, and item 2's maps leaked into item
-                    // 1, #352. The first item is still made of all the items' properties, as
-                    // before; the others each of their own.)
+                    // 1, #352. Each item of the first [matl_change] is made of its own block:
+                    // item 1 read item 2's `\S:n` mask, and an LED matrix showed the script
+                    // texture at 1 instead of its boot picture, #210. Items of a later
+                    // [matl_change] still merge into item 1.)
                     let later_items: Vec<&MaterialDef> = {
                         let mut changes = 0;
                         let mut first = Vec::new();
@@ -11426,7 +11428,8 @@ impl World {
                         let it_dyn = DynTex { text: text_item, script: script_item, script_trans: it_script_trans, clamp };
                         Look { alpha: it_alpha, color: it_color, emissive: it_emissive, unlit: false, diffuse: None, transmap: it_trans, night: it_night, lightmap: it_light, envmap, extra: it_extra, dyn_tex: it_dyn }
                     };
-                    let item_spec = (change_var.is_some() && !ov_item.is_empty()).then(|| item_look(&ov_item));
+                    let first_item: Vec<&MaterialDef> = ov_item.iter().copied().filter(|o| !later_items.iter().any(|l| std::ptr::eq(*l, *o))).collect();
+                    let item_spec = (change_var.is_some() && !ov_item.is_empty()).then(|| item_look(&first_item));
                     let more_items: Vec<Look> = if item_spec.is_some() { later_items.iter().map(|o| item_look(&vec![*o])).collect() } else { Vec::new() };
                     if only.is_some() {
                         if let Some(it) = &item_spec {
