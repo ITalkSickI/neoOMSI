@@ -4,6 +4,13 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.473 - 2026-10-01
+
+### Windows
+- The game starts on a PC without the Visual C++ Redistributable: the C runtime is linked
+  into `openomsi.exe`, and the runtime DLLs ship beside the DirectX shader compiler
+  ("The code execution cannot proceed because VCRUNTIME140_1.dll was not found").
+
 ## 0.1.471 - 2026-10-01
 
 ### Physics
