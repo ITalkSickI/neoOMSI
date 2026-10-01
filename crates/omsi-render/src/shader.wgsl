@@ -420,6 +420,19 @@ struct VsOut {
     @location(5) spec_sun: vec3<f32>,
     @location(6) spec_sky: vec3<f32>,
 };
+// What the fragment shaders take: VsOut without the invariant on the position. The
+// invariant belongs to the vertex output; on a fragment input naga's GLSL writer turns it
+// into `invariant gl_FragCoord`, which desktop GL drivers and GLES reject.
+struct FsIn {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) params: vec4<f32>,
+    @location(4) params2: vec4<f32>,
+    @location(5) spec_sun: vec3<f32>,
+    @location(6) spec_sky: vec3<f32>,
+};
 
 // Direct3D's specular term at a vertex (Omsi.exe switches it on in FormActivate, 0x8254e0):
 // Omsi.exe's sun (light 0, 0x7089f0: directional, specular = light A) and the light from
@@ -563,11 +576,11 @@ fn vs_shadow_far(in: VsIn) -> VsOut {
 }
 
 @fragment
-fn fs_shadow(in: VsOut) {
+fn fs_shadow(in: FsIn) {
 }
 
 @fragment
-fn fs_shadow_test(in: VsOut) {
+fn fs_shadow_test(in: FsIn) {
     var duv = tex_address(in.uv);
     if (material.extra.x > 0.5) {
         duv = in.uv * material.extra.z;
@@ -594,7 +607,7 @@ fn fs_shadow_test(in: VsOut) {
 // Once the surface phases are complete, only fully covered diffuse pixels occlude
 // later scenery. The transparent borders must not become invisible depth walls.
 @fragment
-fn fs_surface_depth(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_surface_depth(in: FsIn) -> @location(0) vec4<f32> {
     let a = diffuse_border(textureSample(t_diffuse, s_diffuse, tex_address(in.uv)), in.uv).a
         * material.color.a * in.params.x;
     if (a < 0.999) {
@@ -611,7 +624,7 @@ fn fs_surface_depth(in: VsOut) -> @location(0) vec4<f32> {
 // the effectively opaque part of a transmap in a separate depth-only pass; window pixels
 // remain out of the prepass and are composited normally.
 @fragment
-fn fs_transmap_depth(in: VsOut) {
+fn fs_transmap_depth(in: FsIn) {
     if (material.params.z < 0.5) {
         discard;
     }
@@ -1338,7 +1351,7 @@ fn rain_env_vanilla(d: vec3<f32>) -> vec3<f32> {
 }
 
 @fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_main(in: FsIn) -> @location(0) vec4<f32> {
     if (material.emissive.w > 1.5) {
         // a pane's film of water: drops, not the sliding texture
         let v = normalize(camera.cam_pos.xyz - in.world);

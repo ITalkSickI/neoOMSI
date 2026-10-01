@@ -1832,7 +1832,9 @@ impl Renderer {
         log::info!("renderer: compiling the scene shaders");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("omsi"),
-            source: wgpu::ShaderSource::Wgsl(scene_shader_source().into()),
+            source: wgpu::ShaderSource::Wgsl(
+                scene_shader_source(GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed)).into(),
+            ),
         });
         let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shadow camera"),
@@ -9572,13 +9574,32 @@ fn sky_input_differs(a: &atmosphere::SkyInput, b: &atmosphere::SkyInput) -> bool
 }
 
 /// The scene shader: the vanilla path and the enhanced fragment shader in one module.
-fn scene_shader_source() -> String {
-    [
+///
+/// On OpenGL a texture has one sampler (GLSL's combined sampler2D), so there the tile
+/// masks are read through `s_diffuse` at a UV clamped half a texel inside the tile, which
+/// is what `s_tile`'s clamp to edge gives; reading `t_trans`/`t_night` through both
+/// samplers fails the whole module ("Conflicting samplers").
+fn scene_shader_source(gl: bool) -> String {
+    let src = [
         include_str!("shader.wgsl"),
         include_str!("enhanced_common.wgsl"),
         include_str!("enhanced.wgsl"),
     ]
-    .join("\n")
+    .join("\n");
+    if !gl {
+        return src;
+    }
+    let clamped = |t: &str| {
+        format!(
+            "textureSample({t}, s_diffuse, clamp(uv, 0.5 / vec2<f32>(textureDimensions({t})), \
+             vec2<f32>(1.0) - 0.5 / vec2<f32>(textureDimensions({t}))))"
+        )
+    };
+    let out = src
+        .replace("textureSample(t_trans, s_tile, uv)", &clamped("t_trans"))
+        .replace("textureSample(t_night, s_tile, uv)", &clamped("t_night"));
+    debug_assert!(!out.contains("s_tile, uv)"));
+    out
 }
 
 /// The enhanced clouds' noise textures (clouds.rs), made once: the shape map (2-D RGBA8)
@@ -11236,7 +11257,7 @@ mod tests {
     fn shaders_validate_and_match_the_uniforms() {
         use wgpu::naga;
         let modules = [
-            ("scene", scene_shader_source()),
+            ("scene", scene_shader_source(false)),
             ("sky", sky_shader_source()),
             ("corona", corona_shader_source()),
             ("post", include_str!("post.wgsl").to_string()),
@@ -11323,6 +11344,37 @@ mod tests {
             }
         }
         assert_eq!(checked.len(), sizes.len(), "structs checked: {checked:?}");
+    }
+
+    /// The scene module as the OpenGL backend gets it translates to GLSL ES 3.10 and desktop
+    /// GLSL 4.30 for every entry point, with no `invariant gl_FragCoord` (rejected by AMD's
+    /// desktop GL and by GLES) and no texture read through two samplers (#617, #610).
+    #[test]
+    fn the_scene_shader_translates_to_glsl() {
+        use wgpu::naga;
+        use wgpu::naga::back::glsl;
+        let src = scene_shader_source(true);
+        let module = naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
+        let info = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+            .validate(&module)
+            .expect("validate");
+        let (module, info) =
+            naga::back::pipeline_constants::process_overrides(&module, &info, None, &Default::default()).expect("overrides");
+        for version in [glsl::Version::Embedded { version: 310, is_webgl: false }, glsl::Version::Desktop(430)] {
+            let options = glsl::Options { version, ..Default::default() };
+            for entry in &module.entry_points {
+                let pipeline = glsl::PipelineOptions {
+                    shader_stage: entry.stage,
+                    entry_point: entry.name.clone(),
+                    multiview: None,
+                };
+                let mut out = String::new();
+                glsl::Writer::new(&mut out, &module, &info, &options, &pipeline, Default::default())
+                    .and_then(|mut w| w.write())
+                    .unwrap_or_else(|e| panic!("{version:?} {}: {e:?}", entry.name));
+                assert!(!out.contains("invariant gl_FragCoord"), "{version:?} {}", entry.name);
+            }
+        }
     }
 
     #[test]
