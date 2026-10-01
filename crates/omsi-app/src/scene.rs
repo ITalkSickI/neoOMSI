@@ -2186,15 +2186,24 @@ fn probe_tile(
     // (an embankment the road runs under, ground poking through the asphalt) is no
     // ground and no wall there. Taken with the road, a terrain face over the carriageway was
     // an invisible wall under bridges, and one through it a bump that threw the bus.
-    let on_road = probe.below.is_some();
-    if let (Some(t), false) = (terrain, on_road) {
-        // the ground counts where it is drawn; where it is cut away and nothing else is
-        // there (a surface without a collision), it still carries rather than let the
-        // vehicle drop out of the world
+    let ground = terrain.map(|t| {
         let h = omsi_geometry::terrain_height(t, lx, ly);
         let cut = surface
             .map(|s| s.cut_at(lx, ly, h, surface_flush()))
             .unwrap_or(false);
+        (h, cut)
+    });
+    // ... unless that face lies buried well under ground that is drawn here and is under the
+    // wheel, not over it: the lower slope of an embankment spline (Marcel's `Damm1` falls
+    // 20 m over 30 m on each side) reaching under a junction the terrain carries. Omsi.exe
+    // takes the highest face there, the ground; taken as the road, it dropped the bus 8 m
+    // through the asphalt into the slope (Cotterell, the junction by the park at 250, 427).
+    let buried = matches!((probe.below, ground), (Some(z), Some((h, false))) if h <= top as f32 && h - z > BURIED_FACE);
+    let on_road = probe.below.is_some() && !buried;
+    if let (Some((h, cut)), false) = (ground, on_road) {
+        // the ground counts where it is drawn; where it is cut away and nothing else is
+        // there (a surface without a collision), it still carries rather than let the
+        // vehicle drop out of the world
         if !cut || (probe.below.is_none() && h <= top as f32) {
             probe = probe.merge(omsi_geometry::Probe::of(h, top as f32));
         }
@@ -2216,6 +2225,10 @@ fn probe_tile(
         above: probe.above.map(|z| z as f64),
     }
 }
+
+/// How far a road face may lie under drawn ground before it counts as buried (m): far more
+/// than the ground poking through the asphalt that the road is there to keep out.
+const BURIED_FACE: f32 = 1.0;
 
 /// How far over the ground a wall's top must stand to be a wall to the wheels (a kerb is
 /// less, and the tyre climbs it).
