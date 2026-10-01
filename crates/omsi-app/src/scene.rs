@@ -7426,6 +7426,11 @@ impl World {
         let xf = Mat4::from_rotation_z((-heading).to_radians() as f32);
         for (mi, (mesh_id, mats)) in meshes.iter().enumerate() {
             let new = renderer.add_instance(scene, *mesh_id, pos, xf, mats.clone());
+            renderer.set_omsi_caster(scene, new, ot.mesh_casts.get(mi).copied().unwrap_or(false));
+            // a route arrow casts no shadow (only [shadow] meshes do in Omsi.exe)
+            if ot.sco.is_help_arrow {
+                renderer.set_casts_shadow(scene, new, false);
+            }
             let inst = gpu.instance(renderer, scene, new);
             tg.instances.push(inst);
             let Some((_, o3d_mats, overrides)) = ot.meshes.get(mi) else { continue };
