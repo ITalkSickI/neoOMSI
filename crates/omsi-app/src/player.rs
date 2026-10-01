@@ -499,6 +499,11 @@ impl Player {
             }
             return true;
         }
+        // a key whose press reached the script's own trigger releases as Omsi.exe does, with
+        // `<name>_off` only: an alias's `_off` (parking_brake_mouse_off) would undo it (#420)
+        if !pressed && self.vehicle.ty.program.trigger(name).is_some() {
+            return true;
+        }
         let Some((_, aliases)) = ACTION_ALIASES
             .iter()
             .find(|(a, _)| a.eq_ignore_ascii_case(name))
