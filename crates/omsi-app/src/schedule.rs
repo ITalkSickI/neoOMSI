@@ -2843,7 +2843,32 @@ fn complex_line_text(line: &str, line_num: f32) -> String {
     }
 }
 
+/// The letter and digits of a line named letter first ("X10", "M41"), else None.
+fn line_prefix(line: &str) -> Option<(char, &str)> {
+    let line = line.trim();
+    let first = line.chars().next().filter(|c| c.is_ascii_alphabetic())?;
+    let digits = &line[1..];
+    (!digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()))
+        .then_some((first.to_ascii_uppercase(), digits))
+}
+
 fn line_suffix_from_text(line: &str) -> u32 {
+    // the stock MAN matrices' and X10 Berlin's IBIS's "letter then number" codes
+    if let Some((letter, _)) = line_prefix(line) {
+        return match letter {
+            'E' => 1,
+            'S' => 5,
+            'A' => 6,
+            'D' => 11,
+            'C' => 12,
+            'B' => 13,
+            'U' => 25,
+            'M' => 28,
+            'N' => 35,
+            'X' => 36,
+            _ => 0,
+        };
+    }
     match line.trim().chars().last().map(|c| c.to_ascii_uppercase()) {
         // The stock Matrix scripts use two different E codes: 1 renders E5,
         // while 10 renders 5E. Timetable line names put the letter after the
@@ -2866,14 +2891,29 @@ fn line_suffix_from_text(line: &str) -> u32 {
 /// timetable line such as `5E`, the display suffix must therefore come from
 /// the text (`10` in the stock matrix scripts), while a plain `5` stays `500`.
 fn line_code_from_text(line: &str, route_code: Option<u32>) -> Option<u32> {
-    let digits: String = line
-        .trim()
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    match digits.parse::<u32>().ok().filter(|n| *n > 0 && *n < 1000) {
+    // a lettered line's IBIS number is the depot file's (X10 Berlin types X10 as 510)
+    if let (Some(_), Some(code)) = (line_prefix(line), route_code) {
+        return Some(code / 100 * 100 + line_suffix_from_text(line));
+    }
+    match line_number_digits(line)
+        .parse::<u32>()
+        .ok()
+        .filter(|n| *n > 0 && *n < 1000)
+    {
         Some(number) => Some(number * 100 + line_suffix_from_text(line)),
         None => route_code,
+    }
+}
+
+/// The line's number: its leading digits, or the digits after a prefix letter ("X10" → 10).
+fn line_number_digits(line: &str) -> String {
+    match line_prefix(line) {
+        Some((_, digits)) => digits.to_string(),
+        None => line
+            .trim()
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect(),
     }
 }
 
@@ -3049,7 +3089,7 @@ fn set_destination(
                     && !line_digits.is_empty()
             })
         });
-    let line_num = line_digits.parse::<f32>().unwrap_or(0.0);
+    let line_num = line_number_digits(line).parse::<f32>().unwrap_or(0.0);
     // The route's last two digits select its stop list; they must not replace
     // a display suffix. Otherwise an ordinary route code such as 505 becomes
     // suffix 5 and the stock matrix renders S5 instead of 5E.
@@ -3059,6 +3099,11 @@ fn set_destination(
     let line_code =
         line_code_from_text(line, route_code).unwrap_or_else(|| line_num.max(0.0) as u32 * 100);
     let line_suffix = (line_code % 100) as f32;
+    let line_num = if line_prefix(line).is_some() {
+        (line_code / 100) as f32
+    } else {
+        line_num
+    };
     // the original's way: SetLineTo + AI_target_index, then the ai_scheduled_settarget trigger
     set_line_to(v, line);
     if !player {
@@ -4259,6 +4304,19 @@ mod tests {
         assert_eq!(line_suffix_from_text("5S"), 23);
         assert_eq!(line_code_from_text("5E", Some(505)), Some(510));
         assert_eq!(line_code_from_text("5", Some(505)), Some(500));
+    }
+
+    /// #546: a letter-first line had no number, and the DL05's matrix blanks line 0.
+    #[test]
+    fn line_with_letter_prefix_keeps_its_number() {
+        assert_eq!(line_code_from_text("X10", None), Some(1036));
+        assert_eq!(line_code_from_text("X10", Some(51001)), Some(51036));
+        assert_eq!(line_code_from_text("M41", Some(4101)), Some(4128));
+        assert_eq!(line_code_from_text("N9", None), Some(935));
+        assert_eq!(line_code_from_text("TML", Some(7601)), Some(7601));
+        assert_eq!(line_suffix_from_text("X10"), 36);
+        assert_eq!(line_number_digits("X10"), "10");
+        assert_eq!(line_number_digits("5E"), "5");
     }
 
     #[test]
