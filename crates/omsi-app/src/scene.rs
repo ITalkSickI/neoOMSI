@@ -2825,6 +2825,17 @@ impl World {
                     }
                 }
             });
+            // Omsi.exe hands the deformation mesh to the model loader, which drapes every
+            // [mesh] of the object onto it and rebuilds the normals from the faces
+            // (D3DXComputeNormals): the file's normals of a crossing are never used.
+            if deform.is_some() {
+                for (mesh, _, _) in meshes
+                    .iter_mut()
+                    .chain(lower_lods.iter_mut().flat_map(|l| l.1.iter_mut()))
+                {
+                    omsi_geometry::compute_normals_d3d(mesh);
+                }
+            }
             // [terrainhole] <mesh>: the cutter that takes the ground away under a junction
             // or an underpass, so the carriageway is not buried under a mound of terrain
             let holes: Vec<MeshData> = model
@@ -4118,6 +4129,8 @@ impl World {
                         biggest = biggest.max(d.abs());
                     }
                 }
+                // (the normals of the draped mesh, as Omsi.exe makes them after draping)
+                omsi_geometry::compute_normals_d3d(&mut m);
                 meshes.push(m);
             }
             if biggest > 1.0 && omsi_cfg::env::var_os("OMSI_DEBUG_WARP").is_some() {

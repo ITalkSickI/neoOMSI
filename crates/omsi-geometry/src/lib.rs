@@ -721,6 +721,26 @@ pub fn compute_normals(mesh: &mut MeshData) {
     mesh.normals = acc.into_iter().map(|n| if n.length_squared() > 0.0 { n.normalize() } else { Vec3::Z }).collect();
 }
 
+/// Smooth vertex normals from the faces as D3DXComputeNormals makes them for a mesh read
+/// from a file: (v1 - v0) x (v2 - v0) in the file's Direct3D frame, which the y/z swap of
+/// `mesh_from_o3d` mirrors, hence (v2 - v0) x (v1 - v0) here. Omsi.exe rebuilds the normals
+/// of every mesh of an object with `[crossing_heightdeformation]` this way.
+pub fn compute_normals_d3d(mesh: &mut MeshData) {
+    let mut acc = vec![Vec3::ZERO; mesh.positions.len()];
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let n = (mesh.positions[c] - mesh.positions[a]).cross(mesh.positions[b] - mesh.positions[a]);
+        acc[a] += n;
+        acc[b] += n;
+        acc[c] += n;
+    }
+    for (n, a) in mesh.normals.iter_mut().zip(acc) {
+        if a.length_squared() > 0.0 {
+            *n = a.normalize();
+        }
+    }
+}
+
 /// Terrain mesh for one tile in tile-local coordinates (0..300). UVs are tile space (0..1);
 /// the material scales them for the ground texture.
 pub fn build_terrain_mesh(t: &Terrain) -> MeshData {
@@ -1308,6 +1328,18 @@ mod tests {
         let area = (p[1].0 - p[0].0) * (p[2].1 - p[0].1) - (p[2].0 - p[0].0) * (p[1].1 - p[0].1);
         assert!(area < 0.0, "front face must be clockwise on the screen (the renderer's front face), area {area}");
         assert_eq!(m.normals[0], Vec3::new(0.0, -1.0, 0.0));
+    }
+
+    #[test]
+    fn d3d_normals_face_the_front() {
+        // the front-facing triangle of `o3d_front_faces_arrive_clockwise`, its file normals
+        // pointing away: recomputed, they point back at the viewer as D3DX makes them
+        let v = |x: f32, y: f32, z: f32| omsi_o3d::Vertex { position: Vec3::new(x, y, z), normal: Vec3::new(0.0, 0.0, 1.0), uv: Vec2::ZERO };
+        let o3d = omsi_o3d::Mesh { vertices: vec![v(0.0, 0.0, 1.0), v(0.0, 1.0, 1.0), v(1.0, 0.0, 1.0)], triangles: vec![omsi_o3d::Triangle { indices: [0, 1, 2], material: 0 }], materials: vec![omsi_o3d::Material::default()], ..Default::default() };
+        let mut m = mesh_from_o3d(&o3d);
+        assert_eq!(m.normals[0], Vec3::new(0.0, 1.0, 0.0));
+        compute_normals_d3d(&mut m);
+        assert!(m.normals.iter().all(|n| (*n - Vec3::new(0.0, -1.0, 0.0)).length() < 1e-6), "{:?}", m.normals);
     }
 }
 
