@@ -1354,26 +1354,34 @@ impl Player {
     /// The part of the bus under a ray, switch or not: `(name, operable)`. Without this the
     /// HUD stayed empty over everything that is not a switch, and there was no way to tell
     /// "this is not a control" from "the cursor is not hitting anything".
-    pub(crate) fn hovered_part(&self, origin: DVec3, dir: Vec3, spread: f32) -> Option<(String, bool)> {
+    /// The flag beside it: a `[mouseevent]` mesh is under the ray, named or not - Omsi.exe
+    /// shows the hand cursor over any of them (0x6f34c0 @0x6f45b4).
+    pub(crate) fn hovered_part(&self, origin: DVec3, dir: Vec3, spread: f32) -> (Option<(String, bool)>, bool) {
         if let Some(i) = self.pick(origin, dir, spread) {
             let def = &self.vehicle.ty.model.meshes[self.vehicle.ty.meshes[i].def_index];
             if let Some(ev) = def.mouse_event.clone() {
                 // a whole panel that can be dragged into place (the VDV dashboard's
                 // `VDV_position`) is no switch to name: its name covered the whole cockpit
+                // (the hand still shows over it, a door leaf or the steering column)
                 let big = self.vehicle.ty.mesh_bounds.get(i).map(|b| b.1 > 0.45).unwrap_or(false);
                 if big {
-                    return None;
+                    return (None, true);
                 }
-                return Some((ev, true));
+                return (Some((ev, true)), true);
             }
         }
         if let Some((ti, i)) = self.pick_trailer(origin, dir, spread) {
             let trailer = &self.vehicle.trailers[ti];
             let def = &trailer.ty.model.meshes[trailer.ty.meshes[i].def_index];
             if let Some(ev) = def.mouse_event.clone() {
-                return Some((ev, true));
+                return (Some((ev, true)), true);
             }
         }
+        (self.hovered_body_part(origin, dir), false)
+    }
+
+    /// The mesh of the bus under a ray when it is no switch, by its file's name.
+    fn hovered_body_part(&self, origin: DVec3, dir: Vec3) -> Option<(String, bool)> {
         let o = (origin - self.vehicle.position).as_vec3();
         let mut best: Option<(f32, usize)> = None;
         for (i, vm) in self.vehicle.ty.meshes.iter().enumerate() {

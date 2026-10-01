@@ -99,6 +99,8 @@ pub(crate) struct App {
     pub(crate) hover: Option<String>,
     /// The part under the cursor when it is not a switch, so the HUD can say so.
     pub(crate) hover_part: Option<String>,
+    /// A `[mouseevent]` mesh is under the cursor (named in `hover` or not): the hand cursor.
+    pub(crate) hover_hand: bool,
     /// `OMSI_INPUT` script: (seconds after start, command), in order.
     pub(crate) input_script: Vec<(f32, String)>,
     /// `shot <file>` of the input script: the next frame is also rendered into this PNG.

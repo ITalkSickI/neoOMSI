@@ -2561,8 +2561,10 @@ impl App {
                 p.hovered_part(o, d, spread)
             }
             // (in another player's bus nothing is offered: its switches are the driver's)
-            _ => None,
+            _ => (None, false),
         };
+        let (found, hand) = found;
+        self.hover_hand = hand;
         match found {
             Some((name, true)) => {
                 self.hover = Some(name);
@@ -2584,7 +2586,7 @@ impl App {
             3
         } else if self.mouse_drive && matches!(self.view.as_str(), "driver" | "outside" | "pax") && self.game_menu.is_none() {
             2
-        } else if self.hover.is_some() {
+        } else if self.hover.is_some() || self.hover_hand {
             1
         } else {
             0
