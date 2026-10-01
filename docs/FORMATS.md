@@ -851,8 +851,10 @@ itself changes the plain material; each `[matl_item]` starts as a copy of the pl
 material as it is at that point (openOMSI draws the first item). The item's `[matl_nightmap]` glows at full strength while the
 variable is on, by day as well - warning lamps (`lights_blinkgeber`, `cockpit_light_*`,
 `haltewunschlampe`) and dashboard screens drawn only in the night map (the Procity's pressure
-screen, switched by `elec_busbar_main`) depend on it; a plain `[matl_nightmap]` fades in with
-the night. Street lights use `NightlightA`, bus panels
+screen, switched by `elec_busbar_main`) depend on it. A vehicle's plain `[matl_nightmap]` glows
+the same way whenever its mesh is drawn, by day as well: dashboard lamps and the "stop
+requested" sign are meshes switched by `[visible]` with a night map on a plain `[matl]` (#497);
+a scenery object's fades in with the night. Street lights use `NightlightA`, bus panels
 `elec_busbar_main`, displays their light switches. The item inherits the plain `[matl]` of
 the slot (alpha mode, transmap) and may replace them: `[matl_transmap]` + `[matl_alpha] 2`
 items are washer water / condensation that only exist while the variable is on;

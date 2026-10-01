@@ -750,8 +750,9 @@ pub struct MaterialExtra {
     /// A named transparent window layer. This is separate from envmap/transmap because
     /// stock and add-on buses often use a plain alpha-blended window texture.
     pub glass: bool,
-    /// The night map belongs to a `[matl_item]`: its variable switches it, and it glows by
-    /// day as well (warning lamps, dashboard displays), not only at night.
+    /// The night map is switched by something other than the time of day - a `[matl_item]`'s
+    /// variable, a vehicle mesh's `[visible]`: it glows by day as well (warning lamps,
+    /// dashboard displays), not only at night.
     pub night_switched: bool,
     /// A display's text (`[useTextTexture]`): in the enhanced picture it glows a little
     /// by itself, as a lit matrix does, instead of taking only the light that reaches it
