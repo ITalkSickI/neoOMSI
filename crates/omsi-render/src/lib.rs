@@ -1330,6 +1330,7 @@ pub struct Renderer {
     /// Reuse a small set of encoding workers instead of creating OS threads for each
     /// main/mirror picture. Keep these separate from simulation's worker queue.
     encoding_pool: Option<rayon::ThreadPool>,
+    _device_poller: Option<DevicePoller>,
     /// Vertex data of changed meshes (skinned people, the driver) waiting for the next
     /// picture: (mesh, bytes). Written with one staging buffer and a copy each at the start
     /// of the frame - a `write_buffer` per mesh made wgpu create a staging buffer for every
@@ -3760,6 +3761,7 @@ impl Renderer {
         });
         let gpu_timers = [GpuTimers::new(&device), GpuTimers::new(&device)];
         Renderer {
+            _device_poller: DevicePoller::start(&device),
             upscale_pipeline,
             upscale_layout,
             upscale_buf,
@@ -4109,6 +4111,29 @@ impl Renderer {
             upload_texture(&self.device, &self.queue, img, false)
         };
         scene.textures.push(t);
+        scene.textures.len() - 1
+    }
+
+    pub fn add_blank_texture(&self, scene: &mut Scene, width: u32, height: u32) -> TextureId {
+        let (width, height) = (width.max(1), height.max(1));
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        scene.textures.push(GpuTexture {
+            texture,
+            view,
+            size: (width, height),
+            bytes: texture_bytes(wgpu::TextureFormat::Rgba8UnormSrgb, width, height, 1),
+            gen: next_gen(),
+        });
         scene.textures.len() - 1
     }
 
@@ -10156,6 +10181,40 @@ fn culls_back_faces(scene: &Scene, inst: &Instance) -> bool {
     scene.meshes[inst.mesh].one_sided
         && !*NO_CULL.get_or_init(|| omsi_cfg::env::var_os("OMSI_NO_CULL").is_some())
         && glam::Mat3::from_mat4(inst.transform).determinant() > 0.0
+}
+
+struct DevicePoller {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl DevicePoller {
+    fn start(device: &wgpu::Device) -> Option<Self> {
+        if cfg!(target_arch = "wasm32") || omsi_cfg::env::var_os("OMSI_NO_POLL_THREAD").is_some() {
+            return None;
+        }
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (device, flag) = (device.clone(), stop.clone());
+        let thread = std::thread::Builder::new()
+            .name("omsi-gpu-poll".into())
+            .spawn(move || {
+                while !flag.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = device.poll(wgpu::PollType::Poll);
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            })
+            .ok()?;
+        Some(Self { stop, thread: Some(thread) })
+    }
+}
+
+impl Drop for DevicePoller {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
 }
 
 fn in_scope<'s, R>(pool: Option<&rayon::ThreadPool>, op: impl FnOnce(&rayon::Scope<'s>) -> R) -> R {

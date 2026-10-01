@@ -1948,7 +1948,7 @@ pub(crate) fn sync_vehicle_transforms(
             renderer.set_interior(scene, *inst, p.interior);
         }
     }
-    scene::sync_vehicle_textures(renderer, scene, vehicle, render);
+    scene::sync_vehicle_textures(renderer, scene, vehicle, render, &mut { usize::MAX });
     let mut trailers = std::mem::take(&mut vehicle.trailers);
     for (t, r) in trailers.iter_mut().zip(trailer_renders.iter_mut()) {
         scene::sync_vehicle_part(renderer, scene, &vehicle, t, r);

@@ -603,6 +603,9 @@ impl App {
                             if let Some(lan) = self.lan.as_ref() {
                                 t.set_lan_seed(lan::population_seed(lan));
                             }
+                            if self.args.traffic > 0 {
+                                t.precache_random(&w, &renderer, &mut scene);
+                            }
                             t.day_time = parse_time(&self.args.time);
                             self.traffic = Some(t);
                         }
