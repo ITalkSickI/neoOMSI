@@ -5533,7 +5533,7 @@ impl World {
                     .filter(|o| !o.item)
                     .filter(for_slot)
                     .collect();
-                let (color, emissive, specular) =
+                let (color, emissive, specular, ambient) =
                     d3d_material(m, slot_ov.iter().find_map(|o| o.allcolor), tex.is_some());
                 // [matl_transmap]: transparency from a separate map (parked cars: body opaque, windows clear)
                 let transmap = match overrides
@@ -5590,6 +5590,7 @@ impl World {
                     None => None,
                 };
                 let mut extra = material_extra(&slot_ov, env_mask, bump, specular);
+                extra.ambient = Some(ambient);
                 extra.no_map_lights = ot.sco.no_map_lighting;
                 if tex.is_some() {
                     let dirs_ref: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
@@ -5631,7 +5632,7 @@ impl World {
                         Some(n) => tex_of(gpu, scene, &n, &mut t).or(night),
                         None => night,
                     };
-                    let (ic, ie, is) = d3d_material(
+                    let (ic, ie, is, ia) = d3d_material(
                         m,
                         items
                             .iter()
@@ -5641,6 +5642,7 @@ impl World {
                     );
                     let it_alpha = items.first().map(|o| alpha_mode(o.alpha)).unwrap_or(alpha);
                     let mut it_extra = material_extra(&items, env_mask, bump, is);
+                    it_extra.ambient = Some(ia);
                     it_extra.night_switched = items.iter().any(|o| o.nightmap.is_some());
                     it_extra.no_z_write |= extra.no_z_write;
                     it_extra.no_z_check |= extra.no_z_check;
@@ -6570,7 +6572,8 @@ impl World {
                                 let (alpha, color, unlit, transmap, night, light, env, emissive) =
                                     (base.alpha, base.color, base.unlit, base.transmap, base.nightmap, base.lightmap, base.envmap, base.emissive);
                                 let slot_ov: Vec<&MaterialDef> = overrides.iter().filter(|o| !o.item && omsi_sim::vehicle::override_slot(o3d_mats, o) == Some(slot)).collect();
-                                let extra = material_extra(&slot_ov, base.env_mask, base.bump, [0.0; 4]);
+                                let mut extra = material_extra(&slot_ov, base.env_mask, base.bump, [0.0; 4]);
+                                extra.ambient = o3d_mats.get(slot).map(|m| d3d_material(m, slot_ov.iter().find_map(|o| o.allcolor), true).3);
                                 renderer.address_next.set(tex_addressing(slot_ov.iter().copied()));
                                 let mat = renderer.add_material_extra(scene, Some(tex), alpha, color, unlit, transmap, night, light, env, emissive, extra);
                                 let mat = gpu.material(renderer, scene, mat);
@@ -9408,15 +9411,18 @@ fn d3d_material(
     m: &omsi_o3d::Material,
     allcolor: Option<[f32; 14]>,
     textured: bool,
-) -> ([f32; 4], [f32; 3], [f32; 4]) {
-    let (diffuse, emissive, specular, power) = match allcolor {
+) -> ([f32; 4], [f32; 3], [f32; 4], [f32; 3]) {
+    // (the ambient colour: Omsi.exe gives every o3d slot a white one, 0x7c62f8, and a
+    // textured .x slot too, 0x7c6d2d; a [matl_allcolor] sets its own)
+    let (diffuse, emissive, specular, power, ambient) = match allcolor {
         Some(v) => (
             [v[0], v[1], v[2], v[3]],
             [v[10], v[11], v[12]],
             [v[7], v[8], v[9]],
             v[13],
+            [v[4], v[5], v[6]],
         ),
-        None => (m.diffuse, m.emissive, m.specular, m.specular_power),
+        None => (m.diffuse, m.emissive, m.specular, m.specular_power, [1.0; 3]),
     };
     let clamp01 = |x: f32| {
         if x.is_finite() {
@@ -9443,6 +9449,7 @@ fn d3d_material(
         color,
         emissive,
         [specular[0], specular[1], specular[2], power],
+        ambient.map(clamp01),
     )
 }
 
@@ -9464,6 +9471,7 @@ fn material_extra(
         // body skin round every opening. OMSI_NOZCHECK_BIAS=1: the old reading.
         no_z_check: ov.iter().any(|o| o.no_z_check) && omsi_cfg::env::var_os("OMSI_NOZCHECK_BIAS").is_some(),
         z_bias: ov.iter().map(|o| o.z_bias).find(|b| *b != 0).unwrap_or(0),
+        ambient: None,
         specular,
         bump: bump.filter(|b| b.1.is_finite() && b.1 != 0.0),
         glass: false,
@@ -11387,8 +11395,9 @@ impl World {
                         log::info!("  {} slot {slot} '{}' diffuse={:?} emissive={:?} specular={:?}/{} tex={:?} alpha={:?} transmap={:?} night={:?} light={:?} env={:?} mask={:?} bump={:?} text={:?} script={:?} script_trans={:?} noZwrite={} noZcheck={} zbias={}", def.file, m.texture, m.diffuse, m.emissive, m.specular, m.specular_power, tex, alpha, transmap, night, lightmap, envmap, env_mask, bump, text_slot, script_slot, script_trans, ov.iter().any(|o| o.no_z_write), ov.iter().any(|o| o.no_z_check), ov.iter().map(|o| o.z_bias).find(|b| *b != 0).unwrap_or(0));
                     }
                     let textured = tex.is_some() || text_slot.is_some() || script_slot.is_some() || freetex || vt.texchange(&m.texture).is_some();
-                    let (color, emissive, specular) = d3d_material(m, ov.iter().find_map(|o| o.allcolor), textured);
+                    let (color, emissive, specular, ambient) = d3d_material(m, ov.iter().find_map(|o| o.allcolor), textured);
                     let mut extra = material_extra(&ov, env_mask, bump, specular);
+                    extra.ambient = Some(ambient);
                     // A vehicle's [matl_nightmap] is added whenever the mesh is drawn, by day
                     // as well, as OMSI 2 does - with or without a [matl_change] around it.
                     // Its lamps and displays are switched by the mesh's [visible] variable or
@@ -11487,8 +11496,9 @@ impl World {
                         // busbar switches to - was opaque, its `\S:n` mask cut nothing, and the
                         // whole matrix was lit.)
                         let it_alpha = if repair_body_depth { AlphaMode::Opaque } else { ov_item.iter().find(|o| o.alpha_set).map(|o| alpha_mode(o.alpha)).unwrap_or(alpha) };
-                        let (it_color, it_emissive, it_specular) = d3d_material(m, ov_item.iter().find_map(|o| o.allcolor).or(ov.iter().find_map(|o| o.allcolor)), textured);
+                        let (it_color, it_emissive, it_specular, it_ambient) = d3d_material(m, ov_item.iter().find_map(|o| o.allcolor).or(ov.iter().find_map(|o| o.allcolor)), textured);
                         let mut it_extra = material_extra(&ov_item, env_mask, bump, it_specular);
+                        it_extra.ambient = Some(it_ambient);
                         // (an item without a night map of its own keeps the plain one, lit
                         // the same way)
                         it_extra.night_switched = it_night.is_some();
@@ -12405,11 +12415,13 @@ mod material_tests {
             specular_power: 96.0,
             texture: "int_glass.tga".into(),
         };
-        let (color, emissive, specular) = d3d_material(&m, None, true);
+        let (color, emissive, specular, ambient) = d3d_material(&m, None, true);
         // textured: the texture's alpha alone counts
         assert_eq!(color, [0.64, 0.64, 0.64, 1.0]);
         assert_eq!(emissive, [0.0; 3]);
         assert_eq!(specular, [1.0, 1.0, 1.0, 96.0]);
+        // Omsi.exe's o3d slot: a white ambient, whatever the diffuse colour (0x7c62f8)
+        assert_eq!(ambient, [1.0; 3]);
         // untextured: the material's alpha
         assert_eq!(d3d_material(&m, None, false).0[3], 0.0);
         // no specular colour, no highlight whatever the power
@@ -12428,8 +12440,12 @@ mod material_tests {
         let all = [
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.24, 0.23, 0.2, 0.0,
         ];
-        let (c, e, s) = d3d_material(&m, Some(all), true);
+        let (c, e, s, _) = d3d_material(&m, Some(all), true);
         assert_eq!(c, [1.0; 4]);
+        // [matl_allcolor]'s own ambient
+        let mut dim = all;
+        dim[4..7].copy_from_slice(&[0.2, 0.3, 0.4]);
+        assert_eq!(d3d_material(&m, Some(dim), true).3, [0.2, 0.3, 0.4]);
         assert_eq!(e, [0.24, 0.23, 0.2]);
         assert_eq!(s[3], 0.0);
     }

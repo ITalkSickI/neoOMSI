@@ -375,6 +375,8 @@ struct MaterialUniform {
     /// x: a screen (`MaterialExtra::screen`); y: 1 `[matl_texadress_border]`, 2
     /// `[matl_texadress_mirroronce]`; z the border colour's rgb packed as r * 65536 + g * 256 + b (bytes), w its alpha.
     flags: [f32; 4],
+    /// rgb: the D3D material's ambient colour, which takes the ambient light (C)
+    ambient: [f32; 4],
 }
 
 /// The maps of a PBR set found beside a diffuse texture (`foo_n.png` and the rest, see
@@ -671,7 +673,7 @@ impl GpuTexture {
 struct BindKey {
     textures: [(usize, u64); 7],
     address: TexAddressing,
-    uniform: [u32; 36],
+    uniform: [u32; 40],
 }
 
 /// Bytes of a texture of `format` with `levels` mip levels.
@@ -743,6 +745,9 @@ pub struct MaterialExtra {
     pub no_z_check: bool,
     /// `[matl_Zbias]`
     pub z_bias: i32,
+    /// The D3D material's ambient colour, its share of the ambient light (C); None: the
+    /// diffuse colour's.
+    pub ambient: Option<[f32; 3]>,
     /// Specular colour (rgb) and power (w) of the D3D material; black = no highlight.
     pub specular: [f32; 4],
     /// `[matl_bumpmap]`: a height map (in its alpha, `Image::bump_height_map`) whose slope
@@ -4949,6 +4954,10 @@ impl Renderer {
                     b[0] * 65536.0 + b[1] * 256.0 + b[2],
                     b[3] / 255.0,
                 ]
+            },
+            ambient: {
+                let a = extra.ambient.unwrap_or([color[0], color[1], color[2]]);
+                [a[0], a[1], a[2], 0.0]
             },
         };
         let slot = |t: Option<TextureId>| {
