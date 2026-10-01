@@ -41,6 +41,8 @@ pub struct Program {
     pub macros: HashMap<String, BlockId>,
     pub triggers: HashMap<String, BlockId>,
     pub errors: Vec<ScriptError>,
+    /// Variables declared in the script set's varlists (lower-case names).
+    pub script_vars: hashbrown::HashSet<String>,
     /// `[const]` values of the constfiles (lower-case names).
     consts: HashMap<String, f32>,
     var_index: HashMap<String, VarId>,
@@ -96,6 +98,17 @@ impl Program {
         self.var_names.push(name.trim().to_string());
         self.var_index.insert(key, id);
         id
+    }
+
+    /// Whether variable `name` was declared in the script set's varlists (as opposed to built-in host variables).
+    pub fn has_script_var(&self, name: &str) -> bool {
+        self.script_vars.contains(&name.to_ascii_lowercase())
+    }
+
+    /// Declare a script variable (from a varlist), recording it in `script_vars` and returning its id.
+    pub fn declare_script_var(&mut self, name: &str) -> VarId {
+        self.script_vars.insert(name.trim().to_ascii_lowercase());
+        self.declare_var(name)
     }
 
     pub fn declare_str_var(&mut self, name: &str) -> StrVarId {
@@ -270,7 +283,7 @@ pub fn compile(input: &CompileInput) -> Program {
     let mut errors = Vec::new();
     for path in &input.varlists {
         for v in read_list(path, &mut errors) {
-            p.declare_var(&v);
+            p.declare_script_var(&v);
         }
     }
     for path in &input.stringvarlists {
@@ -869,4 +882,24 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn script_vars_track_varlists_distinct_from_builtins() {
+        let dir = std::env::temp_dir().join(format!("omsi-script-test-vars-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let vl = dir.join("varlist.txt");
+        std::fs::write(&vl, "door_0\nPAX_Entry0_Open\n").unwrap();
+        let p = compile(&CompileInput {
+            builtin_vars: vec!["PAX_Exit0_Open".into(), "Velocity".into()],
+            varlists: vec![vl],
+            ..Default::default()
+        });
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(p.has_script_var("door_0"));
+        assert!(p.has_script_var("PAX_Entry0_Open"));
+        assert!(!p.has_script_var("PAX_Exit0_Open"));
+        assert!(!p.has_script_var("Velocity"));
+        assert!(p.var("PAX_Exit0_Open").is_some());
+    }
 }
+

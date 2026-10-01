@@ -67,11 +67,27 @@ pub(crate) fn standing_reasons(v: &omsi_sim::VehicleInstance) -> Vec<String> {
     // what the passengers are told is open (OMSI's `PAX_Entry<n>_Open` / `PAX_Exit<n>_Open`);
     // the door leaves' `door_<n>` only where a bus has none of those - mods put other things
     // in `door_<n>`, and a Hong Kong bus with its doors shut said they were open
-    let pax: Vec<f32> = (0..8).flat_map(|i| [v.var(&format!("PAX_Entry{i}_Open")), v.var(&format!("PAX_Exit{i}_Open"))]).flatten().collect();
+    let pax: Vec<f32> = (0..8)
+        .flat_map(|i| {
+            let e = format!("PAX_Entry{i}_Open");
+            let x = format!("PAX_Exit{i}_Open");
+            [
+                v.has_script_var(&e).then(|| v.var(&e)).flatten(),
+                v.has_script_var(&x).then(|| v.var(&x)).flatten(),
+            ]
+        })
+        .flatten()
+        .collect();
     let open = if pax.is_empty() {
         (0..4).any(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.05)
     } else {
         pax.iter().any(|x| *x > 0.5)
+            || (0..4).any(|i| {
+                let e = format!("PAX_Entry{i}_Open");
+                let x = format!("PAX_Exit{i}_Open");
+                (!v.has_script_var(&e) && !v.has_script_var(&x))
+                    && v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.05
+            })
     };
     if open {
         lines.push("Doors are open".to_string());
