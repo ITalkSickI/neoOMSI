@@ -771,8 +771,11 @@ fn shade_enhanced(in: VsOut) -> vec4<f32> {
         // light, drawn as bright as the settings ask for (`Led glow`, 16 levels, 0 = off).
         // The glow takes them where it leaves every other screen out of its source
         // (`post.wgsl`) and blooms a halo around the panel. (Kept at their own brightness
-        // however the metering treats the scene, as a display's text is.)
-        emit = emit + tex.rgb * enh.led.x * alpha * max(enh.exposure.z * 2.0, 0.8);
+        // however the metering treats the scene, as a display's text is.) Its light is its
+        // white light map's, so it goes out with that map's variable (the busbar, the
+        // lights) as the Omsi.exe stage does.
+        let lm_gate = select(1.0, clamp(in.params2.x, 0.0, 1.0), material.params2.x > 0.5);
+        emit = emit + tex.rgb * enh.led.x * alpha * lm_gate * max(enh.exposure.z * 2.0, 0.8);
     } else if (material.emissive.w < -0.5) {
         // a display's text (see MaterialExtra::display)
         emit = emit + tex.rgb * 0.35 * max(enh.exposure.z * 2.0, 0.8);

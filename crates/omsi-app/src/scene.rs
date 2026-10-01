@@ -126,6 +126,27 @@ fn mirror_index(name: &str) -> Option<usize> {
     digits.parse().ok()
 }
 
+/// A light map that is white all over (the LED panels' `vmatrix_leer_led_LM.png`, one white
+/// pixel): the surface is all its own light. A flipdot panel carries the same `\S:n` mask,
+/// but its light map is a picture of the lamps over it (`vmatrix_leer_LM.bmp`).
+fn is_white_lightmap(rgba: &[u8]) -> bool {
+    !rgba.is_empty() && rgba.chunks_exact(4).all(|p| p[0] >= 242 && p[1] >= 242 && p[2] >= 242)
+}
+
+/// [`is_white_lightmap`] of the light map `name` (found in `dirs`, read once per file);
+/// `None` when the file is not there.
+fn lightmap_is_white(name: &str, dirs: &[&Path]) -> Option<bool> {
+    static WHITE: std::sync::OnceLock<Mutex<HashMap<PathBuf, bool>>> = std::sync::OnceLock::new();
+    let path = omsi_texture::find_texture(name, dirs)?;
+    let cache = WHITE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(w) = cache.lock().get(&path) {
+        return Some(*w);
+    }
+    let w = omsi_texture::decode_file(&path).ok().map(|i| is_white_lightmap(&i.rgba))?;
+    cache.lock().insert(path, w);
+    Some(w)
+}
+
 impl ObjectType {
     /// The model's own extents as a `[boundingbox]` would give them (width, length, height,
     /// centre x, y, z), for an object that has none.
@@ -10973,7 +10994,7 @@ impl World {
                 extra.screen = d.script.is_some() || d.script_trans.is_some();
                 // ... and a `\S:n` mask makes it an LED panel: its lit dots are its own
                 // light, which the enhanced picture blooms (see `MaterialExtra::led`)
-                extra.led = d.script_trans.is_some();
+                extra.led = d.script_trans.is_some() && d.extra.led;
                 let m = renderer.add_material_extra(
                     scene,
                     tex,
@@ -11306,6 +11327,11 @@ impl World {
                     let lightmap = ov.iter().find_map(|o| o.lightmap.clone()).and_then(|(t, _)| {
                         tex!(&t, &dirs_ref)
                     });
+                    // (a `\S:n` panel lit all over by its light map is an LED panel; one
+                    // whose light map is a picture is a flipdot: see `is_white_lightmap`)
+                    let lm_white = |ov: &[&MaterialDef]| -> bool {
+                        ov.iter().find_map(|o| o.lightmap.as_ref()).and_then(|(t, _)| lightmap_is_white(t, &dirs_ref)).unwrap_or(true)
+                    };
                     // [matl_envmap] tex factor: reflectivity = factor (saturating at 1) x the
                     // reflection mask, which is the [matl_envmap_mask]'s alpha or else the
                     // diffuse alpha - 1 for a texture without an alpha channel, as D3D samples
@@ -11341,7 +11367,7 @@ impl World {
                     // without the flags on this `extra` the K++ and Krueger panels showed
                     // their dots but never glowed.
                     extra.screen = script_slot.is_some() || script_trans.is_some();
-                    extra.led = script_trans.is_some();
+                    extra.led = script_trans.is_some() && lm_white(&ov);
                     if dirt_overlay {
                         extra.no_z_write = true;
                     }
@@ -11431,7 +11457,7 @@ impl World {
                         it_extra.screen = script_item.is_some() || it_script_trans.is_some();
                         // (the item's `\S:n`, or the one it inherits from its base, keeps it
                         // an LED panel: see `MaterialExtra::led`)
-                        it_extra.led = it_script_trans.is_some();
+                        it_extra.led = it_script_trans.is_some() && if ov_item.iter().any(|o| o.lightmap.is_some()) { lm_white(ov_item) } else { lm_white(&ov) };
                         it_extra.no_z_write |= extra.no_z_write;
                         it_extra.no_z_check |= extra.no_z_check;
                         it_extra.glass |= extra.glass;
@@ -11829,6 +11855,17 @@ mod tests {
             extra: MaterialExtra::default(),
             dyn_tex: DynTex::default(),
         }
+    }
+
+    /// An LED panel's light map is one white pixel; a flipdot's is a picture with dark
+    /// parts (the Krueger's `vmatrix_leer_LM.bmp`), and does not make an LED panel (#413).
+    #[test]
+    fn only_a_white_light_map_makes_an_led_panel() {
+        assert!(is_white_lightmap(&[255, 255, 255, 255]));
+        assert!(is_white_lightmap(&[250, 248, 255, 0, 255, 255, 255, 255]));
+        assert!(!is_white_lightmap(&[255, 255, 255, 255, 127, 127, 127, 255]));
+        assert!(!is_white_lightmap(&[0, 0, 0, 255]));
+        assert!(!is_white_lightmap(&[]));
     }
 
     #[test]

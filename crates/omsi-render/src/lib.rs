@@ -746,6 +746,8 @@ pub struct MaterialExtra {
     /// panel's own light, so the enhanced picture lets them burn in HDR and blooms them
     /// (the glow's source keeps them, where the other screens are left out of it -
     /// something no Direct3D 9 without shaders of its own could do). `MASK_FORMAT`'s g.
+    /// (Only a panel whose `[matl_lightmap]` is white all over: a flipdot carries the same
+    /// mask, but its light map is a picture of the lamps over it, and it does not glow.)
     pub led: bool,
     /// The film of water on a window (`[alphascale] Rain_Window_…`): drawn as drops that sit,
     /// gather and run down the glass instead of the texture sliding down as a whole.
