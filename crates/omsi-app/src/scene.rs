@@ -11406,6 +11406,12 @@ impl World {
                     let textured = tex.is_some() || text_slot.is_some() || script_slot.is_some() || freetex || vt.texchange(&m.texture).is_some();
                     let (color, emissive, specular) = d3d_material(m, ov.iter().find_map(|o| o.allcolor), textured);
                     let mut extra = material_extra(&ov, env_mask, bump, specular);
+                    // A vehicle's [matl_nightmap] is added whenever the mesh is drawn, by day
+                    // as well, as OMSI 2 does - with or without a [matl_change] around it.
+                    // Its lamps and displays are switched by the mesh's [visible] variable or
+                    // by what the script draws, not by the time of day: faded in with the
+                    // night, a dashboard's warning lamps stayed dark in the daylight (#497).
+                    extra.night_switched = night.is_some();
                     // a script's screen (matrix displays, the IBIS's picture, LCDs) is the
                     // glow's and FXAA's business (see `MaterialExtra::screen`), and a `\S:n`
                     // mask makes it an LED panel whose lit dots are its own light
@@ -11500,7 +11506,9 @@ impl World {
                         let it_alpha = if repair_body_depth { AlphaMode::Opaque } else { ov_item.iter().find(|o| o.alpha_set).map(|o| alpha_mode(o.alpha)).unwrap_or(alpha) };
                         let (it_color, it_emissive, it_specular) = d3d_material(m, ov_item.iter().find_map(|o| o.allcolor).or(ov.iter().find_map(|o| o.allcolor)), textured);
                         let mut it_extra = material_extra(&ov_item, env_mask, bump, it_specular);
-                        it_extra.night_switched = ov_item.iter().any(|o| o.nightmap.is_some());
+                        // (an item without a night map of its own keeps the plain one, lit
+                        // the same way)
+                        it_extra.night_switched = it_night.is_some();
                         it_extra.screen = script_item.is_some() || it_script_trans.is_some();
                         // (the item's `\S:n`, or the one it inherits from its base, keeps it
                         // an LED panel: see `MaterialExtra::led`)
