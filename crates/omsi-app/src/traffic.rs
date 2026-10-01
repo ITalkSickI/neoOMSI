@@ -1765,9 +1765,9 @@ impl Traffic {
             let random = !c.is_bus() || c.gone;
             let r = (c.state.length as f64 * 0.5).max(2.0);
             // standing at the end of the network (the map's edge): Omsi.exe never lets a
-            // random car stand there - its segment turns -1 and 0x71dc9c re-places it at
-            // once (0x612e10); a bus that gave up goes once out of sight, or too far off
-            // for the renderer to draw it
+            // random car stand there - once 0x71dc9c finds no next segment (0x612e10) its
+            // segment stays -1 and 0x6fe3fc deletes it the same frame (0x703bb0); a bus
+            // that gave up goes once out of sight, or too far off for the renderer to draw it
             let at_end = c.gone
                 && c.stopped > if c.is_bus() { 20.0 } else { 0.5 }
                 && c.state.route.is_empty()
