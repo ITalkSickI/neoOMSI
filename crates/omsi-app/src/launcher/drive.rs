@@ -512,26 +512,73 @@ fn step_time(l: &mut Launcher, r: Rect) {
         items.push((w.file.clone(), w.name.clone(), format!("{:.0} °C · {} · {vis}", w.temp, w.precip), icon.into(), l.state.fresh.contains_key(&w.file)));
     }
     if let Some(code) = metar.as_ref() {
-        // the airport, from OMSI's own list (Weather/ICAO.txt)
         static AIRPORTS: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
         let root = std::path::PathBuf::from(&l.state.config.root);
         let list = AIRPORTS.get_or_init(|| {
-            let text = std::fs::read(root.join("Weather").join("ICAO.txt")).map(|b| omsi_cfg::codepage::decode(&b)).unwrap_or_default();
-            let mut v: Vec<(String, String)> = text.lines().filter_map(|l| l.split_once(" - ").map(|(c, n)| (c.trim().to_string(), format!("{} - {}", c.trim(), n.trim())))).collect();
+            let text = std::fs::read(root.join("Weather").join("ICAO.txt"))
+                .map(|b| omsi_cfg::codepage::decode(&b))
+                .unwrap_or_default();
+            let mut v: Vec<(String, String)> = text
+                .lines()
+                .filter_map(|l| {
+                    l.split_once(" - ")
+                        .map(|(c, n)| (c.trim().to_string(), format!("{} - {}", c.trim(), n.trim())))
+                })
+                .collect();
             if !v.iter().any(|a| a.0 == "EDDB") {
                 v.insert(0, ("EDDB".into(), "EDDB - Berlin Brandenburg".into()));
             }
+
             v
         });
-        let labels: Vec<String> = list.iter().map(|a| a.1.clone()).collect();
-        let mut sel = list.iter().position(|a| a.0.eq_ignore_ascii_case(code)).unwrap_or(0);
+
+        let mut airport = code.to_uppercase().chars().take(4).collect::<String>();
+
         l.ui.label(Rect::new(r.x, y, 110.0, ROW), "Airport");
-        if l.ui.select("metar-airport", Rect::new(r.x + 110.0, y, r.w - 110.0, ROW), &mut sel, &labels) {
+
+        let button_w = 150.0;
+        let gap = 8.0;
+        let input_w = r.w - 110.0 - button_w - gap;
+
+        if l.ui.text_input(
+            "metar-airport",
+            Rect::new(r.x + 110.0, y, input_w, ROW),
+            &mut airport,
+            "ICAO",
+            None,
+        ) {
+            airport = airport
+                .chars()
+                .filter(|c| c.is_ascii_alphabetic())
+                .take(4)
+                .collect::<String>()
+                .to_uppercase();
+
+            l.state.choice.weather = if airport.is_empty() {
+                "metar:".into()
+            } else {
+                format!("metar:{airport}")
+            };
+            l.state.touched();
+        }
+        let labels: Vec<String> = list.iter().map(|a| a.1.clone()).collect();
+        let mut sel = list
+            .iter()
+            .position(|a| a.0.eq_ignore_ascii_case(&airport))
+            .unwrap_or(0);
+
+        if l.ui.select(
+            "metar-airport-list",
+            Rect::new(r.x + 110.0 + input_w + gap, y, button_w, ROW),
+            &mut sel,
+            &labels,
+        ) {
             if let Some(a) = list.get(sel) {
                 l.state.choice.weather = format!("metar:{}", a.0);
                 l.state.touched();
             }
         }
+
         y += ROW + 8.0;
     }
     let chosen = l.state.choice.weather.clone();
