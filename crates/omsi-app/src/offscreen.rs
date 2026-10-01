@@ -165,9 +165,11 @@ pub(crate) fn run_offscreen(
                 h.money = Some(money::Money::new(&args.root, &world.global.money_system));
             }
         }
+        // (with the passengers setting, as in the window)
         h.density = world
             .global
-            .passenger_density((parse_time(&args.time) / 3600.0) as f32);
+            .passenger_density((parse_time(&args.time) / 3600.0) as f32)
+            * settings.pax_density;
         h.time_of_day = parse_time(&args.time);
         h.stop_targets = schedule.as_ref().map(|s| s.stop_targets());
         h.populate(&world, &renderer, &mut scene, center);
