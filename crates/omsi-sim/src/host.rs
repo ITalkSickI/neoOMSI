@@ -251,6 +251,19 @@ pub const PROVIDED_CALLBACKS: &[&str] = &[
     "getarrbusline", "getarrbusterminus", "getarrbustimediff",
 ];
 
+/// A number a script hands a callback, as Omsi.exe takes it: rounded to the nearest
+/// integer, a half to the even one (`fistp` under Delphi's control word; TRoadVehicleInst
+/// 0x7d28c4 and TComplMapObjInst 0x7bb10c convert every argument with sub_404c7c), not cut
+/// off - 1100.9999 out of float arithmetic is 1101.
+fn arg_i32(v: f32) -> i32 {
+    v.round_ties_even() as i32
+}
+
+/// The same as an index (a negative one names nothing).
+fn arg_idx(v: f32) -> usize {
+    usize::try_from(arg_i32(v)).unwrap_or(usize::MAX)
+}
+
 impl Host for VehicleHost {
     fn sys_var(&mut self, v: SysVar) -> f32 {
         match v {
@@ -357,7 +370,7 @@ impl Host for VehicleHost {
                 stacks.push(if found { idx as f32 } else { -1.0 });
             }
             "textlength" => {
-                let font = stacks.pop() as i32;
+                let font = arg_i32(stacks.pop());
                 let text = stacks.pop_str();
                 // as Omsi.exe measures it (0x5d6c00): the glyphs and the gaps between them
                 let w = self.font_atlas(font).map(|a| a.font.text_width(&text) as f32).unwrap_or(0.0);
@@ -368,19 +381,19 @@ impl Host for VehicleHost {
             }
             // --- script textures (matrix displays)
             "stnewtex" => {
-                let i = stacks.pop() as usize;
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
                     t.clear();
                 }
             }
             "stlock" => {
-                let i = stacks.pop() as usize;
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
                     t.locked = true;
                 }
             }
             "stunlock" => {
-                let i = stacks.pop() as usize;
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
                     t.unlock();
                 }
@@ -389,7 +402,7 @@ impl Host for VehicleHost {
                 // OMSI creates the mip chain only when the script asks it to, normally
                 // immediately after STUnlock. Remember that request for the renderer; it
                 // must also refresh the chain when this matrix changes again.
-                let i = stacks.pop() as usize;
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
                     if !t.mipmaps {
                         t.mipmaps = true;
@@ -402,50 +415,50 @@ impl Host for VehicleHost {
                 let g = stacks.pop();
                 let r = stacks.pop();
                 let a = stacks.pop();
-                let i = stacks.pop() as usize;
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
-                    t.color = [r.clamp(0.0, 255.0) as u8, g.clamp(0.0, 255.0) as u8, b.clamp(0.0, 255.0) as u8, a.clamp(0.0, 255.0) as u8];
+                    t.color = [r, g, b, a].map(|c| arg_i32(c).clamp(0, 255) as u8);
                 }
             }
             "stdrawpixel" => {
-                let y = stacks.pop() as i32;
-                let x = stacks.pop() as i32;
-                let i = stacks.pop() as usize;
+                let y = arg_i32(stacks.pop());
+                let x = arg_i32(stacks.pop());
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
                     let c = t.color;
                     t.put(x, y, c);
                 }
             }
             "stdrawrect" => {
-                let y2 = stacks.pop() as i32;
-                let x2 = stacks.pop() as i32;
-                let y1 = stacks.pop() as i32;
-                let x1 = stacks.pop() as i32;
-                let i = stacks.pop() as usize;
+                let y2 = arg_i32(stacks.pop());
+                let x2 = arg_i32(stacks.pop());
+                let y1 = arg_i32(stacks.pop());
+                let x1 = arg_i32(stacks.pop());
+                let i = arg_idx(stacks.pop());
                 if let Some(t) = self.script_textures.get_mut(i) {
                     t.rect(x1, y1, x2, y2);
                 }
             }
             "sttextout" => {
                 let text = stacks.pop_str();
-                let spacing = stacks.pop() as i32;
+                let spacing = arg_i32(stacks.pop());
                 let mode = stacks.pop();
-                let font = stacks.pop() as i32;
-                let y = stacks.pop() as i32;
-                let x = stacks.pop() as i32;
-                let i = stacks.pop() as usize;
+                let font = arg_i32(stacks.pop());
+                let y = arg_i32(stacks.pop());
+                let x = arg_i32(stacks.pop());
+                let i = arg_idx(stacks.pop());
                 let atlas = self.font_atlas(font);
                 if omsi_cfg::env::var_os("OMSI_DEBUG_TEXT").is_some() {
                     log::info!("STTextOut(tex {i}, x {x}, y {y}, font {font}, spacing {spacing}, {text:?}) atlas {:?} from {:?} bitmap {:?} {}x{} E {:?}", atlas.as_ref().map(|a| a.font.name.clone()), atlas.as_ref().map(|a| a.font.path.clone()), atlas.as_ref().map(|a| a.font.alpha.clone()), atlas.as_ref().map(|a| a.width).unwrap_or(0), atlas.as_ref().map(|a| a.height).unwrap_or(0), atlas.as_ref().and_then(|a| a.font.glyph('E').map(|g| (g.x0, g.x1, g.y))));
                 }
                 if let (Some(t), Some(a)) = (self.script_textures.get_mut(i), atlas) {
-                    t.text_out(&a, x, y, spacing, if mode.is_finite() { mode as i32 as u8 } else { 0 }, &text);
+                    t.text_out(&a, x, y, spacing, arg_i32(mode) as u8, &text);
                 }
             }
             "streadpixel" => {
-                let y = stacks.pop() as i32;
-                let x = stacks.pop() as i32;
-                let i = stacks.pop() as usize;
+                let y = arg_i32(stacks.pop());
+                let x = arg_i32(stacks.pop());
+                let i = arg_idx(stacks.pop());
                 self.last_pixel = self.script_textures.get(i).map(|t| t.get(x, y)).unwrap_or([0; 4]);
             }
             "stgetr" | "stgetg" | "stgetb" | "stgeta" => {
@@ -460,8 +473,8 @@ impl Host for VehicleHost {
             }
             "stcopycolor" => {
                 // colour of texture a → texture b
-                let b = stacks.pop() as usize;
-                let a = stacks.pop() as usize;
+                let b = arg_idx(stacks.pop());
+                let a = arg_idx(stacks.pop());
                 if let Some(c) = self.script_textures.get(a).map(|t| t.color) {
                     if let Some(t) = self.script_textures.get_mut(b) {
                         t.color = c;
@@ -469,7 +482,7 @@ impl Host for VehicleHost {
                 }
             }
             "stloadtex" => {
-                let i = stacks.pop() as usize;
+                let i = arg_idx(stacks.pop());
                 let path = stacks.pop_str();
                 // relative to the vehicle's texture folder, like every texture name of the
                 // vehicle: the Krüger matrix loads `..\..\Anzeigen\Krueger\<bitmap>`,
@@ -497,7 +510,7 @@ impl Host for VehicleHost {
             // last pushed first
             "getrouteindex" => {
                 let code = stacks.pop();
-                let code_i = code.round() as i32;
+                let code_i = arg_i32(code);
                 let idx = self
                     .hof
                     .as_ref()
@@ -517,7 +530,7 @@ impl Host for VehicleHost {
             // terminus of the depot ("LEERFELD") where a mod's display looks for a custom
             // font or an optional sign.
             "getrouteterminusindex" => {
-                let route = stacks.pop() as i32;
+                let route = arg_i32(stacks.pop());
                 let idx = self.hof.as_ref().and_then(|h| {
                     let trip = h.info_trips.get(usize::try_from(route).ok()?)?;
                     let code = omsi_cfg::parse_i32(&trip.route);
@@ -526,29 +539,29 @@ impl Host for VehicleHost {
                 stacks.push(idx.map(|i| i as f32).unwrap_or(-1.0));
             }
             "getterminuscode" => {
-                let idx = stacks.pop() as i32;
+                let idx = arg_i32(stacks.pop());
                 let code = self.terminus(idx).map(|t| t.code as f32).unwrap_or(-1.0);
                 stacks.push(code);
             }
             "getterminusindex" => {
-                let code = stacks.pop() as i32;
+                let code = arg_i32(stacks.pop());
                 let idx = self.hof.as_ref().and_then(|h| h.termini.iter().position(|t| t.code == code)).map(|i| i as f32).unwrap_or(-1.0);
                 stacks.push(idx);
             }
             "getterminusstring" => {
-                let n = stacks.pop() as i32;
-                let idx = stacks.pop() as i32;
+                let n = arg_i32(stacks.pop());
+                let idx = arg_i32(stacks.pop());
                 let s = self.terminus(idx).and_then(|t| t.strings.get(usize::try_from(n).ok()?)).cloned().unwrap_or_default();
                 stacks.push_str(s);
             }
             "getbusstopcount" => {
-                let route = stacks.pop() as i32;
+                let route = arg_i32(stacks.pop());
                 let n = self.hof.as_ref().and_then(|h| h.info_busstop_lists.get(usize::try_from(route).ok()?)).map(|l| l.len() as f32).unwrap_or(0.0);
                 stacks.push(n);
             }
             "getroutebusstopident" => {
-                let stop = stacks.pop() as i32;
-                let route = stacks.pop() as i32;
+                let stop = arg_i32(stacks.pop());
+                let route = arg_i32(stacks.pop());
                 let s = self.hof.as_ref().and_then(|h| h.info_busstop_lists.get(usize::try_from(route).ok()?)).and_then(|l| l.get(usize::try_from(stop).ok()?)).cloned().unwrap_or_default();
                 stacks.push_str(s);
             }
@@ -558,13 +571,13 @@ impl Host for VehicleHost {
                 stacks.push(idx);
             }
             "getbusstopstring" => {
-                let n = stacks.pop() as i32;
-                let idx = stacks.pop() as i32;
+                let n = arg_i32(stacks.pop());
+                let idx = arg_i32(stacks.pop());
                 let s = self.bus_stop(idx).and_then(|b| b.strings.get(usize::try_from(n).ok()?)).cloned().unwrap_or_default();
                 stacks.push_str(s);
             }
             "getdepotstringglobal" => {
-                let n = stacks.pop() as i32;
+                let n = arg_i32(stacks.pop());
                 let s = self.hof.as_ref().and_then(|h| h.global_strings.get(usize::try_from(n).ok()?)).cloned().unwrap_or_default();
                 stacks.push_str(s);
             }
@@ -592,23 +605,23 @@ impl Host for VehicleHost {
             }
             // passengers standing on one link of the cabin path network
             "gethumancountonpathlink" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push(self.humans_on_path_link.get(usize::try_from(i).unwrap_or(usize::MAX)).copied().unwrap_or(0) as f32);
             }
             "getttbusstopname" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push_str(self.tt_stops.get(usize::try_from(i).unwrap_or(usize::MAX)).map(|s| s.0.clone()).unwrap_or_default());
             }
             "getttbusstopdep" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push(self.tt_stops.get(usize::try_from(i).unwrap_or(usize::MAX)).map(|s| s.2).unwrap_or(0.0));
             }
             "getttbusstoparr" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push(self.tt_stops.get(usize::try_from(i).unwrap_or(usize::MAX)).map(|s| s.1).unwrap_or(0.0));
             }
             "givechangecoin" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 if i >= 0 {
                     self.change_coins.push(i as usize);
                 }
@@ -616,35 +629,35 @@ impl Host for VehicleHost {
             // OMSI's number-specific random value: the same for a fleet
             // number and characteristic every time (broken matrix pixels, wear effects)
             "nrspecrandom" => {
-                let n = stacks.pop().round() as i32;
+                let n = arg_i32(stacks.pop());
                 let number = self.number_var.and_then(|i| state.str_vars.get(i as usize)).cloned().unwrap_or_default();
                 stacks.push(omsi_vehicle::sound::spec_random(&number, n));
             }
             "getticketname" | "gettticketname" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push_str(self.tickets.as_ref().and_then(|t| t.tickets.get(usize::try_from(i).unwrap_or(usize::MAX))).map(|t| t.name.clone()).unwrap_or_default());
             }
             "getticketvalue" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push(self.tickets.as_ref().and_then(|t| t.tickets.get(usize::try_from(i).unwrap_or(usize::MAX))).map(|t| t.value).unwrap_or(0.0));
             }
             "gethumancountonseat" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push(self.humans_on_seat.get(usize::try_from(i).unwrap_or(usize::MAX)).copied().unwrap_or(0) as f32);
             }
             // --- scenery objects (`program/callbacklist_scenobj.txt`): the n-th bus due at
             // the object's stop. Past the last one the line and terminus are empty (the stock
             // display leaves its line dark on an empty terminus) and the time is 0.
             "getarrbusline" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push_str(self.arrival(i).map(|a| a.line.clone()).unwrap_or_default());
             }
             "getarrbusterminus" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push_str(self.arrival(i).map(|a| a.terminus.clone()).unwrap_or_default());
             }
             "getarrbustimediff" => {
-                let i = stacks.pop() as i32;
+                let i = arg_i32(stacks.pop());
                 stacks.push(self.arrival(i).map(|a| a.due).unwrap_or(0.0));
             }
             _ => {
@@ -702,6 +715,29 @@ mod tests {
         assert_eq!(host.html_departure_wants.len(), MAX_HTML_DEPARTURE_STOPS);
         assert_eq!(host.html_departure_wants.last().map(String::as_str), Some("stop 3"));
         assert_eq!(host.html_departure_wants.first().map(String::as_str), Some("stop 4"));
+    }
+
+    /// A callback's argument is rounded, as Omsi.exe's `fistp` does: 1100.9999 out of the
+    /// script's arithmetic names terminus 1101, not 1100.
+    #[test]
+    fn callback_arguments_are_rounded() {
+        let p = compile(&CompileInput::default());
+        let mut state = State::new(&p);
+        let mut host = VehicleHost::new(SimClock::default());
+        let terminus = |code: i32, name: &str| omsi_vehicle::hof::Terminus { code, strings: vec![name.to_string()], ..Default::default() };
+        host.hof = Some(Arc::new(Hof { termini: vec![terminus(1100, "A"), terminus(1101, "B")], ..Default::default() }));
+        let mut stacks = Stacks::default();
+        stacks.push(1100.9999);
+        host.callback("GetTerminusIndex", 0, &mut stacks, &mut state);
+        assert_eq!(stacks.pop(), 1.0);
+        // index 0.9999, string 0: the second terminus' first string
+        stacks.push(0.9999);
+        stacks.push(0.0);
+        host.callback("GetTerminusString", 0, &mut stacks, &mut state);
+        assert_eq!(stacks.pop_str(), "B");
+        // a half goes to the even number, as under Delphi's control word
+        assert_eq!((arg_i32(0.5), arg_i32(1.5), arg_i32(2.5), arg_i32(-0.5)), (0, 2, 2, 0));
+        assert_eq!(arg_idx(-1.0), usize::MAX);
     }
 
     #[test]
