@@ -78,7 +78,7 @@ impl TextCache {
     pub fn end_frame(&mut self, r: &Renderer, scene: &mut Scene) {
         self.frame += 1;
         if self.frame % 120 == 0 {
-            let old: Vec<_> = self.labels.iter().filter(|(_, l)| self.frame - l.used > 240).map(|(k, _)| k.clone()).collect();
+            let old: Vec<_> = self.labels.iter().filter(|(_, l)| self.frame.saturating_sub(l.used) > 240).map(|(k, _)| k.clone()).collect();
             for k in old {
                 if let Some(l) = self.labels.remove(&k) {
                     r.free_texture(scene, l.tex);
@@ -786,7 +786,7 @@ impl TextCache {
         }
         let img = omsi_texture::Image { width: 1, height: 1, rgba, has_alpha: true };
         let tex = r.add_texture(scene, &img, false);
-        self.labels.insert(key, Label { tex, w: 1, h: 1, used: u64::MAX / 2 });
+        self.labels.insert(key, Label { tex, w: 1, h: 1, used: self.frame });
         tex
     }
 }
