@@ -71,7 +71,7 @@ SHA-256 GitHub lists), puts the new program in place of the old one and starts t
 again - on Windows `openomsi.exe` and `openomsi-launcher.exe`, on macOS the `openOMSI.app`
 you started, on Linux the program files; mods, content and settings stay. On Android the
 system's installer asks "Do you want to update this app?"; Update replaces openOMSI and starts
-it again, Cancel leaves it as it was. Settings → Updates: look for updates at the start (on
+it again, Cancel leaves it as it was. Settings → General → Updates: look for updates at the start (on
 by default), install without asking (off by default), Check now. A folder openOMSI cannot
 write to (Program Files, an app opened straight from Downloads on macOS) is reported with
 what to do. `OMSI_NO_UPDATE=1` switches the check off; `OMSI_UPDATE_URL` points it at another
@@ -83,7 +83,7 @@ place across the whole window is the steering from full left to full right lock
 down to the bottom edge the brake. Above 10 km/h the same hand movement turns the wheels less
 and less (at 50 km/h a fifth as far), so the wheel feels heavier the faster the bus goes; for
 the first second after switching it on the wheel and the pedals ease towards the cursor.
-Settings → Controls & sound → *Mouse steering* makes it more or less sensitive (100 % = OMSI).
+Settings → Driving → *Mouse steering sensitivity* makes it more or less sensitive (100 % = OMSI).
 Mouse steering works in the driver's, the passenger and the outside view; the wheel follows
 the cursor smoothly (a short easing, no steps).
 
@@ -134,9 +134,13 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
 * **Profile** - hours, experience and level, from OMSI's own `.odr` personnel files plus
   the session summaries the game writes to `~/.openomsi/sessions`.
 * **Settings** - everything in `settings.cfg` below, saved as it changes; keys the page
-  does not manage are kept as they are.
+  does not manage are kept as they are. One tab for each thing one comes to change:
+  *Graphics* (the quality preset first, the screen, distances and memory), *Driving* (keys,
+  mouse, wheel and pedals, with the way to the Controls page), *Camera* (the seat, the views,
+  head tracking, VR), *Sound*, *Gameplay* (passengers, traffic, collisions, the clock) and
+  *General* (language, navigator, updates, and resetting every setting).
 * **Controls** - `Inputs/keyboard.cfg`: click a key, press the new one; clashes are red. The
-  keys are the game's with *Driving keys: Custom controls* (Settings); with a ready-made
+  keys are the game's with *Driving keys: Custom controls* (Settings → Driving); with a ready-made
   layout (W A S D, arrows) those keys drive and win over the list - the page says so, and
   changing a key switches to Custom controls by itself. *Game controllers*: wheels, pedals,
   joysticks and button boxes as in OMSI's `gamectrler.cfg` - a connected device not set up
@@ -152,7 +156,7 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   (it is then neither read nor listed as steering). Select a device to adjust *Steering force*
   (centering and resistance) and *Vibration* separately, then press **Save**. The values are stored
   for that device in the content folder's `Inputs/gamectrler.cfg`; restart a running game to use
-  the new values. *Force feedback and vibration* in Settings remains the global on/off switch.
+  the new values. *Force feedback and vibration* in Settings → Driving remains the global on/off switch.
 * **Sessions** - every game started from the launcher, with its log, a **Stop** that lets
   it save its run (SIGTERM, up to 8 s, and only a stuck game is killed) and, for a LAN
   session, the code to copy, who is playing and the chat.
@@ -170,8 +174,9 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
 scripts/build-macos.sh   # or build-windows.cmd / build-linux.sh: the game opens the launcher
 ```
 
-Without a person at it: `OMSI_LAUNCHER_PAGE=drive:2` opens a page (and a Drive step),
-`OMSI_LAUNCHER_SHOT=secs:file.png` writes a picture, `OMSI_LAUNCHER_EXIT=secs` closes it,
+Without a person at it: `OMSI_LAUNCHER_PAGE=drive:2` opens a page (and a Drive step;
+`settings:3` or `controls:1` a tab), `OMSI_LAUNCHER_SHOT=secs:file.png` writes a picture,
+`OMSI_LAUNCHER_EXIT=secs` closes it,
 `OMSI_LAUNCHER_INPUT="t=2 click 412,60; t=3 type 76; t=4 key Enter; t=5 shot a.png"` works
 it (logical pixels). The data side is `crates/omsi-launcher-core`:
 `openomsi-launcher --cli lines '{"map":"maps/Grundorf/global.cfg"}'` runs any of its commands

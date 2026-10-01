@@ -7,7 +7,7 @@ The normal desktop controls and rendering remain available when VR is off.
 ## Start and settings
 
 Connect the headset and start its OpenXR runtime before launching a drive. In the
-launcher, open **Settings → Virtual reality** and enable **Use OpenXR headset**.
+launcher, open **Settings → Camera → Virtual reality** and enable **Use OpenXR headset**.
 The game starts in the headset when the session opens.
 
 | Setting | Choices | Effect |
@@ -34,7 +34,7 @@ The default bindings are:
 Adjust your seating position while driving through **Esc → Options** using
 **Seat forward**, **Seat back**, **Seat up**, **Seat down**, **Seat right**, or **Seat left**.
 **Reset the seat position** restores the bus camera's default position. The launcher
-also has seat-position sliders under **Settings**; those changes apply when the next
+also has seat-position sliders under **Settings → Camera**; those changes apply when the next
 drive starts.
 
 **Esc** opens the menu in front of the headset. Move the mouse to point at cockpit

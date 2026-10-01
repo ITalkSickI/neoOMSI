@@ -250,8 +250,10 @@ impl Launcher {
         }
         if let Some(step) = p.split(':').nth(1).and_then(|s| s.parse().ok()) {
             app.drive.step = step;
-            // (the Controls page's second part is its tab: controls:1 the game controllers)
+            // (the Controls and Settings pages' second part is their tab: controls:1 the game
+            // controllers, settings:3 Sound)
             app.pages.controls_tab = step;
+            app.pages.settings_tab = step.min(pages::SETTINGS_TABS.len() - 1);
         }
     }
     app
