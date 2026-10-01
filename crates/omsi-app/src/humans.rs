@@ -97,7 +97,7 @@ const EXIT_REACH: f64 = 0.6;
 /// Seconds a bus may stand at a stop with every door still shut before a waiting passenger
 /// gives up on it coming to serve them: the driver's own door buttons take a moment, and
 /// the timetable buses' door scripts open a beat after they roll to a stop.
-const DOOR_GRACE: f64 = 20.0;
+const DOOR_GRACE: f64 = 10.0;
 /// How long after a door of a standing bus was last open the people at it wait on (s).
 const DOOR_SHUT_PATIENCE: f64 = 25.0;
 
@@ -5561,13 +5561,20 @@ impl Humans {
                 let bus_arriving = buses.iter().any(|b| {
                     (b.approach == Some(stop) || b.stop == Some(stop)) && avoid != Some(b.id)
                 });
+                let face_bus = buses
+                    .iter()
+                    .find(|b| (b.approach == Some(stop) || b.stop == Some(stop)) && avoid != Some(b.id))
+                    .map(|b| {
+                        let to = b.pos.truncate() - pos2;
+                        to.x.atan2(to.y).to_degrees()
+                    });
                 let stand = Want {
-                    vel: if idle == Activity::Sit {
+                    vel: if idle == Activity::Sit || bus_arriving {
                         DVec2::ZERO
                     } else {
                         arrive(pos2, sp.floor().truncate(), pace * 0.6)
                     },
-                    face: Some(sp.face),
+                    face: if bus_arriving { face_bus.or(Some(sp.face)) } else { Some(sp.face) },
                     give: if bus_arriving { 0.0 } else { 0.3 },
                     corridor: None,
                     idle,
