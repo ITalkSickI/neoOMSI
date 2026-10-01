@@ -98,6 +98,14 @@ pub(crate) fn run_offscreen(
                     d.start_at(k, args.duty_first_stop);
                 }
                 d.update(&mut p.vehicle, parse_time(&args.time));
+                let mut fonts = world.fonts.lock();
+                if let Err(e) = crate::schedule_paper::update_vehicle(
+                    &mut p.vehicle,
+                    &d,
+                    &mut fonts,
+                ) {
+                    log::warn!("driver timetable paper: {e:#}");
+                }
                 log::info!(
                     "duty: line {} tour {} trip {} next stop {} ({}) delay {:.0} s, stops {:?}",
                     d.line,
@@ -130,6 +138,11 @@ pub(crate) fn run_offscreen(
                 duty_error = Some(e);
             }
         }
+    }
+    if let Some(p) = player.as_mut() {
+        let active = if duty.is_some() { 1.0 } else { 0.0 };
+        p.vehicle.host.schedule_active = active;
+        p.vehicle.set_var("schedule_active", active);
     }
     let mut career = args
         .driver
@@ -513,6 +526,14 @@ pub(crate) fn run_offscreen(
                 if d.take_trip_change() && player.duty_typed {
                     let (trip, stop) = d.trip_for_ibis();
                     player.set_duty_destination(trip, stop);
+                }
+                let mut fonts = world.fonts.lock();
+                if let Err(e) = crate::schedule_paper::update_vehicle(
+                    &mut player.vehicle,
+                    d,
+                    &mut fonts,
+                ) {
+                    log::warn!("driver timetable paper: {e:#}");
                 }
             }
             career.tick(

@@ -1140,7 +1140,12 @@ impl ApplicationHandler for App {
                 }
                 *self.profile.entry("humans").or_default() += __t.elapsed().as_secs_f64();
                 self.foot_after_humans();
-                if let (Some(d), Some(p), false) = (self.duty.as_mut(), self.player.as_mut(), self.paused) {
+                if let (Some(d), Some(p), Some(w), false) = (
+                    self.duty.as_mut(),
+                    self.player.as_mut(),
+                    self.world.as_ref(),
+                    self.paused,
+                ) {
                     if let Some(stop) = p.html_next_stop.take() {
                         if d.skip_to(stop) {
                             let (trip, k) = d.trip_for_ibis();
@@ -1153,6 +1158,14 @@ impl ApplicationHandler for App {
                     if d.take_trip_change() && p.duty_typed {
                         let (trip, stop) = d.trip_for_ibis();
                         p.set_duty_destination(trip, stop);
+                    }
+                    let mut fonts = w.fonts.lock();
+                    if let Err(e) = crate::schedule_paper::update_vehicle(
+                        &mut p.vehicle,
+                        d,
+                        &mut fonts,
+                    ) {
+                        log::warn!("driver timetable paper: {e:#}");
                     }
                 }
                 if let Some(p) = self.player.as_mut() {

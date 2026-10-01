@@ -49,6 +49,7 @@ mod quit;
 mod rain;
 mod scene;
 mod schedule;
+mod schedule_paper;
 mod settings;
 mod threads;
 mod tiles;
