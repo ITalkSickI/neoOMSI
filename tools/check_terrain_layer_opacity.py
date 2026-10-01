@@ -1,8 +1,9 @@
-"""GPU regression: painted ground coverage must not change with diffuse mip levels.
+"""GPU regression: painted ground coverage stays fixed across mip levels and view angles.
 
 Run with Python package wgpu. Uses both production terrain-alpha blocks and synthetic
 textures only; a lower ground layer is red so leakage is measured independently of
-the green paint's changing brightness. No map or renderer build is needed.
+the green paint's changing brightness. The Enhanced glass path must preserve terrain
+coverage while keeping pane Fresnel. No map or renderer build is needed.
 """
 from pathlib import Path
 import struct
@@ -114,4 +115,79 @@ for name, alpha_block in blocks.items():
             assert near[0] == 0 and near[3] == 255, "covered paint leaked the lower layer"
         if coverage == 0:
             assert near == grazing == (255, 0, 0, 0), "transparent paint covered the lower layer"
+# The colour pass must preserve this coverage through its final glass/reflection path.
+# Painted terrain and panes both use Blend + transmap + no_z_write, but only panes
+# may gain opacity from Fresnel. Exercise the production classifier and final output.
+enhanced_source = (ROOT / "enhanced.wgsl").read_text(encoding="utf-8")
+start = enhanced_source.index("    let glass =")
+classification = enhanced_source[start:enhanced_source.index(";", start) + 1]
+final_output = enhanced_source[
+    enhanced_source.index("    if (glass) {\n        // see-through glass:"):
+    enhanced_source.rindex("\n}")
+]
+glass_probe = probe[:probe.index("@fragment")] + """
+@fragment
+fn glass_probe_fragment() -> @location(0) vec4<f32> {
+    let mode = material.params.x;
+    let terrain = material.extra.x > 0.5;
+    let has_env = material.params2.y > 0.0;
+CLASSIFICATION
+    let alpha = material.flags.y;
+    let fr = f_schlick(vec3<f32>(0.03), material.flags.x);
+    let pre = 1.0;
+    let own_pane = 0.0;
+    let aer = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    let reflection = vec3<f32>(0.0);
+    var rgb = vec3<f32>(0.15);
+FINAL_OUTPUT
+}
+"""
+module = device.create_shader_module(code=source + glass_probe.replace(
+    "CLASSIFICATION", classification).replace("FINAL_OUTPUT", final_output))
+pipeline = device.create_render_pipeline(
+    layout="auto", vertex={"module": module, "entry_point": "probe_vertex"},
+    fragment={"module": module, "entry_point": "glass_probe_fragment",
+              "targets": [{"format": "rgba32float"}]},
+)
+group = device.create_bind_group(layout=pipeline.get_bind_group_layout(1),
+    entries=[{"binding": 2, "resource": {"buffer": uniform}}])
+environment = device.create_bind_group(layout=pipeline.get_bind_group_layout(0), entries=[])
+target = device.create_texture(size=(1, 1, 1), format="rgba32float",
+    usage=wgpu.TextureUsage.RENDER_ATTACHMENT | wgpu.TextureUsage.COPY_SRC)
+params[26] = 1.0  # no_z_write, exactly as add_terrain_layer_material sets it.
+for terrain, coverage in ((True, 0.0), (True, 0.5), (True, 1.0), (False, 0.1)):
+    pixels = []
+    for facing in (1.0, 0.5, 0.1):
+        params[8] = float(terrain)
+        params[32:34] = [facing, coverage]
+        device.queue.write_buffer(uniform, 0, struct.pack("<36f", *params))
+        encoder = device.create_command_encoder()
+        render = encoder.begin_render_pass(color_attachments=[{
+            "view": target.create_view(), "resolve_target": None, "load_op": "clear",
+            "store_op": "store", "clear_value": (0, 0, 0, 0),
+        }])
+        render.set_pipeline(pipeline)
+        render.set_bind_group(0, environment)
+        render.set_bind_group(1, group)
+        render.draw(3)
+        render.end()
+        device.queue.submit([encoder.finish()])
+        rgba = struct.unpack("<4f", device.queue.read_texture({"texture": target},
+            {"bytes_per_row": 16, "rows_per_image": 1}, (1, 1, 1)))
+        pixels.append(rgba)
+        if terrain:
+            assert abs(rgba[3] - coverage) < 1e-6, "terrain gained glass opacity"
+            # Empty layers stacked over another surface must leave its colour intact.
+            if coverage == 0.0:
+                below = 0.3
+                for _ in range(8):
+                    below = rgba[0] * rgba[3] + below * (1.0 - rgba[3])
+                assert abs(below - 0.3) < 1e-6, "empty terrain layers darkened the ground"
+    print(f"{'Terrain' if terrain else 'Pane'} coverage {coverage}: "
+          f"alpha by angle {[round(p[3], 6) for p in pixels]}", flush=True)
+    if not terrain:
+        assert pixels[-1][3] > pixels[0][3] > coverage, "pane lost its Fresnel opacity"
+        for rgba in pixels:
+            assert abs(rgba[0] * rgba[3] - 0.15 * coverage) < 1e-6, "pane transmission changed"
 print("PASS: terrain coverage stays fixed while the diffuse mip changes")
+print("PASS: empty terrain stays transparent at grazing angles; pane Fresnel is preserved")
