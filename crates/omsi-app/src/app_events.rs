@@ -688,9 +688,12 @@ impl ApplicationHandler for App {
                     }
                     // the mouse owns the wheel (OMSI sets the curvature from it every frame):
                     // a steering key's leftover turn must not take over whenever the cursor
-                    // passes the middle - the wheel jumped there
+                    // passes the middle - the wheel jumped there; and the pedals, which Omsi.exe
+                    // writes from the cursor every frame: a brake the keys held stayed on (#395)
                     if let Some(p) = self.player.as_mut() {
                         p.axes.steering = 0.0;
+                        p.axes.brake = 0.0;
+                        p.axes.throttle = 0.0;
                     }
                     analog.throttle = Some(self.mouse_pedals.0);
                     analog.brake = Some(self.mouse_pedals.1);
