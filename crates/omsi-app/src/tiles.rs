@@ -488,18 +488,20 @@ fn place_on(att: &SplineAttachment, spline: &MapSpline, origin: DVec2, index: Op
             // the row's right is the spline's left
             let (u, side, turn) = if backwards { (len - along, -x, 180.0) } else { (along, x, 0.0) };
             let pos = curve.offset_point(u, side, h);
-            let heading = curve.heading_at(u) + turn + att.rot[0];
-            let [_, mut pitch, mut bank] = omsi_geometry::map_rotation(att.rot);
-            if att.tilt {
-                let sign = if backwards { -1.0 } else { 1.0 };
-                pitch += sign * curve.slope_at(u).atan().to_degrees();
-                // (the original: the cant's angle, atan of the percentage, and only
-                // for an object standing within the half cant width)
-                if side.abs() < curve.half_cant_width {
-                    bank += sign * (curve.cant_at(u) / 100.0).atan().to_degrees();
-                }
-            }
-            out.push(RowObject { index: j, pose: Pose { pos, rot: omsi_geometry::object_rotation([heading, pitch, bank]) } });
+            let pitch = if att.tilt { curve.slope_at(u).atan().to_degrees() } else { 0.0 };
+            // The cant lifts only within the spline type's half cant width.
+            let bank = if att.tilt && side.abs() < curve.half_cant_width {
+                (curve.cant_at(u) / 100.0).atan().to_degrees()
+            } else { 0.0 };
+            let mut own = omsi_geometry::map_rotation(att.rot);
+            own[0] += turn;
+            // Tangential objects turn in the spline's inclined frame. Adding the
+            // spline's pitch/bank to the object's Euler angles instead tilts a
+            // sideways railing across the road, and a reversed object downhill.
+            // The half turn of a backwards chain belongs to that same local frame.
+            let rot = omsi_geometry::object_rotation([curve.heading_at(u), pitch, bank])
+                * omsi_geometry::object_rotation(own);
+            out.push(RowObject { index: j, pose: Pose { pos, rot } });
         }
         if interval <= 0.0 {
             break;
@@ -972,6 +974,91 @@ mod tests {
         assert_eq!(one.len(), 1);
         assert!((one[0].pose.pos.y - 100.0).abs() < 1e-6);
         assert!(row_objects(&row(0.0, 0.0, 102.0, None), &dead_end, DVec2::ZERO, None).is_empty());
+    }
+
+    #[test]
+    fn tangential_row_rotates_within_the_spline_plane() {
+        let s = MapSpline {
+            heading: 37.0, radius: 100.0, grad_start: 15.0, grad_end: -5.0,
+            cant_start: 7.0, cant_end: 3.0, ..spline(1, 0, 0, 80.0)
+        };
+        let curve = SplineCurve::from_map(&s, DVec2::ZERO);
+        let u = 25.0;
+        let pitch = curve.slope_at(u).atan();
+        let bank = (curve.cant_at(u) / 100.0).atan();
+        let heading = curve.heading_at(u).to_radians();
+        // An object's normal must not change when it is turned on that surface.
+        let normal = DVec3::new(bank.sin() * pitch.cos(), -pitch.sin(), bank.cos() * pitch.cos());
+        let expected = DVec3::new(
+            normal.x * heading.cos() + normal.y * heading.sin(),
+            -normal.x * heading.sin() + normal.y * heading.cos(), normal.z,
+        ).as_vec3();
+        for own_heading in [0.0, 90.0, 180.0, -90.0, 27.0] {
+            let att = SplineAttachment { tilt: true, rot: [own_heading, 0.0, 0.0], ..row(0.0, 0.0, u, None) };
+            let objects = row_objects(&att, &s, DVec2::ZERO, None);
+            assert_eq!(objects.len(), 1);
+            let rot = objects[0].pose.rot;
+            assert!((rot.transform_vector3(Vec3::Z) - expected).length() < 1e-6, "heading {own_heading}");
+            for axis in [Vec3::X, Vec3::Y] {
+                assert!(rot.transform_vector3(axis).dot(expected).abs() < 1e-6, "heading {own_heading}");
+            }
+        }
+    }
+
+    #[test]
+    fn tangential_row_keeps_its_frame_when_the_spline_runs_backwards() {
+        let s = MapSpline { heading: 31.0, grad_start: 12.0, grad_end: 12.0,
+            cant_start: 5.0, cant_end: 5.0, ..spline(1, 0, 0, 80.0) };
+        let curve = SplineCurve::from_map(&s, DVec2::ZERO);
+        let reverse = MapSpline { pos: curve.end_point().to_array(), heading: s.heading + 180.0,
+            grad_start: -12.0, grad_end: -12.0, cant_start: -5.0, cant_end: -5.0, ..s.clone() };
+        // Include the object's own pitch/bank: the spline frame must compose with
+        // these too, and children inherit the resulting complete rotation.
+        let att = SplineAttachment { tilt: true, rot: [90.0, 3.0, -2.0], ..row(0.0, 0.0, 20.0, None) };
+        let forward = row_objects(&att, &s, DVec2::ZERO, None)[0].pose;
+        let start = RowStart { s: 20.0, j: 0, backwards: true, d0: 20.0, acc: 0.0 };
+        let backward = place_on(&att, &reverse, DVec2::ZERO, None, start)[0].pose;
+        assert!((forward.pos - backward.pos).length() < 1e-8);
+        for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+            assert!((forward.rot.transform_vector3(axis) - backward.rot.transform_vector3(axis)).length() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn upright_row_and_objects_outside_cant_width_keep_their_placement_rules() {
+        let s = MapSpline { heading: 65.0, grad_start: 10.0, grad_end: 10.0,
+            cant_start: 20.0, cant_end: 20.0, ..spline(1, 0, 0, 80.0) };
+        let att = SplineAttachment { rot: [90.0, 3.0, -2.0], ..row(0.0, 0.0, 20.0, None) };
+        let upright = row_objects(&att, &s, DVec2::ZERO, None)[0].pose;
+        let expected = omsi_geometry::object_rotation([155.0, -3.0, 2.0]);
+        for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+            assert!((upright.rot.transform_vector3(axis) - expected.transform_vector3(axis)).length() < 1e-6);
+        }
+        let outside = SplineAttachment { tilt: true, offset: [11.0, 0.25, 20.0], rot: [90.0, 0.0, 0.0], ..att };
+        let pose = row_objects(&outside, &s, DVec2::ZERO, None)[0].pose;
+        let right = SplineCurve::dir(s.heading + 90.0).as_vec2().extend(0.0);
+        assert!(pose.rot.transform_vector3(Vec3::Z).dot(right).abs() < 1e-6,
+            "beyond the half cant width, the row follows only the longitudinal slope");
+        assert!((pose.pos.z - 10.25).abs() < 1e-8, "the position still includes the cant's clamped height");
+    }
+
+    #[test]
+    fn tangential_railing_follows_the_praha_spline() {
+        // Placement of railing 26386 on spline 24096, Praha 200 tile 2623/10579.
+        // Its mesh runs along local X, so the map turns it 90 degrees to the road.
+        let s = MapSpline { id: 24096, pos: [163.9941, 44.16156, 270.8004],
+            heading: -90.15699, length: 46.00197, grad_start: -0.5, grad_end: -0.5,
+            tex_offset: 771.2027, ..Default::default() };
+        let att = SplineAttachment { id: 26386, offset: [-0.0584662628010295, 0.279999999041864, 785.154450166645],
+            rot: [90.0000020235813, 0.0, 0.0], tilt: true, ..Default::default() };
+        let mut index = MapIndex::default();
+        index.splines.insert(s.id, IndexedSpline { length: s.length, map_chain_offset: Some(s.tex_offset), prev: 0, next: 0 });
+        let objects = row_objects(&att, &s, DVec2::ZERO, Some(&index));
+        assert_eq!(objects.len(), 1);
+        let direction = SplineCurve::dir(s.heading);
+        let tangent = DVec3::new(direction.x, direction.y, -0.005).normalize().as_vec3();
+        assert!((-objects[0].pose.rot.transform_vector3(Vec3::X) - tangent).length() < 1e-6,
+            "the railing must descend along the kerb, not lean across it");
     }
 
     /// The chain of the Spandau buffer stop 3212811: a dead-end track of 250 m behind 600 m
