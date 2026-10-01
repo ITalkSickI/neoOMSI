@@ -56,6 +56,7 @@ fn android_main(app: AndroidApp) {
     };
     std::env::set_var("OMSI_CONTENT", &content);
     let _ = std::fs::write(content.join("README.txt"), README);
+    hide_from_gallery(&content);
     // `openOMSI/env.txt`: the OMSI_* switches a computer takes from its environment, one
     // `NAME=value` a line (a phone has no environment to set; for looking into problems)
     if let Ok(t) = std::fs::read_to_string(content.join("env.txt")) {
@@ -180,6 +181,40 @@ pub(crate) fn previous_run_crash() -> Option<(String, String)> {
     Some((format!("the game closed without a word while it was running (the last it said: {last})"), tail))
 }
 
+/// Android's media scanner hands every picture it finds to the gallery apps: the thousands
+/// of textures of an OMSI installation and of the mods turned up there as photos, the scan
+/// kept the phone busy, and people deleted them as clutter - white buses, empty maps
+/// (#443). A `.nomedia` file keeps a folder and everything under it out of the gallery:
+/// every folder of the content folder gets one except `Screenshots` (those are pictures to
+/// find), and so does the OMSI installation when it lies somewhere else. Nothing of the
+/// content is moved or changed.
+fn hide_from_gallery(content: &Path) {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(content)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path())
+        .filter(|p| !p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Screenshots")))
+        .collect();
+    if let Some(root) = crate::startup::root_memo().and_then(|f| std::fs::read_to_string(f).ok()) {
+        let root = PathBuf::from(root.trim());
+        if root.is_dir() && !root.starts_with(content) && !content.starts_with(&root) {
+            dirs.push(root);
+        }
+    }
+    for dir in dirs {
+        let marker = dir.join(".nomedia");
+        if marker.exists() {
+            continue;
+        }
+        match std::fs::write(&marker, b"") {
+            Ok(()) => log::info!("{}: kept out of the gallery (.nomedia)", dir.display()),
+            Err(e) => log::warn!("{}: no .nomedia ({e})", dir.display()),
+        }
+    }
+}
+
 fn is_writable(dir: &Path) -> bool {
     let probe = dir.join(".openomsi-write-test");
     let ok = std::fs::write(&probe, b"x").is_ok();
@@ -192,7 +227,9 @@ const README: &str = "openOMSI\n\
 Put a complete copy of OMSI 2 (the folder with Omsi.exe, maps and Vehicles in it) here as\n\
 \"OMSI 2\", e.g. openOMSI/OMSI 2, and choose it in the launcher under Setup.\n\
 Mods: copy them into openOMSI/Mods (they are installed when the launcher opens), or install\n\
-a folder or a .zip from the launcher's Mods page. Screenshots are written to OMSI 2/Screenshots.\n";
+a folder or a .zip from the launcher's Mods page. Screenshots are written to openOMSI/Screenshots.\n\
+The folders here hold a .nomedia file so that the gallery leaves the game's textures alone:\n\
+they are not photos - deleting them breaks buses and maps.\n";
 
 /// The launcher, or the game in the launcher's window.
 struct Shell {
@@ -208,6 +245,10 @@ impl Shell {
             let args = Args::parse_from(["openomsi"]);
             if let Err(e) = prepare(args, true) {
                 log::error!("{e:#}");
+            }
+            // (an installation chosen under Setup is known from here on)
+            if let Some(content) = crate::startup::content_dir() {
+                hide_from_gallery(&content);
             }
             launcher_statics();
             self.instance = Some(());
