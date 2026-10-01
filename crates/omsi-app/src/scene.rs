@@ -3887,7 +3887,6 @@ impl World {
     }
 
     fn ground_object_terrain_relative(
-        st: &StagedTile,
         o: &StagedObject,
         src: &HashMap<(i32, i32), Arc<StagedTile>>,
         x: f64,
@@ -3896,7 +3895,6 @@ impl World {
         terrain_height: f64,
         plain_mode: ObjectHeightConvention,
     ) -> bool {
-        let _ = st;
         if o.ot.sco.surface {
             // [surface] objects have both conventions in real content. Keep the existing
             // spline-supported compatibility rule: the candidate that actually meets the
@@ -3934,7 +3932,6 @@ impl World {
                     .unwrap_or_else(|| st.base_terrain.sample(lx, ly) as f64);
                 let plain_mode = Self::plain_object_height_convention(st, src);
                 let terrain_relative = Self::ground_object_terrain_relative(
-                    st,
                     o,
                     src,
                     *x,
@@ -4017,7 +4014,6 @@ impl World {
                     let base_height =
                         Self::base_ground(src, *x, *y).unwrap_or_else(|| ground_at(*x, *y));
                     let terrain_relative = Self::ground_object_terrain_relative(
-                        st,
                         o,
                         src,
                         *x,
