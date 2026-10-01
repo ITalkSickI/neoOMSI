@@ -1620,18 +1620,12 @@ impl ApplicationHandler for App {
                                 }
                             }
                             let inside = self.in_cab;
-                            let engine_running = self
-                                .player
-                                .as_ref()
-                                .map(|p| omsi_sim::startup::engine_running(&p.vehicle))
-                                .unwrap_or(false);
                             let __tm = Instant::now();
                             amb.update(
                                 a,
                                 dt,
                                 (kind, rate),
                                 inside,
-                                engine_running,
                                 street_condition(wt, self.wetness),
                                 cam.position,
                                 &steps,

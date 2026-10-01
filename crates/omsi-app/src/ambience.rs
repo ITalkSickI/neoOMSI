@@ -40,43 +40,8 @@ pub struct Ambience {
     /// voices a frame.
     step_budget: f32,
     rng: u64,
-    /// A synthesised low engine rumble: not every bus's own sound configuration authors a
-    /// distinct cabin idle loop, so the cab otherwise sounds as bare inside as out. Faded in
-    /// only while the camera sits in the cabin and the engine runs.
-    hum: Arc<Clip>,
-    hum_voice: Option<VoiceId>,
     /// What was heard last, for `OMSI_DEBUG_SOUND`.
     pub last: String,
-}
-
-/// A couple of seconds of a soft, low engine rumble (a fundamental plus two harmonics,
-/// looped with a short fade at the seam so it does not click), for [`Ambience::hum`].
-fn synth_hum(sample_rate: u32) -> Arc<Clip> {
-    let secs = 2.0f32;
-    let n = (sample_rate as f32 * secs) as usize;
-    let fade_len = ((sample_rate as f32 * 0.05) as usize).max(1);
-    let mut samples = Vec::with_capacity(n);
-    for i in 0..n {
-        let t = i as f32 / sample_rate as f32;
-        let tau = std::f32::consts::TAU;
-        let mut s = (t * 55.0 * tau).sin() * 0.55
-            + (t * 110.0 * tau).sin() * 0.25
-            + (t * 27.5 * tau).sin() * 0.3;
-        let fade = if i < fade_len {
-            i as f32 / fade_len as f32
-        } else if i >= n - fade_len {
-            (n - i) as f32 / fade_len as f32
-        } else {
-            1.0
-        };
-        s *= fade;
-        samples.push((s.clamp(-1.0, 1.0) * 3000.0) as i16);
-    }
-    Arc::new(Clip {
-        sample_rate,
-        channels: 1,
-        samples,
-    })
 }
 
 impl Ambience {
@@ -92,8 +57,6 @@ impl Ambience {
             step_range: 1.0,
             step_budget: 0.0,
             rng: 0x5EED_1234_ABCD,
-            hum: synth_hum(22050),
-            hum_voice: None,
             last: String::new(),
         };
         if !engine.enabled {
@@ -130,16 +93,14 @@ impl Ambience {
 
     /// One frame. `precip` is the kind (1 rain, 2 snow) and the rate 0 … 1, `inside` says
     /// whether the camera sits in a vehicle (the rain is then muffled - the bus's own
-    /// `regen.wav` takes over), `engine_running` whether the player's engine is running (for
-    /// the cabin hum), `street_cond` the state of the road and `footfalls` the steps taken
-    /// since the last frame.
+    /// `regen.wav` takes over), `street_cond` the state of the road and `footfalls` the steps
+    /// taken since the last frame.
     pub fn update(
         &mut self,
         engine: &AudioEngine,
         dt: f32,
         precip: (i32, f32),
         inside: bool,
-        engine_running: bool,
         street_cond: f32,
         listener: DVec3,
         footfalls: &[Footfall],
@@ -148,7 +109,6 @@ impl Ambience {
             return;
         }
         self.rain(engine, precip, inside);
-        self.hum(engine, inside, engine_running);
         self.footsteps(engine, dt, street_cond, listener, inside, footfalls);
     }
 
@@ -191,36 +151,6 @@ impl Ambience {
             (None, false) => {}
         }
         self.last = format!("rain {gain:.2}");
-    }
-
-    /// The cabin's own idle rumble: only heard from inside, and only while the engine runs.
-    fn hum(&mut self, engine: &AudioEngine, inside: bool, engine_running: bool) {
-        let gain = if inside && engine_running { 0.35 } else { 0.0 };
-        let params = VoiceParams {
-            gain,
-            pitch: 1.0,
-            looping: true,
-            position: None,
-            doppler: true,
-            range: 1.0,
-            lowpass_hz: 300.0,
-            important: false,
-        };
-        match (self.hum_voice, gain > 0.001) {
-            (Some(id), true) => {
-                if engine.is_playing(id) {
-                    engine.set_params(id, params);
-                } else {
-                    self.hum_voice = Some(engine.play(self.hum.clone(), params));
-                }
-            }
-            (Some(id), false) => {
-                engine.stop(id);
-                self.hum_voice = None;
-            }
-            (None, true) => self.hum_voice = Some(engine.play(self.hum.clone(), params)),
-            (None, false) => {}
-        }
     }
 
     /// Footsteps. A step is a 3D one-shot at the foot, with the `[3d]` range of the
