@@ -486,7 +486,7 @@ impl ApplicationHandler for Launcher {
                 }
             }
             WindowEvent::DroppedFile(path) => {
-                // a mod folder or .zip dropped on the window is installed
+                // a mod folder or supported archive dropped on the window is installed
                 self.page = Page::Mods;
                 self.state.install(path.to_string_lossy().to_string());
             }

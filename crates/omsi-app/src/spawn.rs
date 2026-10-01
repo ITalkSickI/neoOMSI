@@ -420,6 +420,7 @@ pub(crate) fn spawn_player(
         mirrors_dirty: false,
         take_change: false,
         toggled_up: Default::default(),
+        momentary_gears: crate::settings::Settings::load().momentary_gears,
         side_lights_by_l: false,
         driver: None,
         ibis_duty: None,
