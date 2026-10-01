@@ -859,7 +859,11 @@ pub fn mesh_from_o3d_turning(m: &omsi_o3d::Mesh, may_turn: bool) -> MeshData {
         }
         let first = out.indices.len() as u32;
         out.indices.extend_from_slice(&idx);
-        out.ranges.push((first, idx.len() as u32, slot as u32));
+        // Omsi.exe draws per material, so a material-less o3d (bone dummies, collision
+        // meshes) is invisible; its triangles stay for whatever reads them.
+        if !m.materials.is_empty() {
+            out.ranges.push((first, idx.len() as u32, slot as u32));
+        }
     }
     out
 }
