@@ -97,7 +97,7 @@ const EXIT_REACH: f64 = 0.6;
 /// Seconds a bus may stand at a stop with every door still shut before a waiting passenger
 /// gives up on it coming to serve them: the driver's own door buttons take a moment, and
 /// the timetable buses' door scripts open a beat after they roll to a stop.
-const DOOR_GRACE: f64 = 4.0;
+const DOOR_GRACE: f64 = 10.0;
 /// How long after a door of a standing bus was last open the people at it wait on (s).
 const DOOR_SHUT_PATIENCE: f64 = 25.0;
 
@@ -3607,19 +3607,27 @@ impl Humans {
     }
 
     /// `PAX_Entry<i>_Open` / `PAX_Exit<i>_Open` as the bus script reports them. A bus whose
-    /// script never sets them (they are not in every mod, or only the front door uses them)
-    /// falls back to its `door_<i>`.
+    /// script never sets them (or only sets some of them) falls back to its physical `door_<i>`
+    /// or `door<i>` animations.
     fn doors_open(v: &VehicleInstance, n_entry: usize, n_exit: usize) -> (Vec<bool>, Vec<bool>) {
-        let doors: Vec<bool> = (0..8)
-            .map(|i| v.var(&format!("door_{i}")).unwrap_or(0.0) > 0.9)
-            .collect();
+        let door_val = |k: usize| -> bool {
+            v.var(&format!("door_{k}"))
+                .or_else(|| v.var(&format!("door{k}")))
+                .unwrap_or(0.0)
+                > 0.5
+        };
+        // Exits in standard OMSI city buses (2 or more front door leaves) begin at door_2 (middle door),
+        // while coaches with a single front door leaf begin at door_1. Exits must not be offset by
+        // n_entry, because buses with all doors configured as entries (e.g. 3-door buses with 6 entries)
+        // still place middle-door exits at door_2/3 and rear-door exits at door_4/5.
+        let exit_door_base = if n_entry <= 1 { 1 } else { 2 };
         let entry: Vec<bool> = (0..n_entry)
             .map(|i| {
                 let name = format!("PAX_Entry{i}_Open");
                 if Self::script_reports(v, &name) {
                     v.var(&name).unwrap_or(0.0) > 0.5
                 } else {
-                    doors[i.min(7)]
+                    door_val(i.min(7))
                 }
             })
             .collect();
@@ -3629,11 +3637,7 @@ impl Humans {
                 if Self::script_reports(v, &name) {
                     v.var(&name).unwrap_or(0.0) > 0.5
                 } else {
-                    // the exits follow the entries in the door_<i> numbering (door_0/1 the
-                    // front leaves, door_2.. the others): a bus with three or more doors and
-                    // no PAX_Exit vars of its own must still report its middle and rear doors
-                    // separately, not the front leaf's state for every one of them
-                    doors[(n_entry + i).min(7)]
+                    door_val((exit_door_base + i).min(7))
                 }
             })
             .collect();
@@ -3809,7 +3813,7 @@ impl Humans {
                     vec![false; cabin.exits.len()],
                 );
                 if open {
-                    if Self::script_reports(&c.vehicle, "PAX_Entry0_Open") || c.vehicle.has_script_var("door_0") {
+                    if Self::script_reports(&c.vehicle, "PAX_Entry0_Open") || c.vehicle.var("door_0").is_some() || c.vehicle.var("door0").is_some() {
                         let (e, x) =
                             Self::doors_open(&c.vehicle, cabin.entries.len(), cabin.exits.len());
                         entry_open = e;
@@ -5574,21 +5578,31 @@ impl Humans {
                 } else {
                     Activity::Stand
                 };
+                let avoid = self.people[i].avoid;
+                let bus_arriving = buses.iter().any(|b| {
+                    (b.approach == Some(stop) || b.stop == Some(stop)) && avoid != Some(b.id)
+                });
+                let face_bus = buses
+                    .iter()
+                    .find(|b| (b.approach == Some(stop) || b.stop == Some(stop)) && avoid != Some(b.id))
+                    .map(|b| {
+                        let to = b.pos.truncate() - pos2;
+                        to.x.atan2(to.y).to_degrees()
+                    });
                 let stand = Want {
-                    vel: if idle == Activity::Sit {
+                    vel: if idle == Activity::Sit || bus_arriving {
                         DVec2::ZERO
                     } else {
                         arrive(pos2, sp.floor().truncate(), pace * 0.6)
                     },
-                    face: Some(sp.face),
-                    give: 0.3,
+                    face: if bus_arriving { face_bus.or(Some(sp.face)) } else { Some(sp.face) },
+                    give: if bus_arriving { 0.0 } else { 0.3 },
                     corridor: None,
                     idle,
                     follow: false,
                     goal_dist: None,
                 };
                 // a bus here: board it?
-                let avoid = self.people[i].avoid;
                 let t_state = self.people[i].t_state;
                 let mirror = self.mirror;
                 for bn in buses
@@ -5692,7 +5706,7 @@ impl Humans {
                         return Want {
                             vel: arrive(pos2, target, pace * 0.7),
                             face: Some(face),
-                            give: 0.5,
+                            give: 0.0,
                             corridor: None,
                             idle: Activity::Stand,
                             follow: false,
@@ -5700,7 +5714,7 @@ impl Humans {
                         };
                     }
                     self.people[i].why = "waits at the kerb for the bus";
-                    return Want::stand(Some(face), Activity::Stand);
+                    return Want { give: 0.0, ..Want::stand(Some(face), Activity::Stand) };
                 }
                 if t_state > patience && !buses.iter().any(|b| b.stop == Some(stop)) {
                     // waited long enough: walks off (and somebody else will come)
@@ -9442,6 +9456,44 @@ mod tests {
         v.set_var("PAX_Entry0_Open", 1.0);
         let (e, _) = Humans::doors_open(&v, 1, 0);
         assert_eq!(e, vec![true]);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn doors_open_3door_bus_handles_middle_and_rear_exits() {
+        let dir = std::env::temp_dir().join(format!("omsi-doors-3door-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("test.bus"),
+            "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("model.cfg"), "").unwrap();
+        std::fs::write(dir.join("vars.txt"), "door_0\ndoor_1\ndoor_2\ndoor_3\ndoor_4\ndoor_5\n").unwrap();
+        std::fs::write(dir.join("main.osc"), "{init}\n{end}\n").unwrap();
+
+        let ty = std::sync::Arc::new(omsi_sim::VehicleType::load(&dir, &dir.join("test.bus")).unwrap());
+        let mut v = VehicleInstance::new(ty, omsi_sim::VehicleHost::new(Default::default()));
+
+        // 3-door bus: 6 entries (all 3 doors), 4 exits (middle door leaves 2,3; rear door leaves 4,5)
+        let (e, x) = Humans::doors_open(&v, 6, 4);
+        assert_eq!(e, vec![false; 6]);
+        assert_eq!(x, vec![false; 4]);
+
+        // Middle doors (door_2 and door_3) open
+        v.set_var("door_2", 1.0);
+        v.set_var("door_3", 1.0);
+        let (e, x) = Humans::doors_open(&v, 6, 4);
+        assert_eq!(e, vec![false, false, true, true, false, false]);
+        assert_eq!(x, vec![true, true, false, false]);
+
+        // Rear doors (door_4 and door_5) open
+        v.set_var("door_4", 1.0);
+        v.set_var("door_5", 1.0);
+        let (e, x) = Humans::doors_open(&v, 6, 4);
+        assert_eq!(e, vec![false, false, true, true, true, true]);
+        assert_eq!(x, vec![true, true, true, true]);
 
         std::fs::remove_dir_all(&dir).ok();
     }
