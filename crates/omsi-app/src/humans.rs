@@ -8437,7 +8437,7 @@ impl Humans {
             let ab = b2 - a2;
             let t = if ab.length_squared() > 1e-6 { ((want - a2).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
             let q = a2 + ab * t;
-            let d = (want - q).length();
+            let d = (want - q).length() + (local.z - (pa.z + (pb.z - pa.z) * t)).abs();
             if best.map(|x| d < x.0).unwrap_or(true) {
                 best = Some((d, q, pa.z + (pb.z - pa.z) * t));
             }
