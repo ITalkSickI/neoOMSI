@@ -522,7 +522,7 @@ impl Vehicle {
     /// `[registration_list]` file's plate of that number when it has one, else prefix,
     /// number and postfix of the list or automatic mode - the number alone without a mode.
     pub fn plate_of_number(&self, number: &str) -> String {
-        if self.registration_mode == 2 {
+        if self.registration_list.is_some() {
             if let Some((_, p)) = self.numbers_with_plates().into_iter().find(|(n, p)| n == number.trim() && !p.is_empty()) {
                 return p;
             }
@@ -576,6 +576,23 @@ mod tests {
         let offered: Vec<String> = offered_vehicles(&files).iter().map(|(f, _)| f.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert_eq!(offered, vec!["G Main.bus", "L Main.bus", "Solo.bus"]);
         assert_eq!(front_sections_of(&dir.join("L Trail.bus")).len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A repaint's own `[registration_list]` followed by the template's
+    /// `[registration_automatic]`: the list's plate still wins (Omsi.exe 0x7e7a80 reads the
+    /// list file whatever the mode), prefix + number only where the list has none.
+    #[test]
+    fn list_plate_wins_over_a_later_automatic_mode() {
+        let dir = std::env::temp_dir().join(format!("omsi_vehicle_regs_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Nos.org"), "E1\nE2\n").unwrap();
+        std::fs::write(dir.join("Regs.org"), "AB12 CDE\n").unwrap();
+        std::fs::write(dir.join("x.bus"), "[number]\nNos.org\n\n[registration_list]\nRegs.org\n\n\n\n[registration_automatic]\nB-V \n\n").unwrap();
+        let v = Vehicle::load(&dir.join("x.bus")).unwrap();
+        assert_eq!(v.registration_mode, 3);
+        assert_eq!(v.plate_of_number("E1"), "AB12 CDE");
+        assert_eq!(v.plate_of_number("E2"), "B-V E2");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
