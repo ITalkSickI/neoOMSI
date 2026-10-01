@@ -598,6 +598,14 @@ fn start_duty(app: &mut App, line: &str, tour: &str) {
                 d.update(&mut p.vehicle, now);
                 let (trip, stop) = d.trip_for_ibis();
                 p.set_duty_destination(trip, stop);
+                let mut fonts = w.fonts.lock();
+                if let Err(e) = crate::schedule_paper::update_vehicle(
+                    &mut p.vehicle,
+                    &d,
+                    &mut fonts,
+                ) {
+                    log::warn!("driver timetable paper: {e:#}");
+                }
             }
             app.args.line = Some(line.to_string());
             app.args.tour = Some(tour.to_string());

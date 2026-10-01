@@ -645,6 +645,16 @@ impl App {
                                 let (trip, stop) = d.trip_for_ibis();
                                 p.set_duty_destination(trip, stop);
                             }
+                            if let Some(d) = self.duty.as_ref() {
+                                let mut fonts = w.fonts.lock();
+                                if let Err(e) = crate::schedule_paper::update_vehicle(
+                                    &mut p.vehicle,
+                                    d,
+                                    &mut fonts,
+                                ) {
+                                    log::warn!("driver timetable paper: {e:#}");
+                                }
+                            }
                         }
                         self.schedule = Some(sch);
                     }
