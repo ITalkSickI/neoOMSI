@@ -255,7 +255,11 @@ fn step_route_rest(l: &mut Launcher, r: Rect, mut y: f32) {
     l.ui.heading(Rect::new(left.x, left.y, left.w, 28.0), "Line", None);
     l.ui.text_input("line-filter", Rect::new(left.x, left.y + 30.0, left.w, 34.0), &mut l.drive.line_filter, "Filter…", Some("search"));
     let q = l.drive.line_filter.to_lowercase();
-    let lines: Vec<(String, String, usize)> = l.state.lines.iter().filter(|x| q.is_empty() || x.name.to_lowercase().contains(&q)).map(|x| (x.name.clone(), x.termini.join(" · "), x.tours.len())).collect();
+    let lines: Vec<(String, String, usize)> = l.state.lines.iter()
+        .filter(|x| x.user_allowed)
+        .filter(|x| q.is_empty() || x.name.to_lowercase().contains(&q))
+        .map(|x| (x.name.clone(), x.termini.join(" · "), x.tours.len()))
+        .collect();
     let chosen = l.state.choice.line.clone();
     let mut pick_line = None;
     let loading = l.state.loading_lines;
