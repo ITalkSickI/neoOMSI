@@ -68,8 +68,16 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs / screenshots
-      description: Paste any relevant error messages, log output, or screenshots. This will be automatically formatted as code.
+      label: Logs
+      description: Paste any relevant error messages or log output. This will be automatically formatted as code.
       render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Paste or drag and drop screenshots here. You can also add text and Markdown.
     validations:
       required: false
