@@ -4,6 +4,59 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
 [Releases](https://github.com/turbo-devv/openOMSI/releases) page.
 
+## 0.1.523 - 2026-10-01
+
+### Controls
+- In mouse steering the cursor sets the pedals every frame, as in OMSI: a brake held on the
+  keyboard (with "The keyboard brake stays on until the throttle") no longer stays on under
+  the mouse (#395).
+- Letting go of a key fires only that key's own `_off` trigger, as in Omsi.exe. On some mods
+  it fired an alias's release (e.g. `parking_brake_mouse_off`, `kw_blinker_*_off`), which
+  undid the parking brake or the turn signal just set with the keyboard (#420).
+- The hand cursor appears over every clickable part of the cockpit, including large ones
+  such as door leaves, the cockpit door and the steering column (#411).
+
+### Vehicles
+- Articulated buses: the rear section stops at the joint's maximum angle from
+  `[coupling_front_character]` (52.5° on the GN92) instead of folding through the front
+  section when turning tightly or reversing (#410).
+- The odometer starts at a used bus's reading, as in OMSI: from the year and the km a year
+  in `[kmcounter_init]` (1980 and 60000 when a bus has none), ±20% from bus to bus. Before,
+  such buses showed 000000; reversing now also takes the counter back (#305).
+- Number plates: a repaint's own `[registration_list]` plate is used for AI buses whatever
+  the template says afterwards; the player's bus takes it as the vehicle dialog does. Before,
+  they showed the automatic prefix and the fleet number (#133).
+- The passenger cameras of an articulated bus's rear section hang on its body like the
+  front section's: `[add_camera_pax]` distance, pitch and roll (#174, #126).
+- `[matl_change]`: the first `[matl_item]` is made of its own block only, no longer of the
+  later items' maps (an LED matrix showed its script texture at value 1) (#210).
+- A `[matl_freetex]` declared inside a `[matl_item]` changes the powered material only, and
+  named material references in `.x` models are resolved (from #436).
+
+### Maps
+- Crossings draped over the ground (`[crossing_heightdeformation]`) get normals rebuilt from
+  their faces, as Omsi.exe does: some junctions looked as if their faces were turned
+  inside out (#428).
+
+### Sound
+- `[important]` sounds keep their place when more sounds play than OMSI's
+  `[sound_maxcount]` of 200 (#434).
+
+### Graphics
+- Mirrors can be switched off (Settings, Graphics, Mirrors: Off) on slower machines (#433).
+
+### Multiplayer
+- Numpad ÷ opens the front door again instead of the chat line (#130).
+
+### Modding
+- HTML pages: `omsi.getDepartures(stop)` lists the next departures of a stop, and
+  `omsi.setNextStop(index)` can also go back to an earlier stop (#437).
+
+### Android
+- The content folders and the OMSI 2 installation get a `.nomedia` file, so the gallery no
+  longer lists thousands of textures as photos - the media scan kept phones busy and people
+  deleted the "pictures", leaving buses white (#443).
+
 ## 0.1.486 - 2026-10-01
 
 ### Launcher
