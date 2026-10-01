@@ -488,24 +488,54 @@ fn scenery_render_phase(kind: omsi_scenery::sco::RenderType) -> RenderPhase {
 /// Whether a `[surface]` map placement uses a terrain-relative map Y value. OMSI defaults
 /// these objects to their authored height and promotes them only when nearby spline height
 /// evidence clearly supports `map_y + terrain_height`.
+///
+/// The evidence is looked for under the middle of the object's meshes, not at its origin:
+/// a model whose vertices sit far from its own origin (Probacher Land's B466 road bridge,
+/// `PRIPYAT\Nuclear Power Plant\mesh05A.sco`, lies 41-58 m beside it) has no spline near
+/// the origin, kept its authored height and stood 6 m above the road it carries.
 fn surface_object_terrain_relative(
     src: &HashMap<(i32, i32), Arc<StagedTile>>,
+    ot: &ObjectType,
     world_x: f64,
     world_y: f64,
+    rot: [f64; 3],
     map_y: f64,
     terrain_height: f64,
 ) -> bool {
-    let tile_x = (world_x / tile_size()).floor() as i32;
-    let tile_y = (world_y / tile_size()).floor() as i32;
+    let (probe_x, probe_y) = surface_probe_point(ot, world_x, world_y, rot);
+    let tile_x = (probe_x / tile_size()).floor() as i32;
+    let tile_y = (probe_y / tile_size()).floor() as i32;
     infer_surface_object_terrain_relative(
-        world_x,
-        world_y,
+        probe_x,
+        probe_y,
         map_y,
         terrain_height,
         src.values()
             .filter(|tile| (tile.tx - tile_x).abs() <= 1 && (tile.ty - tile_y).abs() <= 1)
             .flat_map(|tile| tile.splines.iter()),
     )
+}
+
+/// The middle of an object's LOD 0 footprint, turned with the object, in world x/y (the
+/// origin itself for an object without vertices).
+fn surface_probe_point(ot: &ObjectType, world_x: f64, world_y: f64, rot: [f64; 3]) -> (f64, f64) {
+    let Some(middle) = footprint_middle(ot.meshes.iter().map(|(mesh, _, _)| mesh)) else {
+        return (world_x, world_y);
+    };
+    let turned = object_rotation(rot).transform_vector3(middle.extend(0.0));
+    (world_x + turned.x as f64, world_y + turned.y as f64)
+}
+
+/// The middle of the box the meshes' vertices span across x and y (`None` without vertices).
+fn footprint_middle<'a>(meshes: impl IntoIterator<Item = &'a MeshData>) -> Option<glam::Vec2> {
+    let (mut lo, mut hi) = (glam::Vec2::splat(f32::MAX), glam::Vec2::splat(f32::MIN));
+    for mesh in meshes {
+        for p in &mesh.positions {
+            lo = lo.min(p.truncate());
+            hi = hi.max(p.truncate());
+        }
+    }
+    (lo.x <= hi.x).then(|| (lo + hi) * 0.5)
 }
 
 fn infer_surface_object_terrain_relative<'a>(
@@ -3901,7 +3931,7 @@ impl World {
                 let base_height = Self::base_ground(src, *x, *y)
                     .unwrap_or_else(|| st.base_terrain.sample(lx, ly) as f64);
                 let terrain_relative = !o.ot.sco.surface
-                    || surface_object_terrain_relative(src, *x, *y, *z, base_height);
+                    || surface_object_terrain_relative(src, &o.ot, *x, *y, *rot, *z, base_height);
                 Some(Pose {
                     pos: DVec3::new(
                         *x,
@@ -3975,7 +4005,7 @@ impl World {
                     let base_height =
                         Self::base_ground(src, *x, *y).unwrap_or_else(|| ground_at(*x, *y));
                     let terrain_relative = !o.ot.sco.surface
-                        || surface_object_terrain_relative(src, *x, *y, *z, base_height);
+                        || surface_object_terrain_relative(src, &o.ot, *x, *y, *rot, *z, base_height);
                     Some(Pose {
                         pos: DVec3::new(
                             *x,
@@ -12187,6 +12217,22 @@ mod tests {
         assert!(!infer_surface_object_terrain_relative(10.0, 0.0, 10.0, 5.0, [&spline]));
         assert!(!infer_surface_object_terrain_relative(10.0, 0.0, 0.0, 0.3, [&spline]));
         assert!(!infer_surface_object_terrain_relative(20.0, 40.0, 0.0, 10.0, [&spline]));
+    }
+
+    /// A model built beside its own origin is judged where its vertices are: the middle of
+    /// a deck 41-58 m to one side, and nothing for an object without vertices.
+    #[test]
+    fn surface_evidence_is_looked_for_under_the_mesh() {
+        let v = glam::Vec3::new;
+        let deck = MeshData {
+            positions: vec![v(-50.0, 41.0, 0.0), v(50.0, 41.0, 0.0), v(50.0, 58.0, 1.5), v(-50.0, 58.0, 1.5)],
+            ..MeshData::default()
+        };
+        assert_eq!(footprint_middle([&deck]), Some(glam::Vec2::new(0.0, 49.5)));
+        assert_eq!(footprint_middle([&MeshData::default()]), None);
+        // turned a quarter clockwise, the deck's middle lies east of the origin
+        let east = object_rotation([90.0, 0.0, 0.0]).transform_vector3(v(0.0, 49.5, 0.0));
+        assert!((east.x - 49.5).abs() < 1e-3 && east.y.abs() < 1e-3);
     }
 
     /// A film modelled as a copy of the floor's faces with a slot of its own is an overlay;
