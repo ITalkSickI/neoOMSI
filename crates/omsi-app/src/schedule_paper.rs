@@ -5,18 +5,24 @@
 //! it in its own cache so the original installation remains read-only.
 
 use crate::schedule::{PlannedStop, PlayerDuty};
+use ab_glyph::{Font as _, FontVec, PxScale, ScaleFont};
 use anyhow::{anyhow, Context, Result};
-use omsi_content::font::{FontAtlas, TextAlign};
+use omsi_content::font::{Font, FontAtlas, FontChar, TextAlign};
 use omsi_sim::VehicleInstance;
 use omsi_texture::Image;
+use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 const PAPER_X: u32 = 100;
 const COLUMN_GAP: u32 = 32;
 const PAPER_TOP: u32 = 88;
-const ROWS_TOP_GAP: u32 = 20;
-const PAPER_BOTTOM_MARGIN: u32 = 48;
+const ROWS_TOP_GAP: u32 = 32;
+// Schedule.bmp's lower 290 pixels are the grey area outside the sheet.
+const PAPER_HEIGHT: u32 = 734;
+const PAPER_BOTTOM_MARGIN: u32 = 24;
+const FONT_HEIGHT: u32 = 23;
 const TEXT_COLOR: [u8; 3] = [17, 15, 14];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +49,7 @@ pub(crate) fn update_vehicle(
 ) -> Result<()> {
     let (title, rows) = paper_content(&duty.line, &duty.tour, &duty.trips, duty.trip_index);
     let signature = content_signature(&title, &rows);
-    let path = cache_dir()?.join(format!("schedule-v3-{signature:016x}.png"));
+    let path = cache_dir()?.join(format!("schedule-v4-{signature:016x}.png"));
     let filename = path.to_string_lossy().into_owned();
 
     if vehicle.str_var("file_schedule") == filename {
@@ -51,7 +57,7 @@ pub(crate) fn update_vehicle(
     }
 
     if !path.is_file() {
-        let Some(font) = schedule_font(fonts) else {
+        let Some(font) = schedule_font(fonts, &title, &rows) else {
             set_filename(vehicle, "");
             return Err(anyhow!(
                 "no OMSI bitmap font is available for the driver's timetable"
@@ -84,10 +90,98 @@ fn set_filename(vehicle: &mut VehicleInstance, value: &str) {
     }
 }
 
-fn schedule_font(fonts: &mut omsi_sim::texttex::FontLibrary) -> Option<std::sync::Arc<FontAtlas>> {
-    ["19_HHAschedule_font", "DIN Narrow", "DIN_Narrow", "DIN"]
-        .into_iter()
-        .find_map(|name| fonts.load(name))
+fn schedule_font(
+    fonts: &mut omsi_sim::texttex::FontLibrary,
+    title: &str,
+    rows: &[PaperRow],
+) -> Option<std::sync::Arc<FontAtlas>> {
+    typewriter_font(title, rows)
+        .map(std::sync::Arc::new)
+        .or_else(|| {
+            ["19_HHAschedule_font", "DIN Narrow", "DIN_Narrow", "DIN"]
+                .into_iter()
+                .find_map(|name| fonts.load(name))
+        })
+}
+
+/// OMSI prints the schedule in a bold typewriter face, rather than a bus display's
+/// proportional bitmap font. Rasterize an installed equivalent into fixed-width cells.
+fn typewriter_font(title: &str, rows: &[PaperRow]) -> Option<FontAtlas> {
+    static FONT: OnceLock<Option<FontVec>> = OnceLock::new();
+    let font = FONT
+        .get_or_init(|| {
+            #[cfg(target_os = "windows")]
+            let paths = [std::env::var_os("WINDIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("C:/Windows"))
+                .join("Fonts/courbd.ttf")];
+            #[cfg(target_os = "macos")]
+            let paths = [PathBuf::from(
+                "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+            )];
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            let paths = [
+                PathBuf::from("/usr/share/fonts/truetype/liberation2/LiberationMono-Bold.ttf"),
+                PathBuf::from("/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"),
+                PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"),
+            ];
+            paths
+                .iter()
+                .find_map(|path| FontVec::try_from_vec(std::fs::read(path).ok()?).ok())
+        })
+        .as_ref()?;
+    let scaled = font.as_scaled(PxScale::from(FONT_HEIGHT as f32));
+    let cell_width = scaled.h_advance(scaled.glyph_id('M')).ceil().max(1.0) as u32;
+    let mut characters: Vec<char> = (32u8..=126).map(char::from).collect();
+    characters.extend(title.chars());
+    for row in rows {
+        characters.extend(row.name.chars());
+        characters.extend(row.time.chars());
+    }
+    characters.sort_unstable();
+    characters.dedup();
+    characters.retain(|&ch| scaled.glyph_id(ch).0 != 0);
+    let width = cell_width * characters.len() as u32;
+    let mut alpha = vec![0; (width * FONT_HEIGHT * 4) as usize];
+    let mut chars = Vec::with_capacity(characters.len());
+    for (index, ch) in characters.into_iter().enumerate() {
+        let x0 = index as u32 * cell_width;
+        chars.push(FontChar {
+            ch,
+            x0: x0 as i32,
+            x1: (x0 + cell_width) as i32,
+            y: 0,
+        });
+        let glyph = scaled.glyph_id(ch).with_scale_and_position(
+            PxScale::from(FONT_HEIGHT as f32),
+            ab_glyph::point(0.0, scaled.ascent()),
+        );
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let bounds = outline.px_bounds();
+            outline.draw(|px, py, coverage| {
+                let x = px as i32 + bounds.min.x as i32;
+                let y = py as i32 + bounds.min.y as i32;
+                if x >= 0 && x < cell_width as i32 && y >= 0 && y < FONT_HEIGHT as i32 {
+                    let offset = ((y as u32 * width + x0 + x as u32) * 4) as usize;
+                    let a = (coverage * 255.0).round() as u8;
+                    alpha[offset..offset + 4].fill(a);
+                }
+            });
+        }
+    }
+    Some(FontAtlas::new(
+        Font {
+            name: "openOMSI timetable".into(),
+            height: FONT_HEIGHT as i32,
+            gap: 0,
+            chars,
+            ..Default::default()
+        },
+        width,
+        FONT_HEIGHT,
+        vec![0; alpha.len()],
+        alpha,
+    ))
 }
 
 fn paper_content(
@@ -191,7 +285,13 @@ fn paper_base() -> Image {
 fn draw_schedule(image: &mut Image, font: &FontAtlas, title: &str, rows: &[PaperRow]) {
     let native_height = font.font.height.max(1) as u32;
     let layout = paper_layout(image.width, image.height, native_height, rows.len());
-    draw_text(image, font, title, PAPER_X, PAPER_TOP, layout.scale);
+    let title = fit_text(
+        font,
+        title,
+        layout.scale,
+        image.width.saturating_sub(2 * PAPER_X),
+    );
+    draw_text(image, font, &title, PAPER_X, PAPER_TOP, layout.scale);
 
     let equal_width = scaled_text_width(font, "=", layout.scale).max(1);
     let count = (image.width.saturating_sub(2 * PAPER_X) / equal_width).min(120) as usize;
@@ -206,17 +306,19 @@ fn draw_schedule(image: &mut Image, font: &FontAtlas, title: &str, rows: &[Paper
 
     for (index, row) in rows.iter().enumerate() {
         let (column_x, y) = row_position(index, native_height, &layout);
-        if y + layout.line_height >= image.height {
+        if y + layout.line_height > paper_height(image.height) {
             continue;
         }
         let time_width = scaled_text_width(font, &row.time, layout.scale);
         let time_x = column_x + layout.column_width.saturating_sub(time_width);
-        let name_width = scaled_text_width(font, &row.name, layout.scale);
+        let name_limit = time_x.saturating_sub(column_x + scaled_size(12, layout.scale));
+        let name = fit_text(font, &row.name, layout.scale, name_limit);
+        let name_width = scaled_text_width(font, &name, layout.scale);
         let dot_width = scaled_text_width(font, ".", layout.scale).max(1);
         let available =
             time_x.saturating_sub(column_x + name_width + scaled_size(12, layout.scale));
         let dots = (available / dot_width).min(96) as usize;
-        draw_text(image, font, &row.name, column_x, y, layout.scale);
+        draw_text(image, font, &name, column_x, y, layout.scale);
         draw_text(
             image,
             font,
@@ -238,7 +340,7 @@ fn paper_layout(
     let single_column_rows = full_size_rows(image_height, line_height);
     let columns = if row_count > single_column_rows { 2 } else { 1 };
     let rows_per_column = if columns == 2 {
-        row_count / 2 + row_count % 2
+        single_column_rows.max(row_count.div_ceil(2))
     } else {
         row_count
     };
@@ -263,7 +365,7 @@ fn row_position(index: usize, native_height: u32, layout: &PaperLayout) -> (u32,
 
 fn full_size_rows(image_height: u32, line_height: u32) -> usize {
     let rows_top = PAPER_TOP + line_height + ROWS_TOP_GAP;
-    let available = image_height.saturating_sub(rows_top + PAPER_BOTTOM_MARGIN);
+    let available = paper_height(image_height).saturating_sub(rows_top + PAPER_BOTTOM_MARGIN);
     (available / line_height.max(1)) as usize
 }
 
@@ -272,8 +374,12 @@ fn fit_scale(image_height: u32, line_height: u32, row_count: usize) -> f32 {
         return 1.0;
     }
     let rows_top = PAPER_TOP + line_height + ROWS_TOP_GAP;
-    let available = image_height.saturating_sub(rows_top + PAPER_BOTTOM_MARGIN);
+    let available = paper_height(image_height).saturating_sub(rows_top + PAPER_BOTTOM_MARGIN);
     ((available as f32 / (row_count as f32 * line_height as f32)).min(1.0)).max(0.01)
+}
+
+fn paper_height(image_height: u32) -> u32 {
+    image_height.saturating_mul(PAPER_HEIGHT) / 1024
 }
 
 fn scaled_size(size: u32, scale: f32) -> u32 {
@@ -286,6 +392,27 @@ fn scaled_height(size: u32, scale: f32) -> u32 {
 
 fn scaled_text_width(font: &FontAtlas, text: &str, scale: f32) -> u32 {
     scaled_size(font.text_width(text).max(0) as u32, scale)
+}
+
+/// Keep the font size and the clock's position fixed. Long labels end with dots before
+/// they reach the time field; remove whole characters so UTF-8 stop names stay valid.
+fn fit_text<'a>(font: &FontAtlas, text: &'a str, scale: f32, max_width: u32) -> Cow<'a, str> {
+    if scaled_text_width(font, text, scale) <= max_width {
+        return Cow::Borrowed(text);
+    }
+    if scaled_text_width(font, "...", scale) > max_width {
+        return Cow::Borrowed("");
+    }
+    let mut shortened = text.to_string();
+    loop {
+        let length = shortened.len();
+        shortened.push_str("...");
+        if scaled_text_width(font, &shortened, scale) <= max_width {
+            return Cow::Owned(shortened);
+        }
+        shortened.truncate(length);
+        shortened.pop();
+    }
 }
 
 fn draw_text(image: &mut Image, font: &FontAtlas, text: &str, x: u32, y: u32, scale: f32) {
@@ -368,16 +495,16 @@ mod tests {
             })
             .collect();
         let width = chars.len() as u32 * 4;
-        let pixels = vec![255; (width * 27 * 4) as usize];
+        let pixels = vec![255; (width * FONT_HEIGHT * 4) as usize];
         FontAtlas::new(
             omsi_content::font::Font {
-                height: 27,
+                height: FONT_HEIGHT as i32,
                 gap: 1,
                 chars,
                 ..Default::default()
             },
             width,
-            27,
+            FONT_HEIGHT,
             pixels.clone(),
             pixels,
         )
@@ -444,22 +571,22 @@ mod tests {
 
     #[test]
     fn long_schedule_uses_two_columns_and_keeps_every_row_on_the_paper() {
-        let layout = paper_layout(1024, 1024, 27, 36);
+        let layout = paper_layout(1024, 1024, FONT_HEIGHT, 36);
         assert_eq!(layout.columns, 2);
-        assert_eq!(layout.rows_per_column, 18);
+        assert_eq!(layout.rows_per_column, 24);
         assert_eq!(layout.scale, 1.0);
 
-        let short = paper_layout(1024, 1024, 27, 9);
+        let short = paper_layout(1024, 1024, FONT_HEIGHT, 9);
         assert_eq!(short.columns, 1);
         assert_eq!(short.scale, 1.0);
 
-        let extra_long = paper_layout(1024, 1024, 27, 72);
+        let extra_long = paper_layout(1024, 1024, FONT_HEIGHT, 72);
         assert_eq!(extra_long.columns, 2);
         assert!(extra_long.scale < 1.0);
-        let rows_top = PAPER_TOP + 27 + ROWS_TOP_GAP;
+        let rows_top = PAPER_TOP + FONT_HEIGHT + ROWS_TOP_GAP;
         assert!(
             rows_top + extra_long.line_height * extra_long.rows_per_column as u32
-                <= 1024 - PAPER_BOTTOM_MARGIN
+                <= PAPER_HEIGHT - PAPER_BOTTOM_MARGIN
         );
 
         let font = test_font();
@@ -482,7 +609,7 @@ mod tests {
         draw_schedule(&mut image, &font, "76 - Dense - 1", &rows);
 
         for i in 0..36 {
-            let (x, y) = row_position(i, 27, &layout);
+            let (x, y) = row_position(i, FONT_HEIGHT, &layout);
             let has_ink = (y..y + layout.line_height).any(|py| {
                 (x..x + 80).any(|px| {
                     let pixel = ((py * image.width + px) * 4) as usize;
@@ -491,5 +618,69 @@ mod tests {
             });
             assert!(has_ink, "schedule row {i} was not rendered");
         }
+    }
+
+    #[test]
+    fn long_names_keep_the_clock_and_column_gap_clear() {
+        let font = test_font();
+        for row_count in [9, 36, 72] {
+            let rows: Vec<_> = (0..row_count)
+                .map(|i| PaperRow {
+                    name: "Gustav-Adolf-Str./Langhansstr.".repeat(4),
+                    time: if i % 2 == 0 { "12:34" } else { "12:34 - 12:36" }.into(),
+                })
+                .collect();
+            let layout = paper_layout(1024, 1024, FONT_HEIGHT, row_count);
+            let mut image = Image {
+                width: 1024,
+                height: 1024,
+                rgba: vec![255; 1024 * 1024 * 4],
+                has_alpha: false,
+            };
+            let mut clocks = image.clone();
+            draw_schedule(
+                &mut image,
+                &font,
+                "156 - Stad. Buschall/Hansastr. - 3 (Mo-Fr)",
+                &rows,
+            );
+            for (i, row) in rows.iter().enumerate() {
+                let (x, y) = row_position(i, FONT_HEIGHT, &layout);
+                let time_x =
+                    x + layout.column_width - scaled_text_width(&font, &row.time, layout.scale);
+                draw_text(&mut clocks, &font, &row.time, time_x, y, layout.scale);
+                for py in y..y + layout.line_height {
+                    for px in time_x..x + layout.column_width {
+                        let pixel = ((py * image.width + px) * 4) as usize;
+                        assert_eq!(
+                            &image.rgba[pixel..pixel + 4],
+                            &clocks.rgba[pixel..pixel + 4],
+                            "name overlaps time at row {i} of {row_count}"
+                        );
+                    }
+                    for px in x + layout.column_width..x + layout.column_width + COLUMN_GAP {
+                        let pixel = ((py * image.width + px) * 4) as usize;
+                        assert_eq!(image.rgba[pixel], 255, "name overflows column at row {i}");
+                    }
+                }
+            }
+            assert!(image.rgba[(PAPER_HEIGHT * image.width * 4) as usize..]
+                .iter()
+                .all(|&v| v == 255));
+        }
+    }
+
+    #[test]
+    fn fitted_labels_keep_complete_unicode_characters() {
+        let font = test_font();
+        let name = "Südstadt/Gustav-Adolf-Straße Ankunft";
+        for scale in [1.0, 0.75, 0.5] {
+            let fitted = fit_text(&font, name, scale, 60);
+            assert!(fitted.ends_with("..."));
+            assert!(name.starts_with(fitted.trim_end_matches('.')));
+            assert!(scaled_text_width(&font, &fitted, scale) <= 60);
+        }
+        assert_eq!(fit_text(&font, "Kurz", 1.0, 60), "Kurz");
+        assert_eq!(fit_text(&font, name, 1.0, 5), "");
     }
 }
