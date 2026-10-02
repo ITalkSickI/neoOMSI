@@ -64,6 +64,9 @@ pub(crate) enum Nat {
     SetDestination,
     ClearLine,
     SetNextStop,
+    PlayAnnouncement,
+    PlaySound,
+    FireEvent,
     GetDepartures,
 }
 

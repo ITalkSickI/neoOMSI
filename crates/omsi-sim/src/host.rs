@@ -108,6 +108,9 @@ pub struct VehicleHost {
     /// Route, line and destination requests of the vehicle's HTML pages, taken by the game
     /// (`VehicleInstance::take_html_requests`).
     pub html_requests: Vec<crate::htmltex::HtmlRequest>,
+    /// Sound files the pages asked for (`omsi.playSound`): (path relative to the vehicle's
+    /// folder, volume). The game plays them and empties the list.
+    pub html_sounds: Vec<(String, f32)>,
     /// The departures the game made for the stops the pages asked for (`omsi.getDepartures`),
     /// by key (trimmed, lower case): (line, destination, timestamp), soonest first.
     pub html_departures: std::collections::HashMap<String, Vec<(String, String, f64)>>,

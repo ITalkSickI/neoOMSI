@@ -1075,6 +1075,26 @@ impl Player {
             return;
         }
         let (stops, requests): (Vec<_>, Vec<_>) = requests.into_iter().partition(|r| matches!(r, omsi_sim::htmltex::HtmlRequest::SetNextStop(_)));
+        // sounds and events need no depot file
+        let (direct, requests): (Vec<_>, Vec<_>) = requests.into_iter().partition(|r| {
+            matches!(
+                r,
+                omsi_sim::htmltex::HtmlRequest::PlaySound { .. } | omsi_sim::htmltex::HtmlRequest::FireEvent(_)
+            )
+        });
+        for r in direct {
+            match r {
+                omsi_sim::htmltex::HtmlRequest::PlaySound { file, volume } => {
+                    log::info!("HTML page: playSound {file} ({volume})");
+                    self.vehicle.host.html_sounds.push((file, volume));
+                }
+                omsi_sim::htmltex::HtmlRequest::FireEvent(name) => {
+                    log::info!("HTML page: fireEvent {name}");
+                    self.vehicle.host.fired_triggers.push(name);
+                }
+                _ => {}
+            }
+        }
         if let Some(omsi_sim::htmltex::HtmlRequest::SetNextStop(i)) = stops.last() {
             log::info!("HTML page: setNextStop({i}) received");
             self.html_next_stop = Some(*i);
@@ -1103,6 +1123,26 @@ impl Player {
                     }
                 }
                 omsi_sim::htmltex::HtmlRequest::SetNextStop(_) => {}
+                omsi_sim::htmltex::HtmlRequest::PlaySound { .. } | omsi_sim::htmltex::HtmlRequest::FireEvent(_) => {}
+                omsi_sim::htmltex::HtmlRequest::PlayAnnouncement { route, stop, terminus } => {
+                    let Some(ident) = hof
+                        .info_busstop_lists
+                        .get(route)
+                        .and_then(|l| l.get(stop))
+                        .map(|s| s.split('#').next().unwrap_or("").trim().to_string())
+                        .filter(|s| !s.is_empty())
+                    else {
+                        log::info!("HTML page: depot file {} has no stop {stop} on route {route}", hof.name);
+                        continue;
+                    };
+                    let folder = hof.global_strings.first().map(|s| s.trim().to_string()).unwrap_or_default();
+                    let file = format!(
+                        "..\\..\\Announcements\\{folder}\\{ident}{}.wav",
+                        if terminus { "_#terminus" } else { "" }
+                    );
+                    log::info!("HTML page: announcement {file}");
+                    self.vehicle.host.fired_file_triggers.push(("ev_IBIS_Ansagen".to_string(), file));
+                }
                 omsi_sim::htmltex::HtmlRequest::ClearLine => {
                     if let Some((mut old, ..)) = self.ibis_typist.take() {
                         old.abandon(&mut self.vehicle);
@@ -1304,6 +1344,7 @@ impl Player {
         for (t, f) in &fired_files {
             log::info!("announcement: {t} -> {f}");
         }
+        let html_sounds: Vec<(String, f32)> = std::mem::take(&mut self.vehicle.host.html_sounds);
         if let (Some(a), Some(ss)) = (audio, self.sounds.as_mut()) {
             let xf = self.vehicle.world_transform();
             let v = &self.vehicle;
@@ -1329,6 +1370,10 @@ impl Player {
             );
             for (t, f) in &fired_files {
                 ss.play_file_trigger(a, t, f, &|n| v.var(n), &xf);
+            }
+            for (f, vol) in &html_sounds {
+                let path = omsi_cfg::resolve_path(v.ty.def.dir(), f);
+                ss.play_file_direct(a, &path, *vol);
             }
             if let Some(every) = debug_sound_every() {
                 static LAST: std::sync::atomic::AtomicU32 =

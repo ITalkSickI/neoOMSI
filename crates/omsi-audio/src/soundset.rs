@@ -306,6 +306,29 @@ impl SoundSet {
         }
     }
 
+    /// Play `path` once, non-spatial, at `volume` (0..1): a sound a page asks for
+    /// (`omsi.playSound`) that has no entry of its own in the `sound.cfg`.
+    pub fn play_file_direct(&mut self, engine: &AudioEngine, path: &Path, volume: f32) {
+        if !engine.enabled {
+            return;
+        }
+        let Some(clip) = engine.load_clip(path) else {
+            warn_missing_once("playSound", path);
+            return;
+        };
+        let params = VoiceParams {
+            gain: volume.clamp(0.0, 1.0) * self.master,
+            pitch: 1.0,
+            looping: false,
+            position: None,
+            doppler: false,
+            range: 5.0,
+            lowpass_hz: 0.0,
+            important: false,
+        };
+        engine.play(clip, params);
+    }
+
     /// Volume factor from the volume curves and conditions. `None` when a condition or the
     /// `[viewpoint]` silences the sound; `view` is [`SoundSet::view_mask`].
     ///

@@ -27,6 +27,13 @@ pub enum HtmlRequest {
     /// `omsi.setNextStop(index)`: the duty goes on with stop `index` of its trip (stops
     /// before it are skipped; an earlier stop makes the stops from there on due again).
     SetNextStop(usize),
+    /// `omsi.playAnnouncement(route, stop, isTerminus)`: the announcement file of stop `stop`
+    /// of `omsi.depot.routes[route]`.
+    PlayAnnouncement { route: usize, stop: usize, terminus: bool },
+    /// `omsi.playSound(file, volume)`: a sound file relative to the vehicle's folder.
+    PlaySound { file: String, volume: f32 },
+    /// `omsi.fireEvent(name)`: a sound trigger of the vehicle (`T.L.<name>`).
+    FireEvent(String),
 }
 
 /// What `window.omsi` offers a page.

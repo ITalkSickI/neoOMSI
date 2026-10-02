@@ -85,6 +85,9 @@ impl Interp {
                 ("setDestination", Val::Nat(Nat::SetDestination)),
                 ("clearLine", Val::Nat(Nat::ClearLine)),
                 ("setNextStop", Val::Nat(Nat::SetNextStop)),
+                ("playAnnouncement", Val::Nat(Nat::PlayAnnouncement)),
+                ("playSound", Val::Nat(Nat::PlaySound)),
+                ("fireEvent", Val::Nat(Nat::FireEvent)),
                 (
                     "depot",
                     Val::Obj(obj_of(&[
@@ -928,6 +931,31 @@ impl Interp {
                     self.requests.push(crate::htmltex::HtmlRequest::SetNextStop(v as usize));
                 } else {
                     log::debug!("htmltexture: SetNextStop ignored, the index is not a number");
+                }
+                Val::Undef
+            }
+            Nat::PlayAnnouncement => {
+                let (r, s) = (a(0), a(1));
+                if r.is_finite() && r >= 0.0 && s.is_finite() && s >= 0.0 {
+                    let terminus = args.get(2).map_or(false, truthy);
+                    self.requests.push(crate::htmltex::HtmlRequest::PlayAnnouncement { route: r as usize, stop: s as usize, terminus });
+                } else {
+                    log::debug!("htmltexture: playAnnouncement ignored, route or stop is not a number");
+                }
+                Val::Undef
+            }
+            Nat::PlaySound => {
+                let file = args.first().map(to_str).unwrap_or_default();
+                if !file.trim().is_empty() {
+                    let v = a(1);
+                    let volume = if v.is_finite() { v.clamp(0.0, 1.0) as f32 } else { 1.0 };
+                    self.requests.push(crate::htmltex::HtmlRequest::PlaySound { file, volume });
+                }
+                Val::Undef
+            }
+            Nat::FireEvent => {
+                if let Some(name) = args.first().map(to_str).filter(|n| !n.trim().is_empty()) {
+                    self.requests.push(crate::htmltex::HtmlRequest::FireEvent(name.trim().to_string()));
                 }
                 Val::Undef
             }
