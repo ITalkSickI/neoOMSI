@@ -2,12 +2,13 @@ name: Release
 
 on:
   push:
-    branches: [main, nightly]
+    branches: [main]
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_name == 'nightly' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,7 +25,13 @@ jobs:
         with:
           fetch-depth: 0
       - id: v
-        run: echo "version=$(sh scripts/version.sh)" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v="$(sh scripts/version.sh)-nightly.${{ github.run_number }}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
       - run: echo "### neoOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
 
   test:
@@ -199,7 +206,8 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
-      PRERELEASE: ${{ github.ref_name == 'nightly' }}
+      PRERELEASE: ${{ contains(needs.version.outputs.version, '-') }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'nightly' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -214,7 +222,7 @@ jobs:
           ls -l out
           awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
           if ! grep -q '[^[:space:]]' changes.md; then
-            prev=$(git tag -l 'v*' --sort=-v:refname | grep -vx "v$VERSION" | head -1)
+            prev=$(git tag -l 'v*' --sort=-v:refname | grep -vx "$TAG" | head -1)
             if [ -n "$prev" ]; then
               git diff --unified=0 "$prev" HEAD -- CHANGELOG.md | grep '^+' | grep -v '^+++' | sed 's/^+//' | grep -v '^## ' > changes.md || true
             fi
@@ -249,13 +257,18 @@ jobs:
           else
             flag="--prerelease=false"
           fi
-          git tag -f "v$VERSION" "$GITHUB_SHA"
-          git push -f origin "v$VERSION"
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release upload "v$VERSION" out/*.zip --clobber
-            gh release edit "v$VERSION" --title "neoOMSI $VERSION" --notes-file notes.md "$flag"
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            gh release delete "$TAG" --cleanup-tag --yes || true
+            gh release create "$TAG" out/*.zip \
+              --target "$GITHUB_SHA" \
+              --title "neoOMSI $VERSION" \
+              --notes-file notes.md \
+              "$flag"
+          elif gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/*.zip --clobber
+            gh release edit "$TAG" --title "neoOMSI $VERSION" --notes-file notes.md "$flag"
           else
-            gh release create "v$VERSION" out/*.zip \
+            gh release create "$TAG" out/*.zip \
               --verify-tag \
               --title "neoOMSI $VERSION" \
               --notes-file notes.md \
