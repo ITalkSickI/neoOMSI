@@ -334,7 +334,7 @@ impl<'a> CfgReader<'a> {
 
     /// `n` integers, then any further whole-number lines that follow at once (a blank line,
     /// a keyword or anything else ends the list): OMSI's fixed-length lists read as always,
-    /// and a file may give more (openOMSI: `[illumination_interior]` with more than four
+    /// and a file may give more (neoOMSI: `[illumination_interior]` with more than four
     /// lamps).
     pub fn i32_list(&mut self, n: usize) -> Vec<i32> {
         let mut v: Vec<i32> = (0..n).map(|_| self.i32()).collect();
@@ -835,10 +835,10 @@ pub fn resolve_path(base: &Path, rel: &str) -> PathBuf {
     cur
 }
 
-/// What an installation of the original OMSI 2 must have for openOMSI to run on it: the
+/// What an installation of the original OMSI 2 must have for neoOMSI to run on it: the
 /// game itself and the stock content every player gets with it (both stock maps, the stock
 /// buses, people, fonts, weather, inputs). Any copy of OMSI 2 has them, whatever version or
-/// shop it came from; a folder that lacks them (openOMSI's own content folder, a mod pack,
+/// shop it came from; a folder that lacks them (neoOMSI's own content folder, a mod pack,
 /// a half-copied installation) is not a base to play on - everybody plays on the same
 /// original content.
 pub const ORIGINAL_ESSENTIALS: &[&str] = &[
@@ -868,14 +868,14 @@ pub fn original_keyboard_cfg(root: &Path) -> PathBuf {
 }
 
 /// The essentials (see [`ORIGINAL_ESSENTIALS`]) that `root` lacks; empty for a complete
-/// original installation. openOMSI's content folder never counts as one.
+/// original installation. neoOMSI's content folder never counts as one.
 pub fn missing_original_essentials(root: &Path) -> Vec<String> {
-    // (a folder with Omsi.exe in it is the game's, even marked: openOMSI unpacked into the OMSI
+    // (a folder with Omsi.exe in it is the game's, even marked: neoOMSI unpacked into the OMSI
     // folder made it its content folder once - see `content_folder_of` - and every start after
     // that said the game was not there)
     let marked = root.join(CONTENT_MARKER).exists() || root.join(LEGACY_CONTENT_MARKER).exists();
     if marked && resolve_existing(root, &["Omsi.exe"]).is_none() {
-        return vec![format!("{} (this is the openOMSI content folder, not the original game)", root.display())];
+        return vec![format!("{} (this is the neoOMSI content folder, not the original game)", root.display())];
     }
     ORIGINAL_ESSENTIALS
         .iter()
@@ -889,20 +889,20 @@ pub fn missing_original_essentials(root: &Path) -> Vec<String> {
 }
 
 /// The folders an OMSI 2 installation has (as the original spells them). A content
-/// folder of openOMSI is laid out the same way, so a mod is installed by putting its
+/// folder of neoOMSI is laid out the same way, so a mod is installed by putting its
 /// folders here - and the game finds them exactly as the original would.
 pub const CONTENT_FOLDERS: &[&str] = &[
     "Vehicles", "maps", "Sceneryobjects", "Splines", "Texture", "Fonts", "Plugins", "TicketPacks", "Drivers", "Weather", "Announcements", "Humans", "Money", "Scripts", "Trains", "Situations", "Inputs", "Sound",
 ];
 
-/// Marker file of an openOMSI content folder (so it is never mistaken for the OMSI 2
+/// Marker file of an neoOMSI content folder (so it is never mistaken for the OMSI 2
 /// installation itself).
-pub const CONTENT_MARKER: &str = ".openomsi-content";
-/// The marker of a content folder made before the project was called openOMSI.
+pub const CONTENT_MARKER: &str = ".neoomsi-content";
+/// The marker of a content folder made before the project was called neoOMSI.
 pub const LEGACY_CONTENT_MARKER: &str = ".omsi-rewrite-content";
 
 /// Move the data of a version from before the rename (`~/.omsi-rewrite`,
-/// `~/.omsi-rewrite-root`) to its new place (`~/.openomsi`, `~/.openomsi-root`), once.
+/// `~/.omsi-rewrite-root`) to its new place (`~/.neoomsi`, `~/.neoomsi-root`), once.
 /// (First thing at the start of every program: an unusable `HOME` is dropped here, see
 /// [`drop_unusable_home`].)
 pub fn migrate_legacy_data_dir() {
@@ -910,7 +910,7 @@ pub fn migrate_legacy_data_dir() {
     let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(std::path::PathBuf::from) else {
         return;
     };
-    for (old, new) in [(".omsi-rewrite", ".openomsi"), (".omsi-rewrite-root", ".openomsi-root")] {
+    for (old, new) in [(".omsi-rewrite", ".neoomsi"), (".omsi-rewrite-root", ".neoomsi-root")] {
         let (old, new) = (home.join(old), home.join(new));
         if old.exists() && !new.exists() {
             let _ = std::fs::rename(&old, &new);
@@ -919,7 +919,7 @@ pub fn migrate_legacy_data_dir() {
 }
 
 /// On Windows a `HOME` variable some other program set for itself (a Unix-style path, a
-/// network drive that is not connected) is no folder to keep openOMSI's data in: the
+/// network drive that is not connected) is no folder to keep neoOMSI's data in: the
 /// launcher's settings went nowhere, and the OMSI folder chosen under Setup was forgotten
 /// as soon as it was saved - the lists stayed empty. Such a `HOME` is dropped for this
 /// program (and the game it starts), which then uses `USERPROFILE` as without one.
@@ -929,18 +929,18 @@ pub fn drop_unusable_home() {
     }
     let Some(h) = std::env::var_os("HOME") else { return };
     let p = std::path::PathBuf::from(&h);
-    let usable = p.is_absolute() && p.is_dir() && std::fs::create_dir_all(p.join(".openomsi")).is_ok();
+    let usable = p.is_absolute() && p.is_dir() && std::fs::create_dir_all(p.join(".neoomsi")).is_ok();
     if !usable && std::env::var_os("USERPROFILE").is_some() {
         std::env::remove_var("HOME");
     }
 }
 
-/// openOMSI's content folder for a program in `dir`: that folder - unless it is the original
-/// OMSI 2 folder itself (openOMSI unpacked into it), which openOMSI never writes to: then the
-/// `openOMSI` folder inside it.
+/// neoOMSI's content folder for a program in `dir`: that folder - unless it is the original
+/// OMSI 2 folder itself (neoOMSI unpacked into it), which neoOMSI never writes to: then the
+/// `neoOMSI` folder inside it.
 pub fn content_folder_of(dir: &Path) -> PathBuf {
     if resolve_existing(dir, &["Omsi.exe"]).is_some() && resolve_existing(dir, &["maps"]).is_some() {
-        dir.join("openOMSI")
+        dir.join("neoOMSI")
     } else {
         dir.to_path_buf()
     }
@@ -948,7 +948,7 @@ pub fn content_folder_of(dir: &Path) -> PathBuf {
 
 /// Check if a directory is writable by attempting to create and remove a probe file.
 pub fn is_writable(dir: &Path) -> bool {
-    let probe = dir.join(".openomsi-write-test");
+    let probe = dir.join(".neoomsi-write-test");
     let ok = std::fs::write(&probe, b"x").is_ok();
     let _ = std::fs::remove_file(&probe);
     ok
@@ -963,7 +963,7 @@ pub fn ensure_content_layout(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir.join("Mods"))?;
     let marker = dir.join(CONTENT_MARKER);
     if !marker.exists() {
-        std::fs::write(&marker, "This folder holds openOMSI's own content and installed mods, laid out like the original game.\nDrop a mod folder or zip into Mods/ and the launcher sorts it into place.\n")?;
+        std::fs::write(&marker, "This folder holds neoOMSI's own content and installed mods, laid out like the original game.\nDrop a mod folder or zip into Mods/ and the launcher sorts it into place.\n")?;
     }
     let readme = dir.join("Mods").join("README.txt");
     if !readme.exists() {

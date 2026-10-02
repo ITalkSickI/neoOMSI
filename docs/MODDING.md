@@ -1,13 +1,13 @@
 # Modding beyond OMSI 2
 
-openOMSI reads OMSI 2 content as it is: a bus, a map or an object made for OMSI 2 works
+neoOMSI reads OMSI 2 content as it is: a bus, a map or an object made for OMSI 2 works
 without changes. It also lifts limits OMSI 2 put on modders. Everything on this page is an
 addition. A file that uses it still loads in OMSI 2, which ignores what it does not know.
 
 ## Interior lights: more than four per mesh
 
 OMSI 2 lights a mesh with at most four `[interiorlight]` lamps, the four numbers of its
-`[illumination_interior]`. openOMSI takes as many as you list, up to 63 per mesh. Write the
+`[illumination_interior]`. neoOMSI takes as many as you list, up to 63 per mesh. Write the
 extra lamp numbers on the lines right after the first four; a blank line ends the list:
 
 ```
@@ -36,7 +36,7 @@ OMSI 2 reads the first four and skips the rest. A model may declare any number o
 
 - Textures up to 16384 × 16384 pixels load: DDS (DXT1/3/5, uncompressed), TGA, BMP, PNG and
   JPG. Where the graphics card cannot take that size, the texture is halved until it fits.
-- There is no 2 GB address-space limit: openOMSI is a 64-bit program.
+- There is no 2 GB address-space limit: neoOMSI is a 64-bit program.
 - A texture keeps its full resolution within 150 m of the camera, so a bus's own 4K
   textures always stay sharp. Far scenery gives up detail only when the texture memory
   (`texture_memory` in the settings, or `OMSI_TEXTURE_MEMORY`, in MB) runs out, as OMSI's

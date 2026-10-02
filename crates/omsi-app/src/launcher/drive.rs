@@ -41,7 +41,7 @@ pub struct DriveView {
     vehicle_settings_open: bool,
     pub line_filter: String,
     /// The buses marked with a star (#524), by file (lower case, '/'), read once from
-    /// `~/.openomsi/favourite-buses.txt`; and whether the list shows only them.
+    /// `~/.neoomsi/favourite-buses.txt`; and whether the list shows only them.
     favourites: Option<std::collections::BTreeSet<String>>,
     only_favourites: bool,
 }

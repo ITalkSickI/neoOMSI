@@ -37,7 +37,7 @@ pub enum Msg {
     Crashed(String),
 }
 
-/// A server in the Multiplayer page's list (`~/.openomsi/servers.json`), as the player
+/// A server in the Multiplayer page's list (`~/.neoomsi/servers.json`), as the player
 /// added it: its address (`https://….trycloudflare.com`, `http://host:port`) and a name of
 /// their own (empty: the server's).
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -73,7 +73,7 @@ fn servers_path() -> std::path::PathBuf {
     core::data_dir().join("servers.json")
 }
 
-/// The duty as it is remembered between launches (`~/.openomsi/launcher-duty.json`).
+/// The duty as it is remembered between launches (`~/.neoomsi/launcher-duty.json`).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Choice {
@@ -1168,12 +1168,12 @@ pub fn root_problem(root: &str) -> String {
         "The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles in it) under Setup and press Save.".to_string()
     } else if !p.exists() {
         format!("{root} does not exist: choose the folder of the original OMSI 2 (with Omsi.exe, maps and Vehicles in it) under Setup.")
-    } else if missing.iter().any(|m| m.contains("content folder")) || p.join("openomsi.exe").exists() || p.join("openomsi").is_file() {
-        format!("{root} is openOMSI's own folder, not OMSI 2's: choose the folder of the original game (with Omsi.exe in it) under Setup.")
+    } else if missing.iter().any(|m| m.contains("content folder")) || p.join("neoomsi.exe").exists() || p.join("neoomsi").is_file() {
+        format!("{root} is neoOMSI's own folder, not OMSI 2's: choose the folder of the original game (with Omsi.exe in it) under Setup.")
     } else if missing.is_empty() {
         String::new()
     } else {
-        format!("{root} is not a complete OMSI 2 - it lacks {}. openOMSI plays on the original's stock content: choose the folder of a complete installation under Setup.", missing.iter().take(3).cloned().collect::<Vec<_>>().join(", "))
+        format!("{root} is not a complete OMSI 2 - it lacks {}. neoOMSI plays on the original's stock content: choose the folder of a complete installation under Setup.", missing.iter().take(3).cloned().collect::<Vec<_>>().join(", "))
     }
 }
 
@@ -1260,16 +1260,16 @@ mod launch_tests {
 mod crash_tests {
     #[test]
     fn a_panic_is_found_and_a_clean_end_is_not() {
-        let dir = std::env::temp_dir().join("openomsi-crash-test");
+        let dir = std::env::temp_dir().join("neoomsi-crash-test");
         let _ = std::fs::create_dir_all(&dir);
         let p = dir.join("game.log");
-        std::fs::write(&p, "[t INFO x] loading\n[t ERROR openomsi_game] the game stopped on an error (build x): panicked at a.rs:1:1:\n    index out of bounds\n\n   0: std::backtrace\n").unwrap();
+        std::fs::write(&p, "[t INFO x] loading\n[t ERROR neoomsi_game] the game stopped on an error (build x): panicked at a.rs:1:1:\n    index out of bounds\n\n   0: std::backtrace\n").unwrap();
         let (what, tail) = super::crash_of(&p).unwrap();
         assert!(what.contains("index out of bounds"), "{what}");
         assert!(tail.contains("loading"));
-        std::fs::write(&p, "[t INFO x] loading\n[t INFO openomsi_game::app_events] game ends\n").unwrap();
+        std::fs::write(&p, "[t INFO x] loading\n[t INFO neoomsi_game::app_events] game ends\n").unwrap();
         assert!(super::crash_of(&p).is_none());
-        std::fs::write(&p, "[t ERROR omsi_render] the graphics device was lost (Unknown): Unexpected error variant\n[t INFO openomsi_game::app_events] game ends\n").unwrap();
+        std::fs::write(&p, "[t ERROR omsi_render] the graphics device was lost (Unknown): Unexpected error variant\n[t INFO neoomsi_game::app_events] game ends\n").unwrap();
         assert!(super::crash_of(&p).unwrap().0.contains("device was lost"));
         // an error before the game started, or one it got over, is not the crash
         std::fs::write(&p, "[t ERROR omsi_render] a part of the picture could not be recorded (left out)\n[t INFO x] starting the game: omsi\n[t INFO omsi_render] renderer: compiling the sky and clouds shaders\n").unwrap();

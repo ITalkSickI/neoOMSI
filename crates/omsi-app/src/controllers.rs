@@ -20,7 +20,7 @@ pub(crate) enum Func {
     Brake,
     Clutch,
     ThrottleBrake,
-    /// The driver's head turned left and right, up and down (#454; openOMSI's own: OMSI's
+    /// The driver's head turned left and right, up and down (#454; neoOMSI's own: OMSI's
     /// file has the five above, numbered 0 to 4).
     LookX,
     LookY,
@@ -87,7 +87,7 @@ pub(crate) fn read_cfg(root: &Path) -> Vec<DeviceCfg> {
     let Ok(text) = std::fs::read(&path) else { return Vec::new() };
     let mut devices = parse_cfg(&omsi_cfg::codepage::decode(&text));
     // An inherited OMSI file can contain 0/0 FFScale on a wheel. Keep its axis and
-    // button bindings, but use openOMSI's 100/100 default until our own file is saved.
+    // button bindings, but use neoOMSI's 100/100 default until our own file is saved.
     let original = root.join("Inputs").join("gamectrler.cfg");
     let from_original = path == original
         || std::fs::canonicalize(&path).ok().zip(std::fs::canonicalize(&original).ok()).is_some_and(|(a, b)| a == b);
@@ -138,7 +138,7 @@ pub(crate) fn parse_cfg(text: &str) -> Vec<DeviceCfg> {
                 }
                 i += 3;
             }
-            "[openOMSI.FFInvert]" => {
+            "[neoOMSI.FFInvert]" => {
                 if let Some(d) = out.last_mut() {
                     d.ff_invert = lines.get(i + 1).and_then(|v| match *v { "0" => Some(false), "1" => Some(true), _ => None });
                 }
@@ -169,7 +169,7 @@ pub(crate) fn cfg_text(devices: &[DeviceCfg]) -> String {
         let (a, b) = d.ff_scale.unwrap_or((1.0, 1.0));
         t.push_str(&format!("\r\n[FFScale]\r\n{a:.3}\r\n{b:.3}\r\n\r\n"));
         if let Some(invert) = d.ff_invert {
-            t.push_str(&format!("[openOMSI.FFInvert]\r\n{}\r\n\r\n", invert as u8));
+            t.push_str(&format!("[neoOMSI.FFInvert]\r\n{}\r\n\r\n", invert as u8));
         }
     }
     t
@@ -1239,7 +1239,7 @@ mod tests {
 
     #[test]
     fn look_axes_are_kept_in_the_file_and_rest_at_the_centre() {
-        // (openOMSI's own numbers after OMSI's five, written back as read)
+        // (neoOMSI's own numbers after OMSI's five, written back as read)
         for f in [super::Func::LookX, super::Func::LookY] {
             assert_eq!(super::Func::from_code(super::Func::code(Some(f))), Some(f));
         }

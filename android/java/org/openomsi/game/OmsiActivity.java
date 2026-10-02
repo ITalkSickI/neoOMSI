@@ -1,4 +1,4 @@
-package org.openomsi.game;
+package org.neoomsi.game;
 
 import android.Manifest;
 import android.app.NativeActivity;
@@ -22,7 +22,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * openOMSI's activity: the game itself is native code (libopenomsi_game.so, run by
+ * neoOMSI's activity: the game itself is native code (libneoomsi_game.so, run by
  * NativeActivity). This adds only what NativeActivity lacks: the whole screen without the
  * system bars, the screen kept on while playing, access to the shared storage (where the
  * copy of OMSI 2 and the mods are), the vibration of the on-screen buttons, and installing
@@ -37,7 +37,7 @@ public class OmsiActivity extends NativeActivity {
      * "Install unknown apps", 6 that refused. */
     private static volatile int installStatus = 0;
     private static volatile String installMessage = "";
-    private static final String ACTION_INSTALLED = "org.openomsi.game.INSTALL_STATUS";
+    private static final String ACTION_INSTALLED = "org.neoomsi.game.INSTALL_STATUS";
     /** An APK waiting for the "Install unknown apps" permission. */
     private String pendingApk = null;
     private boolean askedInstallPermission = false;
@@ -173,7 +173,7 @@ public class OmsiActivity extends NativeActivity {
 
     private void startInstall(String path) {
         if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
-            // the player allows openOMSI to install apps first, then comes back here
+            // the player allows neoOMSI to install apps first, then comes back here
             pendingApk = path;
             askedInstallPermission = true;
             installStatus = 5;
@@ -194,7 +194,7 @@ public class OmsiActivity extends NativeActivity {
             session = pi.openSession(id);
             File f = new File(path);
             InputStream in = new FileInputStream(f);
-            OutputStream out = session.openWrite("openomsi.apk", 0, f.length());
+            OutputStream out = session.openWrite("neoomsi.apk", 0, f.length());
             byte[] buf = new byte[1 << 16];
             int n;
             while ((n = in.read(buf)) > 0) {
@@ -249,7 +249,7 @@ public class OmsiActivity extends NativeActivity {
             case PackageInstaller.STATUS_FAILURE_CONFLICT:
             case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
                 // signed with another key than the installed app (a build of one's own)
-                installMessage = "this openOMSI was installed from a build with another signature than the GitHub releases. Uninstall it once and install the APK from github.com/openOMSI-Project/openOMSI - updates work from then on.";
+                installMessage = "this neoOMSI was installed from a build with another signature than the GitHub releases. Uninstall it once and install the APK from github.com/neoOMSI/neoOMSI - updates work from then on.";
                 installStatus = 4;
                 break;
             default: {

@@ -1,5 +1,5 @@
 //! The user's settings: graphics and gameplay switches, kept as `key=value` lines in
-//! `~/.openomsi/settings.cfg` (the launcher writes the same file). Anything missing
+//! `~/.neoomsi/settings.cfg` (the launcher writes the same file). Anything missing
 //! keeps its default, so an old file never breaks a new build.
 
 use std::path::PathBuf;
@@ -91,7 +91,7 @@ pub struct Settings {
     /// Shift+right zooms. Off, the right button zooms and the middle one turns the view
     /// (TForm_main.Panel1MouseMove 0x82c5f8) - OMSI's default, but on here by default: a
     /// laptop's touchpad has no middle button to look round with, and right-drag looking
-    /// is what openOMSI always did.
+    /// is what neoOMSI always did.
     pub alt_view: bool,
     /// The 3D picture drawn at this fraction of the window's size and scaled up (0.5..1),
     /// 0 = automatic (full size unless the window has more pixels than a 2560x1080 screen,
@@ -309,10 +309,10 @@ impl Settings {
         cfg!(windows) && (self.vr || omsi_cfg::env::var_os("OMSI_OPENXR").is_some())
     }
 
-    /// `~/.openomsi/settings.cfg` (or `%USERPROFILE%` on Windows).
+    /// `~/.neoomsi/settings.cfg` (or `%USERPROFILE%` on Windows).
     pub fn path() -> Option<PathBuf> {
         let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-        Some(PathBuf::from(home).join(".openomsi").join("settings.cfg"))
+        Some(PathBuf::from(home).join(".neoomsi").join("settings.cfg"))
     }
 
     pub fn load() -> Settings {
@@ -503,7 +503,7 @@ impl Settings {
     #[cfg(test)]
     pub fn to_text(&self) -> String {
         let mut text = format!(
-            "# openOMSI settings\nversion={}\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nshadow_blobs={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nvr={}\nvr_scale={}\nfullscreen={}\nvsync={}\nvolume={}\ndrive_keys={}\npost_aa={}\nrender_scale={}\nlanguage={}\ntexture_compression={}\ntexture_memory={}\nauto_clutch={}\nmomentary_gears={}\nmin_obj_size={}\nmax_obj_dist={}\nmax_fps={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\nmirror_refresh={}\ndoppler={}\ndriver={}\ndriverview_smooth={}\n",
+            "# neoOMSI settings\nversion={}\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nshadow_blobs={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nvr={}\nvr_scale={}\nfullscreen={}\nvsync={}\nvolume={}\ndrive_keys={}\npost_aa={}\nrender_scale={}\nlanguage={}\ntexture_compression={}\ntexture_memory={}\nauto_clutch={}\nmomentary_gears={}\nmin_obj_size={}\nmax_obj_dist={}\nmax_fps={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\nmirror_refresh={}\ndoppler={}\ndriver={}\ndriverview_smooth={}\n",
             SETTINGS_VERSION, self.msaa, self.anisotropy, self.ssao as u8, self.shadows as u8, self.shadow_size, self.shadow_blobs as u8, self.navigator as u8, self.ui_opacity, self.navigator_corner, self.boarding, self.detail_textures as u8, self.exact_fare as u8, self.enhanced as u8, self.graphics, self.vr as u8, self.vr_scale, self.fullscreen as u8, self.vsync as u8, self.volume, self.drive_keys, self.post_aa, self.render_scale_text(), self.language, self.texture_compression as u8, self.texture_memory, self.auto_clutch as u8, self.momentary_gears as u8, self.min_obj_size, if self.max_obj_dist < 0.0 { "auto".to_string() } else { self.max_obj_dist.to_string() }, self.max_fps, self.chat as u8, self.tooltips as u8, self.name_tags as u8, self.show_fps as u8, self.clouds as u8, self.pax_density, self.vol_ai, self.vol_scenery, self.mirror_size, self.mirror_refresh, self.doppler as u8, self.driver as u8, self.driverview_smooth as u8
         );
         text.push_str(&format!(
@@ -693,7 +693,7 @@ impl Settings {
 }
 
 /// The player's own turn of a bus's mirrors (degrees yaw, pitch per `[add_camera_reflexion]`),
-/// kept per `.bus` file in `~/.openomsi/mirrors.cfg` as `<bus file>|<mirror>=<yaw>,<pitch>`.
+/// kept per `.bus` file in `~/.neoomsi/mirrors.cfg` as `<bus file>|<mirror>=<yaw>,<pitch>`.
 pub fn mirror_offsets(bus: &std::path::Path) -> Vec<[f32; 2]> {
     let key = bus.to_string_lossy().to_ascii_lowercase();
     let Some(p) = Settings::path().map(|p| p.with_file_name("mirrors.cfg")) else { return Vec::new() };

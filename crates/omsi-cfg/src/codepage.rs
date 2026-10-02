@@ -5,7 +5,7 @@
 //! Russian installation reads Windows-1251, a Polish or Czech one Windows-1250, a German
 //! one Windows-1252. A mod is written for the code page of its author, so the LiAZ 5292 or
 //! the Scania Citywide's Russian cockpit texts only read as Cyrillic on a Russian Windows;
-//! read as 1252, the LiAZ called itself "ËèÀÇ 5292.20". openOMSI looks at every file on
+//! read as 1252, the LiAZ called itself "ËèÀÇ 5292.20". neoOMSI looks at every file on
 //! its own ([`detect`]), except on a Windows whose ANSI code page is a double-byte one
 //! (Chinese, Japanese, Korean): there it reads what is not UTF-8 in that code page, as
 //! OMSI does, since a hanzi folder name in an `ailists.cfg` reads as nothing else.

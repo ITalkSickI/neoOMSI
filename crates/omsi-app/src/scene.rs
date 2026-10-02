@@ -8296,7 +8296,7 @@ const OMSI_TILE_DIST: i32 = 1;
 /// from it, and maps build on that: Chicago Downtown puts a model of the whole city at Navy
 /// Pier (`LOD_247.sco`, 5.5 km across, its parks and the lake as flat faces 2 m above the
 /// streets) to fill the view beyond the tiles loaded there, with a hole where they are.
-/// openOMSI keeps the tiles of its whole view distance, so the model was there from
+/// neoOMSI keeps the tiles of its whole view distance, so the model was there from
 /// Columbus Drive on as well, its grass over the streets, the lower level and the vehicles
 /// on it (#650). A stand-in is told apart by its size: more than twice as wide as all the
 /// tiles OMSI has loaded with it (Chicago's are 3.6 to 8 km, its largest real objects -
@@ -12255,7 +12255,7 @@ mod tests {
 
     #[test]
     fn vehicle_freetex_retries_paths_below_texture_component() {
-        let root = std::env::temp_dir().join("openomsi-freetex-path-test");
+        let root = std::env::temp_dir().join("neoomsi-freetex-path-test");
         let vehicle_texture = root.join("Vehicles/TestBus/Texture");
         let wanted = vehicle_texture.join("mb_pmon/alerta_FalhaCambio.bmp");
         std::fs::create_dir_all(wanted.parent().unwrap()).unwrap();

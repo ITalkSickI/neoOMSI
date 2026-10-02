@@ -13,8 +13,8 @@ fn main() {
     let date = git(&["log", "-1", "--format=%cd", "--date=format:%Y-%m-%d %H:%M"]).unwrap_or_default();
     let dirty = git(&["status", "--porcelain"]).map(|s| !s.trim().is_empty()).unwrap_or(false);
     println!("cargo:rustc-env=OMSI_BUILD={hash}{} {date}", if dirty { "+" } else { "" });
-    println!("cargo:rustc-env=OPENOMSI_VERSION={}", version(&git));
-    println!("cargo:rerun-if-env-changed=OPENOMSI_VERSION");
+    println!("cargo:rustc-env=neoomsi_VERSION={}", version(&git));
+    println!("cargo:rerun-if-env-changed=neoomsi_VERSION");
     println!("cargo:rerun-if-changed=../../VERSION");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/index");
@@ -22,15 +22,15 @@ fn main() {
     // (the executable exports the two switchable-graphics hints of main.rs, see there)
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         for sym in ["NvOptimusEnablement", "AmdPowerXpressRequestHighPerformance"] {
-            println!("cargo:rustc-link-arg-bin=openomsi=/EXPORT:{sym},DATA");
+            println!("cargo:rustc-link-arg-bin=neoomsi=/EXPORT:{sym},DATA");
         }
     }
 }
 
 /// `MAJOR.MINOR` from the VERSION file, then the number of commits since that file last
-/// changed (the CI passes the same number in `OPENOMSI_VERSION`).
+/// changed (the CI passes the same number in `neoomsi_VERSION`).
 fn version(git: &dyn Fn(&[&str]) -> Option<String>) -> String {
-    if let Ok(v) = std::env::var("OPENOMSI_VERSION") {
+    if let Ok(v) = std::env::var("neoomsi_VERSION") {
         if !v.trim().is_empty() {
             return v.trim().to_string();
         }
@@ -47,12 +47,12 @@ fn windows_icon() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
-    println!("cargo:rerun-if-changed=../../assets/icons/app/openomsi.ico");
+    println!("cargo:rerun-if-changed=../../assets/icons/app/neoomsi.ico");
     let mut res = winresource::WindowsResource::new();
-    res.set_icon("../../assets/icons/app/openomsi.ico")
-        .set("ProductName", "openOMSI")
-        .set("FileDescription", "openOMSI")
-        .set("ProductVersion", &std::env::var("OPENOMSI_VERSION").unwrap_or_default());
+    res.set_icon("../../assets/icons/app/neoomsi.ico")
+        .set("ProductName", "neoOMSI")
+        .set("FileDescription", "neoOMSI")
+        .set("ProductVersion", &std::env::var("neoomsi_VERSION").unwrap_or_default());
     if let Err(e) = res.compile() {
         println!("cargo:warning=no icon in the executable: {e}");
     }

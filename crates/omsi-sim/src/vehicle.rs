@@ -4326,7 +4326,7 @@ mod tests {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
                 std::path::PathBuf::from(
-                    "/Users/savva/OMSI 2 Source Code/openOMSI/target/release",
+                    "/Users/savva/OMSI 2 Source Code/neoOMSI/target/release",
                 )
             });
         let bus = content.join("Vehicles/MB_O530_Facelift/MB_O530GFL EL 3D Main.bus");

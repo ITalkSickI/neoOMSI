@@ -34,7 +34,7 @@ fn home() -> PathBuf {
 }
 
 pub fn data_dir() -> PathBuf {
-    let d = home().join(".openomsi");
+    let d = home().join(".neoomsi");
     let _ = std::fs::create_dir_all(&d);
     d
 }
@@ -58,35 +58,35 @@ fn find_game(configured: &str) -> Option<PathBuf> {
     // old build after every update - the new pause menu "was not there" on macOS
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            cands.push(dir.join(if cfg!(windows) { "openomsi.exe" } else { "openomsi" }));
+            cands.push(dir.join(if cfg!(windows) { "neoomsi.exe" } else { "neoomsi" }));
         }
     }
     if !configured.trim().is_empty() {
         let c = PathBuf::from(configured.trim());
         // (only a game of today's name: the old `omsi` binary is not taken any more)
         let stem = c.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-        if stem == "openomsi" {
+        if stem == "neoomsi" {
             cands.push(c);
         }
     }
-    if let Some(p) = std::env::var_os("OPENOMSI_BIN") {
+    if let Some(p) = std::env::var_os("neoomsi_BIN") {
         cands.push(PathBuf::from(p));
     }
     if let Ok(exe) = std::env::current_exe() {
         for a in exe.ancestors().skip(1).take(7) {
-            cands.push(a.join("openomsi"));
-            cands.push(a.join("openomsi.exe"));
-            cands.push(a.join("target").join("release").join("openomsi"));
-            cands.push(a.join("target").join("release").join("openomsi.exe"));
-            cands.push(a.join("Resources").join("openomsi"));
+            cands.push(a.join("neoomsi"));
+            cands.push(a.join("neoomsi.exe"));
+            cands.push(a.join("target").join("release").join("neoomsi"));
+            cands.push(a.join("target").join("release").join("neoomsi.exe"));
+            cands.push(a.join("Resources").join("neoomsi"));
         }
     }
     if let Ok(cwd) = std::env::current_dir() {
         for a in cwd.ancestors().take(4) {
-            cands.push(a.join("target").join("release").join("openomsi"));
+            cands.push(a.join("target").join("release").join("neoomsi"));
         }
     }
-    cands.push(data_dir().join("openomsi"));
+    cands.push(data_dir().join("neoomsi"));
     cands.into_iter().find(|p| p.is_file())
 }
 
@@ -103,7 +103,7 @@ fn find_root(configured: &str) -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("OMSI_ROOT") {
         first.push(PathBuf::from(p));
     }
-    if let Ok(t) = std::fs::read_to_string(home().join(".openomsi-root")) {
+    if let Ok(t) = std::fs::read_to_string(home().join(".neoomsi-root")) {
         first.push(PathBuf::from(t.trim()));
     }
     // searching the disk costs a moment: once per process is enough (until the settings
@@ -117,7 +117,7 @@ fn find_root(configured: &str) -> Option<PathBuf> {
     let r = omsi_cfg::find_original_install(&first);
     if let Some(p) = &r {
         // the game finds it the same way next time
-        let _ = std::fs::write(home().join(".openomsi-root"), p.to_string_lossy().as_bytes());
+        let _ = std::fs::write(home().join(".neoomsi-root"), p.to_string_lossy().as_bytes());
     }
     *g = Some((first, r.clone()));
     r
@@ -833,7 +833,7 @@ fn paint_schemes(vehicle: &omsi_vehicle::Vehicle) -> (Vec<String>, Vec<PathBuf>)
     (names, dirs_read)
 }
 
-/// One line into ~/.openomsi/launcher.log.
+/// One line into ~/.neoomsi/launcher.log.
 fn log_line(line: &str) {
     use std::io::Write;
     let p = data_dir().join("launcher.log");
@@ -1575,7 +1575,7 @@ pub fn save_keybindings(v: &Value) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------------------
-// settings (the game's ~/.openomsi/settings.cfg)
+// settings (the game's ~/.neoomsi/settings.cfg)
 
 pub fn get_settings() -> Result<Value> {
     let text = std::fs::read_to_string(data_dir().join("settings.cfg")).ok();
@@ -1693,7 +1693,7 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
     for (k, d) in [("maintenance", json!(0)), ("ai_unsched_factor", json!(100)), ("ai_max_scheduled", json!(0)), ("ai_max_parked", json!(0)), ("use_real_time", json!(false)), ("use_real_date", json!(false)), ("use_real_year", json!(false)), ("collision_vehicles", json!(true)), ("collision_objects", json!(true)), ("collision_pedestrians", json!(true)), ("head_movement", json!(true)), ("driverview_smooth", json!(true)), ("hands_in_cab", json!(false)), ("alt_view", json!(true))] {
         v[k] = d;
     }
-    // openOMSI's own: what passengers say, OMSI's route arrows, getting up from the seat
+    // neoOMSI's own: what passengers say, OMSI's route arrows, getting up from the seat
     for (k, d) in [("pax_voices", json!("all")), ("nav_arrows", json!(false)), ("nav_ai", json!(true)), ("get_up", json!(false)), ("time_speed", json!("1")), ("time_sync", json!(false)), ("metar_sync", json!(false)), ("metar_station", json!("")), ("machine_translation", json!(false)), ("shadow_casters", json!("all")), ("shadow_blobs", json!(true)), ("reflections", json!(true)), ("mouse_sens", json!(1.0)), ("graphics_api", json!("auto")), ("ctrl_off", json!("")), ("steering_linear", json!(false)), ("old_steering", json!(false)), ("red_steer_spd", json!(false)), ("ff_invert", json!(false)), ("ff_enabled", json!(true)), ("brake_hold", json!(true)), ("auto_clutch", json!(true)), ("wheel_range", json!(900.0)), ("wheel_lock", json!(0.0)), ("fov", json!(0.0)), ("camera_collision", json!(true)), ("steer_look", json!(false)), ("pedal_throttle", json!(1.0)), ("pedal_brake", json!(1.0)), ("seat_x", json!(0.0)), ("seat_y", json!(0.0)), ("seat_z", json!(0.0)), ("head_tracking", json!(false)), ("led_glow", json!(6)), ("led_mips", json!(1.3)), ("ui_scale", json!(1.0)), ("ui_scale_window", json!(true)), ("notes", json!(true)), ("mouse_steering", json!(false)), ("mouse_right_off", json!(false)), ("blinker_cancel", json!(true))] {
         v[k] = d;
     }
@@ -1886,7 +1886,7 @@ fn graphics_profiles_path() -> PathBuf {
     data_dir().join("graphics_profiles.json")
 }
 
-/// The saved graphics profiles by name (`~/.openomsi/graphics_profiles.json`).
+/// The saved graphics profiles by name (`~/.neoomsi/graphics_profiles.json`).
 pub fn graphics_profiles() -> std::collections::BTreeMap<String, Value> {
     std::fs::read_to_string(graphics_profiles_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
@@ -1935,7 +1935,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
     let n = |k: &str, d: i64| v.get(k).and_then(|x| x.as_i64().or_else(|| x.as_f64().or_else(|| x.as_str().and_then(|s| s.trim().parse::<f64>().ok())).map(|f| f as i64))).unwrap_or(d);
     let f = |k: &str, d: f64| v.get(k).and_then(|x| x.as_f64()).unwrap_or(d);
     let text = format!(
-        "# openOMSI settings (written by the launcher)\nversion=2\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nfullscreen={}\nvsync={}\nvolume={}\ndrive_keys={}\nrender_scale={}\nview_distance={}\nlanguage={}\ntexture_memory={}\ntexture_compression={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\ndoppler={}\ndriver={}\nmax_fps={}\nmin_obj_size={}\nmax_obj_dist={}\n",
+        "# neoOMSI settings (written by the launcher)\nversion=2\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nfullscreen={}\nvsync={}\nvolume={}\ndrive_keys={}\nrender_scale={}\nview_distance={}\nlanguage={}\ntexture_memory={}\ntexture_compression={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\ndoppler={}\ndriver={}\nmax_fps={}\nmin_obj_size={}\nmax_obj_dist={}\n",
         n("msaa", 4),
         n("anisotropy", 8),
         b("ssao", true),
@@ -2402,7 +2402,7 @@ pub fn check_join(text: &str) -> Value {
 // ---------------------------------------------------------------------------------------
 // small services for the window
 
-/// A line into ~/.openomsi/launcher.log.
+/// A line into ~/.neoomsi/launcher.log.
 pub fn log_to_file(line: &str) {
     use std::io::Write;
     let p = data_dir().join("launcher.log");
@@ -2576,7 +2576,7 @@ mod tests {
 
     #[test]
     fn a_part_found_from_the_vehicle_folder_is_no_missing_pack() {
-        let root = std::env::temp_dir().join(format!("openomsi-packs-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("neoomsi-packs-{}", std::process::id()));
         let obj = root.join("Sceneryobjects/X");
         let cfgs = root.join("Vehicles/B/model/Configuration Files");
         std::fs::create_dir_all(&obj).unwrap();

@@ -14,7 +14,7 @@
 //!   plus the horn and indicator relay of `[sound]`) play where it stands;
 //! - the chat line (V to type, Enter to send) with join and leave notices.
 //!
-//! While a session runs the game keeps `~/.openomsi/lan/<instance>.json` up to date
+//! While a session runs the game keeps `~/.neoomsi/lan/<instance>.json` up to date
 //! (role, session code, address, players, warnings), which is where the launcher reads the
 //! code to show it with a copy button. `<instance>` is the id the launcher gives the game in
 //! `OMSI_INSTANCE`, else the process id.
@@ -596,7 +596,7 @@ pub struct Frame<'a> {
 
 pub(crate) fn data_dir() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".openomsi"))
+    Some(PathBuf::from(home).join(".neoomsi"))
 }
 
 /// The status file of this game process.
@@ -732,7 +732,7 @@ pub fn open_public_gateway(session: &LanSession, info: omsi_net::ws::ServerInfo,
         let mut posted: Option<(String, Instant)> = None;
         let mut checked = Instant::now();
         // the official server (`OMSI_OFFICIAL_KEY`: its signing key's file) says where it is
-        // reached every five minutes, for the players who type `openomsi`
+        // reached every five minutes, for the players who type `neoomsi`
         let official = omsi_cfg::env::var_os("OMSI_OFFICIAL_KEY").and_then(|p| std::fs::read(&p).map_err(|e| log::warn!("official key {}: {e}", std::path::Path::new(&p).display())).ok());
         let mut announced: Option<(String, Instant)> = None;
         loop {

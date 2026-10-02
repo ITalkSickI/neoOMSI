@@ -671,7 +671,7 @@ impl Model {
                     m.illumination = v;
                 }
             }
-            // (OMSI's four lamps, and openOMSI takes as many more as the lines that follow
+            // (OMSI's four lamps, and neoOMSI takes as many more as the lines that follow
             // give)
             "illumination_interior" => {
                 let v: Vec<i32> = r.i32_list(4);

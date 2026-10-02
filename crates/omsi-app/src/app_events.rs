@@ -2545,7 +2545,7 @@ impl ApplicationHandler for App {
                             .unwrap_or_default();
                         self.fps = self.frames as f32;
                         win.set_title(&format!(
-                            "openOMSI - {} fps{speed} - {:.0},{:.0},{:.0} yaw {:.0}",
+                            "neoOMSI - {} fps{speed} - {:.0},{:.0},{:.0} yaw {:.0}",
                             self.frames,
                             cam.position.x,
                             cam.position.y,

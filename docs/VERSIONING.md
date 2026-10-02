@@ -19,7 +19,7 @@ git commit -am "Version 1.2" && git push
 ```
 
 `scripts/version.sh` prints the version of the checked-out commit; the game shows it in the
-launcher's side bar, in its log and in `openomsi --version` (baked in by
+launcher's side bar, in its log and in `neoomsi --version` (baked in by
 `crates/omsi-app/build.rs`, which uses the same rule).
 
 ## Releases
@@ -31,7 +31,7 @@ Every push to `main` runs [`.github/workflows/release.yml`](../.github/workflows
    ARM64 and Android in parallel, and packs the dedicated server from the Linux and Windows
    builds;
 3. creates the release `v<version>` (tag on that commit) with the archives
-   `openOMSI-<version>-windows-x64.zip`, `-windows-arm64.zip`, `-macos-arm64.zip`,
+   `neoOMSI-<version>-windows-x64.zip`, `-windows-arm64.zip`, `-macos-arm64.zip`,
    `-macos-x64.zip`, `-linux-x64.zip`, `-linux-arm64.zip`, `-android-arm64.apk`,
    `-server-linux-x64.zip`, `-server-linux-arm64.zip`, `-server-windows-x64.zip`,
    `-server-windows-arm64.zip`, and release notes generated from the commits.
@@ -45,5 +45,5 @@ The version badge at the top of the README always shows the newest release.
 
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) publishes `site/` together with
 the Markdown files of `docs/` to GitHub Pages
-(https://openomsi-project.github.io/openOMSI/) whenever they change on `main`. The site renders
+(https://neoOMSI.github.io/neoOMSI/) whenever they change on `main`. The site renders
 the Markdown in the browser, so a documentation change is one edit in `docs/`.

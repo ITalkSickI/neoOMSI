@@ -1079,7 +1079,7 @@ impl Ui {
     fn menu_header(&mut self, r: &Renderer, scene: &mut Scene, x: f32, y: f32, w: f32, header_h: f32, title: &str, sub: &str, s: f32) -> f32 {
         let left = x + (PAD + TEXT_IN) * s;
         // (the game's name in the accent; the list names above are in capitals)
-        let (eyebrow, eyebrow_ink) = if sub.is_empty() { ("OPENOMSI".to_string(), txt(ACCENT)) } else { (sub.to_uppercase(), MUTED) };
+        let (eyebrow, eyebrow_ink) = if sub.is_empty() { ("neoomsi".to_string(), txt(ACCENT)) } else { (sub.to_uppercase(), MUTED) };
         let e = self.text.label(r, scene, &eyebrow, (12.0 * s) as u32, eyebrow_ink);
         let title = clip_to(&self.text, title, 24.0 * s, w - (PAD + TEXT_IN) * 2.0 * s - 80.0 * s);
         let t = self.text.label(r, scene, &title, (24.0 * s) as u32, WHITE);

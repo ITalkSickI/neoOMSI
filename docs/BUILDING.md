@@ -1,7 +1,7 @@
 # Building from source
 
-Releases for every commit are on the [Releases](https://github.com/openOMSI-Project/openOMSI/releases)
-page; build from source only to work on openOMSI itself.
+Releases for every commit are on the [Releases](https://github.com/neoOMSI/neoOMSI/releases)
+page; build from source only to work on neoOMSI itself.
 
 All scripts live in `scripts/`, run from any folder (paths with spaces are fine) and put the
 result into `dist/<platform>/`. That folder is also the game's **content folder** (mods go
@@ -26,33 +26,33 @@ there.
 
 | Platform | Command | Result |
 | --- | --- | --- |
-| macOS | `scripts/build-macos.sh` | `dist/macos/openOMSI.app` |
-| Windows | `scripts\build-windows.cmd` | `dist\windows\openomsi.exe`, `openomsi-launcher.exe` |
+| macOS | `scripts/build-macos.sh` | `dist/macos/neoOMSI.app` |
+| Windows | `scripts\build-windows.cmd` | `dist\windows\neoomsi.exe`, `neoomsi-launcher.exe` |
 | Windows, from a Mac | `scripts/build-windows-cross.sh` (needs `brew install mingw-w64`) | `dist/windows/` |
-| Linux | `scripts/build-linux.sh` | `dist/linux/openomsi`, `openomsi-launcher`, `.desktop` file |
-| Android | `scripts/build-android.sh` | `dist/android/openOMSI-<version>.apk` |
+| Linux | `scripts/build-linux.sh` | `dist/linux/neoomsi`, `neoomsi-launcher`, `.desktop` file |
+| Android | `scripts/build-android.sh` | `dist/android/neoOMSI-<version>.apk` |
 | Dedicated server | `scripts/build-server.sh [folder]` | `dist/server/` with `start.sh` |
 | 32-bit plugin host | `scripts/build-plugin-host.sh` | `dist/omsi-plugin-host32.exe` (see [PLUGINS.md](PLUGINS.md)) |
 
-Plain cargo works too: `cargo build --release -p omsi-app` builds `target/release/openomsi`.
+Plain cargo works too: `cargo build --release -p omsi-app` builds `target/release/neoomsi`.
 
 ## The programs
 
-* `openomsi` (`crates/omsi-app`) - the game. Started with no arguments it opens the launcher
+* `neoomsi` (`crates/omsi-app`) - the game. Started with no arguments it opens the launcher
   window; with arguments it starts a session directly (see [USER_GUIDE.md](USER_GUIDE.md));
   with `--server server.cfg` it is the dedicated server.
-* `openomsi-launcher` (`crates/omsi-launcher-core`) - the launcher's commands for a terminal
-  (`openomsi-launcher --cli maps`, `--cli install '{"path":"mod.zip"}'` …).
+* `neoomsi-launcher` (`crates/omsi-launcher-core`) - the launcher's commands for a terminal
+  (`neoomsi-launcher --cli maps`, `--cli install '{"path":"mod.zip"}'` …).
 * `omsi-check` (`tools/omsi-check`) - loads every content file of an installation and reports
   what failed: `cargo run --release -p omsi-check -- "/path/to/OMSI 2"`.
 
 ## Icons
 
 The application icon is made from the logos in `assets/logos`:
-`assets/icons/app/openomsi.svg` (Windows/Linux) and `openomsi-macos.svg` (macOS, with the
-standard margin). `openomsi.ico` is embedded into the Windows executables at build time
-(`build.rs`, `winresource`), `openomsi.icns` goes into the macOS bundle, and
-`openomsi-256.png` is the window icon on Windows and Linux. To regenerate them after changing
+`assets/icons/app/neoomsi.svg` (Windows/Linux) and `neoomsi-macos.svg` (macOS, with the
+standard margin). `neoomsi.ico` is embedded into the Windows executables at build time
+(`build.rs`, `winresource`), `neoomsi.icns` goes into the macOS bundle, and
+`neoomsi-256.png` is the window icon on Windows and Linux. To regenerate them after changing
 the SVGs (needs `cargo install resvg`):
 
 ```sh

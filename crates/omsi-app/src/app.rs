@@ -147,7 +147,7 @@ pub(crate) struct App {
     pub(crate) arrow_glance: bool,
     /// The next click on the city map puts the bus there (Esc → Move the bus on the map).
     pub(crate) teleport_pick: bool,
-    /// Discord's "Playing openOMSI" status, and when it was last brought up to date.
+    /// Discord's "Playing neoOMSI" status, and when it was last brought up to date.
     pub(crate) discord: Option<crate::discord::Discord>,
     pub(crate) discord_t: f32,
     /// Head tracking (Settings → head tracking), started with the first frame that wants it.
@@ -354,7 +354,7 @@ impl App {
             .unwrap_or((1600, 900));
         let (fit, at) = crate::startup::fit_window(event_loop, lw as f64, lh as f64);
         let mut attrs = Window::default_attributes()
-            .with_title("openOMSI")
+            .with_title("neoOMSI")
             .with_inner_size(fit)
             .with_window_icon(crate::startup::window_icon());
         if let Some(at) = at {
@@ -937,7 +937,7 @@ pub(crate) fn start_centers(args: &Args, cam: &Camera, world: Option<&World>) ->
 }
 
 /// What the map needs and this installation lacks, said on the screen and written to
-/// `~/.openomsi/missing_content.txt` by add-on folder: a map short of an add-on showed
+/// `~/.neoomsi/missing_content.txt` by add-on folder: a map short of an add-on showed
 /// holes, bare roads and white objects, and nobody could tell that from a fault of the game.
 pub(crate) fn report_missing_content(w: &World, msg: &mut Option<(String, f32)>) {
     let (files, textures) = w.missing_content();
@@ -950,7 +950,7 @@ pub(crate) fn report_missing_content(w: &World, msg: &mut Option<(String, f32)>)
     for (f, what) in &files {
         by_addon.entry(addon(f)).or_default().push(format!("{what}: {f}"));
     }
-    let mut text = format!("openOMSI: content this map uses that is not installed\nmap: {}\n\n", w.map_dir.display());
+    let mut text = format!("neoOMSI: content this map uses that is not installed\nmap: {}\n\n", w.map_dir.display());
     for (a, list) in &by_addon {
         text.push_str(&format!("{a} ({} files)\n", list.len()));
         for l in list {

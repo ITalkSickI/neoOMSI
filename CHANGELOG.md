@@ -2,181 +2,181 @@
 
 Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 [docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
-[Releases](https://github.com/openOMSI-Project/openOMSI/releases) page.
+[Releases](https://github.com/neoOMSI/neoOMSI/releases) page.
 
 ## 0.1.1098 - 2026-10-02
 
 ### Passengers
 - Riders complain about hard braking, fast bends and a jerky foot on the pedals (TooBad_A/B/C
-  of the ticket packs), as in OMSI; the third time they get off at the next stop. [#862](https://github.com/openOMSI-Project/openOMSI/issues/862) [#873](https://github.com/openOMSI-Project/openOMSI/issues/873)
-- After the bus was removed, the mouse wheel zooms on foot and the field of view holds. [#837](https://github.com/openOMSI-Project/openOMSI/issues/837)
+  of the ticket packs), as in OMSI; the third time they get off at the next stop. [#862](https://github.com/neoOMSI/neoOMSI/issues/862) [#873](https://github.com/neoOMSI/neoOMSI/issues/873)
+- After the bus was removed, the mouse wheel zooms on foot and the field of view holds. [#837](https://github.com/neoOMSI/neoOMSI/issues/837)
 
 ### LAN
 - A stop whose waiting people another player's bus took fills up again only once that bus has
-  left, instead of a passenger a frame: no more endless streams of riders. [#842](https://github.com/openOMSI-Project/openOMSI/issues/842) [#840](https://github.com/openOMSI-Project/openOMSI/issues/840) [#830](https://github.com/openOMSI-Project/openOMSI/issues/830)
+  left, instead of a passenger a frame: no more endless streams of riders. [#842](https://github.com/neoOMSI/neoOMSI/issues/842) [#840](https://github.com/neoOMSI/neoOMSI/issues/840) [#830](https://github.com/neoOMSI/neoOMSI/issues/830)
 - The chat line opens on the key left of 1 where '/' is the manual gearbox's gear down.
 
 ### Graphics
-- A compressed smooth dark texture keeps its colour, no longer grainy with green and blue. [#845](https://github.com/openOMSI-Project/openOMSI/issues/845)
+- A compressed smooth dark texture keeps its colour, no longer grainy with green and blue. [#845](https://github.com/neoOMSI/neoOMSI/issues/845)
 - A mesh with no matrix or the identity is drawn as wound, as Omsi.exe draws it, so houses
-  are no longer shown inside out. [#874](https://github.com/openOMSI-Project/openOMSI/issues/874)
-- The see-through part of a blended layer shows no reflection (stickers). [#861](https://github.com/openOMSI-Project/openOMSI/issues/861)
-- A map's WinterSnow textures show their own snow, with no white laid over them. [#879](https://github.com/openOMSI-Project/openOMSI/issues/879)
-- Falling snow covers the windscreen as rain does, and the wipers clear it. [#883](https://github.com/openOMSI-Project/openOMSI/issues/883)
-- In Enhanced the map's water is drawn as water: small waves, mirroring the sky. [#841](https://github.com/openOMSI-Project/openOMSI/issues/841)
-- Street lamps' light map lights the roads as it lights the ground beside them. [#847](https://github.com/openOMSI-Project/openOMSI/issues/847)
-- Road markings and zebra crossings lie on the road again instead of under it. [#871](https://github.com/openOMSI-Project/openOMSI/issues/871)
+  are no longer shown inside out. [#874](https://github.com/neoOMSI/neoOMSI/issues/874)
+- The see-through part of a blended layer shows no reflection (stickers). [#861](https://github.com/neoOMSI/neoOMSI/issues/861)
+- A map's WinterSnow textures show their own snow, with no white laid over them. [#879](https://github.com/neoOMSI/neoOMSI/issues/879)
+- Falling snow covers the windscreen as rain does, and the wipers clear it. [#883](https://github.com/neoOMSI/neoOMSI/issues/883)
+- In Enhanced the map's water is drawn as water: small waves, mirroring the sky. [#841](https://github.com/neoOMSI/neoOMSI/issues/841)
+- Street lamps' light map lights the roads as it lights the ground beside them. [#847](https://github.com/neoOMSI/neoOMSI/issues/847)
+- Road markings and zebra crossings lie on the road again instead of under it. [#871](https://github.com/neoOMSI/neoOMSI/issues/871)
 
 ### Maps
 - Objects beside a crossing stand on the ground the map gives them: the terrain is no longer
   pressed into a crossing's height mesh, which Omsi.exe uses for its paths only
-  (`OMSI_CROSSING_DEFORM=1` brings the old way back). [#860](https://github.com/openOMSI-Project/openOMSI/issues/860)
+  (`OMSI_CROSSING_DEFORM=1` brings the old way back). [#860](https://github.com/neoOMSI/neoOMSI/issues/860)
 
 ### Vehicles
 - `gear_up` shifts a gear lever past first gear (VW T3, Peugeot 106, Manta), and a force
-  feedback wheel that is not set up steers without a dead zone. [#866](https://github.com/openOMSI-Project/openOMSI/issues/866)
-- An automated manual gearbox (in-game driving settings, off by default). [#713](https://github.com/openOMSI-Project/openOMSI/issues/713)
+  feedback wheel that is not set up steers without a dead zone. [#866](https://github.com/neoOMSI/neoOMSI/issues/866)
+- An automated manual gearbox (in-game driving settings, off by default). [#713](https://github.com/neoOMSI/neoOMSI/issues/713)
 - `A_Trans_*` is taken over OMSI's thirtieth-of-a-second frames, so rattle scripts rattle on
-  rough roads at any frame rate. [#772](https://github.com/openOMSI-Project/openOMSI/issues/772) [#886](https://github.com/openOMSI-Project/openOMSI/issues/886)
-- The game menu swaps the driven vehicle for another in its place, or reloads it. [#728](https://github.com/openOMSI-Project/openOMSI/issues/728)
+  rough roads at any frame rate. [#772](https://github.com/neoOMSI/neoOMSI/issues/772) [#886](https://github.com/neoOMSI/neoOMSI/issues/886)
+- The game menu swaps the driven vehicle for another in its place, or reloads it. [#728](https://github.com/neoOMSI/neoOMSI/issues/728)
 
 ### Launcher, menu and input
-- "A right click ends the mouse steering" is back in the menu and the launcher. [#878](https://github.com/openOMSI-Project/openOMSI/issues/878)
-- "The launcher rests while a game runs" is a setting. [#834](https://github.com/openOMSI-Project/openOMSI/issues/834)
-- Mouse look sensitivity is a setting (100% = OMSI). [#859](https://github.com/openOMSI-Project/openOMSI/issues/859)
-- Parked cars can be left out altogether (Parked cars: None). [#864](https://github.com/openOMSI-Project/openOMSI/issues/864)
-- "Indicators cancel themselves" can be switched off. [#451](https://github.com/openOMSI-Project/openOMSI/issues/451)
-- The touch wheel turns as far as Wheel rotation and Full lock say. [#856](https://github.com/openOMSI-Project/openOMSI/issues/856)
-- An action can be given another key, and a mod's own trigger can be added to the list. [#854](https://github.com/openOMSI-Project/openOMSI/issues/854)
-- Any route number can be typed (Route number > Type a route number...). [#836](https://github.com/openOMSI-Project/openOMSI/issues/836)
-- A gamepad's right stick turns the driver's head. [#454](https://github.com/openOMSI-Project/openOMSI/issues/454)
-- Buses can be starred in the bus list ("Favourites only"). [#524](https://github.com/openOMSI-Project/openOMSI/issues/524)
-- On OpenGL a wait for the GPU no longer holds the GL context for seconds (a crash). [#843](https://github.com/openOMSI-Project/openOMSI/issues/843)
-- On a phone, a crash long after the shaders were compiled is no longer blamed on Vulkan. [#848](https://github.com/openOMSI-Project/openOMSI/issues/848)
+- "A right click ends the mouse steering" is back in the menu and the launcher. [#878](https://github.com/neoOMSI/neoOMSI/issues/878)
+- "The launcher rests while a game runs" is a setting. [#834](https://github.com/neoOMSI/neoOMSI/issues/834)
+- Mouse look sensitivity is a setting (100% = OMSI). [#859](https://github.com/neoOMSI/neoOMSI/issues/859)
+- Parked cars can be left out altogether (Parked cars: None). [#864](https://github.com/neoOMSI/neoOMSI/issues/864)
+- "Indicators cancel themselves" can be switched off. [#451](https://github.com/neoOMSI/neoOMSI/issues/451)
+- The touch wheel turns as far as Wheel rotation and Full lock say. [#856](https://github.com/neoOMSI/neoOMSI/issues/856)
+- An action can be given another key, and a mod's own trigger can be added to the list. [#854](https://github.com/neoOMSI/neoOMSI/issues/854)
+- Any route number can be typed (Route number > Type a route number...). [#836](https://github.com/neoOMSI/neoOMSI/issues/836)
+- A gamepad's right stick turns the driver's head. [#454](https://github.com/neoOMSI/neoOMSI/issues/454)
+- Buses can be starred in the bus list ("Favourites only"). [#524](https://github.com/neoOMSI/neoOMSI/issues/524)
+- On OpenGL a wait for the GPU no longer holds the GL context for seconds (a crash). [#843](https://github.com/neoOMSI/neoOMSI/issues/843)
+- On a phone, a crash long after the shaders were compiled is no longer blamed on Vulkan. [#848](https://github.com/neoOMSI/neoOMSI/issues/848)
 
 ### Merged pull requests
-- [#892](https://github.com/openOMSI-Project/openOMSI/pull/892) fractional `achse_antrieb` drives the axle, [#888](https://github.com/openOMSI-Project/openOMSI/pull/888) free camera fly keys,
-  [#885](https://github.com/openOMSI-Project/openOMSI/pull/885) manual gearbox detection for touch controls, [#891](https://github.com/openOMSI-Project/openOMSI/pull/891) staged ignition start-up,
-  [#881](https://github.com/openOMSI-Project/openOMSI/pull/881) Portuguese, [#839](https://github.com/openOMSI-Project/openOMSI/pull/839) mobile launcher options, [#789](https://github.com/openOMSI-Project/openOMSI/pull/789) custom weather editor,
-  [#792](https://github.com/openOMSI-Project/openOMSI/pull/792) real-time reflections setting for the mirrors, [#910](https://github.com/openOMSI-Project/openOMSI/pull/910) mirror budget counted once.
+- [#892](https://github.com/neoOMSI/neoOMSI/pull/892) fractional `achse_antrieb` drives the axle, [#888](https://github.com/neoOMSI/neoOMSI/pull/888) free camera fly keys,
+  [#885](https://github.com/neoOMSI/neoOMSI/pull/885) manual gearbox detection for touch controls, [#891](https://github.com/neoOMSI/neoOMSI/pull/891) staged ignition start-up,
+  [#881](https://github.com/neoOMSI/neoOMSI/pull/881) Portuguese, [#839](https://github.com/neoOMSI/neoOMSI/pull/839) mobile launcher options, [#789](https://github.com/neoOMSI/neoOMSI/pull/789) custom weather editor,
+  [#792](https://github.com/neoOMSI/neoOMSI/pull/792) real-time reflections setting for the mirrors, [#910](https://github.com/neoOMSI/neoOMSI/pull/910) mirror budget counted once.
 
 ## 0.1.1028 - 2026-10-02
 
 ### Passengers
 - People getting off who wait at a shut exit keep to its point; they are no longer lifted up
-  inside the bus and stacked there, blocking everyone behind them. [#709](https://github.com/openOMSI-Project/openOMSI/issues/709)
-- Getting off, passengers head for the nearest open exit, not a shut door, as in OMSI. [#493](https://github.com/openOMSI-Project/openOMSI/issues/493)
+  inside the bus and stacked there, blocking everyone behind them. [#709](https://github.com/neoOMSI/neoOMSI/issues/709)
+- Getting off, passengers head for the nearest open exit, not a shut door, as in OMSI. [#493](https://github.com/neoOMSI/neoOMSI/issues/493)
 - `GetHumanCountOnSeat` numbers the seats with the driver's place, as OMSI does (seats were one
   off for scripts).
 - The driver no longer stands in a T-pose in the aisle before he is first seated.
 
 ### LAN
-- Passengers handed over to a client's bus ride to a stop instead of getting off at once. [#813](https://github.com/openOMSI-Project/openOMSI/issues/813)
-- The chat keys are in the key list (Controls) and can be moved off a key the bus needs. [#130](https://github.com/openOMSI-Project/openOMSI/issues/130)
+- Passengers handed over to a client's bus ride to a stop instead of getting off at once. [#813](https://github.com/neoOMSI/neoOMSI/issues/813)
+- The chat keys are in the key list (Controls) and can be moved off a key the bus needs. [#130](https://github.com/neoOMSI/neoOMSI/issues/130)
 
 ### Traffic and maps
 - A junction runs its traffic lights for a lamp without `[trafficlight]`, as Omsi.exe does, so
-  mod traffic lights work again and AI cars stop at them. [#822](https://github.com/openOMSI-Project/openOMSI/issues/822) [#818](https://github.com/openOMSI-Project/openOMSI/issues/818)
-- Timetable AI buses pass a stop where nobody gets off or waits, as in OMSI. [#703](https://github.com/openOMSI-Project/openOMSI/issues/703)
-- An object with traffic paths keeps the height the map gives it (mod road pieces). [#828](https://github.com/openOMSI-Project/openOMSI/issues/828)
-- A car standing behind a vehicle that waits to move over lets it in (a deadlock). [#414](https://github.com/openOMSI-Project/openOMSI/issues/414)
+  mod traffic lights work again and AI cars stop at them. [#822](https://github.com/neoOMSI/neoOMSI/issues/822) [#818](https://github.com/neoOMSI/neoOMSI/issues/818)
+- Timetable AI buses pass a stop where nobody gets off or waits, as in OMSI. [#703](https://github.com/neoOMSI/neoOMSI/issues/703)
+- An object with traffic paths keeps the height the map gives it (mod road pieces). [#828](https://github.com/neoOMSI/neoOMSI/issues/828)
+- A car standing behind a vehicle that waits to move over lets it in (a deadlock). [#414](https://github.com/neoOMSI/neoOMSI/issues/414)
 - A `[terrainhole]` cuts the ground along the cutter's rim, so no grass stands over the edges of
-  a junction's carriageway. [#823](https://github.com/openOMSI-Project/openOMSI/issues/823) [#672](https://github.com/openOMSI-Project/openOMSI/issues/672)
+  a junction's carriageway. [#823](https://github.com/neoOMSI/neoOMSI/issues/823) [#672](https://github.com/neoOMSI/neoOMSI/issues/672)
 
 ### Graphics
 - A bus's outer skin below the roof is lit as outside, not as cab: no seam round the body and
-  its reflections are back in Enhanced. [#805](https://github.com/openOMSI-Project/openOMSI/issues/805)
+  its reflections are back in Enhanced. [#805](https://github.com/neoOMSI/neoOMSI/issues/805)
 - `Envir_Brightness` is the night light plus the street lamps' light on the vehicle, so bus glass
-  no longer turns clear at night. [#624](https://github.com/openOMSI-Project/openOMSI/issues/624)
+  no longer turns clear at night. [#624](https://github.com/neoOMSI/neoOMSI/issues/624)
 - Signal lenses follow their `[alphascale]` and `[matl_lightmap]` variables, and scenery objects
-  get their light maps. [#826](https://github.com/openOMSI-Project/openOMSI/issues/826)
+  get their light maps. [#826](https://github.com/neoOMSI/neoOMSI/issues/826)
 
 ### Vehicles
-- The rear section of an articulated bus finds a viaduct's deck again after a gap. [#135](https://github.com/openOMSI-Project/openOMSI/issues/135)
-- A rear section turns about its own `[rot_pnt_long]` line, so steered rear axles work. [#322](https://github.com/openOMSI-Project/openOMSI/issues/322)
+- The rear section of an articulated bus finds a viaduct's deck again after a gap. [#135](https://github.com/neoOMSI/neoOMSI/issues/135)
+- A rear section turns about its own `[rot_pnt_long]` line, so steered rear axles work. [#322](https://github.com/neoOMSI/neoOMSI/issues/322)
 - `A_Trans_X/Y/Z` are the body's acceleration without gravity, as in Omsi.exe (`A_Trans_Z` read
   9.81 standing, so air suspension scripts never re-levelled).
 
 ### Launcher, menu and input
-- The launcher brought forward while a game runs is drawn and answers again. [#825](https://github.com/openOMSI-Project/openOMSI/issues/825)
-- A long tour no longer makes the Timetable page lose its sidebar. [#666](https://github.com/openOMSI-Project/openOMSI/issues/666)
-- Save slots: the game menu saves to a new slot, and the launcher continues from any. [#341](https://github.com/openOMSI-Project/openOMSI/issues/341)
-- A bus deleted from `Mods/installed` is uninstalled (its folder kept in `Mods/uninstalled`). [#819](https://github.com/openOMSI-Project/openOMSI/issues/819)
-- The exit key of keyboard.cfg (Ctrl+Q) ends the game. [#817](https://github.com/openOMSI-Project/openOMSI/issues/817)
-- Mouse steering goes on in the map camera (F4), as in OMSI. [#516](https://github.com/openOMSI-Project/openOMSI/issues/516)
-- The paper timetable's rows are as high as GDI makes them and stay on the paper's lines. [#629](https://github.com/openOMSI-Project/openOMSI/issues/629)
-- On Linux the new launcher is started after an update, not the old one. [#811](https://github.com/openOMSI-Project/openOMSI/issues/811)
+- The launcher brought forward while a game runs is drawn and answers again. [#825](https://github.com/neoOMSI/neoOMSI/issues/825)
+- A long tour no longer makes the Timetable page lose its sidebar. [#666](https://github.com/neoOMSI/neoOMSI/issues/666)
+- Save slots: the game menu saves to a new slot, and the launcher continues from any. [#341](https://github.com/neoOMSI/neoOMSI/issues/341)
+- A bus deleted from `Mods/installed` is uninstalled (its folder kept in `Mods/uninstalled`). [#819](https://github.com/neoOMSI/neoOMSI/issues/819)
+- The exit key of keyboard.cfg (Ctrl+Q) ends the game. [#817](https://github.com/neoOMSI/neoOMSI/issues/817)
+- Mouse steering goes on in the map camera (F4), as in OMSI. [#516](https://github.com/neoOMSI/neoOMSI/issues/516)
+- The paper timetable's rows are as high as GDI makes them and stay on the paper's lines. [#629](https://github.com/neoOMSI/neoOMSI/issues/629)
+- On Linux the new launcher is started after an update, not the old one. [#811](https://github.com/neoOMSI/neoOMSI/issues/811)
 
 ## 0.1.960 - 2026-10-02
 
 ### Passengers
 - A stop is no longer a destination of itself or of a stop of the same name, so riders on
-  circular lines no longer board and get straight off again. [#795](https://github.com/openOMSI-Project/openOMSI/issues/795)
+  circular lines no longer board and get straight off again. [#795](https://github.com/neoOMSI/neoOMSI/issues/795)
 - Riders know their stop by its timetable name as well as by its map label, so they get off
-  at intermediate stops where the two names differ, not only at the terminus. [#773](https://github.com/openOMSI-Project/openOMSI/issues/773) [#748](https://github.com/openOMSI-Project/openOMSI/issues/748) [#736](https://github.com/openOMSI-Project/openOMSI/issues/736)
+  at intermediate stops where the two names differ, not only at the terminus. [#773](https://github.com/neoOMSI/neoOMSI/issues/773) [#748](https://github.com/neoOMSI/neoOMSI/issues/748) [#736](https://github.com/neoOMSI/neoOMSI/issues/736)
 
 ### Traffic and maps
 - Cars drive into the end of a road at speed and are taken off there, as in OMSI, instead of
-  stopping before it one by one; released AI buses no longer queue at the map's end. [#765](https://github.com/openOMSI-Project/openOMSI/issues/765) [#598](https://github.com/openOMSI-Project/openOMSI/issues/598)
-- The player's bus holds up only traffic on its own level, not cars on a bridge above it. [#753](https://github.com/openOMSI-Project/openOMSI/issues/753)
+  stopping before it one by one; released AI buses no longer queue at the map's end. [#765](https://github.com/neoOMSI/neoOMSI/issues/765) [#598](https://github.com/neoOMSI/neoOMSI/issues/598)
+- The player's bus holds up only traffic on its own level, not cars on a bridge above it. [#753](https://github.com/neoOMSI/neoOMSI/issues/753)
 - A depot file's stop list belongs to the trip written before it, as Omsi.exe reads it; a trip
-  without a list no longer gives every later route another trip's stops in the IBIS. [#667](https://github.com/openOMSI-Project/openOMSI/issues/667)
-- On a Chinese, Japanese or Korean Windows, Russian HOF and map text keeps its stop names. [#785](https://github.com/openOMSI-Project/openOMSI/issues/785)
+  without a list no longer gives every later route another trip's stops in the IBIS. [#667](https://github.com/neoOMSI/neoOMSI/issues/667)
+- On a Chinese, Japanese or Korean Windows, Russian HOF and map text keeps its stop names. [#785](https://github.com/neoOMSI/neoOMSI/issues/785)
 - A continued situation resumes at the trip of the tour it was saved on, with the rest of the
-  tour, and is saved again with that trip. [#653](https://github.com/openOMSI-Project/openOMSI/issues/653)
+  tour, and is saved again with that trip. [#653](https://github.com/neoOMSI/neoOMSI/issues/653)
 
 ### Vehicles and input
 - Door hit sounds with a `doorSpeed` volume curve are heard: a triggered sound reads its
-  volume curves as they stand when the trigger fires (player's and AI buses). [#676](https://github.com/openOMSI-Project/openOMSI/issues/676)
-- A switch let go with the right button held stays where it is. [#769](https://github.com/openOMSI-Project/openOMSI/issues/769)
-- On foot, the switches of an articulated bus's rear section are in reach by that section. [#715](https://github.com/openOMSI-Project/openOMSI/issues/715)
-- A key bound in both [game] and [vehicles] works the vehicle too. [#745](https://github.com/openOMSI-Project/openOMSI/issues/745)
-- The brake stays on when the mouse steering is switched off. [#517](https://github.com/openOMSI-Project/openOMSI/issues/517) [#760](https://github.com/openOMSI-Project/openOMSI/issues/760)
-- The built-in view keys step aside for keys the player bound themselves. [#701](https://github.com/openOMSI-Project/openOMSI/issues/701)
-- The city map (Shift+M) and the navigator (Shift+N) open on foot. [#705](https://github.com/openOMSI-Project/openOMSI/issues/705)
-- The ticket desk camera keeps where it was turned (Home recentres only when unbound). [#733](https://github.com/openOMSI-Project/openOMSI/issues/733)
-- Head tracking stays on when its UDP port is taken by opentrack. [#775](https://github.com/openOMSI-Project/openOMSI/issues/775)
+  volume curves as they stand when the trigger fires (player's and AI buses). [#676](https://github.com/neoOMSI/neoOMSI/issues/676)
+- A switch let go with the right button held stays where it is. [#769](https://github.com/neoOMSI/neoOMSI/issues/769)
+- On foot, the switches of an articulated bus's rear section are in reach by that section. [#715](https://github.com/neoOMSI/neoOMSI/issues/715)
+- A key bound in both [game] and [vehicles] works the vehicle too. [#745](https://github.com/neoOMSI/neoOMSI/issues/745)
+- The brake stays on when the mouse steering is switched off. [#517](https://github.com/neoOMSI/neoOMSI/issues/517) [#760](https://github.com/neoOMSI/neoOMSI/issues/760)
+- The built-in view keys step aside for keys the player bound themselves. [#701](https://github.com/neoOMSI/neoOMSI/issues/701)
+- The city map (Shift+M) and the navigator (Shift+N) open on foot. [#705](https://github.com/neoOMSI/neoOMSI/issues/705)
+- The ticket desk camera keeps where it was turned (Home recentres only when unbound). [#733](https://github.com/neoOMSI/neoOMSI/issues/733)
+- Head tracking stays on when its UDP port is taken by opentrack. [#775](https://github.com/neoOMSI/neoOMSI/issues/775)
 
 ### Launcher
 - Dropdown lists scroll by dragging their bar, and sliding an open list no longer scrolls the
-  page behind it. [#794](https://github.com/openOMSI-Project/openOMSI/issues/794) [#774](https://github.com/openOMSI-Project/openOMSI/issues/774)
-- Typing into an open dropdown filters it (entry points, buses, fleet numbers). [#747](https://github.com/openOMSI-Project/openOMSI/issues/747)
-- The game's and the launcher's windows fit the screen and open in its middle. [#771](https://github.com/openOMSI-Project/openOMSI/issues/771)
+  page behind it. [#794](https://github.com/neoOMSI/neoOMSI/issues/794) [#774](https://github.com/neoOMSI/neoOMSI/issues/774)
+- Typing into an open dropdown filters it (entry points, buses, fleet numbers). [#747](https://github.com/neoOMSI/neoOMSI/issues/747)
+- The game's and the launcher's windows fit the screen and open in its middle. [#771](https://github.com/neoOMSI/neoOMSI/issues/771)
 
 ### Graphics
-- No rain inside the rear section of articulated buses. [#777](https://github.com/openOMSI-Project/openOMSI/issues/777)
-- Clouds no longer vanish when a sky texture cannot be read; 24-bit bitfield BMPs load. [#749](https://github.com/openOMSI-Project/openOMSI/issues/749)
-- The VR headset shows the Enhanced graphics. [#784](https://github.com/openOMSI-Project/openOMSI/issues/784)
+- No rain inside the rear section of articulated buses. [#777](https://github.com/neoOMSI/neoOMSI/issues/777)
+- Clouds no longer vanish when a sky texture cannot be read; 24-bit bitfield BMPs load. [#749](https://github.com/neoOMSI/neoOMSI/issues/749)
+- The VR headset shows the Enhanced graphics. [#784](https://github.com/neoOMSI/neoOMSI/issues/784)
 - Fleet numbers and plates no longer glow in the dark; only text with a light or night map
-  does. [#698](https://github.com/openOMSI-Project/openOMSI/issues/698)
-- The loading screen remakes a Vulkan swapchain that no longer fits instead of freezing. [#776](https://github.com/openOMSI-Project/openOMSI/issues/776)
+  does. [#698](https://github.com/neoOMSI/neoOMSI/issues/698)
+- The loading screen remakes a Vulkan swapchain that no longer fits instead of freezing. [#776](https://github.com/neoOMSI/neoOMSI/issues/776)
 
 ## 0.1.929 - 2026-10-02
 
 ### VR
 - VR navigator settings are restored in the new pause menu
-  [#808](https://github.com/openOMSI-Project/openOMSI/pull/808)
+  [#808](https://github.com/neoOMSI/neoOMSI/pull/808)
 
 ## 0.1.927 - 2026-10-02
 
 ### Menu
 - A new in-game menu is implemented, together with real-time and METAR synchronisation.
-  [#679](https://github.com/openOMSI-Project/openOMSI/pull/679)
+  [#679](https://github.com/neoOMSI/neoOMSI/pull/679)
 
 ### Maps
 - Far stand-in models are drawn only from the tiles OMSI loads together with them, so
   stand-ins no longer appear for tiles that are not part of the loaded set.
-  [#743](https://github.com/openOMSI-Project/openOMSI/pull/743)
+  [#743](https://github.com/neoOMSI/neoOMSI/pull/743)
 - Scenery sign text is aligned correctly again.
-  [#764](https://github.com/openOMSI-Project/openOMSI/pull/764)
+  [#764](https://github.com/neoOMSI/neoOMSI/pull/764)
 
 ### Input
 - Steering wheel hats are read on Linux, and the list scrolls to the pressed button.
-  [#788](https://github.com/openOMSI-Project/openOMSI/pull/788)
+  [#788](https://github.com/neoOMSI/neoOMSI/pull/788)
 
 ### Physics
 - Wheels no longer jolt when driving over stacked road surfaces.
-  [#757](https://github.com/openOMSI-Project/openOMSI/pull/757)
+  [#757](https://github.com/neoOMSI/neoOMSI/pull/757)
 
 ## 0.1.851 - 2026-10-02
 
@@ -304,7 +304,7 @@ Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
 
 ### Project
 - Repository, updater, website, documentation and release links now use the project's new
-  `openOMSI-Project/openOMSI` home after the repository moved to the openOMSI-Project
+  `neoOMSI/neoOMSI` home after the repository moved to the neoOMSI
   organization.
 
 ## 0.1.782 - 2026-10-01
@@ -674,7 +674,7 @@ Pull requests from the community: #455, #560, #563, #566, #570, #580, #583, #585
 - PBR maps (`_nn`, `_rr`, `_ao`, ...) work on map textures: roads, splines and scenery
   objects were drawn flat - only the textures loaded on the spot got their maps, not the
   ones a tile's preparation brought, which are nearly all of a map's. Maps put into the
-  same folder in the openOMSI content folder, beside a texture of the OMSI install, are
+  same folder in the neoOMSI content folder, beside a texture of the OMSI install, are
   found too.
 
 ## 0.1.481 - 2026-10-01
@@ -709,7 +709,7 @@ Pull requests from the community: #455, #560, #563, #566, #570, #580, #583, #585
 
 ### Windows
 - The game and the dedicated server start on a PC without the Visual C++ Redistributable:
-  its runtime DLLs ship beside `openomsi.exe` ("The code execution cannot proceed because
+  its runtime DLLs ship beside `neoomsi.exe` ("The code execution cannot proceed because
   VCRUNTIME140_1.dll was not found").
 
 ## 0.1.471 - 2026-10-01
@@ -1422,7 +1422,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - Server admins: set any installed weather, switch the cycle on and off, clear jammed traffic.
 
 ### Multiplayer
-- The official server: type `openomsi` to join "openOMSI | Official Server"; it is first in
+- The official server: type `neoomsi` to join "neoOMSI | Official Server"; it is first in
   the server list.
 - Any server address works: an IP, a host name, host:port or a link.
 - Parked cars are the same for everybody: a car that drove off at the host is gone for the
@@ -1444,7 +1444,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - Esc → More → *Set the clock...*: the clock one, five, fifteen or sixty minutes on or back,
   and on a duty *On time with the timetable* (early or late by six minutes: the clock is
   put where the bus is on time).
-- Discord shows "Playing openOMSI" with the bus, the map and the line (Rich Presence, over
+- Discord shows "Playing neoOMSI" with the bus, the map and the line (Rich Presence, over
   Discord's local connection; `discord_app_id` in the settings, `discord_status=0` turns it
   off).
 - AI traffic no longer stands for minutes on a free road: a car crawling in a jam of its own
@@ -1491,7 +1491,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - Snow is matte: it no longer takes the rain's gloss and shines like plastic in the lights.
 - Modding: a mesh can be lit by up to 63 interior lamps (the extra numbers on the lines
   after the four of `[illumination_interior]`; OMSI 2 reads the first four), PBR maps up to
-  4096 px, and 32 lights per 25 m of the world instead of 16. What openOMSI allows beyond
+  4096 px, and 32 lights per 25 m of the world instead of 16. What neoOMSI allows beyond
   OMSI 2 is written down in docs/MODDING.md and on the site.
 - Door keys: Shift+1, Shift+2 ... are the bus's doors front to back, found from the model
   (where each door leaf sits along the bus and which leaves each door trigger moves). The
@@ -1509,7 +1509,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
   nothing under it at all. A teleport to a place with a height lands on that level.
 - A map that uses objects or splines that are not installed says so when it loads (how
   many, and the add-on folders they come from), and every missing object, spline and
-  texture is listed by add-on in `~/.openomsi/missing_content.txt` (written again when the
+  texture is listed by add-on in `~/.neoomsi/missing_content.txt` (written again when the
   game ends, with the tiles loaded on the way). Holes, bare roads and white objects of such a
   map are a missing download, not a fault of the game - now one can tell.
 - The game's log records the whole session: the system (OS, processor, memory), the command
@@ -1555,7 +1555,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
   quality presets are under Performance.
 - The bus radio also plays the stations of OMSI's radio plugins (SuperRadio's `.opl` and
   its lists under `plugins`): every stream address found there is a station, after the
-  ones of `~/.openomsi/radio.cfg`.
+  ones of `~/.neoomsi/radio.cfg`.
 - Controls → Game controllers: a button pressed on the wheel lights its line in the list for
   a few seconds, and the status line says which button it is and what it does - press it and
   give it an action right there.
@@ -1742,7 +1742,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - With a steering wheel the arrow keys look around again, as in OMSI (a G29's buttons set to
   the arrow keys turned the view there; here they steered).
 - Mirrors can be turned: Ctrl+Alt+arrows in the cab turn the mirror you look at, kept per bus
-  in `~/.openomsi/mirrors.cfg`.
+  in `~/.neoomsi/mirrors.cfg`.
 
 ### Passengers
 - The aXYZ man in the grey jacket no longer looks as if his neck were broken: a head turns
@@ -1836,7 +1836,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - The host answers joining players while it loads its world, and a joining game stays in
   the session while its own map loads.
 - A joining game with everything the host uses installed no longer needs 3 GB of free disk.
-- Mods installed into openOMSI's content folder inside the OMSI 2 folder are passed on to
+- Mods installed into neoOMSI's content folder inside the OMSI 2 folder are passed on to
   joining players (they were taken for OMSI's own files).
 - A player's info (bus, destination, display texts) always fits one datagram: long paths and
   texts made it too big to arrive, and the others never saw which bus the player drove.
@@ -1902,8 +1902,8 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - Phones: the launcher is drawn at least at the system's text size, the settings stand in one
   column, a finger on a list at its end scrolls the page on, page titles no longer run under
   the tabs.
-- The OMSI 2 folder is found when openOMSI was unpacked into it (openOMSI keeps its own content
-  in an `openOMSI` folder there), when the path is pasted with quotes, or when `Omsi.exe` or a
+- The OMSI 2 folder is found when neoOMSI was unpacked into it (neoOMSI keeps its own content
+  in an `neoOMSI` folder there), when the path is pasted with quotes, or when `Omsi.exe` or a
   folder inside the game is chosen; a folder that is not a complete OMSI 2 is reported with
   what it lacks.
 - Timetable: changes stay while you move between lines and are saved together (*Save all*);
@@ -1982,7 +1982,7 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 
 ### Fixes
 - Android: vibration of the on-screen buttons works (the calls never reached the app).
-- Android: `openOMSI/env.txt` takes the `OMSI_*` switches a computer takes from its
+- Android: `neoOMSI/env.txt` takes the `OMSI_*` switches a computer takes from its
   environment (for looking into problems).
 
 ## 0.1.6 - 2026-09-27
@@ -2010,6 +2010,6 @@ Everything since 0.1.146. Where OMSI 2 has the behaviour, it was taken from Omsi
 - Website and repository improvements and fixes.
 
 ## 0.1.0 - 2026-09-27
-- First public release as openOMSI: a from-scratch recreation of OMSI 2 in Rust that runs
+- First public release as neoOMSI: a from-scratch recreation of OMSI 2 in Rust that runs
   every map and mod (an original OMSI 2 is needed). Builds for Windows, macOS and Linux and
   a dedicated server, released automatically on every push.

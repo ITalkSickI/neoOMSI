@@ -51,11 +51,11 @@ pub(crate) struct ServerCfg {
 }
 
 pub(crate) const DEFAULT_CFG: &str = "\
-# openOMSI dedicated server
+# neoOMSI dedicated server
 # (key = value; lines starting with # are comments)
 
 # shown in the players' server list and when they join
-name = openOMSI server
+name = neoOMSI server
 motd = Welcome! Drive safely.
 
 # the map (relative to the OMSI 2 folder), the start date (YYYY-MM-DD, empty: today),
@@ -132,7 +132,7 @@ impl ServerCfg {
         let dir = path.parent().unwrap_or(Path::new("."));
         let icon = std::fs::read(dir.join("server-icon.png")).ok().filter(|b| b.starts_with(b"\x89PNG") && b.len() < 256 * 1024).unwrap_or_default();
         Ok(ServerCfg {
-            name: get("name", "openOMSI server"),
+            name: get("name", "neoOMSI server"),
             motd: get("motd", ""),
             map: get("map", "maps/Berlin-Spandau/global.cfg"),
             date: kv.get("date").cloned().filter(|v| !v.is_empty()),

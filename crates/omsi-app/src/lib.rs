@@ -162,7 +162,7 @@ pub fn run() -> Result<()> {
         default_hook(info);
     }));
     log::info!(
-        "openOMSI {VERSION}, build {BUILD}{}",
+        "neoOMSI {VERSION}, build {BUILD}{}",
         if std::env::var_os("MallocLargeCache").is_some() {
             " (large allocations returned at once)"
         } else {
@@ -251,13 +251,13 @@ pub(crate) fn prepare(mut args: Args, bare: bool) -> Result<Option<(Args, Option
                 log::warn!("the original OMSI 2 was not found; the launcher asks for it");
             }
             None => {
-                // openOMSI plays on the original game's content: without a complete
+                // neoOMSI plays on the original game's content: without a complete
                 // installation of it there is nothing to play on, and every player must have
                 // the same base whatever copy of OMSI 2 they own
                 let missing = omsi_cfg::missing_original_essentials(&args.root);
                 let text = format!(
                     "The original OMSI 2 was not found.\n\n\
-                     openOMSI needs a complete installation of the original game (any version). \
+                     neoOMSI needs a complete installation of the original game (any version). \
                      Choose its folder in the launcher (Setup), or start once with \
                      --root \"/path/to/OMSI 2\", the folder with Omsi.exe, maps and Vehicles in it.\n\n\
                      Missing in {}: {}",
@@ -267,7 +267,7 @@ pub(crate) fn prepare(mut args: Args, bare: bool) -> Result<Option<(Args, Option
                 if server_cfg.is_some() {
                     eprintln!("{text}");
                 } else {
-                    fatal_dialog("openOMSI cannot start", &text);
+                    fatal_dialog("neoOMSI cannot start", &text);
                 }
                 if cfg!(target_os = "android") {
                     // (a phone's app is not ended from inside: back to the launcher)
@@ -314,7 +314,7 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         args.situation = Some(tutorial::SITUATIONS[n - 1].to_string());
     }
     apply_situation(&mut args)?;
-    // `openomsi`: the official server, wherever its tunnel is today (see omsi_net::official)
+    // `neoomsi`: the official server, wherever its tunnel is today (see omsi_net::official)
     if let Some(t) = args.lan_join.clone().filter(|t| omsi_net::official::is_alias(t)) {
         match omsi_net::official::resolve_target(&t) {
             Ok(url) => {
