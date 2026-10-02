@@ -1,21 +1,22 @@
-# Builds neoOMSI for Windows and Linux (x64, ARM64), macOS (Apple silicon, Intel) and Android
-# (plus the dedicated server for Linux and Windows) on every push to
-# main and publishes them as the release v<MAJOR.MINOR.COMMIT>; see docs/VERSIONING.md.
-# Pull requests run the same builds without publishing.
 name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, nightly]
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_name == 'nightly' }}
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
 
 jobs:
   version:
@@ -30,6 +31,20 @@ jobs:
         run: echo "version=$(sh scripts/version.sh)" >> "$GITHUB_OUTPUT"
       - run: echo "### neoOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
 
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - name: Texture lookup regression tests
+        run: cargo test --locked -p omsi-texture --lib
+      - name: Scripted traffic lamp regression test
+        run: cargo test --locked -p omsi-app --lib scripted_lamp_channels_override_stock_phases_and_switch_led_materials
+
   windows:
     needs: version
     runs-on: windows-latest
@@ -39,7 +54,6 @@ jobs:
         include:
           - target: x86_64-pc-windows-msvc
             arch: x64
-          # ARM64 (Snapdragon laptops): built on the x64 runner with its ARM64 tools
           - target: aarch64-pc-windows-msvc
             arch: arm64
     env:
@@ -52,18 +66,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - name: Texture lookup regression tests
-        if: matrix.arch == 'x64'
-        run: cargo test --locked -p omsi-texture --lib
-      - name: Scripted traffic lamp regression test
-        if: matrix.arch == 'x64'
-        run: cargo test --locked -p omsi-app --lib scripted_lamp_channels_override_stock_phases_and_switch_led_materials
+          save-if: ${{ github.event_name != 'pull_request' }}
       - name: Build
         shell: cmd
         run: scripts\build-windows.cmd ${{ matrix.target }}
-      # Microsoft's shader compiler for DirectX 12 (dxcompiler.dll, dxil.dll beside the
-      # program): without it wgpu falls back to the old FXC, which is slow and refuses
-      # some of the game's shaders. DirectX 12 is the way round a Vulkan driver that fails.
       - name: DirectX shader compiler
         continue-on-error: true
         shell: pwsh
@@ -75,11 +81,6 @@ jobs:
           Expand-Archive $zip.FullName -DestinationPath dxc/x
           $arch = if ("${{ matrix.arch }}" -eq "arm64") { "arm64" } else { "x64" }
           Copy-Item "dxc/x/bin/$arch/dxcompiler.dll", "dxc/x/bin/$arch/dxil.dll" dist/windows/
-          Get-ChildItem dist/windows
-      # The Visual C++ runtime beside the program (Microsoft allows it to be shipped
-      # app-locally): without it a PC lacking the Redistributable refused to start the game
-      # ("VCRUNTIME140_1.dll was not found"). It cannot be linked in instead - the OpenXR
-      # loader is built against the DLL runtime.
       - name: Visual C++ runtime
         shell: pwsh
         run: |
@@ -89,25 +90,28 @@ jobs:
           foreach ($dll in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
             Copy-Item (Join-Path $dir $dll) dist/windows/
           }
-          Get-ChildItem dist/windows
       - name: Package
         shell: pwsh
         run: |
-          $name = "neoOMSI-$env:neoomsi_VERSION-windows-${{ matrix.arch }}"
           New-Item -ItemType Directory -Force out | Out-Null
+          $out = (Resolve-Path out).Path
           Copy-Item README.md, LICENSE dist/windows/
-          Compress-Archive -Path dist/windows/* -DestinationPath "out/$name.zip"
-          # the dedicated server for Windows (Server 2016 and later): the same program
-          # started with --server, and start.cmd
           New-Item -ItemType Directory -Force dist/server | Out-Null
           Copy-Item dist/windows/neoomsi.exe, dist/windows/vcruntime140.dll, dist/windows/vcruntime140_1.dll, dist/windows/msvcp140.dll, scripts/server/start.cmd, LICENSE dist/server/
           Copy-Item docs/SERVER.md dist/server/README.md
           New-Item -ItemType File -Force dist/server/.neoomsi-content | Out-Null
-          Compress-Archive -Path dist/server/* -DestinationPath "out/neoOMSI-$env:neoomsi_VERSION-server-windows-${{ matrix.arch }}.zip"
+          Push-Location dist/windows
+          7z a -tzip -mx=5 "$out/neoOMSI-$env:neoomsi_VERSION-windows-${{ matrix.arch }}.zip" *
+          Pop-Location
+          Push-Location dist/server
+          7z a -tzip -mx=5 "$out/neoOMSI-$env:neoomsi_VERSION-server-windows-${{ matrix.arch }}.zip" *
+          Pop-Location
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
           path: out/*.zip
+          compression-level: 0
+          retention-days: 1
 
   macos:
     needs: version
@@ -118,7 +122,6 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             arch: arm64
-          # Intel Macs: built on the Apple silicon runner for x86_64
           - target: x86_64-apple-darwin
             arch: x64
     env:
@@ -133,6 +136,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+          save-if: ${{ github.event_name != 'pull_request' }}
       - name: Build
         run: scripts/build-macos.sh
       - name: Package
@@ -144,6 +148,8 @@ jobs:
         with:
           name: macos-${{ matrix.arch }}
           path: out/*.zip
+          compression-level: 0
+          retention-days: 1
 
   linux:
     needs: version
@@ -158,29 +164,27 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       neoomsi_VERSION: ${{ needs.version.outputs.version }}
+      RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}
+          save-if: ${{ github.event_name != 'pull_request' }}
       - name: System libraries
         run: |
           for i in 1 2 3; do
-            sudo apt-get update && sudo apt-get install -y build-essential pkg-config libasound2-dev \
+            sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends pkg-config libasound2-dev \
               libudev-dev libgtk-3-dev libxkbcommon-dev libwayland-dev libssl-dev zip clang lld && break
             sleep 20
           done
       - name: Build the game
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
         run: scripts/build-linux.sh
       - name: Build the server
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
         run: scripts/build-server.sh
       - name: Validate shaders
         if: matrix.arch == 'x64'
-        env:
-          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
         run: cargo test --locked --release -p omsi-render shaders_validate_and_match_the_uniforms
       - name: Package
         run: |
@@ -193,52 +197,18 @@ jobs:
         with:
           name: linux-${{ matrix.arch }}
           path: out/*.zip
-
-  android:
-    needs: version
-    runs-on: ubuntu-latest
-    env:
-      neoomsi_VERSION: ${{ needs.version.outputs.version }}
-      # the signing key (base64 of a keystore, alias neoomsi, password android); without
-      # it every build is signed with a new key and does not install over the last one
-      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: '17'
-      - name: Android SDK
-        run: |
-          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$sdkmanager" --licenses >/dev/null || true
-          "$sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" >/dev/null
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-      - name: Build
-        run: scripts/build-android.sh
-      - name: Package
-        run: |
-          mkdir -p out
-          cp "dist/android/neoOMSI-$neoomsi_VERSION.apk" "out/neoOMSI-$neoomsi_VERSION-android-arm64.apk"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android
-          path: out/*.apk
+          compression-level: 0
+          retention-days: 1
 
   release:
     if: github.event_name != 'pull_request'
-    needs: [version, windows, macos, linux, android]
+    needs: [version, test, windows, macos, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ github.ref_name == 'nightly' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -251,10 +221,7 @@ jobs:
       - name: Publish v${{ needs.version.outputs.version }}
         run: |
           ls -l out
-          # what changed: this version's section of CHANGELOG.md (up to the next version)
           awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
-          # a release for every push: without a section of its own, what CHANGELOG.md gained
-          # since the previous release (the lines added, in their order)
           if ! grep -q '[^[:space:]]' changes.md; then
             prev=$(git tag -l 'v*' --sort=-v:refname | grep -vx "v$VERSION" | head -1)
             if [ -n "$prev" ]; then
@@ -283,20 +250,23 @@ jobs:
           | macOS (Intel) | \`neoOMSI-$VERSION-macos-x64.zip\` |
           | Linux x64 | \`neoOMSI-$VERSION-linux-x64.zip\` |
           | Linux ARM64 | \`neoOMSI-$VERSION-linux-arm64.zip\` |
-          | Android (arm64, 8.0+) | \`neoOMSI-$VERSION-android-arm64.apk\` |
           | Dedicated server, Linux | \`neoOMSI-$VERSION-server-linux-x64.zip\`, \`neoOMSI-$VERSION-server-linux-arm64.zip\` |
           | Dedicated server, Windows | \`neoOMSI-$VERSION-server-windows-x64.zip\`, \`neoOMSI-$VERSION-server-windows-arm64.zip\` |
           NOTES
+          if [ "$PRERELEASE" = "true" ]; then
+            flag="--prerelease"
+          else
+            flag="--prerelease=false"
+          fi
           git tag -f "v$VERSION" "$GITHUB_SHA"
           git push -f origin "v$VERSION"
           if gh release view "v$VERSION" >/dev/null 2>&1; then
-            # the same version built again (main was rewritten and pushed once more): the
-            # release stays, with this build's files and notes
-            gh release upload "v$VERSION" out/*.zip out/*.apk --clobber
-            gh release edit "v$VERSION" --title "neoOMSI $VERSION" --notes-file notes.md
+            gh release upload "v$VERSION" out/*.zip --clobber
+            gh release edit "v$VERSION" --title "neoOMSI $VERSION" --notes-file notes.md "$flag"
           else
-            gh release create "v$VERSION" out/*.zip out/*.apk \
+            gh release create "v$VERSION" out/*.zip \
               --verify-tag \
               --title "neoOMSI $VERSION" \
-              --notes-file notes.md
+              --notes-file notes.md \
+              "$flag"
           fi
