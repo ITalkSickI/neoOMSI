@@ -154,7 +154,7 @@ impl Rain {
 /// `rain.osc` fills from `PrecipRate` - and `rain.osc` never asks what is falling, so in a
 /// snowstorm the original shows raindrops on every pane, in the cab and along the saloon.
 /// OMSI's own way out is the seasonal texture folder (`texture\WinterSnow\`), which no stock
-/// vehicle fills in, so openOMSI builds the winter picture itself: crystals settled on
+/// vehicle fills in, so neoOMSI builds the winter picture itself: crystals settled on
 /// the glass, thickest along the rim where a pane collects them, made from the game's own
 /// `Texture\snowflake.tga` where it is there and from soft specks of its own where it is not.
 pub fn snow_on_glass(root: &std::path::Path) -> omsi_texture::Image {

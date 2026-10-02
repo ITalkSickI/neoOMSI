@@ -1,9 +1,9 @@
 # Plugins
 
-openOMSI runs two kinds of plugins from the `plugins` folder of the game (and of every
+neoOMSI runs two kinds of plugins from the `plugins` folder of the game (and of every
 content root):
 
-* **Lua plugins** (`.lua`) - new in openOMSI 0.1.5: a text file, no compiler, works the
+* **Lua plugins** (`.lua`) - new in neoOMSI 0.1.5: a text file, no compiler, works the
   same on Windows, macOS, Linux and Android, and is loaded again the moment you save it.
 * **OMSI plugins** (`.opl` + DLL) - the original's plugins, unchanged (see
   [below](#omsi-plugins-plugins-opl-dll)).
@@ -193,7 +193,7 @@ your files beyond its own saved data.
 
 ### Tips
 
-* Watch `game.log` (in `~/.openomsi/`) while you write a plugin: every `omsi.log` line and
+* Watch `game.log` (in `~/.neoomsi/`) while you write a plugin: every `omsi.log` line and
   every error is there.
 * `OMSI_WATCH_VARS=Velocity,throttle` logs changes of bus variables - useful to find the
   names a bus uses; the bus's `.osc` scripts list them all.
@@ -203,7 +203,7 @@ your files beyond its own saved data.
 ## OMSI plugins (`plugins/*.opl` + DLL)
 
 What OMSI does with plugins, and how
-openOMSI does the same (`crates/omsi-plugin`, driven from `crates/omsi-app/src/plugins.rs`).
+neoOMSI does the same (`crates/omsi-plugin`, driven from `crates/omsi-app/src/plugins.rs`).
 
 ### The original
 
@@ -229,12 +229,12 @@ openOMSI does the same (`crates/omsi-plugin`, driven from `crates/omsi-app/src/p
   All `stdcall`; `index` is the position in the plugin's own list. Names the vehicle does
   not have are skipped.
 
-### openOMSI
+### neoOMSI
 
 * `omsi_plugin::Plugins::load` reads the `plugins` folder of every content root (the
   first root's copy of an `.opl` wins) and loads each library:
   * **in-process** when the running program can load it (same system and architecture -
-    a plugin built for openOMSI, or a 32-bit DLL in a 32-bit Windows build);
+    a plugin built for neoOMSI, or a 32-bit DLL in a 32-bit Windows build);
   * otherwise in **`omsi-plugin-host32.exe`**, `omsi-plugin-host` built for 32-bit Windows,
     which loads the DLL and answers over stdin/stdout (one round trip per frame). On
     Windows it runs directly; on macOS and Linux through Wine (`wine` on the `PATH`, or

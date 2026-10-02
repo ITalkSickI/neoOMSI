@@ -1,4 +1,4 @@
-# Contributing to openOMSI
+# Contributing to neoOMSI
 
 Thanks for helping! A few rules keep the project healthy:
 

@@ -281,7 +281,7 @@ pub(crate) fn build_situation(
         path: Default::default(),
         name: name.to_string(),
         description: format!(
-            "Saved by the openOMSI at {:02}:{:02}",
+            "Saved by the neoOMSI at {:02}:{:02}",
             (clock.time / 3600.0) as i32,
             ((clock.time % 3600.0) / 60.0) as i32
         ),
@@ -381,7 +381,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let mut args = crate::cli::Args::parse_from(["openomsi"]);
+        let mut args = crate::cli::Args::parse_from(["neoomsi"]);
         apply_situation_parsed(&sit, &mut args);
         assert_eq!(args.paint.as_deref(), Some("1"));
         assert_eq!(args.situation_others.len(), 1);
@@ -402,7 +402,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let mut args = crate::cli::Args::parse_from(["openomsi"]);
+        let mut args = crate::cli::Args::parse_from(["neoomsi"]);
         apply_situation_parsed(&sit, &mut args);
         assert_eq!((args.line.as_deref(), args.tour.as_deref(), args.trip.as_deref()), (Some("137"), Some("4"), Some("4")));
         assert!(args.whole_tour);

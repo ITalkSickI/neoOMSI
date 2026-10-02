@@ -4,7 +4,7 @@
 use super::*;
 
 /// The launcher binary: next to this program, or the launcher's own build folder in the
-/// source tree, or in ~/.openomsi.
+/// source tree, or in ~/.neoomsi.
 pub(crate) fn find_launcher() -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
     if let Some(p) = omsi_cfg::env::var_os("OMSI_LAUNCHER") {
@@ -12,14 +12,14 @@ pub(crate) fn find_launcher() -> Option<PathBuf> {
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            cands.push(dir.join("openomsi-launcher"));
-            cands.push(dir.join("openomsi-launcher.exe"));
-            cands.push(dir.join("openOMSI.app/Contents/MacOS/openomsi-launcher"));
+            cands.push(dir.join("neoomsi-launcher"));
+            cands.push(dir.join("neoomsi-launcher.exe"));
+            cands.push(dir.join("neoOMSI.app/Contents/MacOS/neoomsi-launcher"));
         }
     }
     if let Some(memo) = root_memo() {
         if let Some(home) = memo.parent() {
-            cands.push(home.join(".openomsi/openomsi-launcher"));
+            cands.push(home.join(".neoomsi/neoomsi-launcher"));
         }
     }
     cands.into_iter().find(|p| p.is_file())
@@ -33,7 +33,7 @@ pub(crate) fn open_launcher() -> Result<bool> {
     log::info!("starting the launcher {}", bin.display());
     let exe = std::env::current_exe().unwrap_or_default();
     std::process::Command::new(&bin)
-        .env("OPENOMSI_BIN", &exe)
+        .env("neoomsi_BIN", &exe)
         .spawn()
         .map_err(|e| anyhow!("starting {}: {e}", bin.display()))?;
     Ok(true)

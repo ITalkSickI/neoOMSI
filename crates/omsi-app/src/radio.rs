@@ -5,7 +5,7 @@
 //! knob). Here those variables tune in a list of internet stations, streamed while they
 //! play (see `omsi_audio::radio`); Shift+R steps through the list.
 //!
-//! The stations are kept in `~/.openomsi/radio.cfg`, one `name = address` per line
+//! The stations are kept in `~/.neoomsi/radio.cfg`, one `name = address` per line
 //! (MP3, AAC or Ogg streams, or .m3u/.pls playlists), with `volume = 0..1`; the file is
 //! written with a default list the first time.
 
@@ -29,12 +29,12 @@ const DEFAULT_STATIONS: &[(&str, &str)] = &[
 
 fn config_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".openomsi").join("radio.cfg"))
+    Some(PathBuf::from(home).join(".neoomsi").join("radio.cfg"))
 }
 
 /// The stream addresses an OMSI radio plugin keeps in its text files under `plugins`
 /// (SuperRadio's `.opl` and its lists; whatever the layout, a line with an http(s) address is
-/// a station, named by the text before the address or else by its host): "openOMSI does not
+/// a station, named by the text before the address or else by its host): "neoOMSI does not
 /// load the stations I defined in the .opl".
 fn plugin_stations(dir: &std::path::Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
@@ -199,7 +199,7 @@ impl Radio {
     /// Shift+R: the next station of the list on every button.
     pub fn next_station(&mut self) -> String {
         if self.stations.is_empty() {
-            return "No radio stations (see ~/.openomsi/radio.cfg)".into();
+            return "No radio stations (see ~/.neoomsi/radio.cfg)".into();
         }
         self.offset = (self.offset + 1) % self.stations.len();
         match &self.playing {

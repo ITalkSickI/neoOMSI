@@ -3,17 +3,17 @@ name = "omsi-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "The openOMSI application: loads a map and renders it"
+description = "The neoOMSI application: loads a map and renders it"
 
 # The game is a library with a small `main` around it: the Android build takes the same
 # library as a shared object (`cargo rustc --lib --crate-type cdylib`, see
 # scripts/build-android.sh), which the phone's NativeActivity loads.
 [lib]
-name = "openomsi_game"
+name = "neoomsi_game"
 path = "src/lib.rs"
 
 [[bin]]
-name = "openomsi"
+name = "neoomsi"
 path = "src/main.rs"
 
 [build-dependencies]

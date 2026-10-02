@@ -1,4 +1,4 @@
-//! Updates from the project's GitHub releases (github.com/openOMSI-Project/openOMSI).
+//! Updates from the project's GitHub releases (github.com/neoOMSI/neoOMSI).
 //!
 //! Every push to main publishes a release `v<MAJOR.MINOR.COMMIT>` with one archive per
 //! platform (see .github/workflows/release.yml). The launcher asks the GitHub API for the
@@ -6,12 +6,12 @@
 //! build it offers it - or, with `update_auto`, installs it at once:
 //!
 //! * **Windows, macOS, Linux**: the archive is downloaded (and checked against the SHA-256
-//!   GitHub lists for it), unpacked into `.openomsi-update` beside the program, and every
+//!   GitHub lists for it), unpacked into `.neoomsi-update` beside the program, and every
 //!   program file it holds takes the place of the old one: the old one is renamed to
 //!   `*.old-update` first (Windows lets a running .exe be renamed, not overwritten) and put
 //!   back if anything fails. On macOS the running `.app` bundle is the one replaced,
 //!   whatever the user named it. Files an earlier update installed that the new archive no
-//!   longer has go as well (`.openomsi-files` lists them); nothing else in the folder - the
+//!   longer has go as well (`.neoomsi-files` lists them); nothing else in the folder - the
 //!   mods, the content - is touched. Then the new launcher is started and this one ends; the
 //!   next start deletes the `*.old-update` files.
 //! * **Android**: the APK is downloaded and handed to the system's package installer
@@ -31,9 +31,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// The project on GitHub.
-pub const REPO: &str = "openOMSI-Project/openOMSI";
-pub const REPO_URL: &str = "https://github.com/openOMSI-Project/openOMSI";
-const LATEST_API: &str = "https://api.github.com/repos/openOMSI-Project/openOMSI/releases/latest";
+pub const REPO: &str = "neoOMSI/neoOMSI";
+pub const REPO_URL: &str = "https://github.com/neoOMSI/neoOMSI";
+const LATEST_API: &str = "https://api.github.com/repos/neoOMSI/neoOMSI/releases/latest";
 
 /// A release newer than this build, with the file for this platform.
 #[derive(Clone, Debug, PartialEq)]
@@ -134,7 +134,7 @@ impl Updater {
             let result = download_and_install(&r, &status);
             if let Err(e) = result {
                 log::warn!("update to {}: {e:#}", r.version);
-                *lock(&status) = Status::Failed(format!("openOMSI was not updated to {}: {e}", r.version));
+                *lock(&status) = Status::Failed(format!("neoOMSI was not updated to {}: {e}", r.version));
             }
         });
     }
@@ -145,9 +145,9 @@ impl Updater {
         #[cfg(target_os = "android")]
         if let Status::WaitingForInstaller(r) = self.status() {
             match crate::android::install_status() {
-                Some((3, _)) => self.set(Status::Failed(format!("openOMSI was not updated to {}: the installation was cancelled.", r.version))),
-                Some((4, msg)) => self.set(Status::Failed(format!("openOMSI was not updated to {}: {}", r.version, if msg.is_empty() { "the system's installer refused the package." } else { msg.as_str() }))),
-                Some((6, _)) => self.set(Status::Failed(format!("openOMSI was not updated to {}: installing apps was not allowed for openOMSI (Settings → Apps → openOMSI → Install unknown apps).", r.version))),
+                Some((3, _)) => self.set(Status::Failed(format!("neoOMSI was not updated to {}: the installation was cancelled.", r.version))),
+                Some((4, msg)) => self.set(Status::Failed(format!("neoOMSI was not updated to {}: {}", r.version, if msg.is_empty() { "the system's installer refused the package." } else { msg.as_str() }))),
+                Some((6, _)) => self.set(Status::Failed(format!("neoOMSI was not updated to {}: installing apps was not allowed for neoOMSI (Settings → Apps → neoOMSI → Install unknown apps).", r.version))),
                 // (2, success: the system ends this process and starts the new app)
                 _ => {}
             }
@@ -203,7 +203,7 @@ pub fn asset_name(version: &str) -> Option<String> {
     } else {
         return None;
     };
-    Some(format!("openOMSI-{version}-{suffix}"))
+    Some(format!("neoOMSI-{version}-{suffix}"))
 }
 
 // --- the release ----------------------------------------------------------------------------
@@ -212,7 +212,7 @@ fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(15))
         .timeout_read(std::time::Duration::from_secs(60))
-        .user_agent(&format!("openOMSI/{} (updater)", current_version()))
+        .user_agent(&format!("neoOMSI/{} (updater)", current_version()))
         .build()
 }
 
@@ -321,7 +321,7 @@ fn download_and_install(r: &Release, status: &Mutex<Status>) -> anyhow::Result<(
         let place = install_place()?;
         if !writable(&place.dir) {
             let admin = if cfg!(windows) { " (or start it once as administrator)" } else { "" };
-            anyhow::bail!("the folder {} cannot be written. Put openOMSI in a folder of yours{admin} and update again", short_path(&place.dir));
+            anyhow::bail!("the folder {} cannot be written. Put neoOMSI in a folder of yours{admin} and update again", short_path(&place.dir));
         }
     }
     let file = download_dir().join(&r.asset_name);
@@ -360,7 +360,7 @@ pub struct Place {
 /// The installation this process runs from (refused for a development build).
 pub fn install_place() -> anyhow::Result<Place> {
     // (taken once: on Linux `current_exe` follows the running file, so after the swap it
-    // named `openomsi.old-update` - the old program, started again as "the new launcher" -
+    // named `neoomsi.old-update` - the old program, started again as "the new launcher" -
     // and after a second swap a deleted file that could not be started at all, #811)
     static EXE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     let exe = EXE
@@ -372,7 +372,7 @@ pub fn install_place() -> anyhow::Result<Place> {
     }
     // (macOS runs an app opened straight from Downloads from a read-only copy elsewhere)
     if exe.to_string_lossy().contains("/AppTranslocation/") {
-        anyhow::bail!("macOS runs openOMSI from a temporary read-only copy. Move openOMSI.app into your Applications folder (or any folder), start it from there and update again");
+        anyhow::bail!("macOS runs neoOMSI from a temporary read-only copy. Move neoOMSI.app into your Applications folder (or any folder), start it from there and update again");
     }
     let bundle = exe.ancestors().find(|p| p.extension().map(|e| e.eq_ignore_ascii_case("app")).unwrap_or(false)).map(Path::to_path_buf);
     let dir = bundle.as_deref().unwrap_or(&exe).parent().ok_or_else(|| anyhow::anyhow!("no folder around {}", exe.display()))?.to_path_buf();
@@ -380,7 +380,7 @@ pub fn install_place() -> anyhow::Result<Place> {
 }
 
 /// The program's own path from what the system says the running file is: on Linux that
-/// follows a rename (`openomsi.old-update`) and an unlinked file (`... (deleted)`), but the
+/// follows a rename (`neoomsi.old-update`) and an unlinked file (`... (deleted)`), but the
 /// program to start is the one at the original name.
 fn program_path(exe: &Path) -> PathBuf {
     let mut s = exe.to_string_lossy().to_string();
@@ -410,7 +410,7 @@ fn short_path(p: &Path) -> String {
 
 /// Whether files can be put into `dir` (the check before anything is downloaded).
 fn writable(dir: &Path) -> bool {
-    let probe = dir.join(".openomsi-write-test");
+    let probe = dir.join(".neoomsi-write-test");
     let ok = std::fs::write(&probe, b"").is_ok();
     let _ = std::fs::remove_file(&probe);
     ok
@@ -424,8 +424,8 @@ pub fn is_dev_build(exe: &Path) -> bool {
     parts.windows(2).any(|w| w[0] == "target" && profile(w[1])) || parts.windows(3).any(|w| w[0] == "target" && profile(w[2]))
 }
 
-const STAGING: &str = ".openomsi-update";
-const MANIFEST: &str = ".openomsi-files";
+const STAGING: &str = ".neoomsi-update";
+const MANIFEST: &str = ".neoomsi-files";
 const OLD: &str = ".old-update";
 
 fn old_of(p: &Path) -> PathBuf {
@@ -501,10 +501,10 @@ pub fn install_archive(zip: &Path, place: &Place) -> anyhow::Result<()> {
     // a program must be among them: a wrong archive must not replace anything
     let has_program = items.iter().any(|n| {
         let l = n.to_ascii_lowercase();
-        l == "openomsi" || l == "openomsi.exe" || l.ends_with(".app")
+        l == "neoomsi" || l == "neoomsi.exe" || l.ends_with(".app")
     });
     if !has_program {
-        anyhow::bail!("the update archive holds no openOMSI program");
+        anyhow::bail!("the update archive holds no neoOMSI program");
     }
     // what an earlier update put here and this one no longer brings
     let before: Vec<String> = std::fs::read_to_string(place.dir.join(MANIFEST)).map(|t| t.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty() && !l.contains(['/', '\\']) && l != ".." && l != ".").collect()).unwrap_or_default();
@@ -660,9 +660,9 @@ mod tests {
     fn the_platform_file_of_a_github_release() {
         let name = asset_name("0.1.9").unwrap();
         let v = serde_json::json!({
-            "tag_name": "v0.1.9", "html_url": "https://github.com/openOMSI-Project/openOMSI/releases/tag/v0.1.9", "body": "notes",
+            "tag_name": "v0.1.9", "html_url": "https://github.com/neoOMSI/neoOMSI/releases/tag/v0.1.9", "body": "notes",
             "assets": [
-                {"name": "openOMSI-0.1.9-server-linux-x64.zip", "browser_download_url": "https://x/server", "size": 5},
+                {"name": "neoOMSI-0.1.9-server-linux-x64.zip", "browser_download_url": "https://x/server", "size": 5},
                 {"name": name, "browser_download_url": "https://x/mine", "size": 42, "digest": "sha256:ABCDEF"}
             ]
         });
@@ -680,18 +680,18 @@ mod tests {
 
     #[test]
     fn the_program_path_survives_the_swap() {
-        assert_eq!(program_path(Path::new("/home/me/openOMSI/openomsi")), PathBuf::from("/home/me/openOMSI/openomsi"));
-        assert_eq!(program_path(Path::new("/home/me/openOMSI/openomsi.old-update")), PathBuf::from("/home/me/openOMSI/openomsi"));
-        assert_eq!(program_path(Path::new("/home/me/openOMSI/openomsi.old-update (deleted)")), PathBuf::from("/home/me/openOMSI/openomsi"));
-        assert_eq!(program_path(Path::new("C:\\Games\\openOMSI\\openomsi.exe.old-update")), PathBuf::from("C:\\Games\\openOMSI\\openomsi.exe"));
+        assert_eq!(program_path(Path::new("/home/me/neoOMSI/neoomsi")), PathBuf::from("/home/me/neoOMSI/neoomsi"));
+        assert_eq!(program_path(Path::new("/home/me/neoOMSI/neoomsi.old-update")), PathBuf::from("/home/me/neoOMSI/neoomsi"));
+        assert_eq!(program_path(Path::new("/home/me/neoOMSI/neoomsi.old-update (deleted)")), PathBuf::from("/home/me/neoOMSI/neoomsi"));
+        assert_eq!(program_path(Path::new("C:\\Games\\neoOMSI\\neoomsi.exe.old-update")), PathBuf::from("C:\\Games\\neoOMSI\\neoomsi.exe"));
     }
 
     #[test]
     fn development_builds_are_recognised() {
-        assert!(is_dev_build(Path::new("/src/openOMSI/target/release/openomsi")));
-        assert!(is_dev_build(Path::new("C:\\src\\target\\x86_64-pc-windows-msvc\\release\\openomsi.exe")));
-        assert!(!is_dev_build(Path::new("/Applications/openOMSI.app/Contents/MacOS/openomsi")));
-        assert!(!is_dev_build(Path::new("/home/me/Games/openOMSI/openomsi")));
+        assert!(is_dev_build(Path::new("/src/neoOMSI/target/release/neoomsi")));
+        assert!(is_dev_build(Path::new("C:\\src\\target\\x86_64-pc-windows-msvc\\release\\neoomsi.exe")));
+        assert!(!is_dev_build(Path::new("/Applications/neoOMSI.app/Contents/MacOS/neoomsi")));
+        assert!(!is_dev_build(Path::new("/home/me/Games/neoOMSI/neoomsi")));
     }
 
     /// The whole swap on a folder: the program files replaced, a file only the old version
@@ -702,35 +702,35 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let dir = root.join("install");
         std::fs::create_dir_all(dir.join("Vehicles/MyMod")).unwrap();
-        std::fs::write(dir.join("openomsi"), "old game").unwrap();
-        std::fs::write(dir.join("openomsi-launcher"), "old cli").unwrap();
+        std::fs::write(dir.join("neoomsi"), "old game").unwrap();
+        std::fs::write(dir.join("neoomsi-launcher"), "old cli").unwrap();
         std::fs::write(dir.join("retired.dll"), "old").unwrap();
         std::fs::write(dir.join("Vehicles/MyMod/bus.bus"), "mod").unwrap();
-        std::fs::write(dir.join(MANIFEST), "openomsi\nopenomsi-launcher\nretired.dll\n").unwrap();
+        std::fs::write(dir.join(MANIFEST), "neoomsi\nneoomsi-launcher\nretired.dll\n").unwrap();
         // the new release
         let zip_path = root.join("new.zip");
         {
             let mut z = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
             let o = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
-            for (n, body) in [("openomsi", "new game"), ("openomsi-launcher", "new cli"), ("README.md", "readme")] {
+            for (n, body) in [("neoomsi", "new game"), ("neoomsi-launcher", "new cli"), ("README.md", "readme")] {
                 z.start_file(n, o).unwrap();
                 z.write_all(body.as_bytes()).unwrap();
             }
             z.finish().unwrap();
         }
-        let place = Place { dir: dir.clone(), bundle: None, exe: dir.join("openomsi") };
+        let place = Place { dir: dir.clone(), bundle: None, exe: dir.join("neoomsi") };
         install_archive(&zip_path, &place).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("openomsi")).unwrap(), "new game");
-        assert_eq!(std::fs::read_to_string(dir.join("openomsi-launcher")).unwrap(), "new cli");
+        assert_eq!(std::fs::read_to_string(dir.join("neoomsi")).unwrap(), "new game");
+        assert_eq!(std::fs::read_to_string(dir.join("neoomsi-launcher")).unwrap(), "new cli");
         assert_eq!(std::fs::read_to_string(dir.join("README.md")).unwrap(), "readme");
         assert!(!dir.join("retired.dll").exists());
         assert_eq!(std::fs::read_to_string(dir.join("Vehicles/MyMod/bus.bus")).unwrap(), "mod");
-        assert_eq!(std::fs::read_to_string(dir.join("openomsi.old-update")).unwrap(), "old game");
+        assert_eq!(std::fs::read_to_string(dir.join("neoomsi.old-update")).unwrap(), "old game");
         assert!(!dir.join(STAGING).exists());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(std::fs::metadata(dir.join("openomsi")).unwrap().permissions().mode() & 0o777, 0o755);
+            assert_eq!(std::fs::metadata(dir.join("neoomsi")).unwrap().permissions().mode() & 0o777, 0o755);
         }
         // an archive without a program replaces nothing
         let bad = root.join("bad.zip");
@@ -741,7 +741,7 @@ mod tests {
             z.finish().unwrap();
         }
         assert!(install_archive(&bad, &place).is_err());
-        assert_eq!(std::fs::read_to_string(dir.join("openomsi")).unwrap(), "new game");
+        assert_eq!(std::fs::read_to_string(dir.join("neoomsi")).unwrap(), "new game");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

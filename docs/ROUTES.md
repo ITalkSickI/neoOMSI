@@ -1,7 +1,7 @@
 # How routes work
 
 How timetables, chrono scenarios, `car_use`, hof files and IBIS behave in OMSI 2, and how
-openOMSI follows that behaviour.
+neoOMSI follows that behaviour.
 
 ## Chrono scenarios
 

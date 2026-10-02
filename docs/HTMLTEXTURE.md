@@ -2,7 +2,7 @@
 
 **Note:** This API is still under development, so breaking changes may occur at any time.
 
-Previously, you had to use `scriptTexture` in Omsi 2; to make things easier for both modders and developers, openOmsi
+Previously, you had to use `scriptTexture` in Omsi 2; to make things easier for both modders and developers, neoOMSI
 now offers `htmlTexture`.
 These can be used, for example, as IBIS or other information in vehicles, giving you a few more design options.
 

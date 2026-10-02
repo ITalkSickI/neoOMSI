@@ -3,7 +3,7 @@
 use super::*;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "openomsi", version = crate::startup::VERSION, about = "openOMSI")]
+#[command(name = "neoomsi", version = crate::startup::VERSION, about = "neoOMSI")]
 pub(crate) struct Args {
     /// OMSI 2 installation root (the folder that contains `maps`, `Vehicles`, …).
     /// Found by itself when left out: $OMSI_ROOT, the folder remembered from last time,

@@ -183,7 +183,7 @@ unsafe extern "system" fn notify_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
 fn notification_window() -> Option<HWND> {
     unsafe {
         let hinst: HINSTANCE = GetModuleHandleW(None).ok()?.into();
-        let class = w!("openOMSI game controllers");
+        let class = w!("neoOMSI game controllers");
         let wc = WNDCLASSW { lpfnWndProc: Some(notify_proc), hInstance: hinst, lpszClassName: class, ..Default::default() };
         // (0 when the class is there already - a second window of the launcher's)
         let _ = RegisterClassW(&wc);

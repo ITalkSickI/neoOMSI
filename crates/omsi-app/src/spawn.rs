@@ -442,6 +442,9 @@ pub(crate) fn spawn_player(
         toggled_up: Default::default(),
         momentary_gears: crate::settings::Settings::load().momentary_gears,
         auto_ibis: crate::settings::Settings::load().auto_ibis,
+        auto_shift: crate::settings::Settings::load().auto_shift,
+        auto_shift_wait: 0.0,
+        auto_shift_idle: 0.0,
         side_lights_by_l: false,
         driver: None,
         ibis_duty: None,
@@ -451,6 +454,7 @@ pub(crate) fn spawn_player(
         ibis_background: false,
         arm: Default::default(),
         blinker_key_state: 0,
+        blinker_cancel: crate::settings::Settings::load().blinker_cancel,
     };
     for _ in 0..3 {
         p.vehicle.update(1.0 / 30.0);

@@ -1,6 +1,6 @@
 # OMSI 2 content formats
 
-The file formats of OMSI 2 content (maps, objects, vehicles, scripts, timetables …) as openOMSI
+The file formats of OMSI 2 content (maps, objects, vehicles, scripts, timetables …) as neoOMSI
 reads them.
 
 ## Text encoding
@@ -10,7 +10,7 @@ reads them.
 * Every other text file is read by OMSI in the system's ANSI code page (Delphi `AnsiString`):
   the stock content is Windows-1252, but a mod is written in its author's code page -
   Windows-1251 for the Russian ones (LiAZ, PAZ, the Scania Citywide's cockpit), 1250 for the
-  Polish and Czech ones - and some newer files are UTF-8. openOMSI has no system code page
+  Polish and Czech ones - and some newer files are UTF-8. neoOMSI has no system code page
   to borrow and decides per file (`omsi-cfg::codepage::detect`): valid UTF-8; 1251 when at
   least half of the letters `0xC0..` stand in runs of three or more (Russian words; German
   has at most two in a row, "Größe"); 1250 when letters that are signs in 1252 (ł ą ś Ł Ś Ż)
@@ -55,7 +55,7 @@ File names in content files are resolved as Windows resolves them: `\` and `/` b
 names compare without regard to case (umlauts included), a folder name loses one trailing dot
 and the last name all trailing dots and spaces (Ahlheim's `anz-oben.jpg.`).
 
-Content roots (openOMSI's content folder, mounted archives, the OMSI 2 installation) are
+Content roots (neoOMSI's content folder, mounted archives, the OMSI 2 installation) are
 searched as if they had been copied over each other, highest priority last - with one
 exception: a vehicle pack (`Vehicles/<folder>`) present in two roots in two *versions* does
 not mix. The copy under a higher-priority root patches the one a vehicle was loaded from
@@ -280,9 +280,10 @@ saved in a neighbouring tile's file with coordinates beyond the edge. `tile.map.
 The plate is one flat object a couple of hundred metres across, placed at an absolute
 height; the named mesh is a coarse version of the same plate. Every vertex of the object is
 moved by the difference between the ground under it and that base mesh, so the plate keeps
-its kerbs and camber while its arms come down onto the roads that run into them. The ground
-under the plate is then pressed into the base mesh as well, which is what closes the seam
-along its edges.
+its kerbs and camber while its arms come down onto the roads that run into them, and the
+plate's paths take their heights from it (Omsi.exe 0x7ba818). The ground is not pressed into
+it at load: nothing in Omsi.exe reads that mesh for the terrain, and objects stand on the
+`.terrain` heights.
 
 `[spline_terrain_align]` (no parameter) and `[spline_terrain_align_2] <n>` follow a
 `[spline]` in a tile file (Berlin-Spandau: 33 and 203 of 2486 splines). The editor's
@@ -667,7 +668,7 @@ onlytypes end types_prefered number_tour.
 * Input: keyboard.cfg `[game]/[vehicles]` + `[entry] name scancode modifier` (the modifier
   is a mask, as Omsi.exe reads it (0x6478d0): 1 the action is told the key's state every
   frame - the throttle, brake and steering keys, " *" in OMSI's key list - 2 Shift, 4 Ctrl;
-  Omsi.exe has no Alt, openOMSI's own Alt is 8, which OMSI leaves alone);
+  Omsi.exe has no Alt, neoOMSI's own Alt is 8, which OMSI leaves alone);
   gamectrler.cfg ctrl axis buttons FFScale.
 * Startup order (logfile.txt) documents the manager creation sequence, mirrored in `omsi-sim`.
 
@@ -678,8 +679,8 @@ OMSI plays no music itself. The radios of the buses only set variables that plug
 most mods, 1 while it plays (no sound.cfg uses it); the Sound Extension plugin's
 `SndExt_Radio` - the station button pressed (1..n, 0 = off; the W906 Sprinter and the
 Procity show their own station names for it) with `SndVol_Radio` - the volume knob (0..1,
-the Sprinter's goes to 2) and `SndExt_RadioPlaylist` for its USB/CD modes. openOMSI
-plays internet stations for them (`~/.openomsi/radio.cfg`). Streams in HE-AAC with a
+the Sprinter's goes to 2) and `SndExt_RadioPlaylist` for its USB/CD modes. neoOMSI
+plays internet stations for them (`~/.neoomsi/radio.cfg`). Streams in HE-AAC with a
 program config element (some `.aacp` stations) are not decoded; MP3, AAC-LC and Ogg are.
 
 ## Textures on the GPU - unit `mc_texMan`
@@ -711,7 +712,7 @@ program config element (some `.aacp` stations) are not decoded; MP3, AAC-LC and 
 * `options.cfg`: `[texture]` has two values (0 and 1 in the stock file), taken to be the
   resolution reduction and the compression switch of the options dialog (not verified);
   `[texmemlimit]` (401.0 in the stock file) is the texture memory in MB above which OMSI
-  lowers the resolution of distant textures. openOMSI's own keys are
+  lowers the resolution of distant textures. neoOMSI's own keys are
   `texture_compression=` (on by default) and `texture_memory=` (MB; `texmemlimit=` is read
   too; an eighth of the machine's memory when unset). `OMSI_NO_BC=1` uploads everything as
   RGBA, `OMSI_NO_TEXCOMPRESS=1` keeps DXT files as blocks and the rest RGBA.
@@ -752,7 +753,7 @@ matrix's `..\..\Anzeigen\Krueger\x.bmp` is `Vehicles\Anzeigen\Krueger\x.bmp`), `
 `GetFontIndex("name")` registers an .oft font and answers **-1** for a font that does not exist
 (the chura matrix falls back from missing custom fonts with `1 + 31416 * l1 1 + max 31415 % 1 -`,
 which only works for -1); fonts are looked up by `[newfont]` name in every content root's
-`Fonts`. openOMSI draws a missing weight with another one of the same family and size
+`Fonts`. neoOMSI draws a missing weight with another one of the same family and size
 ("churafont++ Numeric 26x11 Bold" → "churafont++ Numeric 26x11"; the Citaro pack asks for
 weights it never shipped and lost its line number). `TextLength(font, "text")` = drawn width
 (glyph advance x1−x0 plus the font gap). A work texture keeps its picture in the colour
@@ -771,7 +772,7 @@ original way: string `SetLineTo` + `AI_target_index` (terminus index) and the
 `ai_scheduled_settarget` trigger. Depot callbacks with index -1 (what the lookups answer for an
 unknown code) return "" / -1, never entry 0. A depot file belongs to a map: when the bus folder
 has none of the name the map's `ailists.cfg` wants (a mod bus brings only its own map's), the
-openOMSI takes it from another vehicle folder (`omsi_vehicle::hof::depot_anywhere`). The FloFix
+neoOMSI takes it from another vehicle folder (`omsi_vehicle::hof::depot_anywhere`). The FloFix
 "Atron" IBIS of many mods starts in a PIN mode (`IBIS_mode` 10) and wants the `PIN` constant
 of its constfile typed and confirmed before the mode keys work.
 
@@ -781,7 +782,7 @@ OMSI offers the `.bus`/`.ovh` files that have a `[friendlyname]` (all stock buse
 rear section, most `_KI` AI variants and the AI cars have none). A rear section has
 `[coupling_front]` (and `[scriptshare]`: no scripts of its own, the front's variables drive
 it) and is named by the front's `[couple_back] file reversed`, resolved from the front's
-folder in whichever content root has it. openOMSI also keeps a coupled part with a copied
+folder in whichever content root has it. neoOMSI also keeps a coupled part with a copied
 `[friendlyname]` out of the list, spawns the front section when a rear one is asked for, and
 refuses a rear section nothing couples. With `[scriptshare]` the rear section's `\S:n`
 materials are the front's script textures (the O530G's rear display declares no
@@ -867,7 +868,7 @@ material for anything else - a variable at 2 with one item is dark. A variable n
 declares is registered by the model loader at 0 (the stock MANs' spare buttons are switched
 by `*Noch nicht belegt*`, "not assigned yet", and stay dark). The `[matl_change]` block
 itself changes the plain material; each `[matl_item]` starts as a copy of the plain
-material as it is at that point (openOMSI draws the first item). The item's `[matl_nightmap]` glows at full strength while the
+material as it is at that point (neoOMSI draws the first item). The item's `[matl_nightmap]` glows at full strength while the
 variable is on, by day as well - warning lamps (`lights_blinkgeber`, `cockpit_light_*`,
 `haltewunschlampe`) and dashboard screens drawn only in the night map (the Procity's pressure
 screen, switched by `elec_busbar_main`) depend on it. A vehicle's plain `[matl_nightmap]` glows

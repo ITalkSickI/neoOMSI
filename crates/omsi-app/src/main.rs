@@ -1,4 +1,4 @@
-//! `openomsi` - the game and its launcher (the game itself is the `openomsi_game` library).
+//! `neoomsi` - the game and its launcher (the game itself is the `neoomsi_game` library).
 
 // a game, not a console program: no console window opens beside it on Windows (a start
 // from a terminal still prints there, see attach_parent_console)
@@ -19,5 +19,5 @@ pub static NvOptimusEnablement: u32 = 1;
 pub static AmdPowerXpressRequestHighPerformance: u32 = 1;
 
 fn main() -> anyhow::Result<()> {
-    openomsi_game::run()
+    neoomsi_game::run()
 }

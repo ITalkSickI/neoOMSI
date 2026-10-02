@@ -26,7 +26,7 @@ pub(crate) fn shift_held_now(keys: &hashbrown::HashSet<KeyCode>) -> bool {
 
 /// Does this folder look like an OMSI 2 installation?
 pub(crate) fn is_omsi_root(p: &Path) -> bool {
-    // a complete installation of the original game (openOMSI's own content folder has the
+    // a complete installation of the original game (neoOMSI's own content folder has the
     // same layout, but it is a mod overlay, not the game)
     omsi_cfg::missing_original_essentials(p).is_empty()
 }
@@ -64,7 +64,7 @@ pub(crate) fn fatal_dialog(title: &str, text: &str) {
     }
 }
 
-/// openOMSI's own content folder: the folder of the game binary, laid out like an OMSI 2
+/// neoOMSI's own content folder: the folder of the game binary, laid out like an OMSI 2
 /// installation (Vehicles, maps, Sceneryobjects ...). Mods live here; it is searched before
 /// the original installation.
 /// The `Inputs/keyboard.cfg` the game follows: the content folder's once the launcher has
@@ -116,7 +116,7 @@ pub(crate) fn content_dir() -> Option<PathBuf> {
         Some(cand)
     } else {
         let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-        let fallback = PathBuf::from(home).join(".openomsi").join("content");
+        let fallback = PathBuf::from(home).join(".neoomsi").join("content");
         let _ = omsi_cfg::ensure_content_layout(&fallback);
         Some(fallback)
     }
@@ -125,7 +125,7 @@ pub(crate) fn content_dir() -> Option<PathBuf> {
 /// Where the last working installation was remembered.
 pub(crate) fn root_memo() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".openomsi-root"))
+    Some(PathBuf::from(home).join(".neoomsi-root"))
 }
 
 /// Find the OMSI 2 installation without being told where it is.
@@ -141,7 +141,7 @@ pub(crate) fn find_root() -> Option<PathBuf> {
     }
     // the folder the launcher was told about (Setup)
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-        if let Ok(t) = std::fs::read_to_string(PathBuf::from(home).join(".openomsi/launcher.json")) {
+        if let Ok(t) = std::fs::read_to_string(PathBuf::from(home).join(".neoomsi/launcher.json")) {
             if let Some(r) = serde_json::from_str::<serde_json::Value>(&t).ok().and_then(|v| v.get("root").and_then(|r| r.as_str()).map(PathBuf::from)) {
                 first.push(r);
             }
@@ -269,13 +269,13 @@ pub(crate) fn window_renderer(
 /// box on Windows; the log and the terminal elsewhere).
 pub(crate) fn fatal_message(text: &str) {
     log::error!("{text}");
-    eprintln!("openOMSI: {text}");
+    eprintln!("neoOMSI: {text}");
     #[cfg(windows)]
     {
         use windows::core::PCWSTR;
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
         let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
-        let (t, c) = (wide(text), wide("openOMSI"));
+        let (t, c) = (wide(text), wide("neoOMSI"));
         unsafe {
             MessageBoxW(None, PCWSTR(t.as_ptr()), PCWSTR(c.as_ptr()), MB_OK | MB_ICONERROR);
         }
@@ -287,7 +287,7 @@ pub(crate) fn fatal_message(text: &str) {
 pub const BUILD: &str = env!("OMSI_BUILD");
 
 /// The release version, `MAJOR.MINOR.COMMIT` (see `build.rs` and docs/VERSIONING.md).
-pub const VERSION: &str = env!("OPENOMSI_VERSION");
+pub const VERSION: &str = env!("neoomsi_VERSION");
 
 /// A window of `w` x `h` points made to fit the screen it opens on, and placed in its
 /// middle: 1600 x 900 points at 125 % are 2000 x 1125 pixels, wider than a 1920 screen, and
@@ -318,7 +318,7 @@ pub(crate) fn fit_rect(want: (f64, f64), screen: (f64, f64), scale: f64) -> ((f6
 
 /// The application icon for the window (Windows and Linux; macOS takes the bundle's).
 pub(crate) fn window_icon() -> Option<winit::window::Icon> {
-    static PNG: &[u8] = include_bytes!("../../../assets/icons/app/openomsi-256.png");
+    static PNG: &[u8] = include_bytes!("../../../assets/icons/app/neoomsi-256.png");
     let img = image::load_from_memory(PNG).ok()?.into_rgba8();
     let (w, h) = img.dimensions();
     winit::window::Icon::from_rgba(img.into_raw(), w, h).ok()

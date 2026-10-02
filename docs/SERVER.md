@@ -3,11 +3,11 @@
 ## How it runs today
 
 ```
-openomsi --root /path/to/OMSI2 --server /opt/openomsi-server/server.cfg
+neoomsi --root /path/to/OMSI2 --server /opt/neoomsi-server/server.cfg
 ```
 
 (`scripts/build-server.sh` builds it on a Linux machine into `dist/server`, and `start.sh`
-there starts it; every release also has ready `openOMSI-<version>-server-linux-x64.zip` and
+there starts it; every release also has ready `neoOMSI-<version>-server-linux-x64.zip` and
 `-server-linux-arm64.zip`, and for Windows (10/11 and Windows Server 2016 or later)
 `-server-windows-x64.zip` and `-server-windows-arm64.zip`, started with
 `start.cmd C:\path\to\OMSI2`.) The server is the game binary hosting a session with no window, no sound and no

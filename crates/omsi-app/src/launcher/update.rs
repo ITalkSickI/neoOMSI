@@ -42,7 +42,7 @@ impl Launcher {
                             log::info!("update: {} installed, the new launcher starts", r.version);
                             event_loop.exit();
                         }
-                        Err(e) => self.state.set_status(format!("openOMSI {} is installed; start it again yourself ({e}).", r.version), true),
+                        Err(e) => self.state.set_status(format!("neoOMSI {} is installed; start it again yourself ({e}).", r.version), true),
                     }
                 }
             }
@@ -79,9 +79,9 @@ impl Launcher {
         match status {
             Status::Available(rel) => {
                 self.ui.icon("system_update", icon_at, 26.0, ACCENT);
-                self.ui.text_in(&format!("openOMSI {} is available", rel.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
+                self.ui.text_in(&format!("neoOMSI {} is available", rel.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
                 let text = if cfg!(target_os = "android") {
-                    format!("You have {current}. Update now? The launcher downloads the new version ({}) from GitHub and Android installs it; openOMSI then starts again - your mods and settings stay as they are.", mb(rel.size))
+                    format!("You have {current}. Update now? The launcher downloads the new version ({}) from GitHub and Android installs it; neoOMSI then starts again - your mods and settings stay as they are.", mb(rel.size))
                 } else {
                     format!("You have {current}. Update now? The launcher downloads the new version ({}) from GitHub, puts it in place of this one and starts again - your mods and settings stay as they are.", mb(rel.size))
                 };
@@ -103,21 +103,21 @@ impl Launcher {
             }
             Status::Downloading { release, done, total } => {
                 self.ui.icon("download", icon_at, 26.0, ACCENT);
-                self.ui.text_in(&format!("Downloading openOMSI {}", release.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
+                self.ui.text_in(&format!("Downloading neoOMSI {}", release.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
                 let frac = if total > 0 { done as f32 / total as f32 } else { 0.0 };
                 self.ui.paragraph(&format!("{} of {} from github.com/{}", mb(done), mb(total), updater::REPO), body_at, inner.w, 13.0, Weight::Regular, TEXT_DIM);
                 self.ui.progress(Rect::new(inner.x, body_at.y + 40.0, inner.w, 10.0), frac, true);
             }
             Status::Installing(release) | Status::Restarting(release) => {
                 self.ui.icon("install_desktop", icon_at, 26.0, ACCENT);
-                self.ui.text_in(&format!("Installing openOMSI {}", release.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
+                self.ui.text_in(&format!("Installing neoOMSI {}", release.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
                 self.ui.paragraph("The new version is put in place; the launcher starts again in a moment.", body_at, inner.w, 13.0, Weight::Regular, TEXT_DIM);
                 self.ui.progress(Rect::new(inner.x, body_at.y + 40.0, inner.w, 10.0), 1.0, true);
             }
             Status::WaitingForInstaller(release) => {
                 self.ui.icon("install_mobile", icon_at, 26.0, ACCENT);
-                self.ui.text_in(&format!("Installing openOMSI {}", release.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
-                self.ui.paragraph("Android asks whether to update openOMSI: press Update there. The app then starts again by itself.", body_at, inner.w, 13.0, Weight::Regular, TEXT_DIM);
+                self.ui.text_in(&format!("Installing neoOMSI {}", release.version), title_r, 18.0, Weight::Bold, TEXT, Align::Left);
+                self.ui.paragraph("Android asks whether to update neoOMSI: press Update there. The app then starts again by itself.", body_at, inner.w, 13.0, Weight::Regular, TEXT_DIM);
                 self.ui.progress(Rect::new(inner.x, body_at.y + 60.0, inner.w, 10.0), 1.0, true);
             }
             Status::Failed(msg) => {
@@ -140,7 +140,7 @@ impl Launcher {
 }
 
 impl Launcher {
-    /// After an update: "Updated to openOMSI x" in the top right corner for a few seconds
+    /// After an update: "Updated to neoOMSI x" in the top right corner for a few seconds
     /// (it asks nothing and covers nothing that matters).
     pub(super) fn draw_updated_notice(&mut self) {
         let Some((v, at)) = self.update.updated.clone() else { return };
@@ -150,13 +150,37 @@ impl Launcher {
             return;
         }
         let fade = (t / 0.3).min(1.0).min((9.0 - t) / 0.6).clamp(0.0, 1.0);
-        let text = format!("Updated to openOMSI {v}");
+        let text = format!("Updated to neoOMSI {v}");
         let w = self.ui.width(&text, 13.5, Weight::Bold) + 60.0;
         let r = Rect::new(self.ui.size.x - w - 20.0, 18.0, w, 42.0);
         self.ui.p().rounded(r, 8.0, PANEL.alpha(0.97 * fade));
         self.ui.p().rounded_border(r, 8.0, 1.0, ACCENT.alpha(0.6 * fade));
         self.ui.icon("check_circle", Vec2::new(r.x + 22.0, r.center().y), 20.0, ACCENT.alpha(fade));
         self.ui.text_in(&text, Rect::new(r.x + 40.0, r.y, w - 48.0, r.h), 13.5, Weight::Bold, TEXT.alpha(fade), Align::Left);
+    }
+}
+
+/// The run went down while a Vulkan driver compiled the shaders: the LAST it said was a stage
+/// of that, and it drew with Vulkan (as the phone's shell decides it, `android.rs`). Any
+/// compile stage anywhere in the log said so of every silent end - a phone run out of memory
+/// 75 % into loading a map on OpenGL was told its Vulkan driver had failed (#848).
+pub(crate) fn died_compiling_on_vulkan(log: &str) -> bool {
+    let last = log.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let compiling = last.contains("renderer: compiling") || last.contains("cloud noise made") || last.contains("opening graphics device") || last.contains("compiling renderer pipelines");
+    let vulkan = log.lines().any(|l| (l.contains("renderer: ") || l.contains("opening graphics device")) && l.contains("(Vulkan")) || log.lines().any(|l| l.contains("graphics: ") && l.to_ascii_uppercase().contains("VULKAN"));
+    compiling && vulkan
+}
+
+#[cfg(test)]
+mod hint_tests {
+    #[test]
+    fn only_a_run_that_died_compiling_on_vulkan_is_told_so() {
+        let compiled = "[t INFO r] opening graphics device: Mali (Vulkan, vendor 0x13b5)\n[t INFO r] renderer: compiling the scene shaders\n";
+        assert!(super::died_compiling_on_vulkan(compiled));
+        // compiled long ago, then ran out of memory loading
+        assert!(!super::died_compiling_on_vulkan(&format!("{compiled}[t INFO g] status: 63 fps, view driver\n[t INFO m] loading tiles 75 %\n")));
+        // on OpenGL it is never the Vulkan driver
+        assert!(!super::died_compiling_on_vulkan("[t INFO r] opening graphics device: Mali (Gl, vendor 0x13b5)\n[t INFO r] renderer: compiling the scene shaders\n"));
     }
 }
 
@@ -172,7 +196,7 @@ impl Launcher {
         let w = (size.x - 48.0).min(640.0);
         let lost = what.contains("graphics device was lost");
         let silent = what.contains("closed without a word");
-        let compiling = silent && (tail.contains("renderer: compiling") || tail.contains("cloud noise made") || tail.contains("opening graphics device") || tail.contains("compiling renderer pipelines"));
+        let compiling = silent && died_compiling_on_vulkan(&tail);
         let hint = if lost {
             if cfg!(windows) {
                 "The graphics driver stopped the game. Updating the graphics driver usually helps; you can also let the game draw with DirectX 12 instead of Vulkan (the button below, or Settings → Graphics API)."
@@ -203,7 +227,7 @@ impl Launcher {
             self.state.crash = None;
         }
         if self.ui.button("crash-copy", Rect::new(inner.right() - 270.0, by, 150.0, 38.0), "Copy report", Some("content_copy"), ButtonKind::Primary) {
-            self.ui.clipboard_out = Some(format!("openOMSI {} ({})\n{what}\n\n{tail}", updater::current_version(), std::env::consts::OS));
+            self.ui.clipboard_out = Some(format!("neoOMSI {} ({})\n{what}\n\n{tail}", updater::current_version(), std::env::consts::OS));
             self.state.set_status("The report is copied: paste it into a GitHub issue or a message.", false);
         }
         let api = self.state.settings.get("graphics_api").and_then(|v| v.as_str()).unwrap_or("auto").to_string();
@@ -228,16 +252,16 @@ impl Launcher {
             let mut shown = 0;
             let body = loop {
                 let end = lines[lines.len() - shown..].join("\n");
-                let body = format!("openOMSI {} on {}\n\n```\n{what}\n```\n\nThe end of the log:\n```\n{end}\n```\n", updater::current_version(), std::env::consts::OS);
+                let body = format!("neoOMSI {} on {}\n\n```\n{what}\n```\n\nThe end of the log:\n```\n{end}\n```\n", updater::current_version(), std::env::consts::OS);
                 if shown >= lines.len() || enc(&body).len() > 6500 {
                     break if shown == 0 { body } else {
                         let end = lines[lines.len() - shown.saturating_sub(1)..].join("\n");
-                        format!("openOMSI {} on {}\n\n```\n{what}\n```\n\nThe end of the log:\n```\n{end}\n```\n", updater::current_version(), std::env::consts::OS)
+                        format!("neoOMSI {} on {}\n\n```\n{what}\n```\n\nThe end of the log:\n```\n{end}\n```\n", updater::current_version(), std::env::consts::OS)
                     };
                 }
                 shown += 1;
             };
-            self.ui.clipboard_out = Some(format!("openOMSI {} ({})\n{what}\n\n{tail}", updater::current_version(), std::env::consts::OS));
+            self.ui.clipboard_out = Some(format!("neoOMSI {} ({})\n{what}\n\n{tail}", updater::current_version(), std::env::consts::OS));
             updater::open_url(&format!("{}/issues/new?title={}&body={}", updater::REPO_URL, enc(&title), enc(&body)));
         }
     }

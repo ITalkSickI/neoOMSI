@@ -311,7 +311,7 @@ fn bay_offset(lat: f32) -> f32 {
 /// where traffic keeps left), from the box's offset `lat` off the path (right positive);
 /// a railway vehicle keeps to its track. OMSI clamps it only to the room beside other
 /// vehicles, not to a kerb: the bus pulls into the bay whether or not a path leads there
-/// (#241). (openOMSI kept it on its path before - a map whose box stood behind the
+/// (#241). (neoOMSI kept it on its path before - a map whose box stood behind the
 /// pavement had its buses on the pavement - but OMSI does the same there.)
 fn bay_for(lat: f32, ty: &omsi_sim::VehicleType, rail: bool, left_hand: bool) -> f32 {
     if rail || !lat.is_finite() {

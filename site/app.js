@@ -1,6 +1,6 @@
-// openOMSI website: a small hash router that shows the overview, the download page and the
+// neoOMSI website: a small hash router that shows the overview, the download page and the
 // Markdown files of docs/ (copied next to this page by .github/workflows/pages.yml).
-const REPO = "openOMSI-Project/openOMSI";
+const REPO = "neoOMSI/neoOMSI";
 const DOCS = [
   { file: "USER_GUIDE", title: "User guide", icon: "sports_esports" },
   { file: "ANDROID", title: "Android & mobile", icon: "smartphone" },
@@ -98,7 +98,7 @@ async function download() {
   // Each file by its exact name: matched by its ending alone, "-windows-x64.zip" was the
   // dedicated server's zip as well, and the Windows button downloaded the server.
   const card = p => {
-    const file = `openOMSI-${v}-${p.key}.${p.ext || "zip"}`;
+    const file = `neoOMSI-${v}-${p.key}.${p.ext || "zip"}`;
     const a = (rel.assets || []).find(a => a.name === file);
     const size = a ? ` · ${(a.size / 1048576).toFixed(0)} MB` : "";
     const mine = p.os && p.os === visitorOs();
@@ -128,7 +128,7 @@ async function doc(name, anchor) {
   const box = view.querySelector(".doc");
   box.innerHTML = `<div class="doc-toolbar"><a href="https://github.com/${REPO}/blob/main/docs/${name}.md">
     <span class="material-icons" style="font-size:18px">edit</span> Edit on GitHub</a></div>` + marked.parse(md);
-  document.title = `${meta ? meta.title : name} · openOMSI`;
+  document.title = `${meta ? meta.title : name} · neoOMSI`;
   // heading anchors
   box.querySelectorAll("h1, h2, h3, h4").forEach(h => {
     h.id = slug(h.textContent);
@@ -188,7 +188,7 @@ async function releases() {
   view.innerHTML = `<div class="content"><h1>Releases</h1>
     <p class="lead">Every version, newest first. The newest one is also on the <a href="#/download">Download</a> page.</p>
     <div id="rel-list"><div class="loading">Loading…</div></div></div>`;
-  document.title = "Releases · openOMSI";
+  document.title = "Releases · neoOMSI";
   const box = document.getElementById("rel-list");
   let list;
   try { list = await gh("releases?per_page=30"); } catch (e) { box.innerHTML = `<p>${esc(e.message)} <a href="https://github.com/${REPO}/releases">Releases on GitHub</a></p>`; return; }
@@ -217,7 +217,7 @@ async function issues(number) {
       <input id="iq" type="search" placeholder="Filter by title or label" value="${esc(issueQuery)}">
     </div>
     <div id="issue-list"><div class="loading">Loading…</div></div></div>`;
-  document.title = "Issues · openOMSI";
+  document.title = "Issues · neoOMSI";
   view.querySelectorAll(".tabs button").forEach(b => {
     b.classList.toggle("on", b.dataset.s === issueState);
     b.onclick = () => { issueState = b.dataset.s; issues(); };
@@ -248,7 +248,7 @@ async function issue(n) {
   let i, comments;
   try { [i, comments] = await Promise.all([gh(`issues/${n}`), gh(`issues/${n}/comments?per_page=100`)]); }
   catch (e) { box.innerHTML = `<p>${esc(e.message)}</p>`; return; }
-  document.title = `#${i.number} ${i.title} · openOMSI`;
+  document.title = `#${i.number} ${i.title} · neoOMSI`;
   const post = (who, when, body) => `<div class="card elevation-1 comment"><div class="comment-head"><img src="${esc(who?.avatar_url)}&s=48" alt=""><b>${esc(who?.login)}</b><span class="muted">${ago(when)}</span></div><div class="doc">${md(body) || "<p class='muted'>No description.</p>"}</div></div>`;
   box.innerHTML = `<h1>${esc(i.title)} <span class="muted">#${i.number}</span></h1>
     <p><span class="label" style="--lc:${i.state === "open" ? "#2da44e" : "#8250df"}">${i.state === "open" ? "Open" : "Closed"}</span> ${labelChips(i.labels)}</p>
@@ -262,7 +262,7 @@ function route() {
   const [path, anchor] = hash.split("#");
   document.querySelectorAll(".drawer a[data-route]").forEach(a => a.classList.toggle("active", a.dataset.route === path || (a.dataset.route === "/issues" && path.startsWith("/issues/"))));
   toggleDrawer(false);
-  document.title = "openOMSI";
+  document.title = "neoOMSI";
   if (path.startsWith("/docs/")) return doc(path.slice(6), anchor);
   if (path === "/download") return download();
   if (path === "/releases") return releases();

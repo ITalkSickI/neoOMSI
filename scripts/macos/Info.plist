@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleDisplayName</key><string>openOMSI</string>
-	<key>CFBundleName</key><string>openOMSI</string>
-	<key>CFBundleExecutable</key><string>openomsi</string>
-	<key>CFBundleIconFile</key><string>openomsi</string>
-	<key>CFBundleIdentifier</key><string>io.github.turbo-devv.openomsi</string>
+	<key>CFBundleDisplayName</key><string>neoOMSI</string>
+	<key>CFBundleName</key><string>neoOMSI</string>
+	<key>CFBundleExecutable</key><string>neoomsi</string>
+	<key>CFBundleIconFile</key><string>neoomsi</string>
+	<key>CFBundleIdentifier</key><string>io.github.turbo-devv.neoomsi</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>@VERSION@</string>
 	<key>CFBundleVersion</key><string>@VERSION@</string>

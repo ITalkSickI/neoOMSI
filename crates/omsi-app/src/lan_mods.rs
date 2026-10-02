@@ -7,7 +7,7 @@
 //! their number in it: no path a client names is ever opened. A joining game asks for the
 //! list before its world is loaded, fetches what it does not have in the same version
 //! (compared by SHA-256), checks every file against the list's size and hash, and keeps
-//! them in a folder of its own for this session (`~/.openomsi/lan-mods/<pid>`), which
+//! them in a folder of its own for this session (`~/.neoomsi/lan-mods/<pid>`), which
 //! becomes the first content root. The folder goes when the session ends (and one left by a
 //! game that did not end cleanly goes at the next start).
 //!
@@ -126,8 +126,8 @@ fn sha256_of(data: &[u8]) -> String {
 // the host
 
 /// Is content root `r` the OMSI 2 installation itself (its files are taken to be there on
-/// every machine)? A content root inside it is not: openOMSI unpacked
-/// into the OMSI 2 folder keeps what it installs in `<OMSI 2>/openOMSI`, and those mods
+/// every machine)? A content root inside it is not: neoOMSI unpacked
+/// into the OMSI 2 folder keeps what it installs in `<OMSI 2>/neoOMSI`, and those mods
 /// were never passed on.
 fn is_original(r: &Path, original: &Path) -> bool {
     r == original
@@ -521,10 +521,10 @@ fn handle(stream: TcpStream, session: u64, ready: &Mutex<Option<Arc<(Manifest, V
 // -------------------------------------------------------------------------------------
 // the joining player
 
-/// The session folder of this game (`~/.openomsi/lan-mods/<pid>`).
+/// The session folder of this game (`~/.neoomsi/lan-mods/<pid>`).
 fn sandbox_base() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".openomsi").join("lan-mods"))
+    Some(PathBuf::from(home).join(".neoomsi").join("lan-mods"))
 }
 
 static SANDBOX: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -650,7 +650,7 @@ fn open(host: SocketAddr, session: u64) -> Result<(TcpStream, BufReader<TcpStrea
     Ok((out, input))
 }
 
-/// The downloads kept between sessions, by their SHA-256 (`~/.openomsi/lan-store`): a
+/// The downloads kept between sessions, by their SHA-256 (`~/.neoomsi/lan-store`): a
 /// map fetched once is not fetched again at the next join.
 fn store_dir() -> Option<PathBuf> {
     sandbox_base().map(|b| b.with_file_name("lan-store"))

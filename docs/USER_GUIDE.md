@@ -1,10 +1,10 @@
 # User guide
 
-How to run openOMSI, drive, use the launcher, install mods and play over LAN. For building
+How to run neoOMSI, drive, use the launcher, install mods and play over LAN. For building
 from source see [BUILDING.md](BUILDING.md).
 For OpenXR headset setup and controls on Windows, see [VR.md](VR.md).
 
-> openOMSI runs on the content of an **original OMSI 2 installation**. Without one the game does not start.
+> neoOMSI runs on the content of an **original OMSI 2 installation**. Without one the game does not start.
 
 ## Checking an installation
 
@@ -17,12 +17,12 @@ This loads every content file in the install with the new loaders and reports wh
 ## Running
 
 ```bash
-openomsi --root "/path/to/OMSI 2"
+neoomsi --root "/path/to/OMSI 2"
 ```
 
 `--root` is only needed once: the path is remembered, so afterwards the program can be
 started with no arguments at all. Without it the installation is looked for in `$OMSI_ROOT`,
-next to the program (an `OMSI 2 Original` or `OMSI 2` folder beside openOMSI) and in the
+next to the program (an `OMSI 2 Original` or `OMSI 2` folder beside neoOMSI) and in the
 usual Steam locations.
 
 Started without arguments the program opens the launcher (see below). `--menu` shows the
@@ -65,14 +65,14 @@ whole start-up by itself (main switch, ignition, starter, gearbox to neutral); `
 is the same thing for an offscreen run.
 
 **Updates.** When the launcher starts it asks
-[github.com/openOMSI-Project/openOMSI](https://github.com/openOMSI-Project/openOMSI) for the latest release
+[github.com/neoOMSI/neoOMSI](https://github.com/neoOMSI/neoOMSI) for the latest release
 and, when there is a newer one, offers it: **Update now** downloads it (checked against the
 SHA-256 GitHub lists), puts the new program in place of the old one and starts the launcher
-again - on Windows `openomsi.exe` and `openomsi-launcher.exe`, on macOS the `openOMSI.app`
+again - on Windows `neoomsi.exe` and `neoomsi-launcher.exe`, on macOS the `neoOMSI.app`
 you started, on Linux the program files; mods, content and settings stay. On Android the
-system's installer asks "Do you want to update this app?"; Update replaces openOMSI and starts
+system's installer asks "Do you want to update this app?"; Update replaces neoOMSI and starts
 it again, Cancel leaves it as it was. Settings → General → Updates: look for updates at the start (on
-by default), install without asking (off by default), Check now. A folder openOMSI cannot
+by default), install without asking (off by default), Check now. A folder neoOMSI cannot
 write to (Program Files, an app opened straight from Downloads on macOS) is reported with
 what to do. `OMSI_NO_UPDATE=1` switches the check off; `OMSI_UPDATE_URL` points it at another
 release description (GitHub's format; `file://` works, for testing).
@@ -140,7 +140,7 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   the weather presets that suit the season), and the roadbook with the IBIS codes; the
   summary and **Start the duty** bottom right.
 * **Profile** - hours, experience and level, from OMSI's own `.odr` personnel files plus
-  the session summaries the game writes to `~/.openomsi/sessions`.
+  the session summaries the game writes to `~/.neoomsi/sessions`.
 * **Settings** - everything in `settings.cfg` below, saved as it changes; keys the page
   does not manage are kept as they are. One tab for each thing one comes to change:
   *Graphics* (the quality preset first, the screen, distances and memory), *Driving* (keys,
@@ -182,7 +182,7 @@ again only when something changes; drag on it to turn the bus, scroll to zoom. I
   into a whole day of them (every *n* minutes up to a last departure).
 * **Setup** - where the original installation and the game binary are. The OMSI 2 folder may
   be given as a path with quotes, as `Omsi.exe` itself or as a folder inside it; unpacked into
-  the OMSI 2 folder itself, openOMSI keeps its own content in an `openOMSI` folder there and
+  the OMSI 2 folder itself, neoOMSI keeps its own content in an `neoOMSI` folder there and
   never writes to the game's.
 
 ```bash
@@ -194,7 +194,7 @@ Without a person at it: `OMSI_LAUNCHER_PAGE=drive:2` opens a page (and a Drive s
 `OMSI_LAUNCHER_EXIT=secs` closes it,
 `OMSI_LAUNCHER_INPUT="t=2 click 412,60; t=3 type 76; t=4 key Enter; t=5 shot a.png"` works
 it (logical pixels). The data side is `crates/omsi-launcher-core`:
-`openomsi-launcher --cli lines '{"map":"maps/Grundorf/global.cfg"}'` runs any of its commands
+`neoomsi-launcher --cli lines '{"map":"maps/Grundorf/global.cfg"}'` runs any of its commands
 from a terminal - `config`, `maps`, `vehicles`, `weather`, `lines`, `ibis`, `profiles`,
 `profile`, `mods`, `modinfo`, `install`, `instances`, `stop`, `log`, `join`, `settings`,
 `save_settings`, `keybindings`, `save_keybindings`, `preview`, `args`, `launch`. `lines`
@@ -203,7 +203,7 @@ lines, as in the game, whose default date is 1989-05-30.
 
 ## Settings, enhanced graphics, the navigator
 
-`~/.openomsi/settings.cfg` (written by the launcher's settings page, or by hand) holds
+`~/.neoomsi/settings.cfg` (written by the launcher's settings page, or by hand) holds
 `msaa` (1/2/4/8; a count the GPU cannot do falls back to the next lower one), `anisotropy`
 (1..16), `ssao`, `shadows`, `shadow_size`, `shadow_blobs` (the models' `[isshadow]` shadow
 meshes, OMSI's flat blob under a vehicle, laid on the road its wheels stand on; off, only the
@@ -236,7 +236,7 @@ and Right), `steering_linear` and `old_steering` (the two steering switches abov
 lock to lock, 900° by default) and `wheel_lock` (how far it is turned for the bus's full
 lock; 0 = the whole wheel, as OMSI), `fov` (degrees for the views from the bus; 0 = the bus's
 own cameras), `collision_objects` (walls, poles and bridges stop the bus; off is OMSI's `no_collision`
-option and is taken from OMSI's options when openOMSI starts the first time), `graphics_api`
+option and is taken from OMSI's options when neoOMSI starts the first time), `graphics_api`
 (`auto`, `vulkan`, `dx12` on Windows, `gl`: which graphics interface the game asks first -
 with `auto` Vulkan, then DirectX 12, then OpenGL), `ctrl_off` (game controllers switched off
 on the Controllers page, by name, separated by `|`) and `language` (`ENG`, `DEU`, `FRA`: the language the HUD names cockpit switches
@@ -320,7 +320,7 @@ VR or an active head tracker controls the view. It is off by default.
 
 ## Mods and the content folder
 
-The folder of the game binary (`dist/<platform>` in a build; beside `openOMSI.app` on macOS) is laid out like an OMSI 2
+The folder of the game binary (`dist/<platform>` in a build; beside `neoOMSI.app` on macOS) is laid out like an OMSI 2
 installation - `Vehicles`, `maps`, `Sceneryobjects`, `Splines`, `Texture`, `Fonts`,
 `Plugins`, `TicketPacks`, `Drivers`, `Weather`, … - and is searched *before* the original
 folder (`omsi_cfg::content_roots`): whatever a mod puts there is found exactly as if it had
@@ -332,7 +332,7 @@ Installing a mod: the launcher's **Mods** page opens the system's folder / file 
 into place (OMSI-style folders anywhere inside are merged; a lone bus, map, object or
 spline folder is recognised by its `.bus` / `global.cfg` / `.sco` / `.sli` files and put
 under the right folder), or drop it into `Mods/` next to the binary and open the page.
-`openomsi-launcher --cli install '{"path":"/path/to/mod.7z"}'` and `--cli mods` do the same
+`neoomsi-launcher --cli install '{"path":"/path/to/mod.7z"}'` and `--cli mods` do the same
 from a shell. An installation is a background job: the archive's table of contents becomes
 a plan, the disk is checked for room, everything is unpacked into a staging folder on the
 content volume and moved into place in one step, and it can be cancelled and cleaned up at
@@ -375,7 +375,7 @@ Big maps are kept within memory by compressed textures, a texture budget
 (`texture_memory`), a timetable fleet read ahead and trimmed again, and tiles that give
 everything back when they unload: Ahlheim V5 at its main station with traffic, passengers
 and the timetable peaks at 1.93 GB instead of 8.75 GB (see `docs/ARCHITECTURE.md`,
-*Memory*). The game's log is `~/.openomsi/game.log` (the launcher's `launcher.log`
+*Memory*). The game's log is `~/.neoomsi/game.log` (the launcher's `launcher.log`
 beside it), and the first line of both is the build they were made from.
 
 ## Object editor
@@ -466,7 +466,7 @@ there. The host checks everything it takes in and limits how much a player may s
 (its map, bus, objects, splines, AI vehicles and people from the content folder or archives,
 also a content folder inside the OMSI 2 folder) is listed with a SHA-256 per file and served
 over TCP on the session's port; a joining game fetches what it lacks before it loads the map
-and keeps the downloads for the next time (`~/.openomsi/lan-store`). Listing a big add-on map
+and keeps the downloads for the next time (`~/.neoomsi/lan-store`). Listing a big add-on map
 takes the host a while after it starts (Novi Sad, 27 000 files: 20 s on a fast computer); a joining game waits
 for it. Maps installed straight into the OMSI 2 folder are not passed on: both players need
 them.
@@ -490,5 +490,5 @@ platform.
 Windows, macOS and Linux run the same code (wgpu, winit, cpal, std UDP);
 paths are resolved case-insensitively so Windows-style `\` references in mods work
 everywhere; settings live under `$HOME` / `%USERPROFILE%`. The same `cargo build --release`
-produces `openomsi.exe` / `openomsi`, and the scripts in `scripts/` build the launcher tools alongside it. Stopping a game from the launcher uses `WM_CLOSE` on Windows where it
+produces `neoomsi.exe` / `neoomsi`, and the scripts in `scripts/` build the launcher tools alongside it. Stopping a game from the launcher uses `WM_CLOSE` on Windows where it
 sends SIGTERM elsewhere.

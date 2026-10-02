@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=openOMSI
+Name=neoOMSI
 Comment=Bus simulator compatible with OMSI 2 maps and mods
-Exec=openomsi
-Icon=openomsi
+Exec=neoomsi
+Icon=neoomsi
 Categories=Game;Simulation;
 Terminal=false

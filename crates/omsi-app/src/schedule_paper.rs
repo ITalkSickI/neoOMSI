@@ -1,7 +1,7 @@
 //! The paper timetable in the driver's cab.
 //!
 //! Stock vehicle models show this through `[matl_freetex] file_schedule`. OMSI supplies the
-//! bitmap named by that string; openOMSI makes it from the player's current duty and keeps
+//! bitmap named by that string; neoOMSI makes it from the player's current duty and keeps
 //! it in its own cache so the original installation remains read-only.
 
 use crate::schedule::PlayerDuty;
@@ -69,8 +69,8 @@ fn cache_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
-        .ok_or_else(|| anyhow!("cannot locate the openOMSI user data folder"))?;
-    Ok(home.join(".openomsi").join("cache").join("schedules"))
+        .ok_or_else(|| anyhow!("cannot locate the neoOMSI user data folder"))?;
+    Ok(home.join(".neoomsi").join("cache").join("schedules"))
 }
 
 fn set_filename(vehicle: &mut VehicleInstance, value: &str) {
@@ -169,7 +169,7 @@ fn typewriter_font(lines: &[String]) -> Option<FontAtlas> {
     }
     Some(FontAtlas::new(
         Font {
-            name: "openOMSI timetable".into(),
+            name: "neoOMSI timetable".into(),
             height: line_height as i32,
             gap: 0,
             chars,
