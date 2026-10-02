@@ -220,7 +220,16 @@ jobs:
       - name: Publish v${{ needs.version.outputs.version }}
         run: |
           ls -l out
-          awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
+          else
+            : > changes.md
+            for f in changelog/unreleased/*.md; do
+              [ -f "$f" ] || continue
+              cat "$f" >> changes.md
+              echo >> changes.md
+            done
+          fi
           if ! grep -q '[^[:space:]]' changes.md; then
             prev=$(git tag -l 'v*' --sort=-v:refname | grep -vx "$TAG" | head -1)
             if [ -n "$prev" ]; then
