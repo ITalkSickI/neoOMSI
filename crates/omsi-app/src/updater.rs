@@ -1,7 +1,7 @@
 //! Updates from the project's GitHub releases (github.com/neoOMSI/neoOMSI).
 //!
 //! Every push to main publishes a release `v<MAJOR.MINOR.COMMIT>` with one archive per
-//! platform (see .github/workflows/release.yml). The launcher asks the GitHub API for the
+//! platform (see .github/workflows/build.yml). The launcher asks the GitHub API for the
 //! latest release when it starts (setting `update_check`), and when it is newer than this
 //! build it offers it - or, with `update_auto`, installs it at once:
 //!
@@ -184,7 +184,7 @@ pub fn newer(candidate: &str, current: &str) -> bool {
     !a.is_empty() && a > b
 }
 
-/// The release file for this platform, as `release.yml` names it.
+/// The release file for this platform, as `build.yml` names it.
 pub fn asset_name(version: &str) -> Option<String> {
     let suffix = if cfg!(target_os = "android") {
         "android-arm64.apk"

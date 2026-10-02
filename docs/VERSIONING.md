@@ -24,7 +24,7 @@ launcher's side bar, in its log and in `neoomsi --version` (baked in by
 
 ## Releases
 
-Every push to `main` runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+Every push to `main` runs [`.github/workflows/build.yml`](../.github/workflows/build.yml):
 
 1. works out the version with `scripts/version.sh`;
 2. builds Windows x64 and ARM64 (MSVC), macOS for Apple silicon and Intel, Linux x64 and

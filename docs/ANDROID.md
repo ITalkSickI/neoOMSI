@@ -94,7 +94,7 @@ the size of one).
 ## Releases
 
 Every push to main builds the APK in GitHub Actions (`android` job of
-`.github/workflows/release.yml`) and attaches it to the release as
+`.github/workflows/build.yml`) and attaches it to the release as
 `neoOMSI-<version>-android-arm64.apk`. Set the repository secret `ANDROID_KEYSTORE_B64`
 (`base64 < android/debug.keystore`) so that every release is signed with the same key and
 installs over the previous one.
