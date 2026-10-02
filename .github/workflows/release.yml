@@ -3,15 +3,11 @@ name: Release
 on:
   push:
     branches: [main, nightly]
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_name == 'nightly' }}
+  cancel-in-progress: ${{ github.ref_name == 'nightly' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -39,7 +35,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: test
-          save-if: ${{ github.event_name != 'pull_request' }}
       - name: Texture lookup regression tests
         run: cargo test --locked -p omsi-texture --lib
       - name: Scripted traffic lamp regression test
@@ -66,7 +61,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-          save-if: ${{ github.event_name != 'pull_request' }}
       - name: Build
         shell: cmd
         run: scripts\build-windows.cmd ${{ matrix.target }}
@@ -136,7 +130,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-          save-if: ${{ github.event_name != 'pull_request' }}
       - name: Build
         run: scripts/build-macos.sh
       - name: Package
@@ -171,7 +164,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.arch }}
-          save-if: ${{ github.event_name != 'pull_request' }}
       - name: System libraries
         run: |
           for i in 1 2 3; do
@@ -201,7 +193,6 @@ jobs:
           retention-days: 1
 
   release:
-    if: github.event_name != 'pull_request'
     needs: [version, test, windows, macos, linux]
     runs-on: ubuntu-latest
     permissions:
