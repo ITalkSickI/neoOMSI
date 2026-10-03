@@ -1048,7 +1048,6 @@ fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "mouse_right" => s.mouse_right_off,
         "blinker_cancel" => s.blinker_cancel,
         "fps" => s.show_fps,
-        "get_up" => s.get_up,
         "auto_ibis" => s.auto_ibis,
         "time_sync" => s.time_sync,
         "metar_sync" => s.metar_sync,
@@ -1084,7 +1083,6 @@ fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "momentary_gears" => s.momentary_gears,
         "auto_shift" => s.auto_shift,
         "ff_invert" => s.ff_invert,
-        "machine_translation" => s.machine_translation,
         "ui_scale_window" => s.ui_scale_window,
         "tooltips" => s.tooltips,
         "notes" => s.notes,
@@ -1164,10 +1162,6 @@ fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static str, String
         "mouse_right" => {
             app.settings.mouse_right_off = on;
             Some(("mouse_right_off", bit))
-        }
-        "get_up" => {
-            app.settings.get_up = on;
-            Some(("get_up", bit))
         }
         "auto_ibis" => {
             app.settings.auto_ibis = on;
@@ -1333,11 +1327,6 @@ fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static str, String
         "ff_invert" => {
             app.settings.ff_invert = on;
             Some(("ff_invert", bit))
-        }
-        "machine_translation" => {
-            app.settings.machine_translation = on;
-            crate::mt::enable(on);
-            Some(("machine_translation", bit))
         }
         "ui_scale_window" => {
             app.settings.ui_scale_window = on;
@@ -1741,7 +1730,6 @@ fn options_pages(app: &App) -> Vec<Page> {
         switch_row(app, "nav_ai", "AI vehicles on the map", "Shows/hides the other (AI) vehicles on the Minimap and the city map"),
         switch_row(app, "nav_arrows", "Route arrows (as in OMSI 2)", "Shows OMSI 2's route arrows over the road"),
         pick("navigator_corner", "Corner", later),
-        switch_row(app, "get_up", "Ability to get up (Ctrl+Shift+G)", "Allows you to get out of the car and explore the world"),
         switch_row(app, "auto_ibis", "Automatic IBIS", "When enabled, the selected tour is automatically entered into IBIS"),
         switch_row(app, "coll_objects", "Collisions with objects", "Enables/disables collisions with objects such as buildings, streetlights, etc."),
         switch_row(app, "coll_vehicles", "Collisions with vehicles", "Enables/Disables Collisions with Other Vehicles"),
@@ -1863,7 +1851,6 @@ fn options_pages(app: &App) -> Vec<Page> {
     let interface: Vec<(String, String)> = vec![
         pick("language", "Language", "The language of the game's interface"),
         pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
-        switch_row(app, "machine_translation", "Translate the remaining texts automatically (offline, downloads 620 MB once)", "Translates texts nobody has translated, on this machine"),
         slider_row(app, "ui_scale", "Game interface size", "The size of the texts, the menu, the timetable and the navigator", &pct),
         switch_row(app, "ui_scale_window", "Interface grows with the window", "On a window taller than 1080p the interface grows with it"),
         slider_row(app, "ui_opacity", "Interface opacity", "How much of the interface's backgrounds shows", &pct),

@@ -21,7 +21,6 @@ mod android;
 mod platform;
 mod touch;
 mod placing;
-mod mt;
 mod updater;
 mod ambience;
 mod camera_arm;
@@ -210,8 +209,6 @@ pub(crate) fn launcher_statics() {
 /// nothing more to do (a fatal error was shown).
 pub(crate) fn prepare(mut args: Args, bare: bool) -> Result<Option<(Args, Option<server::ServerCfg>)>> {
     ui_language(&settings::Settings::load().language);
-    // (a server has no interface to translate)
-    mt::enable(settings::Settings::load().machine_translation && args.server.is_none());
     // the dedicated server: server.cfg decides the world, the rest is a host without a window
     let server_cfg = match args.server.clone() {
         Some(p) => match server::prepare(&mut args, &p) {

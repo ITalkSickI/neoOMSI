@@ -230,10 +230,6 @@ impl App {
         if self.on_foot.is_some() {
             return;
         }
-        if !self.settings.get_up {
-            self.service_msg = Some(("Getting up is off: turn on \"Ability to get up\" in the settings".into(), 5.0));
-            return;
-        }
         // the other vehicles round the own bus (room to step out)
         let others: Vec<Obb> = {
             let at = self.player.as_ref().map(|p| p.vehicle.position.truncate()).unwrap_or_default();

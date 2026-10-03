@@ -756,7 +756,6 @@ fn gameplay_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
         s["pax_density"] = json!((pd * 100.0).round() / 100.0);
         *dirty = 0.3;
     }
-    toggle_setting(ui, s, dirty, c.row(), "Ability to get up (Ctrl+Shift+G)", "get_up");
     c.section(ui, "Traffic");
     sel_setting(ui, s, dirty, "s-unsched", c.row(), "Random traffic", "ai_unsched_factor", &[("25", "25%"), ("50", "50%"), ("75", "75%"), ("100", "100%"), ("150", "150%"), ("200", "200%")]);
     sel_setting(ui, s, dirty, "s-maxsched", c.row(), "Timetable vehicles", "ai_max_scheduled", &[("0", "All"), ("10", "At most 10"), ("25", "At most 25"), ("50", "At most 50")]);
@@ -789,18 +788,6 @@ fn general_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, out: &mut Outside, c
     sel_setting(ui, s, dirty, "s-units", c.row(), "Units", "units", &[("metric", "Metric (km/h, km, °C)"), ("uk", "UK (mph, miles, °C)"), ("imperial", "Imperial (mph, miles, °F)")]);
     // (the launcher speaks the chosen language at once)
     crate::ui_language(get(s, "language").as_str().unwrap_or("ENG"));
-    // (texts nobody has translated: translated on this machine, see `mt`)
-    let was = get(s, "machine_translation").as_bool().unwrap_or(false);
-    toggle_setting(ui, s, dirty, c.row(), "Translate the remaining texts automatically (offline, downloads 620 MB once)", "machine_translation");
-    let now = get(s, "machine_translation").as_bool().unwrap_or(false);
-    if now != was {
-        crate::mt::enable(now);
-    }
-    let st = crate::mt::status();
-    if now && !st.is_empty() && st != "Ready" {
-        ui.text_in(&st, Rect::new(c.inner.x + 12.0, c.y - 6.0, c.inner.w - 24.0, 16.0), 11.5, omsi_ui::Weight::Regular, TEXT_FAINT, omsi_ui::paint::Align::Left);
-        c.y += 14.0;
-    }
     toggle_setting(ui, s, dirty, c.row(), "The launcher rests while a game runs (gives the graphics card to the game)", "launcher_rest");
     toggle_setting(ui, s, dirty, c.row(), "Discord Rich Presence", "discord_status");
     let help_height = ui.paragraph(
@@ -2297,11 +2284,11 @@ mod settings_tests {
         }
         let sound = vec!["s-vol", "s-volai", "s-volsc", "set-doppler", "s-voices"];
         let gameplay = vec![
-            "s-board", "set-exact_fare", "s-pax", "set-get_up", "s-unsched", "s-maxsched", "s-maxpark",
+            "s-board", "set-exact_fare", "s-pax", "s-unsched", "s-maxsched", "s-maxpark",
             "s-maint", "set-collision_vehicles", "set-collision_objects", "set-collision_pedestrians", "set-use_real_time", "set-use_real_date", "set-time_sync", "set-metar_sync", "s-timespeed",
         ];
         let general = vec![
-            "s-lang", "s-units", "set-machine_translation", "set-launcher_rest", "set-discord_status", "s-uiscale", "set-ui_scale_window", "s-uiop", "set-tooltips", "set-show_fps", "set-notes", "set-chat", "set-name_tags",
+            "s-lang", "s-units", "set-launcher_rest", "set-discord_status", "s-uiscale", "set-ui_scale_window", "s-uiop", "set-tooltips", "set-show_fps", "set-notes", "set-chat", "set-name_tags",
             "set-navigator", "set-nav_arrows", "set-nav_ai", "corner-top-left", "corner-top-right", "corner-bottom-left", "corner-bottom-right",
             "set-update_check", "set-update_auto", "s-upd-check", "s-upd-github", "s-reset",
         ];

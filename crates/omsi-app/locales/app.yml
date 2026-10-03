@@ -455,8 +455,6 @@ _version: 2
   de: "Nur der gewünschte Fahrschein"
 "Silent":
   de: "Still"
-"Ability to get up (Ctrl+Shift+G)":
-  de: "Aufstehen möglich (Ctrl+Shift+G)"
 "How many passengers":
   de: "Wie viele Fahrgäste"
 "Controls & sound":
@@ -805,8 +803,6 @@ _version: 2
   de: "Zu Fuß: W A S D gehen, Shift rennen, Leertaste springen, F1 / F2 / F3 Kameras, G an einer Tür hinsetzen"
 "No free seat here: stand by a bus's door":
   de: "Hier ist kein Platz frei: stell dich an eine Bustür"
-"Getting up is off: turn on \"Ability to get up\" in the settings":
-  de: "Aufstehen ist aus: schalte \"Aufstehen möglich\" in den Einstellungen ein"
 "go to":
   de: "hinfahren"
 "bring here":
@@ -831,8 +827,6 @@ _version: 2
   de: "Echtzeit"
 "Time speed (not in multiplayer)":
   de: "Zeitraffer (nicht im Mehrspieler)"
-"Translate the remaining texts automatically (offline, downloads 620 MB once)":
-  de: "Übrige Texte automatisch übersetzen (offline, einmalig 620 MB)"
 "Your next duty opens a session. Give the code to your friends: it works at home and over the internet.":
   de: "Dein nächster Dienst öffnet eine Sitzung. Gib deinen Freunden den Code: er funktioniert zu Hause und über das Internet."
 "Friends can join from anywhere":
