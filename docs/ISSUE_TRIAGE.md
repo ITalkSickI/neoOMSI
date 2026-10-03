@@ -10,7 +10,15 @@ High-volume repositories quickly become overwhelmed by duplicate, incomplete, or
 
 Closing an issue does not mean the report was invalid; it simply means there is currently insufficient reproducible information or priority to warrant active tracking. Issues can be reopened or resubmitted once reproduction steps or logs become available.
 
-## Label conventions
+## Classification conventions
+
+### Native issue types
+
+GitHub native issue types establish the primary classification:
+
+- **Bug** – Unexpected defect, crash, visual glitch, regression, or discrepancy with OMSI 2.2.032.
+- **Feature** – Intentional enhancement, user request, or capability going beyond OMSI 2.
+- **Task** – Specific engineering task, refactoring, CI/infrastructure, or documentation work.
 
 ### Status labels
 
@@ -18,6 +26,7 @@ Closing an issue does not mean the report was invalid; it simply means there is 
 - `status: needs-info` – Plausible report, but missing steps, logs, or reproduction details.
 - `status: verified` – Successfully reproduced or substantiated by clear diagnostic evidence.
 - `status: needs-investigation` – Valid problem, but the root cause or correct subsystem fix is unclear.
+- `status: accepted` – Proposal or task reviewed by maintainers and accepted as in scope for neoOMSI. Acceptance does not imply a specific release or implementation date.
 
 ### Scope labels
 
@@ -30,6 +39,14 @@ Closing an issue does not mean the report was invalid; it simply means there is 
 
 - `triage: protected` – Explicitly retained through automated maintenance sweeps during ongoing research or design.
 
+### Planning fields (optional)
+
+Maintainers may optionally assign planning fields to triaged issues:
+
+- **Priority** (`Urgent`, `High`, `Medium`, `Low`) – Urgency relative to engine stability and milestone goals.
+- **Effort** (`High`, `Medium`, `Low`) – Rough estimate of implementation complexity.
+- **Dates** – Generally left blank unless an issue is tied to a fixed release timeline.
+
 ## Triage workflow
 
 Maintainers review incoming issues regularly:
@@ -37,7 +54,10 @@ Maintainers review incoming issues regularly:
 1. **Check for completeness:** Does the report specify the neoOMSI build, OMSI 2 path configuration, reproduction steps, and system details?
 2. **OMSI 2 baseline comparison:** What does OMSI 2.2.032 do under the exact same inputs and conditions?
 3. **Classify:**
+   - Set the native issue type (**Bug**, **Feature**, or **Task**).
    - **Actionable & verified:** Assign `status: verified` and appropriate scope.
+   - **Accepted feature / extension:** Assign `status: accepted` and the appropriate scope.
+   - Optionally set **Priority** and **Effort** to assist in backlog scheduling.
    - **Missing information:** Request specifics and tag `status: needs-info`.
    - **Duplicate:** Reference the canonical issue and close.
    - **Out of scope / pure extension:** Label `scope: extension` and defer or close if not aligned with current phase goals.
