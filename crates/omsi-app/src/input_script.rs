@@ -9,7 +9,7 @@ pub(crate) fn is_game_action(name: &str) -> bool {
     name.starts_with("view_")
         || matches!(
             name.as_str(),
-            "sim_pause" | "screenshot" | "quicksave" | "toggel_mouse_ctrl" | "toggel_ctrler"
+            "sim_pause" | "quicksave" | "toggel_mouse_ctrl" | "toggel_ctrler"
         )
 }
 
@@ -1493,9 +1493,6 @@ impl App {
                     let riders = self.humans.as_ref().map(|h| (h.people_in(crate::humans::BusId::Player), self.placed.iter().map(|q| h.people_in(crate::humans::BusId::Ai(crate::humans::placed_bus_id(q.uid)))).collect::<Vec<_>>()));
                     log::info!("input script: menu {arg}: player {:?}, on foot {:?}, placed {}, people in the bus / the placed ones {:?}", self.player.as_ref().map(|p| p.vehicle.position), self.on_foot.as_ref().map(|f| f.pos), self.placed.len(), riders);
                 }
-                // `shot <file>`: the window's own view into a PNG, drawn from the scene the
-                // window is showing (the only way to see what the window path renders)
-                "shot" => self.shot = Some(PathBuf::from(arg)),
                 // `dumptex <folder>`: the player's display pictures as the window has them
                 "dumptex" => {
                     if let Some(p) = self.player.as_ref() {
@@ -2505,10 +2502,6 @@ impl App {
                 self.save_slot();
                 self.close_game_menu();
             }
-            "shot" => {
-                self.close_game_menu();
-                self.take_screenshot();
-            }
             // the route ends here: free drive, as the list of lines has it
             "endduty" => {
                 self.duty = None;
@@ -3089,7 +3082,6 @@ impl App {
         if self.vr_action(name) { return true; }
         match name {
             "sim_pause" => self.toggle_pause(),
-            "screenshot" => self.take_screenshot(),
             "quicksave" => self.quick_save(),
             "view_set_ego" => {
                 // on foot from where the camera is (beside the bus in the driver's view)
@@ -3802,7 +3794,6 @@ pub(crate) const SERVER_GAME_MENU: [(&str, &str); 7] = [
     ("vehicle", "Vehicle options..."),
     ("world", "World options..."),
     ("map", "City map"),
-    ("shot", "Screenshot"),
     ("quit", "Leave the server"),
 ];
 
@@ -3926,7 +3917,6 @@ pub(crate) const GAME_MENU: [(&str, &str); 12] = [
     ("save", "Save the situation"),
     ("saveslot", "Save to a new slot"),
     ("load", "Load the quicksave"),
-    ("shot", "Screenshot"),
     ("quit", "End the session"),
 ];
 
