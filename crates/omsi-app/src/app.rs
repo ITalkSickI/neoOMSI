@@ -353,9 +353,12 @@ impl App {
             })
             .unwrap_or((1600, 900));
         let (fit, at) = crate::startup::fit_window(event_loop, lw as f64, lh as f64);
+        // (hidden at first: shown by `present_splash` once the first dark picture is on it;
+        // a window shown earlier stood white until the graphics were up)
         let mut attrs = Window::default_attributes()
             .with_title("neoOMSI")
             .with_inner_size(fit)
+            .with_visible(false)
             .with_window_icon(crate::startup::window_icon());
         if let Some(at) = at {
             attrs = attrs.with_position(at);
@@ -424,6 +427,7 @@ impl App {
         self.surface = Some(surface);
         self.renderer = Some(renderer);
         self.scene = Some(scene);
+        self.present_splash("Starting");
         // fully specified runs skip the menu
         if self.args.bus.is_some() || self.args.cam.is_some() || self.args.no_menu {
             self.load_world_now(event_loop);
@@ -434,11 +438,75 @@ impl App {
         }
     }
 
+    pub(crate) fn present_splash(&mut self, caption: &str) {
+        if let (Some(win), Some(s), Some(r)) = (self.window.clone(), self.surface.as_mut(), self.renderer.as_ref()) {
+            let size = win.inner_size();
+            s.resize(r, size.width.max(1), size.height.max(1));
+        }
+        if let (Some(ui), Some(s), Some(win), Some(r), Some(scene)) = (
+            self.ui.as_mut(),
+            self.surface.as_ref(),
+            self.window.as_ref(),
+            self.renderer.as_mut(),
+            self.scene.as_mut(),
+        ) {
+            scene.overlays.clear();
+            let dpi = win.scale_factor() as f32;
+            let scale = dpi * crate::ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
+            ui.loading_bg = Some(None);
+            ui.loading(r, scene, s.config.width as f32, s.config.height as f32, scale, "", caption, None, None, 0.0);
+            ui.loading_bg = None;
+            if let wgpu::CurrentSurfaceTexture::Success(frame) | wgpu::CurrentSurfaceTexture::Suboptimal(frame) = s.surface.get_current_texture() {
+                let view = frame.texture.create_view(&Default::default());
+                let blank = Camera { position: DVec3::new(0.0, 0.0, -1.0e6), yaw: 0.0, pitch: -89.0, roll: 0.0, fov_deg: 60.0, near: 0.5, far: 10.0 };
+                let lighting = omsi_render::Lighting { sky_color: glam::Vec3::new(0.04, 0.045, 0.055), ..Default::default() };
+                r.render(scene, &view, s.config.width, s.config.height, &blank, &lighting);
+                win.pre_present_notify();
+                r.queue.present(frame);
+            }
+            scene.overlays.clear();
+        }
+        if let Some(win) = self.window.as_ref() {
+            win.set_visible(true);
+            win.request_redraw();
+        }
+    }
+
+    pub(crate) fn loading_preview(&mut self) {
+        let map_dir = self.world.as_ref().map(|w| w.map_dir.clone()).or_else(|| self.args.root.join(&self.args.map).parent().map(|d| d.to_path_buf()));
+        let name = map_dir.as_ref().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let t = self.started.elapsed().as_secs_f32();
+        if let (Some(ui), Some(s), Some(win), Some(r), Some(scene)) = (
+            self.ui.as_mut(),
+            self.surface.as_ref(),
+            self.window.as_ref(),
+            self.renderer.as_mut(),
+            self.scene.as_mut(),
+        ) {
+            scene.overlays.clear();
+            let dpi = win.scale_factor() as f32;
+            let scale = dpi * crate::ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
+            ui.loading(r, scene, s.config.width as f32, s.config.height as f32, scale, &name, "Loading", Some((t / 10.0).fract()), map_dir.as_deref(), t);
+            if let wgpu::CurrentSurfaceTexture::Success(frame) | wgpu::CurrentSurfaceTexture::Suboptimal(frame) = s.surface.get_current_texture() {
+                let view = frame.texture.create_view(&Default::default());
+                let blank = Camera { position: DVec3::new(0.0, 0.0, -1.0e6), yaw: 0.0, pitch: -89.0, roll: 0.0, fov_deg: 60.0, near: 0.5, far: 10.0 };
+                let lighting = omsi_render::Lighting { sky_color: glam::Vec3::new(0.04, 0.045, 0.055), ..Default::default() };
+                r.render(scene, &view, s.config.width, s.config.height, &blank, &lighting);
+                win.pre_present_notify();
+                r.queue.present(frame);
+            }
+            win.request_redraw();
+        }
+    }
+
     /// Load the map, vehicle and traffic according to `args`.
     pub(crate) fn load_world_now(&mut self, event_loop: &ActiveEventLoop) {
         // a joining player loads the host's date, time, weather and season (after the menu)
         if let Some(l) = self.lan.as_mut() {
             lan::adopt_host_world(&mut self.args, l, &mut self.remotes);
+        }
+        if let Some(ui) = self.ui.as_mut() {
+            ui.scene_replaced();
         }
         let renderer = self.renderer.take().expect("renderer");
         let mut scene = renderer.new_scene();
@@ -786,6 +854,7 @@ impl App {
                 }
             })
             .unwrap_or_default();
+        let map_dir = self.world.as_ref().map(|w| w.map_dir.clone());
         let mut reconfigure = false;
         if let (Some(ui), Some(s), Some(win)) = (
             self.ui.as_mut(),
@@ -802,8 +871,10 @@ impl App {
                 s.config.height as f32,
                 scale,
                 name.trim(),
-                "",
-                done as f32 / total.max(1) as f32,
+                "Loading",
+                Some(done as f32 / total.max(1) as f32),
+                map_dir.as_deref(),
+                self.started.elapsed().as_secs_f32(),
             );
             let acquired = s.surface.get_current_texture();
             // a swapchain that no longer fits the window (Vulkan says so after the switch
