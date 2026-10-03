@@ -1,6 +1,6 @@
 name: Bug / Compatibility Report
 description: Report broken behaviour or a difference from OMSI 2
-labels: ["bug"]
+labels: ["bug", "status: untriaged"]
 body:
   - type: markdown
     attributes:

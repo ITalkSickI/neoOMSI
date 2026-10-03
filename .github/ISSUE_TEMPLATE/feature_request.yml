@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest an intentional neoOMSI extension beyond OMSI 2
-labels: ["enhancement"]
+labels: ["enhancement", "scope: extension", "status: untriaged"]
 body:
   - type: markdown
     attributes:
