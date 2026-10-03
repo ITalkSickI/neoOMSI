@@ -70,7 +70,6 @@ mod dinput;
 #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 mod evdev_ff;
 mod cli;
-mod diagnostics;
 mod duty_start;
 mod input_script;
 mod launcher_link;
@@ -123,7 +122,6 @@ use winit::window::{Window, WindowId};
 use app::*;
 use camera_util::*;
 use cli::*;
-use diagnostics::*;
 use duty_start::*;
 use input_script::*;
 use launcher_link::*;

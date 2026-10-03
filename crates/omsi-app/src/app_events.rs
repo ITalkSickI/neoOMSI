@@ -917,21 +917,6 @@ impl ApplicationHandler for App {
                     if let Some(w) = self.world.as_ref() {
                         lay_down_poles(w, r, scene, &mut p.vehicle);
                     }
-                    static EVERY: std::sync::OnceLock<Option<f32>> = std::sync::OnceLock::new();
-                    if let Some(every) = *EVERY.get_or_init(|| {
-                        omsi_cfg::env::var("OMSI_DEBUG_PHYSICS")
-                            .ok()
-                            .and_then(|v| v.parse::<f32>().ok())
-                            .filter(|v| *v > 0.0)
-                    }) {
-                        static LAST: std::sync::atomic::AtomicU32 =
-                            std::sync::atomic::AtomicU32::new(u32::MAX);
-                        let t = self.started.elapsed().as_secs_f32();
-                        let bucket = (t / every) as u32;
-                        if LAST.swap(bucket, std::sync::atomic::Ordering::Relaxed) != bucket {
-                            log_physics(&p.vehicle, t);
-                        }
-                    }
                     let inside = self.in_cab;
                     p.sync_transforms(r, scene, inside);
                     // from the driver's seat the figure stays in the mirrors
@@ -1869,11 +1854,6 @@ impl ApplicationHandler for App {
                     let mut lines: Vec<String> = Vec::new();
                     if self.paused {
                         lines.push(ui::PAUSE_NOTICE.into());
-                    }
-                    // why the bus is not moving, whenever the throttle is pressed and nothing
-                    // happens: the things a driver checks first
-                    if let Some(p) = self.player.as_ref() {
-                        lines.extend(standing_reasons(&p.vehicle, &|a| crate::diagnostics::rebound_key(&p.bindings, a)));
                     }
                     // what is under the cursor, in the player's language (the scripts only
                     // know internal, mostly German names)

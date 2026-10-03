@@ -261,11 +261,6 @@ pub(crate) fn run_offscreen(
     let drive_v0: Option<f32> = omsi_cfg::env::var("OMSI_DRIVE_V0")
         .ok()
         .and_then(|v| v.parse().ok());
-    let physics_log: f32 = omsi_cfg::env::var("OMSI_DEBUG_PHYSICS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.0);
-    let mut last_reasons: Vec<String> = Vec::new();
     if args.autostart {
         if let Some(p) = player.as_mut() {
             log::info!("{}", p.start_up());
@@ -831,19 +826,6 @@ pub(crate) fn run_offscreen(
                         }
                     }
                 }
-                // what the window's HUD would say about a bus that does not move
-                // (once per reason: the numbers in a line change all the time)
-                if i % 30 == 0 {
-                    let why = standing_reasons(&player.vehicle, &|a| crate::diagnostics::rebound_key(&player.bindings, a));
-                    let key = |l: &String| l.split('(').next().unwrap_or_default().to_string();
-                    for line in why
-                        .iter()
-                        .filter(|l| !last_reasons.iter().any(|o| key(o) == key(l)))
-                    {
-                        log::info!("HUD at {t_s:.1} s (not moving): {line}");
-                    }
-                    last_reasons = why;
-                }
                 lay_down_poles(&world, &renderer, &mut scene, &mut player.vehicle);
                 // the worst the bus did on the way (a bus on end, flying, through the ground)
                 {
@@ -859,11 +841,6 @@ pub(crate) fn run_offscreen(
                     }
                     e.2 = e.2.max(g);
                     e.3 = e.3.min(g);
-                }
-                if physics_log > 0.0
-                    && (t_s / physics_log).floor() != ((t_s + dt) / physics_log).floor()
-                {
-                    log_physics(&player.vehicle, t_s + dt);
                 }
                 // `OMSI_TRACE_VARS=a,b,$c`: the listed variables every half second of the run
                 // (a leading `$` reads a string variable) - how a start-up sequence unfolds
