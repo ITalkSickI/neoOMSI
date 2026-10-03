@@ -5,7 +5,7 @@ use super::*;
 impl App {
     /// The interface, the picture itself, screenshots and the end of the session.
     pub(super) fn redraw_render(&mut self, event_loop: &ActiveEventLoop, f: &Frame, daylight: omsi_sim::Daylight) {
-        let Frame { now, raw_dt, dt, profiling: _, .. } = *f;
+        let Frame { now, raw_dt, dt, .. } = *f;
         let menu_lines = if self.game_menu.is_some() { self.game_menu_items() } else { Vec::new() };
         let vr_nav_display = self.vr_nav_display();
         let vr_active = self.vr_active();

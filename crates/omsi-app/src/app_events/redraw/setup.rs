@@ -221,6 +221,6 @@ impl App {
             }
             return None;
         }
-        Some(Frame { now, raw_dt, dt, profiling })
+        Some(Frame { now, raw_dt, dt })
     }
 }

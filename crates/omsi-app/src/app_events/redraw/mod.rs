@@ -16,7 +16,6 @@ pub(super) struct Frame {
     pub now: Instant,
     pub raw_dt: f32,
     pub dt: f32,
-    pub profiling: bool,
 }
 
 impl App {
