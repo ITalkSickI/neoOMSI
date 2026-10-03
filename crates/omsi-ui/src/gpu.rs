@@ -1,4 +1,4 @@
-//! The wgpu side: one pipeline for every [`Vertex`](crate::Vertex) list, drawn in layers
+//! The wgpu side: one pipeline for every [`Vertex`](Vertex) list, drawn in layers
 //! (each its own camera, viewport and rounded clip) into a window or a texture, MSAA
 //! resolved, premultiplied alpha.
 
@@ -91,7 +91,7 @@ impl Gpu {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<Uniform>() as u64) },
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: wgpu::BufferSize::new(size_of::<Uniform>() as u64) },
                 count: None,
             }],
         });
@@ -110,7 +110,7 @@ impl Gpu {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attrs })],
+                buffers: &[Some(wgpu::VertexBufferLayout { array_stride: size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attrs })],
                 compilation_options: Default::default(),
             },
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, cull_mode: None, ..Default::default() },
@@ -136,7 +136,7 @@ impl Gpu {
         let uniform_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("omsi-ui uniform"),
             layout: &u_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: wgpu::BufferSize::new(std::mem::size_of::<Uniform>() as u64) }) }],
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: wgpu::BufferSize::new(size_of::<Uniform>() as u64) }) }],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("omsi-ui"),
@@ -274,7 +274,7 @@ impl Gpu {
 
     /// Put `verts` into vertex buffer `id` (grown as needed).
     pub fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, id: usize, verts: &[Vertex]) {
-        let bytes = std::mem::size_of_val(verts) as u64;
+        let bytes = size_of_val(verts) as u64;
         while self.buffers.len() <= id {
             self.buffers.push((None, 0));
         }
@@ -316,7 +316,7 @@ impl Gpu {
             let vp = if l.viewport[2] > 0.0 { l.viewport } else { [0.0, 0.0, w as f32, h as f32] };
             let u = Uniform { view_proj: l.view_proj.to_cols_array_2d(), viewport: vp, target: [w as f32, h as f32, 0.0, 0.0], clip: l.clip, params: [l.radius, l.opacity, l.px_scale, 0.0] };
             let at = k * SLOT as usize;
-            data[at..at + std::mem::size_of::<Uniform>()].copy_from_slice(bytemuck::bytes_of(&u));
+            data[at..at + size_of::<Uniform>()].copy_from_slice(bytemuck::bytes_of(&u));
         }
         queue.write_buffer(&self.uniform, 0, &data[..(SLOT as usize * layers.len().clamp(1, MAX_LAYERS as usize))]);
         if self.samples > 1 && self.msaa.as_ref().map(|m| (m.1, m.2) != (w, h)).unwrap_or(true) {

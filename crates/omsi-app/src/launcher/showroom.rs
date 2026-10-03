@@ -29,7 +29,7 @@ pub struct Look {
 
 struct Ready {
     look: Look,
-    world: Arc<scene::World>,
+    world: Arc<World>,
     vt: Arc<omsi_sim::VehicleType>,
     vehicle: omsi_sim::VehicleInstance,
     scheme: Option<usize>,
@@ -39,12 +39,12 @@ struct Shown {
     look: Look,
     scene: Scene,
     #[allow(dead_code)]
-    world: Option<Arc<scene::World>>,
+    world: Option<Arc<World>>,
     vehicle: Option<omsi_sim::VehicleInstance>,
     render: Option<scene::VehicleRender>,
     trailers: Vec<scene::VehicleRender>,
     /// Centre and size of the bus (its bounding box).
-    centre: glam::Vec3,
+    centre: Vec3,
     length: f32,
     weather: omsi_content::weather::Weather,
     lighting: Lighting,
@@ -211,7 +211,7 @@ impl Showroom {
         // the bus's own state, whenever the picture is drawn again
         if let (true, Some(s)) = (self.dirty, self.shown.as_mut()) {
             if let (Some(v), Some(r)) = (s.vehicle.as_mut(), s.render.as_mut()) {
-                player::sync_vehicle_transforms(renderer, &mut s.scene, v, r, &mut s.trailers, false);
+                sync_vehicle_transforms(renderer, &mut s.scene, v, r, &mut s.trailers, false);
             }
         }
         swapped
@@ -222,8 +222,8 @@ impl Showroom {
         let root = look.root.clone();
         let map_cfg = omsi_cfg::resolve_path(&root, &look.map);
         let date = start_clock(&args).date_code();
-        let t0 = std::time::Instant::now();
-        let world = match scene::World::open(&root, &map_cfg, date) {
+        let t0 = Instant::now();
+        let world = match World::open(&root, &map_cfg, date) {
             Ok(w) => {
                 log::info!("showroom: {} opened in {:.2} s", map_cfg.display(), t0.elapsed().as_secs_f64());
                 Arc::new(w)
@@ -268,7 +268,7 @@ impl Showroom {
     }
 
     fn place(&mut self, renderer: &Renderer, r: Ready) -> Shown {
-        let t0 = std::time::Instant::now();
+        let t0 = Instant::now();
         let mut scene = renderer.new_scene();
         let args = args_for(&r.look);
         let weather = load_weather(&args);
@@ -289,7 +289,7 @@ impl Showroom {
         // the bus's size from its bounding box (with the rear section behind it)
         let bb = r.vt.def.bounding_box.unwrap_or([2.5, 12.0, 3.0, 0.0, 0.0, 1.5]);
         let mut length = bb[1];
-        let mut centre = glam::Vec3::new(bb[3], bb[4], bb[5]);
+        let mut centre = Vec3::new(bb[3], bb[4], bb[5]);
         for t in &vehicle.trailers {
             let tb = t.ty.def.bounding_box.unwrap_or([2.5, 8.0, 3.0, 0.0, 0.0, 1.5]);
             let back = (t.position - vehicle.position).truncate().length() as f32 + tb[1] * 0.5;
@@ -373,7 +373,7 @@ fn lighting_for(args: &Args, weather: &omsi_content::weather::Weather) -> Lighti
     let clock = start_clock(args);
     let envir = omsi_content::Envir::load(&args.root.join("envir.cfg")).ok();
     let daylight = omsi_sim::Daylight::compute(&clock, envir.as_ref());
-    let mut l = weather_lighting(&daylight, weather, crate::weather_setup::cloud_drift_at(weather, clock.time), 0.0, true);
+    let mut l = weather_lighting(&daylight, weather, cloud_drift_at(weather, clock.time), 0.0, true);
     l.shadows = daylight.altitude_deg > 2.0;
     l.enhanced = false;
     l.classic = false;
@@ -388,13 +388,13 @@ fn lighting_for(args: &Args, weather: &omsi_content::weather::Weather) -> Lighti
 fn add_floor(renderer: &Renderer, scene: &mut Scene) {
     let n = 96;
     let r = 400.0f32;
-    let mut positions = vec![glam::Vec3::ZERO];
-    let mut normals = vec![glam::Vec3::Z];
+    let mut positions = vec![Vec3::ZERO];
+    let mut normals = vec![Vec3::Z];
     let mut uvs = vec![glam::Vec2::ZERO];
     for k in 0..n {
         let a = std::f32::consts::TAU * k as f32 / n as f32;
-        positions.push(glam::Vec3::new(a.cos() * r, a.sin() * r, 0.0));
-        normals.push(glam::Vec3::Z);
+        positions.push(Vec3::new(a.cos() * r, a.sin() * r, 0.0));
+        normals.push(Vec3::Z);
         uvs.push(glam::Vec2::new(a.cos(), a.sin()));
     }
     let mut indices = Vec::new();

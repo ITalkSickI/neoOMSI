@@ -11,7 +11,7 @@ pub(crate) struct App {
     pub(crate) surface: Option<SurfaceState<'static>>,
     pub(crate) renderer: Option<Renderer>,
     #[cfg(windows)]
-    pub(crate) vr: Option<crate::openxr::Vr>,
+    pub(crate) vr: Option<openxr::Vr>,
     pub(crate) scene: Option<Scene>,
     pub(crate) camera: Option<Camera>,
     pub(crate) player: Option<Player>,
@@ -21,10 +21,10 @@ pub(crate) struct App {
     /// `vehicle_list`), and the vehicles it offers (name, path).
     pub(crate) chooser: Option<usize>,
     /// The object editor, while it is on (`crate::editor`).
-    pub(crate) editor: Option<crate::editor::Editor>,
+    pub(crate) editor: Option<editor::Editor>,
     pub(crate) vehicle_list: Vec<(String, String)>,
     /// The drop-down open over a row of the settings window, if one is.
-    pub(crate) dropdown: Option<crate::game_lists::Dropdown>,
+    pub(crate) dropdown: Option<game_lists::Dropdown>,
     /// (manufacturer, type) of each vehicle of `vehicle_list`, by its path.
     pub(crate) vehicle_meta: std::collections::HashMap<String, (String, String)>,
     pub(crate) world: Option<Arc<World>>,
@@ -44,8 +44,8 @@ pub(crate) struct App {
     pub(crate) hud: Option<hud::Hud>,
     /// The route navigator (ETS2-style map in a corner).
     pub(crate) navigator: Option<navigator::Navigator>,
-    pub(crate) vr_nav_profiles: crate::vr_navigator::Profiles,
-    pub(crate) vr_nav_edit: Option<crate::vr_navigator::Editing>,
+    pub(crate) vr_nav_profiles: vr_navigator::Profiles,
+    pub(crate) vr_nav_edit: Option<vr_navigator::Editing>,
     /// Chat, mouse-over names and name tags (Roboto).
     pub(crate) ui: Option<ui::Ui>,
     pub(crate) fps: f32,
@@ -143,19 +143,17 @@ pub(crate) struct App {
     pub(crate) clock_hold: f32,
     /// A controller button held for looking left, right, up, down (`view_look_*`).
     pub(crate) pad_look: [bool; 4],
-    /// The arrow keys turned the head (a glance that comes back when they are let go).
-    pub(crate) arrow_glance: bool,
     /// The next click on the city map puts the bus there (Esc → Move the bus on the map).
     pub(crate) teleport_pick: bool,
     /// Discord's "Playing neoOMSI" status, and when it was last brought up to date.
-    pub(crate) discord: Option<crate::discord::Discord>,
+    pub(crate) discord: Option<discord::Discord>,
     pub(crate) discord_t: f32,
     /// Head tracking (Settings → head tracking), started with the first frame that wants it.
-    pub(crate) headtrack: Option<crate::headtrack::HeadTracker>,
+    pub(crate) headtrack: Option<headtrack::HeadTracker>,
     /// When head tracking last failed to start (tried again a few seconds later).
-    pub(crate) headtrack_failed: Option<std::time::Instant>,
+    pub(crate) headtrack_failed: Option<Instant>,
     /// Steering wheels, pedals, joysticks and gamepads (`Inputs/gamectrler.cfg`).
-    pub(crate) controllers: Option<crate::controllers::Controllers>,
+    pub(crate) controllers: Option<controllers::Controllers>,
     /// OMSI's mouse control (`toggel_mouse_ctrl`, O): the cursor's place steers (across) and
     /// works the pedals (up throttle, down brake).
     pub(crate) mouse_drive: bool,
@@ -183,12 +181,12 @@ pub(crate) struct App {
     /// The speed mouse steering divides by, smoothed.
     pub(crate) mouse_kmh: f32,
     /// The tutorial being run (`--tutorial`), loaded on the first frame.
-    pub(crate) tutorial: Option<crate::tutorial::Tutorial>,
+    pub(crate) tutorial: Option<tutorial::Tutorial>,
     /// OMSI's pedestrian ("ego") view: the free camera walking at eye height on whatever
     /// people stand on (`view_set_ego`, F11).
     pub(crate) ego: bool,
     /// The player out of the seat, walking about (`on_foot`).
-    pub(crate) on_foot: Option<crate::on_foot::OnFoot>,
+    pub(crate) on_foot: Option<on_foot::OnFoot>,
     /// Other players on foot whose avatars are drawn (their ids).
     pub(crate) remote_walkers: Vec<u32>,
     /// The camera is in the own bus's cab this frame (see RedrawRequested).
@@ -199,7 +197,7 @@ pub(crate) struct App {
     pub(crate) is_admin: bool,
     /// Where the bus last stood on the ground (and facing where): it is put back there when
     /// it falls through the world (see `admin::guard_fall`).
-    pub(crate) safe_pose: Option<(glam::DVec3, f64)>,
+    pub(crate) safe_pose: Option<(DVec3, f64)>,
     /// Seconds since `safe_pose` was taken.
     pub(crate) safe_age: f32,
     /// The mouse wheel over the menu, notches not yet turned into lines.
@@ -208,19 +206,19 @@ pub(crate) struct App {
     /// all edits to the others (LAN host); the copies the host made, as this client shows them.
     pub(crate) editor_drag: bool,
     pub(crate) editor_sync_t: f32,
-    pub(crate) remote_added: std::collections::HashMap<i64, crate::scene::TileGpu>,
+    pub(crate) remote_added: std::collections::HashMap<i64, scene::TileGpu>,
     /// Placing a vehicle with the mouse (the spawner): see `placing`.
-    pub(crate) placing: Option<crate::placing::Placing>,
+    pub(crate) placing: Option<placing::Placing>,
     /// The chooser shows the administration's lines (label, action) instead of vehicles.
     pub(crate) admin_list: Option<Vec<(String, String)>>,
     /// Which of the game menu's lists `admin_list` holds (see `game_lists`).
-    pub(crate) list_kind: Option<crate::game_lists::ListKind>,
+    pub(crate) list_kind: Option<game_lists::ListKind>,
     pub(crate) map_return_tab: usize,
     pub(crate) key_capture: Option<(usize, usize)>,
     pub(crate) key_filter: String,
     pub(crate) key_search: bool,
     /// OMSI 2's route arrows over the road (the `nav_arrows` setting).
-    pub(crate) route_arrows: crate::route_arrows::RouteArrows,
+    pub(crate) route_arrows: route_arrows::RouteArrows,
     /// OMSI's global key actions from `Inputs/keyboard.cfg` ([game]).
     pub(crate) game_keys: Vec<omsi_content::KeyBinding>,
     /// Keys (DirectInput scan codes, no modifier) the player bound on the Controls page to
@@ -270,7 +268,7 @@ pub(crate) struct App {
     /// Last workshop / fuel pump / wash message, and how long it still shows.
     pub(crate) service_msg: Option<(String, f32)>,
     /// What the log has said (see applog.rs).
-    pub(crate) log_state: crate::applog::LogState,
+    pub(crate) log_state: applog::LogState,
     /// The driver's personnel file and this session's statistics.
     pub(crate) career: career::Career,
     /// How wet the roads are (0..1), built up by rain and dried by the sun.
@@ -279,9 +277,9 @@ pub(crate) struct App {
     /// up frame by frame so that a change of wind does not throw the sky around.
     pub(crate) cloud_drift: [f32; 2],
     /// A change of weather coming in (see `weather_cycle`).
-    pub(crate) weather_blend: Option<crate::weather_cycle::Blend>,
+    pub(crate) weather_blend: Option<weather_cycle::Blend>,
     /// The weather cycle, when the weather chosen is `cycle`.
-    pub(crate) weather_cycle: Option<crate::weather_cycle::Cycle>,
+    pub(crate) weather_cycle: Option<weather_cycle::Cycle>,
     /// The METAR sync's download under way (see `tick_metar`), and the seconds to the next one.
     pub(crate) metar_rx: Option<std::sync::mpsc::Receiver<Option<omsi_content::weather::Weather>>>,
     /// The current METAR receiver is a single manual fetch rather than the continuous sync.
@@ -315,7 +313,7 @@ pub(crate) struct App {
     /// The OMSI plugins (`plugins/*.opl`), loaded with the first frame.
     pub(crate) plugins: Option<omsi_plugin::Plugins>,
     /// The on-screen controls of a phone (see `touch.rs`).
-    pub(crate) touch: crate::touch::Touch,
+    pub(crate) touch: touch::Touch,
 }
 
 impl App {
@@ -356,14 +354,14 @@ impl App {
                 )
             })
             .unwrap_or((1600, 900));
-        let (fit, at) = crate::startup::fit_window(event_loop, lw as f64, lh as f64);
+        let (fit, at) = fit_window(event_loop, lw as f64, lh as f64);
         // (hidden at first: shown by `present_splash` once the first dark picture is on it;
         // a window shown earlier stood white until the graphics were up)
         let mut attrs = Window::default_attributes()
             .with_title("neoOMSI")
             .with_inner_size(fit)
             .with_visible(false)
-            .with_window_icon(crate::startup::window_icon());
+            .with_window_icon(window_icon());
         if let Some(at) = at {
             attrs = attrs.with_position(at);
         }
@@ -383,13 +381,13 @@ impl App {
             Ok(r) => r,
             Err(e) => {
                 fatal_message(&format!("The game cannot draw on this computer: {e:#}"));
-                crate::platform::exit(event_loop);
+                platform::exit(event_loop);
                 return;
             }
         };
         #[cfg(windows)]
         if self.settings.vr_requested() {
-            match crate::openxr::Vr::new(&renderer, self.settings.vr_scale, self.settings.vr_desktop_mirror) {
+            match openxr::Vr::new(&renderer, self.settings.vr_scale, self.settings.vr_desktop_mirror) {
                 Ok(vr) => self.vr = Some(vr),
                 Err(e) => log::error!("OpenXR could not start: {e:#}"),
             }
@@ -400,8 +398,8 @@ impl App {
             log::error!("graphics: the driver copies only {upload:.0} MB/s towards the card (thousands are usual); every texture and buffer the game sends waits on it, down to a few frames a second - restarting the computer usually brings it back");
             self.service_msg = Some((format!("Graphics driver is slow ({upload:.0} MB/s): the game will stutter. Restarting the computer usually fixes it."), 30.0));
         }
-        crate::lights::load_smoke_texture(&mut renderer, &self.args.root);
-        crate::lights::set_corona_root(&self.args.root);
+        lights::load_smoke_texture(&mut renderer, &self.args.root);
+        lights::set_corona_root(&self.args.root);
         let size = window.inner_size();
         let surface = match SurfaceState::new_with(
             &self.instance,
@@ -414,7 +412,7 @@ impl App {
             Ok(s) => s,
             Err(e) => {
                 fatal_message(&format!("The game's window cannot be drawn into: {e:#}"));
-                crate::platform::exit(event_loop);
+                platform::exit(event_loop);
                 return;
             }
         };
@@ -456,14 +454,14 @@ impl App {
         ) {
             scene.overlays.clear();
             let dpi = win.scale_factor() as f32;
-            let scale = dpi * crate::ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
+            let scale = dpi * ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
             ui.loading_bg = Some(None);
             ui.loading(r, scene, s.config.width as f32, s.config.height as f32, scale, "", caption, None, None, 0.0);
             ui.loading_bg = None;
             if let wgpu::CurrentSurfaceTexture::Success(frame) | wgpu::CurrentSurfaceTexture::Suboptimal(frame) = s.surface.get_current_texture() {
                 let view = frame.texture.create_view(&Default::default());
                 let blank = Camera { position: DVec3::new(0.0, 0.0, -1.0e6), yaw: 0.0, pitch: -89.0, roll: 0.0, fov_deg: 60.0, near: 0.5, far: 10.0 };
-                let lighting = omsi_render::Lighting { sky_color: glam::Vec3::new(0.04, 0.045, 0.055), ..Default::default() };
+                let lighting = omsi_render::Lighting { sky_color: Vec3::new(0.04, 0.045, 0.055), ..Default::default() };
                 r.render(scene, &view, s.config.width, s.config.height, &blank, &lighting);
                 win.pre_present_notify();
                 r.queue.present(frame);
@@ -489,12 +487,12 @@ impl App {
         ) {
             scene.overlays.clear();
             let dpi = win.scale_factor() as f32;
-            let scale = dpi * crate::ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
+            let scale = dpi * ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
             ui.loading(r, scene, s.config.width as f32, s.config.height as f32, scale, &name, "Loading", Some((t / 10.0).fract()), map_dir.as_deref(), t);
             if let wgpu::CurrentSurfaceTexture::Success(frame) | wgpu::CurrentSurfaceTexture::Suboptimal(frame) = s.surface.get_current_texture() {
                 let view = frame.texture.create_view(&Default::default());
                 let blank = Camera { position: DVec3::new(0.0, 0.0, -1.0e6), yaw: 0.0, pitch: -89.0, roll: 0.0, fov_deg: 60.0, near: 0.5, far: 10.0 };
-                let lighting = omsi_render::Lighting { sky_color: glam::Vec3::new(0.04, 0.045, 0.055), ..Default::default() };
+                let lighting = omsi_render::Lighting { sky_color: Vec3::new(0.04, 0.045, 0.055), ..Default::default() };
                 r.render(scene, &view, s.config.width, s.config.height, &blank, &lighting);
                 win.pre_present_notify();
                 r.queue.present(frame);
@@ -516,14 +514,14 @@ impl App {
         let mut scene = renderer.new_scene();
         self.envir = omsi_content::Envir::load(&self.args.root.join("envir.cfg")).ok();
         // the weather cycle: a first weather that suits the month, the others after it
-        if crate::weather_cycle::is_cycle(self.args.weather.as_deref()) {
+        if weather_cycle::is_cycle(self.args.weather.as_deref()) {
             let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
-            let mut c = crate::weather_cycle::Cycle::new(seed);
+            let mut c = weather_cycle::Cycle::new(seed);
             let month = start_clock(&self.args).day_month().1;
-            let all = crate::weather_cycle::installed();
+            let all = weather_cycle::installed();
             let clear = omsi_content::weather::Weather { fog: (50000.0, 1.0), ..Default::default() };
             let r = c.rand();
-            self.args.weather = crate::weather_cycle::pick(&all, &clear, "", month, r);
+            self.args.weather = weather_cycle::pick(&all, &clear, "", month, r);
             log::info!("weather cycle: starting with {:?}", self.args.weather);
             self.weather_cycle = Some(c);
         }
@@ -561,7 +559,7 @@ impl App {
                 }
                 Err(e) => {
                     log::error!("{e:#}");
-                    crate::platform::exit(event_loop);
+                    platform::exit(event_loop);
                 }
             }
             self.renderer = Some(renderer);
@@ -573,7 +571,7 @@ impl App {
             Ok((w, cam)) => self.start_world(Arc::new(w), cam, &renderer, &mut scene),
             Err(e) => {
                 log::error!("{e:#}");
-                crate::platform::exit(event_loop);
+                platform::exit(event_loop);
             }
         }
         self.renderer = Some(renderer);
@@ -717,7 +715,7 @@ impl App {
                 }
                 // (a player who joins draws the host's traffic in it, whatever their own count
                 // says: the host's cars had nowhere to go without it)
-                let populated = self.args.traffic > 0 || self.args.schedule || crate::rail_drive::args_rail(&self.args) || self.args.lan_join.is_some();
+                let populated = self.args.traffic > 0 || self.args.schedule || rail_drive::args_rail(&self.args) || self.args.lan_join.is_some();
                 // Without traffic it still runs the light programs and switches the lamps:
                 // they stood frozen with red, yellow and green all lit (#727).
                 {
@@ -778,7 +776,7 @@ impl App {
                             }
                             if let Some(d) = self.duty.as_ref() {
                                 let mut fonts = w.fonts.lock();
-                                if let Err(e) = crate::schedule_paper::update_vehicle(
+                                if let Err(e) = schedule_paper::update_vehicle(
                                     &mut p.vehicle,
                                     d,
                                     &mut fonts,
@@ -871,7 +869,7 @@ impl App {
         ) {
             scene.overlays.clear();
             let dpi = win.scale_factor() as f32;
-            let scale = dpi * crate::ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
+            let scale = dpi * ui::size_factor(s.config.height as f32, dpi, self.settings.ui_scale, self.settings.ui_scale_window);
             ui.loading(
                 &renderer,
                 &mut scene,
@@ -905,7 +903,7 @@ impl App {
                     far: 10.0,
                 };
                 let lighting = omsi_render::Lighting {
-                    sky_color: glam::Vec3::new(0.08, 0.10, 0.14),
+                    sky_color: Vec3::new(0.08, 0.10, 0.14),
                     ..Default::default()
                 };
                 let mut renderer = renderer;
@@ -938,7 +936,7 @@ impl App {
         if let Some(limit) = self.args.exit_after {
             if self.started.elapsed().as_secs_f32() > limit {
                 log::info!("exit after {limit} s while loading: {done} of {total} tiles");
-                crate::platform::exit(event_loop);
+                platform::exit(event_loop);
             }
         }
         false
@@ -1044,7 +1042,7 @@ pub(crate) fn report_missing_content(w: &World, msg: &mut Option<(String, f32)>)
             text.push_str(&format!("  {t}\n"));
         }
     }
-    let Some(dir) = crate::lan::data_dir() else { return };
+    let Some(dir) = lan::data_dir() else { return };
     let path = dir.join("missing_content.txt");
     let _ = std::fs::write(&path, text);
     let objects = files.iter().filter(|(_, w)| *w != "spline").count();
@@ -1095,7 +1093,7 @@ pub(crate) fn blend_local(a: &omsi_vehicle::Camera, b: &omsi_vehicle::Camera, k:
     let dir = |c: &omsi_vehicle::Camera| {
         let (sy, cy) = c.yaw.to_radians().sin_cos();
         let (sp, cp) = c.pitch.to_radians().sin_cos();
-        glam::Vec3::new(sy * cp, cy * cp, sp)
+        Vec3::new(sy * cp, cy * cp, sp)
     };
     let (fa, fb) = (dir(a), dir(b));
     let dot = fa.dot(fb).clamp(-1.0, 1.0);
@@ -1152,7 +1150,7 @@ pub(crate) struct CamBlend {
 /// field of view) that is eased out instead of being cut.
 #[derive(Clone, Copy)]
 pub(crate) struct CamCarry {
-    pub pos: glam::DVec3,
+    pub pos: DVec3,
     pub yaw: f32,
     pub pitch: f32,
     pub roll: f32,
@@ -1161,7 +1159,7 @@ pub(crate) struct CamCarry {
 
 impl CamCarry {
     /// `a` minus `b`.
-    pub fn between(a: &omsi_render::Camera, b: &omsi_render::Camera) -> Self {
+    pub fn between(a: &Camera, b: &Camera) -> Self {
         Self {
             pos: a.position - b.position,
             yaw: wrap_deg(a.yaw - b.yaw),
@@ -1172,7 +1170,7 @@ impl CamCarry {
     }
 
     /// Put on a camera.
-    pub fn apply(&self, c: &mut omsi_render::Camera) {
+    pub fn apply(&self, c: &mut Camera) {
         c.position += self.pos;
         c.yaw += self.yaw;
         c.pitch = (c.pitch + self.pitch).clamp(-89.0, 89.0);
