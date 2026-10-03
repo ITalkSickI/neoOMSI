@@ -2,10 +2,13 @@ name: Test
 
 on:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,8 +24,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: test
-          save-if: false
-      - name: Texture lookup regression tests
-        run: cargo test --locked -p omsi-texture --lib
-      - name: Scripted traffic lamp regression test
-        run: cargo test --locked -p omsi-app --lib scripted_lamp_channels_override_stock_phases_and_switch_led_materials
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Run workspace tests
+        run: cargo test --workspace --locked

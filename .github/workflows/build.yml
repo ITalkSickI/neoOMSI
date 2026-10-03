@@ -36,19 +36,6 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - run: echo "### neoOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
 
-  test:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: test
-      - name: Texture lookup regression tests
-        run: cargo test --locked -p omsi-texture --lib
-      - name: Scripted traffic lamp regression test
-        run: cargo test --locked -p omsi-app --lib scripted_lamp_channels_override_stock_phases_and_switch_led_materials
-
   windows:
     needs: version
     runs-on: windows-latest
@@ -202,7 +189,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [version, test, windows, macos, linux]
+    needs: [version, windows, macos, linux]
     runs-on: ubuntu-slim
     permissions:
       contents: write

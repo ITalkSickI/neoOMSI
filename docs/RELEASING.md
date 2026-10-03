@@ -8,44 +8,44 @@ neoOMSI follows Semantic Versioning (`MAJOR.MINOR.PATCH`) during pre-1.0 develop
 
 | Type | Format | Example |
 | --- | --- | --- |
-| **Nightly** | `0.x.y-nightly.<run-id>` | `0.4.0-nightly.312` |
-| **Release Candidate** | `v0.x.y-rc.<n>` | `v0.4.0-rc.1` |
-| **Stable** | `v0.x.y` | `v0.4.0` |
-| **Patch** | `v0.x.y+1` | `v0.4.1` |
+| **Nightly** | `0.x.y-nightly.<run-id>` | `0.2.0-nightly.312` |
+| **Release Candidate** | `v0.x.y-rc.<n>` | `v0.2.0-rc.1` |
+| **Stable** | `v0.x.y` | `v0.2.0` |
+| **Patch** | `v0.x.y+1` | `v0.2.1` |
 
 `1.0.0` is reserved for achieving comprehensive behavioral parity across the OMSI 2.2.032 baseline, not simply for elapsed development time.
 
 ## Tags
 
-Git tags are created strictly for official milestone releases:
+Milestone git tags are created strictly for official releases:
 
 ```text
-v0.4.0-rc.1
-v0.4.0-rc.2
-v0.4.0
-v0.4.1
+v0.2.0-rc.1
+v0.2.0-rc.2
+v0.2.0
+v0.2.1
 ```
 
-**Nightly builds are not tagged.** They represent reproducible build artifacts associated directly with commits on `main` and GitHub Actions run IDs.
+Nightly releases update a rolling `nightly` tag on GitHub Releases rather than creating a permanent git tag per run.
 
 ## Release workflow
 
 ```text
 main branch (trunk)
     │
-    ├── Nightly builds (automated on merge)
+    ├── Nightly builds (scheduled 00:00 UTC & manual dispatch)
     │
-    └── Create release branch: release/0.4
+    └── Create release branch: release/0.2
             │
-            ├── Tag: v0.4.0-rc.1 (testing)
-            ├── Tag: v0.4.0-rc.2 (blocker fixes)
+            ├── Tag: v0.2.0-rc.1 (testing)
+            ├── Tag: v0.2.0-rc.2 (blocker fixes)
             │
-            └── Tag: v0.4.0      (final release commit)
+            └── Tag: v0.2.0      (final release commit)
 ```
 
 ### 1. Nightly builds
 
-Every merge to `main` triggers automated CI builds for Windows, macOS, Linux, and Android. Nightlies provide immediate visibility into recent changes but carry no guarantee against regressions.
+Automated CI builds run nightly at 00:00 UTC (and on manual workflow dispatch) for Windows, macOS, and Linux. Nightlies provide immediate visibility into recent changes but carry no guarantee against regressions. Android packages are built locally using `scripts/build-android.sh`.
 
 ### 2. Preparing a Stable release
 
