@@ -1788,15 +1788,13 @@ fn options_pages(app: &App) -> Vec<Page> {
     let cm = |v: f32| format!("{:+.0} cm", v * 100.0);
     let later = "Takes effect when the game starts the next time";
     let game: Vec<(String, String)> = vec![
-        toggle_now(app, "navigator").map(|on| (row("Map settings...", 'm', if on { "on" } else { "off" }, "Switch the Minimap on/off; click the line for its settings", None), "mapopts".to_string())),
-        switch_row(app, "nav_arrows", "Route arrows (as in OMSI 2)", "Shows OMSI 2's route arrows over the road"),
         switch_row(app, "auto_ibis", "Automatic IBIS", "When enabled, the selected tour is automatically entered into IBIS"),
         switch_row(app, "exact_fare", "Passengers pay the exact fare", "No change is given at the cash desk"),
         pick("boarding", "Boarding", "How passengers get their tickets"),
+        pick("maintenance", "Maintenance", later),
         switch_row(app, "coll_objects", "Collisions with objects", "Enables/disables collisions with objects such as buildings, streetlights, etc."),
         switch_row(app, "coll_vehicles", "Collisions with vehicles", "Enables/Disables Collisions with Other Vehicles"),
         switch_row(app, "collision_pedestrians", "Collisions with people", "Enables/disables knocking down people"),
-        pick("maintenance", "Maintenance", later),
         pick("ai_unsched_factor", "Random traffic", later),
         pick("ai_max_scheduled", "Timetable vehicles", later),
         pick("ai_max_parked", "Parked cars", later),
@@ -1804,21 +1802,77 @@ fn options_pages(app: &App) -> Vec<Page> {
         .into_iter()
         .flatten()
         .collect();
+    let driving: Vec<(String, String)> = vec![
+        switch_row(app, "auto_clutch", "Automatic clutch", "Automatically operate the clutch for you"),
+        switch_row(app, "auto_shift", "Automated manual gearbox", "Shift a manual gearbox's gears for you by the engine speed"),
+        switch_row(app, "momentary_gears", "Hold manual gear buttons (release returns to neutral)", later),
+        switch_row(app, "brake_hold", "Keyboard brake stays on", "Keep the brake applied until the throttle is pressed"),
+        switch_row(app, "blinker_cancel", "Indicators cancel themselves", "The bus's script turns the indicator off after a turn; off: it stays on until you turn it off"),
+        switch_row(app, "steering_linear", "Steering linearity (keys at OMSI's steady pace)", "Keyboard steering at OMSI's steady pace"),
+        switch_row(app, "old_steering", "Old Steering (the wheel stays, turn it back yourself)", "The wheel stays where the keys left it"),
+        switch_row(app, "red_steer_spd", "Dynamic steering (slower keys at speed, OMSI's redSteerSpd)", "The steering keys act slower at speed"),
+    ]
+        .into_iter()
+        .flatten()
+        .collect();
+    let controls: Vec<(String, String)> = vec![
+        pick("drive_keys", "Driving keys", "Which keys drive the vehicle"),
+        switch_row(app, "mouse", "Steering with the mouse", "Steer and control the pedals using the mouse"),
+        switch_row(app, "mouse_right", "A right click ends the mouse steering", "As in OMSI; off: the right button only looks round"),
+        slider_row(app, "mouse_sens", "Mouse steering sensitivity", "Adjust how much the steering wheel turns based on mouse movement", &pct),
+        slider_row(app, "pedal_t", "Throttle pedal strength", "Adjust how strongly pedal input affects the throttle", &|v| format!("x{v}")),
+        slider_row(app, "pedal_b", "Brake pedal strength", "Adjust how strongly pedal input affects the brake", &|v| format!("x{v}")),
+        slider_row(app, "wheel_range", "Wheel rotation", "The steering wheel's own rotation, lock to lock", &|v| format!("{v:.0}°")),
+        slider_row(app, "wheel_lock", "Full lock at", "How far the wheel turns for the vehicle's full lock", &|v| if v < 45.0 { "OMSI".to_string() } else { format!("{v:.0}°") }),
+        switch_row(app, "ff", "Force feedback and vibration", "Enable force feedback for the steering wheel and vibration for controllers"),
+        switch_row(app, "ff_invert", "Invert force feedback by default", "For wheels without a saved direction"),
+    ]
+        .into_iter()
+        .flatten()
+        .collect();
+    let mut camera: Vec<(String, String)> = vec![
+        slider_row(app, "fov", "Field of view", "The view angle of the views from the vehicle", &|v| if v < 20.0 { "Default".to_string() } else { format!("{v:.0}°") }),
+        switch_row(app, "head", "Head movement", "The view moves with the vehicle's acceleration"),
+        switch_row(app, "cam_smooth", "Smooth viewpoint changes", "Enables a smooth transition between camera perspectives"),
+        switch_row(app, "camcoll", "Camera collisions", "The outside camera cannot pass through objects"),
+        slider_row(app, "look_sens", "Mouse look sensitivity", "How fast the view turns when looking round with the mouse (100% is OMSI's)", &pct),
+        switch_row(app, "alt_view", "Right mouse button turns the view", "Shift+right zooms; off: right zooms as in OMSI, the wheel button turns"),
+        switch_row(app, "steer_look", "View turns with steering", "Camera turns with the steering wheel (cockpit only)"),
+        slider_row(app, "steer_look_angle", "Steering view angle", "How far the view turns at full steering lock", &|v| format!("{v:.0}°")),
+        slider_row(app, "steer_look_response", "Steering view response", "How quickly the view follows the steering", &|v| format!("{:.0} ms", v * 1000.0)),
+        switch_row(app, "headtrack", "Head tracking", &format!("Head tracking with opentrack (UDP port {})", s.head_tracking_port)),
+        switch_row(app, "hands_in_cab", "Driver's hands in the cab view", "Shows the driver's hand on the steering wheel (Cockpit only)"),
+        switch_row(app, "driver", "Driver at the wheel (outside views)", "Shows the driver in the outside views and in the mirrors"),
+        slider_row(app, "seat 1", "Seat forward and back", "Adjust the driver's seat position forward or backward", &cm),
+        slider_row(app, "seat 2", "Seat height", "Adjust the driver's seat height", &cm),
+        slider_row(app, "seat 0", "Seat left and right", "Adjust the driver's seat position from side to side", &cm),
+    ]
+        .into_iter()
+        .flatten()
+        .collect();
+    camera.push(button("Reset the seat position", "Reset", "Put the seat back where the vehicle has it.", "seat_reset"));
     let graphics: Vec<(String, String)> = vec![
         preset_row(&file, "Quality preset", "Sets most of the graphics options at once"),
+        (!omsi_launcher_lib::graphics_profiles().is_empty()).then(|| opens("Load graphics profile", "Applies a graphics profile saved in the launcher", "gfxprofile")),
         pick("graphics", "Graphics", later),
         pick("msaa", "Anti-aliasing", later),
         pick("render_scale", "Render scale", later),
         pick("anisotropy", "Anisotropic", later),
         switch_row(app, "shadows", "Sun shadows", "Enables/Disabled shadows"),
         pick("shadow_size", "Shadow map", later),
-        switch_row(app, "ssao", "Ambient occlusion", later),
         pick("shadow_casters", "Shadows cast by", later),
-        switch_row(app, "detail_textures", "Detail texturing up close", "The ground and large walls get fine grain when close"),
-        slider_row(app, "led_glow", "LED glow", "How strongly the dots of LED destination displays glow", &|v| format!("{}/15", v as i64)),
-        slider_row(app, "led_mips", "LED mask mipmaps", "Keep the mip chain of the LED masks (smoother from a distance).", &|v| format!("{v:.2}")),
+        switch_row(app, "ssao", "Ambient occlusion", later),
         switch_row(app, "reflections", "Reflection maps (paint, chrome, glass)", later),
         switch_row(app, "clouds", "Clouds", later),
+        switch_row(app, "detail_textures", "Detail texturing up close", "The ground and large walls get fine grain when close"),
+        pick("view_distance", "View distance", later),
+        pick("max_obj_dist", "Object distance", later),
+        pick("min_obj_size", "Small objects", later),
+        pick("mirror_size", "Mirrors", later),
+        pick("texture_memory", "Texture memory", later),
+        switch_row(app, "texture_compression", "Compress textures on loading", later),
+        slider_row(app, "led_glow", "LED glow", "How strongly the dots of LED destination displays glow", &|v| format!("{}/15", v as i64)),
+        slider_row(app, "led_mips", "LED mask mipmaps", "Keep the mip chain of the LED masks (smoother from a distance).", &|v| format!("{v:.2}")),
     ]
         .into_iter()
         .flatten()
@@ -1828,13 +1882,6 @@ fn options_pages(app: &App) -> Vec<Page> {
         switch_row(app, "vsync", "V-sync", "Waits for the screen's refresh"),
         pick("max_fps", "Frame limit", "Frames a second at most"),
         switch_row(app, "fps", "Frame rate", "Show the frames per second in the top right corner"),
-        pick("view_distance", "View distance", later),
-        pick("max_obj_dist", "Object distance", later),
-        pick("min_obj_size", "Small objects", later),
-        pick("mirror_size", "Mirrors", later),
-        pick("texture_memory", "Texture memory", later),
-        switch_row(app, "texture_compression", "Compress textures on loading", later),
-        (!omsi_launcher_lib::graphics_profiles().is_empty()).then(|| opens("Load graphics profile", "Applies a graphics profile saved in the launcher", "gfxprofile")),
     ]
         .into_iter()
         .flatten()
@@ -1849,29 +1896,28 @@ fn options_pages(app: &App) -> Vec<Page> {
         .into_iter()
         .flatten()
         .collect();
-    let mut camera: Vec<(String, String)> = vec![
-        switch_row(app, "head", "Head movement", "The view moves with the vehicle's acceleration"),
-        switch_row(app, "cam_smooth", "Smooth viewpoint changes", "Enables a smooth transition between camera perspectives"),
-        switch_row(app, "camcoll", "Camera collisions", "The outside camera cannot pass through objects"),
-        switch_row(app, "steer_look", "View turns with steering", "Camera turns with the steering wheel (cockpit only)"),
-        slider_row(app, "steer_look_angle", "Steering view angle", "How far the view turns at full steering lock", &|v| format!("{v:.0}°")),
-        slider_row(app, "steer_look_response", "Steering view response", "How quickly the view follows the steering", &|v| format!("{:.0} ms", v * 1000.0)),
-        switch_row(app, "hands_in_cab", "Driver's hands in the cab view", "Shows the driver's hand on the steering wheel (Cockpit only)"),
-        switch_row(app, "driver", "Driver at the wheel (outside views)", "Shows the driver in the outside views and in the mirrors"),
-        switch_row(app, "headtrack", "Head tracking", &format!("Head tracking with opentrack (UDP port {})", s.head_tracking_port)),
-        slider_row(app, "look_sens", "Mouse look sensitivity", "How fast the view turns when looking round with the mouse (100% is OMSI's)", &pct),
-        switch_row(app, "alt_view", "Right mouse button turns the view", "Shift+right zooms; off: right zooms as in OMSI, the wheel button turns"),
-        slider_row(app, "fov", "Field of view", "The view angle of the views from the vehicle", &|v| if v < 20.0 { "Default".to_string() } else { format!("{v:.0}°") }),
-        slider_row(app, "seat 1", "Seat forward and back", "Adjust the driver's seat position forward or backward", &cm),
-        slider_row(app, "seat 2", "Seat height", "Adjust the driver's seat height", &cm),
-        slider_row(app, "seat 0", "Seat left and right", "Adjust the driver's seat position from side to side", &cm),
+    let interface: Vec<(String, String)> = vec![
+        pick("language", "Language", "The language of the game's interface"),
+        pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
+        slider_row(app, "ui_scale", "Game interface size", "The size of the texts, the menu, the timetable and the navigator", &pct),
+        switch_row(app, "ui_scale_window", "Interface grows with the window", "On a window taller than 1080p the interface grows with it"),
+        slider_row(app, "ui_opacity", "Interface opacity", "How much of the interface's backgrounds shows", &pct),
+        toggle_now(app, "navigator").map(|on| (row("Navigator", 'm', if on { "on" } else { "off" }, "Here you can configure the Navigator settings", None), "mapopts".to_string())),
+        switch_row(app, "nav_arrows", "Route arrows (as in OMSI 2)", "Shows OMSI 2's route arrows over the road"),
+        switch_row(app, "info_bar", "Information bar", "Displays information such as the time, speed, and other details at the top of the screen"),
+        switch_row(app, "timetable_win", "Timetable window", "Displays a list of all stops (only when a tour is active)"),
+        switch_row(app, "notes", "Notes in the top-left corner", "Why the vehicle does not move, the change due, what a service did"),
+        switch_row(app, "tooltips", "Name of the button under the mouse", "Shows the name of what the cursor points at"),
+        switch_row(app, "chat", "Chat in online games", "Shows the chat of a LAN session"),
+        switch_row(app, "name_tags", "Other players' names above their buses", "Shows the names of the other players"),
+        Some(opens("Reset all settings...", "Everything but the language, the key bindings and the game folder goes back to how it came", "reset")),
     ]
         .into_iter()
         .flatten()
         .collect();
-    camera.push(button("Reset the seat position", "Reset", "Put the seat back where the vehicle has it.", "seat_reset"));
+    let mut vr: Vec<(String, String)> = Vec::new();
     if cfg!(windows) {
-        camera.extend(
+        vr.extend(
             vec![
                 switch_row(app, "vr", "Use OpenXR headset", later),
                 if s.vr { pick("vr_scale", "Eye resolution", later) } else { None },
@@ -1883,64 +1929,20 @@ fn options_pages(app: &App) -> Vec<Page> {
                 .flatten(),
         );
     }
-    let controls: Vec<(String, String)> = vec![
-        pick("drive_keys", "Driving keys", "Which keys drive the vehicle"),
-        switch_row(app, "mouse", "Steering with the mouse", "Steer and control the pedals using the mouse"),
-        switch_row(app, "mouse_right", "A right click ends the mouse steering", "As in OMSI; off: the right button only looks round"),
-        slider_row(app, "mouse_sens", "Mouse steering sensitivity", "Adjust how much the steering wheel turns based on mouse movement", &pct),
-        switch_row(app, "steering_linear", "Steering linearity (keys at OMSI's steady pace)", "Keyboard steering at OMSI's steady pace"),
-        switch_row(app, "old_steering", "Old Steering (the wheel stays, turn it back yourself)", "The wheel stays where the keys left it"),
-        switch_row(app, "red_steer_spd", "Dynamic steering (slower keys at speed, OMSI's redSteerSpd)", "The steering keys act slower at speed"),
-        switch_row(app, "ff", "Force feedback and vibration", "Enable force feedback for the steering wheel and vibration for controllers"),
-        switch_row(app, "ff_invert", "Invert force feedback by default", "For wheels without a saved direction"),
-        slider_row(app, "wheel_range", "Wheel rotation", "The steering wheel's own rotation, lock to lock", &|v| format!("{v:.0}°")),
-        slider_row(app, "wheel_lock", "Full lock at", "How far the wheel turns for the vehicle's full lock", &|v| if v < 45.0 { "OMSI".to_string() } else { format!("{v:.0}°") }),
-        slider_row(app, "pedal_t", "Throttle pedal strength", "Adjust how strongly pedal input affects the throttle", &|v| format!("x{v}")),
-        slider_row(app, "pedal_b", "Brake pedal strength", "Adjust how strongly pedal input affects the brake", &|v| format!("x{v}")),
-        switch_row(app, "blinker_cancel", "Indicators cancel themselves", "The bus's script turns the indicator off after a turn; off: it stays on until you turn it off"),
-        switch_row(app, "brake_hold", "Keyboard brake stays on", "Keep the brake applied until the throttle is pressed"),
-        switch_row(app, "auto_clutch", "Automatic clutch", "Automatically operate the clutch for you"),
-        switch_row(app, "momentary_gears", "Hold manual gear buttons (release returns to neutral)", later),
-        switch_row(app, "auto_shift", "Automated manual gearbox", "Shift a manual gearbox's gears for you by the engine speed"),
-    ]
-        .into_iter()
-        .flatten()
-        .collect();
-    let interface: Vec<(String, String)> = vec![
-        pick("language", "Language", "The language of the game's interface"),
-        pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
-        slider_row(app, "ui_scale", "Game interface size", "The size of the texts, the menu, the timetable and the navigator", &pct),
-        switch_row(app, "ui_scale_window", "Interface grows with the window", "On a window taller than 1080p the interface grows with it"),
-        slider_row(app, "ui_opacity", "Interface opacity", "How much of the interface's backgrounds shows", &pct),
-        switch_row(app, "tooltips", "Name of the button under the mouse", "Shows the name of what the cursor points at"),
-        switch_row(app, "timetable_win", "Timetable window", "Displays a list of all stops (only when a tour is active)"),
-        switch_row(app, "info_bar", "Information bar", "Displays information such as the time, speed, and other details at the top of the screen"),
-        switch_row(app, "notes", "Notes in the top-left corner", "Why the vehicle does not move, the change due, what a service did"),
-        switch_row(app, "chat", "Chat in online games", "Shows the chat of a LAN session"),
-        switch_row(app, "name_tags", "Other players' names above their buses", "Shows the names of the other players"),
-        Some(opens("Reset all settings...", "Everything but the language, the key bindings and the game folder goes back to how it came", "reset")),
-    ]
-        .into_iter()
-        .flatten()
-        .collect();
-    let mut pages = vec![("Gameplay", game), ("Graphics", graphics), ("Display and memory", display), ("Sound", sound), ("Camera", camera), ("Controls", controls), ("Interface", interface)];
     if app.vr_active() && app.player.is_some() {
         let desc = "Navigator position (this bus)";
-        let mut rows = vec![
-            switch_row(app, "navigator", "Navigator", desc).unwrap(),
-            button("Move and rotate with the mouse...", "Open", desc, "vr_nav_edit"),
-        ];
+        vr.extend(switch_row(app, "navigator", "Navigator", desc));
+        vr.push(button("Move and rotate with the mouse...", "Open", desc, "vr_nav_edit"));
         for (id, label) in [("x", "Position right / left"), ("y", "Position forward / back"), ("z", "Position up / down"), ("width", "Display width")] {
-            rows.extend(slider_row(app, &format!("vr_nav_{id}"), label, desc, &cm));
+            vr.extend(slider_row(app, &format!("vr_nav_{id}"), label, desc, &cm));
         }
         for (id, label) in [("yaw", "Display rotation"), ("tilt", "Display tilt"), ("roll", "Display roll")] {
-            rows.extend(slider_row(app, &format!("vr_nav_{id}"), label, desc, &|v| format!("{v:.0}°")));
+            vr.extend(slider_row(app, &format!("vr_nav_{id}"), label, desc, &|v| format!("{v:.0}°")));
         }
-        rows.extend(slider_row(app, "vr_nav_opacity", "Interface opacity", desc, &pct));
-        rows.push(button("Reset navigator position", "Reset", desc, "vr_nav_reset"));
-        pages.push(("VR", rows));
+        vr.extend(slider_row(app, "vr_nav_opacity", "Interface opacity", desc, &pct));
+        vr.push(button("Reset navigator position", "Reset", desc, "vr_nav_reset"));
     }
-    pages
+    vec![("Gameplay", game), ("Driving", driving), ("Controls", controls), ("Camera", camera), ("Graphics", graphics), ("Display", display), ("Sound", sound), ("Interface", interface), ("VR", vr)]
 }
 
 fn vehicle_pages(app: &App) -> Vec<Page> {
@@ -1952,25 +1954,18 @@ fn vehicle_pages(app: &App) -> Vec<Page> {
         display.push(opens("Depot file (HOF)", "Change the current depot file (used for the timetable)", "hof"));
         display.push(opens("Fleet number", "Change the vehicle's current fleet number", "number"));
     }
-    if !server {
-        display.push(opens("Driver", "Change the current driver profile", "driver"));
-    }
     let mut fleet: Vec<(String, String)> = Vec::new();
     if has || !app.placed.is_empty() {
         fleet.push(button("Drive the next vehicle", "Switch", "Take the wheel of another vehicle standing in the world", "switch"));
     }
     fleet.push(opens("Place a vehicle", "Place a vehicle of your choice", "place"));
     if has {
-        fleet.push(button("Couple", "Couple", "Couple the vehicle to the one in front of or behind it", "couple"));
-        fleet.push(button("Uncouple", "Uncouple", "Separate the coupled vehicles", "uncouple"));
-        if app.on_foot.is_none() {
-            fleet.push(button("Get up and out", "Get out", "Step out of your car and explore the world", "getout"));
-        }
-        fleet.push(button("Remove this vehicle", "Remove", "Removes the current vehicle", "remove"));
         // (#728: another bus in this one's place, or this one again with its files read
         // anew - a script or a .bus changed - without starting the game again)
         fleet.push(button("Swap for another vehicle", "Swap", "Put another vehicle in this one's place and drive it", "swap"));
-        fleet.push(button("Reload this vehicle", "Reload", "Read the vehicle's files again (.bus, model and sound configuration, scripts) and drive it from here", "reload"));
+        fleet.push(button("Couple", "Couple", "Couple the vehicle to the one in front of or behind it", "couple"));
+        fleet.push(button("Uncouple", "Uncouple", "Separate the coupled vehicles", "uncouple"));
+        fleet.push(button("Remove this vehicle", "Remove", "Removes the current vehicle", "remove"));
     }
     if !app.placed.is_empty() {
         fleet.push(button("Remove the placed vehicles", "Remove", "Removes all vehicles you've placed from the world", "clearplaced"));
@@ -1981,12 +1976,21 @@ fn vehicle_pages(app: &App) -> Vec<Page> {
         service.push(button("Wash", "Wash", "Cleans the current vehicle", "wash"));
         service.push(button("Repair", "Repair", "Repairs the current vehicle", "repair"));
         service.push(button("Put back on its wheels", "Reset", "Return the vehicle to an upright position", "reset"));
-        if !server && app.navigator.is_some() {
-            service.push(button("Move on the map", "Pick", "Teleports you to any location on the map", "teleport"));
-            service.push(opens("Teleport to a start point", "Teleport to a starting point on the map", "tplist"));
-        }
+        service.push(button("Reload this vehicle", "Reload", "Read the vehicle's files again (.bus, model and sound configuration, scripts) and drive it from here", "reload"));
     }
-    vec![("Display and driver", display), ("Vehicles", fleet), ("Service", service)]
+    let mut driver: Vec<(String, String)> = Vec::new();
+    if !server {
+        driver.push(opens("Driver", "Change the current driver profile", "driver"));
+    }
+    if has && app.on_foot.is_none() {
+        driver.push(button("Get up and out", "Get out", "Step out of your car and explore the world", "getout"));
+    }
+    let mut teleport: Vec<(String, String)> = Vec::new();
+    if has && !server && app.navigator.is_some() {
+        teleport.push(button("Move on the map", "Pick", "Teleports you to any location on the map", "teleport"));
+        teleport.push(opens("Teleport to a start point", "Teleport to a starting point on the map", "tplist"));
+    }
+    vec![("Vehicles", fleet), ("Display", display), ("Service", service), ("Driver", driver), ("Teleport", teleport)]
 }
 
 fn world_pages(app: &App) -> Vec<Page> {
