@@ -2114,6 +2114,7 @@ impl ApplicationHandler for App {
                 // this mip level at most (`Settings::led_mips`)
                 lighting.led_glow = self.settings.led_glow as f32 * 0.25;
                 lighting.led_mips = self.settings.led_mips;
+                lighting.atmosphere_brightness = self.settings.atmosphere_brightness;
                 let mut finish = false;
                 let mut reconfigure = false;
                 let shot = self.shot.take();

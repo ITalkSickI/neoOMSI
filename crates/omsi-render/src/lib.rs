@@ -468,6 +468,7 @@ pub struct Lighting {
     /// give 0 = off .. 3.75): the enhanced picture draws them this much above their own
     /// colour, bright enough for the glow to bloom a halo around the panel.
     pub led_glow: f32,
+    pub atmosphere_brightness: f32,
     /// How much of the mip chain an LED panel is held at - the `\S:n` mask's (`STFilter`)
     /// and the panel's own grid picture's: both are sampled at the level their screen
     /// footprint asks for, never coarser than this. 0 point-samples them (the sharpest
@@ -526,6 +527,7 @@ impl Default for Lighting {
             fog_base: None,
             envir_tint: [Vec3::ONE; 3],
             led_glow: 1.5,
+            atmosphere_brightness: 1.0,
             led_mips: 1.3,
             glass_wind: Vec3::ZERO,
         }
@@ -4493,6 +4495,7 @@ impl Renderer {
             rain: lighting.rain.clamp(0.0, 1.0),
             ground_albedo: 0.2 + 0.45 * lighting.snow.clamp(0.0, 1.0),
             tint: lighting.envir_tint,
+            night_light: lighting.atmosphere_brightness,
         };
         // A new sky takes a few milliseconds: it is computed on a helper thread and taken in
         // when it is ready. A picture on its own, and the first frame, wait for it.
@@ -5936,14 +5939,12 @@ impl Renderer {
                 .normalize()
                 .extend(lighting.sun_intensity)
                 .to_array(),
-            ambient: lighting
-                .ambient
+            ambient: (lighting.ambient * if enhanced { 1.0 } else { night_scale(lighting.night, lighting.atmosphere_brightness) })
                 .extend(lighting.snow.clamp(0.0, 1.0))
                 .to_array(),
             fog: lighting.fog_color.extend(lighting.fog_density).to_array(),
             sun_color: lighting.sun_color.extend(lighting.night_maps.unwrap_or(lighting.night)).to_array(),
-            sky_color: lighting
-                .secondary
+            sky_color: (lighting.secondary * if enhanced { 1.0 } else { night_scale(lighting.night, lighting.atmosphere_brightness) })
                 .extend(if lighting.classic && !enhanced { 1.0 } else { 0.0 })
                 .to_array(),
             light_grid: grid,
@@ -7842,6 +7843,11 @@ fn debug_view() -> f32 {
     })
 }
 
+/// The factor the night's light is multiplied by: 1 by day, `brightness` at night.
+fn night_scale(night: f32, brightness: f32) -> f32 {
+    1.0 + (brightness.clamp(0.0, 4.0) - 1.0) * night.clamp(0.0, 1.0)
+}
+
 /// The metering: the share of the metered difference that is corrected, its target (log2 of
 /// the picture's mean luminance), how far it may darken and brighten (EV), the exposure
 /// bias (EV) and the night vision strength. `OMSI_METER=gain,target,dark,bright,bias,night`
@@ -7878,6 +7884,7 @@ fn sky_input_differs(a: &atmosphere::SkyInput, b: &atmosphere::SkyInput) -> bool
         || !near(a.haze, b.haze, 0.02)
         || !near(a.rain, b.rain, 0.01)
         || !near(a.ground_albedo, b.ground_albedo, 0.01)
+        || !near(a.night_light, b.night_light, 0.01)
         || a.tint
         .iter()
         .zip(&b.tint)

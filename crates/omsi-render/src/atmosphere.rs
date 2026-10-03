@@ -70,11 +70,12 @@ pub struct SkyInput {
     pub ground_albedo: f32,
     /// envir.cfg's light colours relative to the stock ones: sun (A), sky (B), ambient (C).
     pub tint: [Vec3; 3],
+    pub night_light: f32,
 }
 
 impl Default for SkyInput {
     fn default() -> Self {
-        Self { sun_dir: Vec3::new(0.3, 0.2, 0.9).normalize(), sun_visibility: 1.0, overcast: 0.0, haze: 1.0, rain: 0.0, ground_albedo: 0.2, tint: [Vec3::ONE; 3] }
+        Self { sun_dir: Vec3::new(0.3, 0.2, 0.9).normalize(), sun_visibility: 1.0, overcast: 0.0, haze: 1.0, rain: 0.0, ground_albedo: 0.2, tint: [Vec3::ONE; 3], night_light: 1.0 }
     }
 }
 
@@ -282,6 +283,7 @@ impl SkyState {
         let raw = Self::compute_raw(input);
         let white = daylight_white();
         let wb = |c: Vec3| c / white;
+        let night_light = input.night_light.clamp(0.0, 4.0);
         let tint = input.tint.map(|t| t.clamp(Vec3::splat(0.25), Vec3::splat(4.0)));
         let s = input.sun_dir.normalize_or_zero();
         let sun_disc = wb(raw.sun) * tint[0];
@@ -302,7 +304,7 @@ impl SkyState {
                 let clear = wb(raw.lut[row * w + col]) * tint[1];
                 let cover = grey * overcast_zenith * (1.0 + 2.0 * el.max(0.0).sin()) / 3.0;
                 let l = if el >= 0.0 { clear.lerp(cover, oc) } else { clear * (1.0 - oc) };
-                lut.push(l + NIGHT_SKY);
+                lut.push(l + NIGHT_SKY * night_light);
             }
         }
         // irradiance on a horizontal surface from the open sky
@@ -375,7 +377,9 @@ impl SkyState {
         // which a horizontal surface alone does not tell (a sunlit facade at seven in the
         // evening came out washed out)
         let sun_facing = s.z.max(0.0) + (1.0 - s.z.max(0.0)) * LOW_SUN_WALLS * (s.z * 20.0).clamp(0.0, 1.0);
-        let e_ref = (sun * sun_facing + sky_horizontal).dot(lum) + ARTIFICIAL;
+        // (the exposure is that of the night as it is by default: a darker night stays dark)
+        let night_lost = (1.0 - night_light) * std::f32::consts::PI * NIGHT_SKY.dot(lum);
+        let e_ref = ((sun * sun_facing + sky_horizontal).dot(lum) + night_lost).max(0.0) + ARTIFICIAL;
         SkyState { input: *input, sun, sun_disc, lut: lut_out, lut_scale, sh, sky_horizontal, ground, exposure: exposure_for(e_ref) }
     }
 
@@ -614,4 +618,3 @@ mod tests {
         assert_eq!(f16_bits(1e9), 0x7c00);
     }
 }
-

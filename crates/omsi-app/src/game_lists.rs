@@ -756,6 +756,7 @@ fn steps_of(verb: &str) -> Option<Vec<f32>> {
         "volume" => VOLUME.to_vec(),
         "led_glow" => (0..16).map(|v| v as f32).collect(),
         "led_mips" => (0..=80).map(|v| v as f32 * 0.05).collect(),
+        "atmosphere_brightness" => (0..=40).map(|v| v as f32 * 0.05).collect(),
         "ui_scale" => (10..=40).map(|v| v as f32 * 0.05).collect(),
         "ui_opacity" => (4..=20).map(|v| v as f32 * 0.05).collect(),
         "vol_ai" | "vol_scenery" => (0..=20).map(|v| v as f32 * 0.05).collect(),
@@ -871,6 +872,7 @@ fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "volume" => s.volume,
         "led_glow" => s.led_glow as f32,
         "led_mips" => s.led_mips,
+        "atmosphere_brightness" => s.atmosphere_brightness,
         "pedal_t" => s.pedal_throttle,
         "pedal_b" => s.pedal_brake,
         "mouse_sens" => s.mouse_sens,
@@ -931,6 +933,10 @@ fn option_set(app: &mut App, verb: &str, arg: &str, v: f32) -> Option<(&'static 
         "led_glow" => {
             app.settings.led_glow = v.round() as _;
             Some(("led_glow", app.settings.led_glow.to_string()))
+        }
+        "atmosphere_brightness" => {
+            app.settings.atmosphere_brightness = v.clamp(0.0, 2.0);
+            Some(("atmosphere_brightness", app.settings.atmosphere_brightness.to_string()))
         }
         "led_mips" => {
             app.settings.led_mips = v.clamp(0.0, 4.0);
@@ -1872,6 +1878,7 @@ fn options_pages(app: &App) -> Vec<Page> {
         pick("texture_memory", "Texture memory", later),
         switch_row(app, "texture_compression", "Compress textures on loading", later),
         slider_row(app, "led_glow", "LED glow", "How strongly the dots of LED destination displays glow", &|v| format!("{}/15", v as i64)),
+        slider_row(app, "atmosphere_brightness", "Atmosphere brightness", "How much light the night has", &|v| format!("{v:.2}")),
         slider_row(app, "led_mips", "LED mask mipmaps", "Keep the mip chain of the LED masks (smoother from a distance).", &|v| format!("{v:.2}")),
     ]
         .into_iter()
