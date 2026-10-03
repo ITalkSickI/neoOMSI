@@ -8,6 +8,7 @@ const DOCS = [
   { file: "DEVELOPMENT", title: "Development workflow", icon: "code" },
   { file: "ISSUE_TRIAGE", title: "Issue triage", icon: "rule" },
   { file: "RELEASING", title: "Releasing", icon: "new_releases" },
+  { file: "VERSIONING", title: "Versioning & changelog", icon: "history" },
   { file: "SERVER", title: "Dedicated server", icon: "dns" },
 ];
 const PLATFORMS = [
