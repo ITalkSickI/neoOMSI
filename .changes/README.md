@@ -17,12 +17,12 @@ Example:
 
 ## Categories
 
-- `parity` — OMSI 2 compatibility correction
-- `fix` — bug or regression fix
-- `feature` — intentional neoOMSI feature
-- `performance` — meaningful performance improvement
-- `breaking` — intentional compatibility/API/configuration break
-- `internal` — relevant internal/tooling change worth mentioning
+- `parity` – OMSI 2 compatibility correction
+- `fix` – bug or regression fix
+- `feature` – intentional neoOMSI feature
+- `performance` – meaningful performance improvement
+- `breaking` – intentional compatibility/API/configuration break
+- `internal` – relevant internal/tooling change worth mentioning
 
 ## Contents
 

@@ -30,8 +30,9 @@ body:
     attributes:
       label: Is this behaviour already available in OMSI 2.2.032?
       options:
-        - "No — this is intentionally beyond OMSI 2"
-        - "I am not sure"
+        - "No – this is an intentional extension beyond OMSI 2"
+        - "Yes – please file a Bug / Compatibility report instead"
+        - "Not sure"
     validations:
       required: true
 

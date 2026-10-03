@@ -50,8 +50,8 @@ body:
       label: OMSI 2.2.032 comparison
       description: Did you test the same scenario in OMSI 2.2.032?
       options:
-        - "Yes — OMSI behaves differently"
-        - "Yes — OMSI has the same problem"
+        - "Yes – OMSI behaves differently"
+        - "Yes – OMSI has the same problem"
         - "Not tested"
         - "Not applicable"
     validations:

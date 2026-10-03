@@ -14,21 +14,21 @@ Closing an issue does not mean the report was invalid; it simply means there is 
 
 ### Status labels
 
-- `status: untriaged` — New issue, awaiting review.
-- `status: needs-info` — Plausible report, but missing steps, logs, or reproduction details.
-- `status: verified` — Successfully reproduced or substantiated by clear diagnostic evidence.
-- `status: needs-investigation` — Valid problem, but the root cause or correct subsystem fix is unclear.
+- `status: untriaged` – New issue, awaiting review.
+- `status: needs-info` – Plausible report, but missing steps, logs, or reproduction details.
+- `status: verified` – Successfully reproduced or substantiated by clear diagnostic evidence.
+- `status: needs-investigation` – Valid problem, but the root cause or correct subsystem fix is unclear.
 
 ### Scope labels
 
-- `scope: parity` — Discrepancy with OMSI 2.2.032 behavior.
-- `scope: extension` — Feature or enhancement intentionally going beyond OMSI 2.
-- `scope: internal` — Build infrastructure, CI, tooling, or refactoring.
-- `scope: mod-specific` — Behavior isolated to a third-party add-on.
+- `scope: parity` – Discrepancy with OMSI 2.2.032 behavior.
+- `scope: extension` – Feature or enhancement intentionally going beyond OMSI 2.
+- `scope: internal` – Build infrastructure, CI, tooling, or refactoring.
+- `scope: mod-specific` – Behavior isolated to a third-party add-on.
 
 ### Protection label
 
-- `triage: protected` — Explicitly retained through automated maintenance sweeps during ongoing research or design.
+- `triage: protected` – Explicitly retained through automated maintenance sweeps during ongoing research or design.
 
 ## Triage workflow
 

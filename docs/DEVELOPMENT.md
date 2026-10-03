@@ -6,11 +6,11 @@ This guide covers engineering standards, branching, code review, and development
 
 When making trade-offs, prioritize:
 
-1. **Correctness** — simulation behavior must accurately reflect verified reference behavior.
-2. **Simplicity** — choose the simplest complete solution over complex abstractions.
-3. **Maintainability** — clear data flow and explicit ownership beat clever or hidden mechanisms.
-4. **Consistency** — follow established crate conventions and standard Rust idioms.
-5. **Minimal churn** — keep diffs focused on the task at hand. Avoid formatting or refactoring untouched code.
+1. **Correctness** – simulation behavior must accurately reflect verified reference behavior.
+2. **Simplicity** – choose the simplest complete solution over complex abstractions.
+3. **Maintainability** – clear data flow and explicit ownership beat clever or hidden mechanisms.
+4. **Consistency** – follow established crate conventions and standard Rust idioms.
+5. **Minimal churn** – keep diffs focused on the task at hand. Avoid formatting or refactoring untouched code.
 
 ## AI-assisted code standards
 

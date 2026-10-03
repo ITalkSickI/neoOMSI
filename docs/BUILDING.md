@@ -52,9 +52,9 @@ cargo build --release -p omsi-app
 
 ## Binaries
 
-* `neoomsi` (`crates/omsi-app`) — The main simulator executable. Without arguments, it launches into the main launcher window.
-* `neoomsi-launcher` (`crates/omsi-launcher-core`) — Command-line interface for headless management, mod installation, and asset operations.
-* `omsi-check` (`tools/omsi-check`) — Validation utility that verifies content integrity against an OMSI 2 installation.
+* `neoomsi` (`crates/omsi-app`) – The main simulator executable. Without arguments, it launches into the main launcher window.
+* `neoomsi-launcher` (`crates/omsi-launcher-core`) – Command-line interface for headless management, mod installation, and asset operations.
+* `omsi-check` (`tools/omsi-check`) – Validation utility that verifies content integrity against an OMSI 2 installation.
 
 ## Running tests
 
