@@ -3788,7 +3788,7 @@ pub(crate) fn parse_input_script() -> Vec<(f32, String)> {
 
 /// The game menu on a server (`--lan-join https://…`): the world's clock and weather are the
 /// server's, and the way out leaves the server.
-pub(crate) const SERVER_GAME_MENU: [(&str, &str); 7] = [
+pub(crate) const SERVER_GAME_MENU: [(&str, &str); 6] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("vehicle", "Vehicle options..."),
@@ -3906,7 +3906,7 @@ pub(crate) const SAVES: &str = "Saves";
 
 /// The lines of the game menu: (what, label). What can be set is on the pages behind
 /// "Options", "Vehicle options" and "World options" (see `game_lists`).
-pub(crate) const GAME_MENU: [(&str, &str); 12] = [
+pub(crate) const GAME_MENU: [(&str, &str); 11] = [
     ("resume", "Resume"),
     ("options", "Options..."),
     ("vehicle", "Vehicle options..."),
