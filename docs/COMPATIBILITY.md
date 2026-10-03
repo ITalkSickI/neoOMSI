@@ -86,13 +86,3 @@ Features that extend beyond OMSI 2 are allowed but secondary to compatibility:
 - Should be deferred if they add complexity to an unverified subsystem.
 
 A configuration toggle is not an acceptable alternative to fixing broken baseline behavior.
-
-## Parity pull requests
-
-Pull requests under the `parity/` prefix should document:
-
-1. The reference behavior in OMSI 2.2.032.
-2. Reproduction steps and evidence.
-3. The previous neoOMSI behavior.
-4. The underlying engine rule being corrected.
-5. Verification results following the change.

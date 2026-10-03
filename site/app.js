@@ -7,8 +7,7 @@ const DOCS = [
   { file: "COMPATIBILITY", title: "Compatibility", icon: "fact_check" },
   { file: "DEVELOPMENT", title: "Development workflow", icon: "code" },
   { file: "ISSUE_TRIAGE", title: "Issue triage", icon: "rule" },
-  { file: "RELEASING", title: "Releasing", icon: "new_releases" },
-  { file: "VERSIONING", title: "Versioning & changelog", icon: "history" },
+  { file: "RELEASING", title: "Releasing & versioning", icon: "new_releases" },
   { file: "SERVER", title: "Dedicated server", icon: "dns" },
 ];
 const PLATFORMS = [

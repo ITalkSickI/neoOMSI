@@ -46,7 +46,7 @@ Detailed documentation and policies live in dedicated guides:
 | [Development workflow](docs/DEVELOPMENT.md) | Branching model, review standards, and dev scripts |
 | [Compatibility](docs/COMPATIBILITY.md) | Parity policy and OMSI 2 verification process |
 | [Issue triage](docs/ISSUE_TRIAGE.md) | How issues are classified, verified, and triaged |
-| [Releasing](docs/RELEASING.md) | Release cadence, nightly builds, and versioning |
+| [Releasing & versioning](docs/RELEASING.md) | Release cadence, nightly builds, and versioning |
 
 ## Quickstart
 

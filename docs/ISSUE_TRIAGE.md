@@ -45,12 +45,11 @@ Maintainers review incoming issues regularly:
 
 ## Mod-specific reports
 
-A bug occurring only on a specific add-on map or vehicle requires this question:
+When an issue occurs only with a specific add-on map or vehicle, evaluate whether the content exposes a general OMSI rule that neoOMSI implements incorrectly (see [Compatibility policy](COMPATIBILITY.md#mod-specific-issues)):
 
-> Does this content expose a general OMSI rule that neoOMSI implements incorrectly?
+- If the issue is due to broken scripts or syntax errors that also fail in OMSI 2, it is outside project scope.
+- If OMSI 2 accommodates the mod via a discoverable fallback, document the general engine rule and label `scope: parity`.
 
-- If the issue is due to a misconfigured script or syntax error that also fails in OMSI 2, it is outside project scope.
-- If OMSI 2 accommodates the mod via a documented or discoverable fallback, document the general rule and label `scope: parity`.
 
 ## Feature requests
 

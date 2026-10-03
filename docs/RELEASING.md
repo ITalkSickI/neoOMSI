@@ -1,6 +1,6 @@
-# Releasing neoOMSI
+# Releasing & versioning
 
-neoOMSI maintains a clear distinction between rapid development snapshots and stabilized community releases.
+neoOMSI maintains a clear distinction between rapid development snapshots and stabilized community releases. There are no permanent `develop` or `nightly` branches; all active development integrates into `main`.
 
 ## Versioning scheme
 
@@ -84,3 +84,4 @@ To prevent merge conflicts across concurrent pull requests, contributors add sma
 
 - **Nightly CI:** Aggregates pending fragments into release summaries without deleting them.
 - **Stable Releases:** A release automation script compiles all accumulated fragments into a new section in `CHANGELOG.md` and deletes the processed fragment files.
+- **Fragment Guide:** See [.changes/README.md](../.changes/README.md) for naming rules, categories, and fragment formatting.
