@@ -267,6 +267,11 @@ impl ApplicationHandler for App {
             // a finger (a phone; see touch.rs)
             WindowEvent::Touch(t) => self.on_touch(event_loop, t),
             WindowEvent::RedrawRequested => {
+                // OMSI_LOADING_SCREEN=1: nothing but the loading screen (to work on its look)
+                if omsi_cfg::env::var_os("OMSI_LOADING_SCREEN").is_some() {
+                    self.loading_preview();
+                    return;
+                }
                 if self.vr_nav_edit.is_some() && (!self.vr_active() || self.view != "driver") {
                     self.finish_vr_nav_edit();
                 }
