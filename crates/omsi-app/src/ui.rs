@@ -957,29 +957,7 @@ impl Ui {
         }
         let m = 40.0 * s;
         // --- the game's name, bottom left
-        if self.loading_logo.is_none() {
-            static LOGO: &[u8] = include_bytes!("../../../assets/logos/neoOMSI-wordmark.png");
-            self.loading_logo = Some(image::load_from_memory(LOGO).ok().map(|i| {
-                let mut i = i.into_rgba8();
-                // the empty margin around the lettering is cut away
-                let (w, h) = i.dimensions();
-                let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
-                for (x, y, p) in i.enumerate_pixels() {
-                    if p[3] > 8 {
-                        x0 = x0.min(x);
-                        y0 = y0.min(y);
-                        x1 = x1.max(x + 1);
-                        y1 = y1.max(y + 1);
-                    }
-                }
-                if x1 > x0 && y1 > y0 {
-                    i = image::imageops::crop_imm(&i, x0, y0, x1 - x0, y1 - y0).to_image();
-                }
-                let (iw, ih) = i.dimensions();
-                let img = omsi_texture::Image { width: iw, height: ih, rgba: i.into_raw(), has_alpha: true };
-                (r.add_texture(scene, &img, false), iw, ih)
-            }));
-        }
+        self.ensure_logo(r, scene);
         match self.loading_logo {
             Some(Some((tex, iw, ih))) => {
                 let lh = 52.0 * s;
@@ -1191,13 +1169,55 @@ impl Ui {
         self.text.rounded(r, scene, [rect[0], by, rect[0] + 2.0 * s, by + bh], 1.0 * s, fade(if danger { DANGER } else { ACCENT }, k));
     }
 
+    fn ensure_logo(&mut self, r: &Renderer, scene: &mut Scene) {
+        if self.loading_logo.is_none() {
+            static LOGO: &[u8] = include_bytes!("../../../assets/logos/neoOMSI-wordmark.png");
+            self.loading_logo = Some(image::load_from_memory(LOGO).ok().map(|i| {
+                let mut i = i.into_rgba8();
+                // the empty margin around the lettering is cut away
+                let (w, h) = i.dimensions();
+                let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+                for (x, y, p) in i.enumerate_pixels() {
+                    if p[3] > 8 {
+                        x0 = x0.min(x);
+                        y0 = y0.min(y);
+                        x1 = x1.max(x + 1);
+                        y1 = y1.max(y + 1);
+                    }
+                }
+                if x1 > x0 && y1 > y0 {
+                    i = image::imageops::crop_imm(&i, x0, y0, x1 - x0, y1 - y0).to_image();
+                }
+                let (iw, ih) = i.dimensions();
+                let img = omsi_texture::Image { width: iw, height: ih, rgba: i.into_raw(), has_alpha: true };
+                (r.add_texture(scene, &img, false), iw, ih)
+            }));
+        }
+    }
+
+    /// The pause menu's header: the wordmark instead of the game's name and "Paused".
+    /// False when the logo could not be loaded (the text header is drawn then).
+    fn menu_logo_header(&mut self, r: &Renderer, scene: &mut Scene, x: f32, y: f32, w: f32, header_h: f32, s: f32) -> bool {
+        self.ensure_logo(r, scene);
+        if let Some(Some((tex, iw, ih))) = self.loading_logo {
+            let lh = 30.0 * s;
+            let lw = lh * iw as f32 / ih.max(1) as f32;
+            let left = x + (w - lw) * 0.5;
+            let top = y + (header_h - 6.0 * s - lh) * 0.5;
+            scene.overlays.push((tex, [left, top, left + lw, top + lh]));
+            true
+        } else {
+            false
+        }
+    }
+
     /// The header of the card at (`x`, `y`) of `w` wide: what the list is of, small and in
     /// capitals, the title large under it, a hairline under both. Its text starts where the
     /// text of the lines does. Returns the middle of the header.
     fn menu_header(&mut self, r: &Renderer, scene: &mut Scene, x: f32, y: f32, w: f32, header_h: f32, title: &str, sub: &str, s: f32) -> f32 {
         let left = x + (PAD + TEXT_IN) * s;
         // (the game's name in the accent; the list names above are in capitals)
-        let (eyebrow, eyebrow_ink) = if sub.is_empty() { ("neoomsi".to_string(), txt(ACCENT)) } else { (sub.to_uppercase(), MUTED) };
+        let (eyebrow, eyebrow_ink) = if sub.is_empty() { ("neoOMSI".to_string(), txt(ACCENT)) } else { (sub.to_uppercase(), MUTED) };
         let e = self.text.label(r, scene, &eyebrow, (12.0 * s) as u32, eyebrow_ink);
         let title = clip_to(&self.text, title, 24.0 * s, w - (PAD + TEXT_IN) * 2.0 * s - 80.0 * s);
         let t = self.text.label(r, scene, &title, (24.0 * s) as u32, WHITE);
@@ -1326,7 +1346,9 @@ impl Ui {
                 (t.to_string(), String::new())
             }
         };
-        self.menu_header(r, scene, x, y, w, header_h, &title, &sub, s);
+        if !(f.paused && f.menu_head.is_none() && self.menu_logo_header(r, scene, x, y, w, header_h, s)) {
+            self.menu_header(r, scene, x, y, w, header_h, &title, &sub, s);
+        }
         // the scroll bar: where the lines shown lie in the whole menu
         let scrolls = nl > rows;
         if scrolls {
