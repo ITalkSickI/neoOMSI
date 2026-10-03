@@ -52,7 +52,7 @@ pub(crate) fn fatal_dialog(title: &str, text: &str) {
     #[cfg(windows)]
     {
         #[link(name = "user32")]
-        extern "system" {
+        unsafe extern "system" {
             fn MessageBoxW(hwnd: *mut core::ffi::c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
         }
         let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
@@ -156,7 +156,7 @@ pub(crate) fn graphics_instance() -> wgpu::Instance {
     if crate::server::SERVER_MODE.load(std::sync::atomic::Ordering::Relaxed) {
         // the dedicated server draws nothing: wgpu's no-op device takes every call
         descriptor.backends = wgpu::Backends::NOOP;
-        descriptor.backend_options.noop = wgpu::NoopBackendOptions { enable: true };
+        descriptor.backend_options.noop = wgpu::NoopBackendOptions::enabled();
         return wgpu::Instance::new(descriptor);
     }
     let mut last = None;
@@ -372,7 +372,7 @@ pub(crate) fn restart_with_allocator_settings() {
 /// the log and --help still belong there.
 #[cfg(windows)]
 pub(crate) fn attach_parent_console() {
-    extern "system" {
+    unsafe extern "system" {
         fn AttachConsole(process: u32) -> i32;
     }
     const ATTACH_PARENT_PROCESS: u32 = u32::MAX;

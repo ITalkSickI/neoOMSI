@@ -3,7 +3,6 @@
 //! `--launcher` (the window draws the bus with the game's own renderer).
 
 fn main() {
-    omsi_cfg::migrate_legacy_data_dir();
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|a| a == "--cli").unwrap_or(false) {
         let cmd = args.get(2).cloned().unwrap_or_default();

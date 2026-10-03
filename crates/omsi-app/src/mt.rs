@@ -303,7 +303,8 @@ fn fetch_model() -> Option<PathBuf> {
         }
         let url = format!("https://huggingface.co/{MODEL_REPO}/resolve/{MODEL_REVISION}/{f}");
         log::info!("translation: fetching {url}");
-        let resp = match ureq::get(&url).timeout(Duration::from_secs(1800)).call() {
+        let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(1800))).build().into();
+        let resp = match agent.get(&url).call() {
             Ok(r) => r,
             Err(e) => {
                 log::warn!("translation: the model could not be fetched: {e}");
@@ -311,10 +312,10 @@ fn fetch_model() -> Option<PathBuf> {
                 return None;
             }
         };
-        let total: u64 = resp.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(0);
+        let total: u64 = resp.body().content_length().unwrap_or(0);
         let tmp = path.with_extension("part");
         let mut out = std::fs::File::create(&tmp).ok()?;
-        let mut rd = resp.into_reader();
+        let mut rd = resp.into_body().into_reader();
         let mut buf = vec![0u8; 1 << 16];
         let mut hash = <sha2::Sha256 as sha2::Digest>::new();
         let mut done: u64 = 0;

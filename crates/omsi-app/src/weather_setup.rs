@@ -73,8 +73,8 @@ impl CustomWeather {
     pub(crate) fn encode(&self)->String{
         let mut c=self.clone(); c.normalize();
         format!("custom:vis={:.0};br={:.2};wd={:.0};ws={:.1};t={:.1};rh={:.0};p={:.0};c={};cb={:.0};pt={};pi={:.0};wet={:.2};snow={};snowroad={}",
-            c.visibility_m,c.brightness,c.wind_dir,c.wind_speed,c.temp_c,c.humidity,c.pressure,c.cloud,c.cloud_base_m,
-            c.precip,c.precip_intensity,c.road_wetness,c.snow_cover as u8,c.snow_on_road as u8)
+                c.visibility_m,c.brightness,c.wind_dir,c.wind_speed,c.temp_c,c.humidity,c.pressure,c.cloud,c.cloud_base_m,
+                c.precip,c.precip_intensity,c.road_wetness,c.snow_cover as u8,c.snow_on_road as u8)
     }
     pub(crate) fn from_weather(w:&omsi_content::weather::Weather,brightness:f32,wetness:f32)->Self{
         let kind=w.clouds.0.trim().to_ascii_lowercase();
@@ -552,10 +552,12 @@ pub(crate) fn try_metar(icao: &str) -> Option<omsi_content::weather::Weather> {
     };
     let url = format!("https://aviationweather.gov/api/data/metar?ids={icao}&format=raw");
     let text = ureq::get(&url)
-        .timeout(std::time::Duration::from_secs(6))
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(6)))
+        .build()
         .call()
         .ok()
-        .and_then(|r| r.into_string().ok())
+        .and_then(|r| r.into_body().read_to_string().ok())
         .map(|t| t.lines().next().unwrap_or("").trim().to_string())
         .filter(|t| !t.is_empty());
     let t = text?;

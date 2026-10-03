@@ -30,7 +30,7 @@ impl Layer {
     /// A perspective view of a world drawn into `viewport`.
     pub fn world(view: Mat4, fov_y: f32, viewport: [f32; 4], clip: [f32; 4], radius: f32, opacity: f32) -> Layer {
         let aspect = viewport[2] / viewport[3].max(1.0);
-        let proj = Mat4::perspective_rh(fov_y, aspect, 1.0, 20000.0);
+        let proj = glam::camera::rh::proj::directx::perspective(fov_y, aspect, 1.0, 20000.0);
         Layer { view_proj: proj * view, viewport, clip, radius, opacity, px_scale: 2.0 * (fov_y * 0.5).tan() / viewport[3].max(1.0) }
     }
 }
@@ -110,7 +110,7 @@ impl Gpu {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attrs }],
+                buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attrs })],
                 compilation_options: Default::default(),
             },
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, cull_mode: None, ..Default::default() },

@@ -11,10 +11,10 @@ bytemuck.workspace = true
 glam.workspace = true
 log.workspace = true
 ab_glyph = "0.2"
-resvg = { version = "0.45", default-features = false }
+resvg = { version = "0.48", default-features = false }
 hashbrown.workspace = true
 pollster.workspace = true
 
 [dev-dependencies]
-naga = { version = "29", features = ["wgsl-in"] }
+naga = { version = "30", features = ["wgsl-in"] }
 image.workspace = true

@@ -169,11 +169,11 @@ impl Pipelines {
                 vertex: wgpu::VertexState {
                     module: scene_shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[wgpu::VertexBufferLayout {
+                    buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Vertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
-                    }],
+                    })],
                     compilation_options: Default::default(),
                 },
                 primitive: one_sided_primitive(cull),
@@ -246,11 +246,11 @@ impl Pipelines {
                         vertex: wgpu::VertexState {
                             module: scene_shader,
                             entry_point: Some("vs_puddle_vehicle"),
-                            buffers: &[wgpu::VertexBufferLayout {
+                            buffers: &[Some(wgpu::VertexBufferLayout {
                                 array_stride: std::mem::size_of::<Vertex>() as u64,
                                 step_mode: wgpu::VertexStepMode::Vertex,
                                 attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
-                            }],
+                            })],
                             compilation_options: Default::default(),
                         },
                         primitive,
@@ -534,7 +534,7 @@ impl Renderer {
         }
         let vp = Mat4::from_cols_array_2d(&cu.view_proj);
         let proj = projection.unwrap_or_else(|| {
-            Mat4::perspective_rh(camera.fov_deg.to_radians(), aspect, camera.far, camera.near)
+            glam::camera::rh::proj::directx::perspective(camera.fov_deg.to_radians(), aspect, camera.far, camera.near)
         });
         let st = self.sky_state.as_ref().unwrap();
         let surround = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z]
@@ -683,8 +683,8 @@ impl Renderer {
         );
         if omsi_cfg::env::var_os("OMSI_NO_PUDDLE_GLASS_DEPTH").is_none()
             && batches
-                .iter()
-                .any(|b| reflection_glass(&scene.materials[b.material as usize].uniform))
+            .iter()
+            .any(|b| reflection_glass(&scene.materials[b.material as usize].uniform))
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("puddle glass depth"),
@@ -760,8 +760,8 @@ fn vehicle_origins(lighting: &Lighting, camera: &Camera) -> Vec<DVec3> {
     if lighting.puddle_ground.is_none()
         || omsi_cfg::env::var_os("OMSI_NO_PUDDLE_VEHICLE").is_some()
         || !lighting
-            .inside
-            .is_some_and(|(o, _, _)| o.distance(camera.position) < 60.0)
+        .inside
+        .is_some_and(|(o, _, _)| o.distance(camera.position) < 60.0)
     {
         return Vec::new();
     }
@@ -879,7 +879,7 @@ mod tests {
                 ..Default::default()
             },
         ))
-        .expect("test renderer");
+            .expect("test renderer");
         let mut scene = r.new_scene();
         let back = r.add_material_wet(
             &mut scene,
@@ -990,7 +990,7 @@ mod tests {
             });
             r.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             rx.recv().unwrap().unwrap();
-            let data = buffer.slice(..).get_mapped_range();
+            let data = buffer.slice(..).get_mapped_range().expect("mapped range");
             let offset = (size / 2 * 256 + size / 2 * 4) as usize;
             let depth = f32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
             drop(data);

@@ -73,12 +73,12 @@ pub fn resolve() -> Result<String, String> {
     if PUBLIC_KEY == [0; 32] {
         return Err("this build does not know the official server".into());
     }
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(8)).user_agent("neoOMSI").build();
+    let agent = crate::bridge::http_agent(Duration::from_secs(8), true);
     let body = agent
         .get(&format!("{RELAY}/{TOPIC}/json?poll=1&since=1h"))
         .call()
         .map_err(|e| format!("the official server's address could not be read: {e}"))?
-        .into_string()
+        .into_body().read_to_string()
         .map_err(|e| e.to_string())?;
     let t = now();
     body.lines()
@@ -105,11 +105,11 @@ pub fn announce(url: &str, pkcs8: &[u8]) -> Result<(), String> {
     let pair = ring::signature::Ed25519KeyPair::from_pkcs8_maybe_unchecked(pkcs8).map_err(|e| format!("the official key: {e}"))?;
     let text = signed_text(url, now());
     let sig = pair.sign(text.as_bytes());
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(8)).user_agent("neoOMSI").build();
+    let agent = crate::bridge::http_agent(Duration::from_secs(8), true);
     agent
         .post(&format!("{RELAY}/{TOPIC}"))
-        .set("Cache", "yes")
-        .send_string(&format!("{text} #{}", hex(sig.as_ref())))
+        .header("Cache", "yes")
+        .send(format!("{text} #{}", hex(sig.as_ref())).as_str())
         .map_err(|e| e.to_string())?;
     Ok(())
 }

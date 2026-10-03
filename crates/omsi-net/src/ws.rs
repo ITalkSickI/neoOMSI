@@ -275,11 +275,11 @@ pub fn query(target: &str, with_icon: bool) -> Result<ServerInfo, String> {
     if bases.is_empty() {
         return Err("no address given".into());
     }
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(6)).user_agent("neoOMSI").build();
+    let agent = crate::bridge::http_agent(Duration::from_secs(6), true);
     let mut err = String::new();
     let mut found = None;
     for base in bases {
-        match agent.get(&format!("{base}/status")).call().map_err(|e| e.to_string()).and_then(|r| r.into_string().map_err(|e| e.to_string())) {
+        match agent.get(&format!("{base}/status")).call().map_err(|e| e.to_string()).and_then(|r| r.into_body().read_to_string().map_err(|e| e.to_string())) {
             Ok(body) => match ServerInfo::from_json(&body) {
                 Some(i) => {
                     found = Some((base, i));
@@ -300,7 +300,7 @@ pub fn query(target: &str, with_icon: bool) -> Result<ServerInfo, String> {
         info.icon.clear();
         if let Ok(r) = agent.get(&format!("{base}/icon.png")).call() {
             let mut buf = Vec::new();
-            if r.into_reader().take(512 * 1024).read_to_end(&mut buf).is_ok() && buf.starts_with(b"\x89PNG") {
+            if r.into_body().into_reader().take(512 * 1024).read_to_end(&mut buf).is_ok() && buf.starts_with(b"\x89PNG") {
                 info.icon = buf;
             }
         }
@@ -641,7 +641,7 @@ pub fn tcp_forward(url: &str) -> std::io::Result<SocketAddr> {
                         tungstenite::stream::MaybeTlsStream::Rustls(s) => s.get_mut().set_read_timeout(Some(Duration::from_millis(5))),
                         _ => Ok(()),
                     }
-                    .map_err(|e| e.to_string())?;
+                        .map_err(|e| e.to_string())?;
                     pump_tcp(&mut ws, conn, &AtomicBool::new(false))
                 })();
                 if let Err(e) = r {
@@ -682,7 +682,7 @@ impl WsClient {
             tungstenite::stream::MaybeTlsStream::Rustls(s) => s.get_mut().set_read_timeout(Some(Duration::from_millis(5))),
             _ => Ok(()),
         }
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
         let udp = UdpSocket::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
         udp.set_nonblocking(true).map_err(|e| e.to_string())?;
         let local = udp.local_addr().map_err(|e| e.to_string())?;

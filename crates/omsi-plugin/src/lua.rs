@@ -163,7 +163,7 @@ impl LuaPlugin {
 
         // a call that runs past its deadline is stopped
         let deadline = self.deadline.clone();
-        lua.set_hook(HookTriggers::new().every_nth_instruction(10_000), move |_, _| match deadline.get() {
+        let _ = lua.set_hook(HookTriggers::new().every_nth_instruction(10_000), move |_, _| match deadline.get() {
             Some(d) if Instant::now() > d => Err(mlua::Error::runtime("the plugin ran longer than a second and was stopped")),
             _ => Ok(VmState::Continue),
         });

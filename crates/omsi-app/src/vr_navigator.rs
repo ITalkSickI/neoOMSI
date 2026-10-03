@@ -204,7 +204,7 @@ impl Display {
             Vec4::Z,
             (origin - eye.position).as_vec3().extend(1.0),
         );
-        projection * Mat4::look_to_rh(Vec3::ZERO, eye.forward(), eye.up()) * plane
+        projection * glam::camera::rh::view::look_to_mat4(Vec3::ZERO, eye.forward(), eye.up()) * plane
     }
 }
 
@@ -539,7 +539,7 @@ mod tests {
             placement: Placement::default(),
             local_center: Vec3::new(0.3, 1.0, -0.3),
         };
-        let projection = Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 1000.0, 0.1);
+        let projection = glam::camera::rh::proj::directx::perspective(90.0_f32.to_radians(), 1.0, 1000.0, 0.1);
         let first = display.transform(
             DVec3::ZERO,
             Mat4::IDENTITY,
@@ -582,7 +582,7 @@ mod tests {
             placement,
             local_center: Vec3::Y,
         };
-        let projection = Mat4::perspective_rh(90.0_f32.to_radians(), 1.0, 1000.0, 0.1);
+        let projection = glam::camera::rh::proj::directx::perspective(90.0_f32.to_radians(), 1.0, 1000.0, 0.1);
         let left = display.transform(
             DVec3::ZERO,
             Mat4::IDENTITY,

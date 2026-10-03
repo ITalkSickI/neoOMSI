@@ -318,7 +318,7 @@ fn free_space_impl(p: &Path) -> Option<u64> {
 fn free_space_impl(p: &Path) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn GetDiskFreeSpaceExW(dir: *const u16, avail: *mut u64, total: *mut u64, free: *mut u64) -> i32;
     }
     let wide: Vec<u16> = p.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -341,7 +341,7 @@ pub fn pid_alive(pid: u32) -> bool {
 #[cfg(windows)]
 pub fn pid_alive(pid: u32) -> bool {
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
         fn GetExitCodeProcess(h: isize, code: *mut u32) -> i32;
         fn CloseHandle(h: isize) -> i32;
@@ -1434,7 +1434,7 @@ pub fn inspect(content: &Path, root: Option<&Path>, src: &Path) -> Result<Source
                 let a = sevenz_rust2::ArchiveReader::open(src, sevenz_rust2::Password::empty()).with_context(|| format!("{} is not a readable 7z archive", src.display()))?;
                 let entries = &a.archive().files;
                 (entries.iter().filter(|e| e.has_stream && !e.is_directory).count() as u64,
-                    entries.iter().filter(|e| e.has_stream && !e.is_directory).fold(0u64, |n, e| n.saturating_add(e.size)))
+                 entries.iter().filter(|e| e.has_stream && !e.is_directory).fold(0u64, |n, e| n.saturating_add(e.size)))
             }
             ArchiveKind::Rar => {
                 let a = unrar_rs::RarArchive::open(std::fs::File::open(src)?)

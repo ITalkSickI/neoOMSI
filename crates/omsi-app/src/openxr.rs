@@ -118,7 +118,7 @@ impl UiAnchor {
             Vec4::Z,
             position.extend(1.0),
         );
-        projection * Mat4::look_to_rh(Vec3::ZERO, eye.forward(), eye.up()) * basis
+        projection * glam::camera::rh::view::look_to_mat4(Vec3::ZERO, eye.forward(), eye.up()) * basis
     }
 
     /// Project the 3D hit point, then face the dot towards each eye. A quad fixed
@@ -137,7 +137,7 @@ impl UiAnchor {
 
     fn cursor_clip(&self, eye: &Camera, projection: Mat4) -> Vec4 {
         let position = (self.origin - eye.position).as_vec3();
-        projection * Mat4::look_to_rh(Vec3::ZERO, eye.forward(), eye.up()) * position.extend(1.0)
+        projection * glam::camera::rh::view::look_to_mat4(Vec3::ZERO, eye.forward(), eye.up()) * position.extend(1.0)
     }
 
     fn cursor_on_screen(&self, eye: &Camera, projection: Mat4) -> bool {
@@ -284,10 +284,10 @@ impl Vr {
             format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | if sampled {
-                    wgpu::TextureUsages::TEXTURE_BINDING
-                } else {
-                    wgpu::TextureUsages::empty()
-                },
+                wgpu::TextureUsages::TEXTURE_BINDING
+            } else {
+                wgpu::TextureUsages::empty()
+            },
             view_formats: &[],
         };
         let imported = swapchain
@@ -296,13 +296,14 @@ impl Vr {
             .map(|image| {
                 // OpenXR retains ownership; cloning the COM interface gives wgpu a
                 // separate reference for the lifetime of the imported texture.
+                let raw = image.cast();
                 let resource = unsafe {
                     windows::Win32::Graphics::Direct3D12::ID3D12Resource::from_raw_borrowed(
-                        &image.cast(),
+                        &raw,
                     )
                 }
-                .ok_or_else(|| anyhow!("OpenXR returned a null swapchain image"))?
-                .clone();
+                    .ok_or_else(|| anyhow!("OpenXR returned a null swapchain image"))?
+                    .clone();
                 let hal_texture = unsafe {
                     wgpu_hal::dx12::Device::texture_from_raw(
                         resource.clone(),
@@ -316,7 +317,7 @@ impl Vr {
                 let texture = unsafe {
                     renderer
                         .device
-                        .create_texture_from_hal::<wgpu_hal::api::Dx12>(hal_texture, &desc)
+                        .create_texture_from_hal::<wgpu_hal::api::Dx12>(hal_texture, &desc, wgpu::TextureUses::COLOR_TARGET)
                 };
                 Ok((texture, resource))
             })
@@ -455,9 +456,9 @@ impl Vr {
     pub(crate) fn needs_cursor_surface(&self, position: (f32, f32), menu_open: bool) -> bool {
         !menu_open
             && (self.cursor_menu_open
-                || self.last_cursor_position.is_none_or(|p| {
-                    (p.0 - position.0).abs() > 0.5 || (p.1 - position.1).abs() > 0.5
-                }))
+            || self.last_cursor_position.is_none_or(|p| {
+            (p.0 - position.0).abs() > 0.5 || (p.1 - position.1).abs() > 0.5
+        }))
     }
 
     pub(crate) fn set_cursor_surface(
@@ -500,8 +501,8 @@ impl Vr {
                 let dy = (previous.1 - position.1) * 2.0 / size.1.max(1) as f32;
                 return anchor.origin
                     + (camera.right() * (dx * anchor.half_width)
-                        + camera.up() * (dy * anchor.half_height))
-                        .as_dvec3();
+                    + camera.up() * (dy * anchor.half_height))
+                    .as_dvec3();
             }
         }
         let direction = eye_ray(
@@ -631,7 +632,7 @@ impl Vr {
             }
             let eye_position = head_position
                 + head_rotation
-                    * (raw_rotation.inverse() * (xr_position(views[eye].pose) - midpoint));
+                * (raw_rotation.inverse() * (xr_position(views[eye].pose) - midpoint));
             let eye_rotation =
                 head_rotation * (raw_rotation.inverse() * xr_rotation(views[eye].pose));
             xr::Posef {
@@ -706,7 +707,7 @@ impl Vr {
             let projection = zoom_projection(ui_projection, zoom);
             camera.fov_deg = (2.0
                 * (((xr_view.fov.angle_up - xr_view.fov.angle_down) * 0.5).tan() / zoom).atan())
-            .to_degrees();
+                .to_degrees();
             eye_cameras[eye] = camera;
             ui_cameras[eye] = ui_camera;
             eye_projections[eye] = projection;
@@ -731,8 +732,8 @@ impl Vr {
         if !menu_open
             && cockpit_pointer_enabled
             && self
-                .last_cursor_move
-                .is_some_and(|t| t.elapsed() >= Duration::from_secs(10))
+            .last_cursor_move
+            .is_some_and(|t| t.elapsed() >= Duration::from_secs(10))
         {
             self.cursor_anchor = None;
             self.cursor_surface_local = None;
@@ -766,10 +767,10 @@ impl Vr {
         }) || self.cursor_menu_open != menu_open;
         let place_in_front = !menu_open
             && (self.cursor_anchor.is_none()
-                || (moved
-                    && self.cursor_anchor.is_some_and(|anchor| {
-                        !anchor.cursor_on_screen(&eye_cameras[0], eye_projections[0])
-                    })));
+            || (moved
+            && self.cursor_anchor.is_some_and(|anchor| {
+            !anchor.cursor_on_screen(&eye_cameras[0], eye_projections[0])
+        })));
         let cursor_target = if place_in_front {
             eye_cameras[0].position + (eye_cameras[0].forward() * 1.5).as_dvec3()
         } else {
@@ -832,8 +833,8 @@ impl Vr {
         });
         let cursor_visible = (menu_open || cockpit_pointer_enabled)
             && self
-                .last_cursor_move
-                .is_some_and(|t| t.elapsed() < Duration::from_secs(10));
+            .last_cursor_move
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(10));
         let cursor_transforms = [0, 1].map(|eye| {
             self.cursor_anchor
                 .filter(|_| cursor_visible)
@@ -1363,7 +1364,7 @@ fn eye_ray(
     let h = size.1.max(1) as f32;
     let nx = (x / w * 2.0 - 1.0) * crop.0;
     let ny = (1.0 - y / h * 2.0) * crop.1;
-    let view = Mat4::look_to_rh(Vec3::ZERO, camera.forward(), camera.up());
+    let view = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, camera.forward(), camera.up());
     (projection * view)
         .inverse()
         .project_point3(Vec3::new(nx, ny, 0.0))

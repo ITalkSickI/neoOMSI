@@ -166,110 +166,110 @@ pub fn run(instance: wgpu::Instance) -> anyhow::Result<()> {
 impl Launcher {
     /// The launcher, not yet in a window (that comes with `resumed`).
     pub fn new(instance: wgpu::Instance) -> Launcher {
-    core::cleanup();
-    let mut app = Launcher {
-        instance,
-        window: None,
-        surface: None,
-        renderer: None,
-        gpu: None,
-        ui: Ui::new(),
-        state: state::State::new(),
-        showroom: showroom::Showroom::new(),
-        page: Page::Drive,
-        page_anim: 1.0,
-        drive: drive::DriveView::default(),
-        phone: phone::PhoneView::default(),
-        pages: pages::PagesView::default(),
-        mp: multiplayer::MultiplayerView::default(),
-        icons: Default::default(),
-        icons_pending: Vec::new(),
-        last: Instant::now(),
-        modifiers: ModifiersState::empty(),
-        dragging: None,
-        clipboard: Clipboard::new().ok(),
-        // OMSI_LAUNCHER_EXIT=secs, OMSI_LAUNCHER_SHOT=secs:file.png, OMSI_LAUNCHER_PAGE=mods:
-        // looking at the window without a person at it
-        exit_after: omsi_cfg::env::var("OMSI_LAUNCHER_EXIT").ok().and_then(|v| v.parse().ok()),
-        shot: omsi_cfg::env::var("OMSI_LAUNCHER_SHOT").ok().and_then(|v| v.split_once(':').map(|(t, f)| (t.parse().unwrap_or(5.0), std::path::PathBuf::from(f)))),
-        started: Instant::now(),
-        script: omsi_cfg::env::var("OMSI_LAUNCHER_INPUT")
-            .map(|v| {
-                v.split(';')
-                    .filter_map(|c| {
-                        let c = c.trim();
-                        let (t, rest) = c.strip_prefix("t=")?.split_once(' ')?;
-                        Some((t.parse().ok()?, rest.trim().to_string()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        release_next: false,
-        preview_rect: None,
-        preview_tex: None,
-        preview_gen: 0,
-        focused: true,
-        occluded: false,
-        awake_in_game: false,
-        last_input: Instant::now(),
-        fingers: Default::default(),
-        browser: None,
-        page_scroll: 0.0,
-        page_max: 0.0,
-        ime: false,
-        update: Default::default(),
+        core::cleanup();
+        let mut app = Launcher {
+            instance,
+            window: None,
+            surface: None,
+            renderer: None,
+            gpu: None,
+            ui: Ui::new(),
+            state: state::State::new(),
+            showroom: showroom::Showroom::new(),
+            page: Page::Drive,
+            page_anim: 1.0,
+            drive: drive::DriveView::default(),
+            phone: phone::PhoneView::default(),
+            pages: pages::PagesView::default(),
+            mp: multiplayer::MultiplayerView::default(),
+            icons: Default::default(),
+            icons_pending: Vec::new(),
+            last: Instant::now(),
+            modifiers: ModifiersState::empty(),
+            dragging: None,
+            clipboard: Clipboard::new().ok(),
+            // OMSI_LAUNCHER_EXIT=secs, OMSI_LAUNCHER_SHOT=secs:file.png, OMSI_LAUNCHER_PAGE=mods:
+            // looking at the window without a person at it
+            exit_after: omsi_cfg::env::var("OMSI_LAUNCHER_EXIT").ok().and_then(|v| v.parse().ok()),
+            shot: omsi_cfg::env::var("OMSI_LAUNCHER_SHOT").ok().and_then(|v| v.split_once(':').map(|(t, f)| (t.parse().unwrap_or(5.0), std::path::PathBuf::from(f)))),
+            started: Instant::now(),
+            script: omsi_cfg::env::var("OMSI_LAUNCHER_INPUT")
+                .map(|v| {
+                    v.split(';')
+                        .filter_map(|c| {
+                            let c = c.trim();
+                            let (t, rest) = c.strip_prefix("t=")?.split_once(' ')?;
+                            Some((t.parse().ok()?, rest.trim().to_string()))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            release_next: false,
+            preview_rect: None,
+            preview_tex: None,
+            preview_gen: 0,
+            focused: true,
+            occluded: false,
+            awake_in_game: false,
+            last_input: Instant::now(),
+            fingers: Default::default(),
+            browser: None,
+            page_scroll: 0.0,
+            page_max: 0.0,
+            ime: false,
+            update: Default::default(),
+            #[cfg(not(target_os = "android"))]
+            discord: None,
+            #[cfg(not(target_os = "android"))]
+            discord_next_try: Instant::now(),
+        };
+        // after an update: the files it set aside go, and the launcher says what happened
         #[cfg(not(target_os = "android"))]
-        discord: None,
-        #[cfg(not(target_os = "android"))]
-        discord_next_try: Instant::now(),
-    };
-    // after an update: the files it set aside go, and the launcher says what happened
-    #[cfg(not(target_os = "android"))]
-    crate::updater::cleanup_after_update();
-    if let Some(v) = crate::updater::just_updated() {
-        log::info!("update: this start follows the update to {v}");
-        app.update.updated = Some((v, Instant::now()));
-    }
-    // no original installation found anywhere: the launcher still opens, on Setup, and says
-    // what it needs (only starting a session needs the game)
-    if omsi_cfg::missing_original_essentials(std::path::Path::new(&app.state.config.root)).len() > 0 {
-        app.page = Page::Setup;
-        let why = state::root_problem(&app.state.config.root);
-        app.state.set_status(why, true);
-    }
-    if let Ok(p) = omsi_cfg::env::var("OMSI_LAUNCHER_PAGE") {
-        if let Some((pg, _, _)) = PAGES.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(p.split(':').next().unwrap_or(""))) {
-            app.page = *pg;
-            // (the phone's tab for it)
-            app.phone.tab = match pg {
-                Page::Drive => phone::Tab::Play,
-                Page::Multiplayer => phone::Tab::Online,
-                Page::Mods => phone::Tab::Mods,
-                other => {
-                    app.phone.page = Some(*other);
-                    phone::Tab::More
-                }
-            };
+        crate::updater::cleanup_after_update();
+        if let Some(v) = crate::updater::just_updated() {
+            log::info!("update: this start follows the update to {v}");
+            app.update.updated = Some((v, Instant::now()));
         }
-        // (`OMSI_LAUNCHER_PAGE=more`, `=sheet-bus` …: the phone's More, or one of its sheets)
-        match p.as_str() {
-            "more" => app.phone.tab = phone::Tab::More,
-            "sheet-map" => app.phone.sheet = Some(phone::Sheet::Map),
-            "sheet-bus" => app.phone.sheet = Some(phone::Sheet::Bus),
-            "sheet-duty" => app.phone.sheet = Some(phone::Sheet::Duty),
-            "sheet-time" => app.phone.sheet = Some(phone::Sheet::Time),
-            "sheet-livery" => app.phone.sheet = Some(phone::Sheet::Livery),
-            _ => {}
+        // no original installation found anywhere: the launcher still opens, on Setup, and says
+        // what it needs (only starting a session needs the game)
+        if omsi_cfg::missing_original_essentials(std::path::Path::new(&app.state.config.root)).len() > 0 {
+            app.page = Page::Setup;
+            let why = state::root_problem(&app.state.config.root);
+            app.state.set_status(why, true);
         }
-        if let Some(step) = p.split(':').nth(1).and_then(|s| s.parse().ok()) {
-            app.drive.step = step;
-            // (the Controls and Settings pages' second part is their tab: controls:1 the game
-            // controllers, settings:3 Sound)
-            app.pages.controls_tab = step;
-            app.pages.settings_tab = step.min(pages::SETTINGS_TABS.len() - 1);
+        if let Ok(p) = omsi_cfg::env::var("OMSI_LAUNCHER_PAGE") {
+            if let Some((pg, _, _)) = PAGES.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(p.split(':').next().unwrap_or(""))) {
+                app.page = *pg;
+                // (the phone's tab for it)
+                app.phone.tab = match pg {
+                    Page::Drive => phone::Tab::Play,
+                    Page::Multiplayer => phone::Tab::Online,
+                    Page::Mods => phone::Tab::Mods,
+                    other => {
+                        app.phone.page = Some(*other);
+                        phone::Tab::More
+                    }
+                };
+            }
+            // (`OMSI_LAUNCHER_PAGE=more`, `=sheet-bus` …: the phone's More, or one of its sheets)
+            match p.as_str() {
+                "more" => app.phone.tab = phone::Tab::More,
+                "sheet-map" => app.phone.sheet = Some(phone::Sheet::Map),
+                "sheet-bus" => app.phone.sheet = Some(phone::Sheet::Bus),
+                "sheet-duty" => app.phone.sheet = Some(phone::Sheet::Duty),
+                "sheet-time" => app.phone.sheet = Some(phone::Sheet::Time),
+                "sheet-livery" => app.phone.sheet = Some(phone::Sheet::Livery),
+                _ => {}
+            }
+            if let Some(step) = p.split(':').nth(1).and_then(|s| s.parse().ok()) {
+                app.drive.step = step;
+                // (the Controls and Settings pages' second part is their tab: controls:1 the game
+                // controllers, settings:3 Sound)
+                app.pages.controls_tab = step;
+                app.pages.settings_tab = step.min(pages::SETTINGS_TABS.len() - 1);
+            }
         }
-    }
-    app
+        app
     }
 
     /// The window, its surface and the renderer, given up for the game (a phone plays in the
@@ -608,7 +608,7 @@ impl Launcher {
             return false;
         }
         if let Some(o) = other {
-            std::env::set_var("OMSI_BACKEND", o);
+            unsafe { std::env::set_var("OMSI_BACKEND", o) };
             self.state.settings["graphics_api"] = serde_json::json!(o);
             self.state.settings_dirty = 0.3;
         }
@@ -868,7 +868,7 @@ impl Launcher {
             renderer.queue.submit([enc.finish()]);
         }
         window.pre_present_notify();
-        frame.present();
+        renderer.queue.present(frame);
         self.check_exit(event_loop);
     }
 
@@ -944,7 +944,7 @@ impl Launcher {
         r.queue.submit([enc.finish()]);
         buf.slice(..).map_async(wgpu::MapMode::Read, |_| {});
         r.device.poll(wgpu::PollType::wait_indefinitely()).ok();
-        let data = buf.slice(..).get_mapped_range();
+        let data = buf.slice(..).get_mapped_range().expect("mapped range");
         let bgra = matches!(r.format(), wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm);
         let mut img = image::RgbaImage::new(w, h);
         for y in 0..h {
@@ -989,36 +989,36 @@ impl Launcher {
             }
             phone::draw(self);
         } else {
-        let rail_w = RAIL_W;
-        self.page_anim = (self.page_anim + self.ui.dt / 0.15).min(1.0);
-        // (no wider than a page reads well: on a wide screen the rest is margin, the page
-        // in the middle - the panels stretched across 2000 px with their text at one end)
-        let (margin, top) = if mobile { (36.0, 14.0) } else { (64.0, 28.0) };
-        let avail = size.x - rail_w - margin;
-        let w = avail.min(1760.0);
-        let seen = size.y - top - 40.0;
-        // (a phone: laid out for a taller screen, scrolled)
-        let h = if mobile { seen.max(mobile::PAGE_H) } else { seen };
-        self.page_max = (h - seen).max(0.0);
-        self.page_scroll = self.page_scroll.clamp(0.0, self.page_max);
-        let content = Rect::new(rail_w + margin * 0.5 + (avail - w) * 0.5, top - self.page_scroll, w, h);
-        let e = 1.0 - (1.0 - self.page_anim).powi(3);
-        let content = Rect::new(content.x + 8.0 * (1.0 - e), content.y, content.w, content.h);
-        match self.page {
-            Page::Drive => drive::draw(self, content),
-            Page::Multiplayer => multiplayer::draw(self, content),
-            Page::Profile => pages::profile(self, content),
-            Page::Settings => pages::settings(self, content),
-            Page::Controls => pages::controls(self, content),
-            Page::Sessions => pages::sessions(self, content),
-            Page::Mods => pages::mods(self, content),
-            Page::Tutorials => pages::tutorials(self, content),
-            Page::Timetable => timetable::draw(self, content),
-            Page::Setup => pages::setup(self, content),
-        }
-        // the rail over the page (a scrolled page passes under it)
-        self.rail();
-        self.status_bar();
+            let rail_w = RAIL_W;
+            self.page_anim = (self.page_anim + self.ui.dt / 0.15).min(1.0);
+            // (no wider than a page reads well: on a wide screen the rest is margin, the page
+            // in the middle - the panels stretched across 2000 px with their text at one end)
+            let (margin, top) = if mobile { (36.0, 14.0) } else { (64.0, 28.0) };
+            let avail = size.x - rail_w - margin;
+            let w = avail.min(1760.0);
+            let seen = size.y - top - 40.0;
+            // (a phone: laid out for a taller screen, scrolled)
+            let h = if mobile { seen.max(mobile::PAGE_H) } else { seen };
+            self.page_max = (h - seen).max(0.0);
+            self.page_scroll = self.page_scroll.clamp(0.0, self.page_max);
+            let content = Rect::new(rail_w + margin * 0.5 + (avail - w) * 0.5, top - self.page_scroll, w, h);
+            let e = 1.0 - (1.0 - self.page_anim).powi(3);
+            let content = Rect::new(content.x + 8.0 * (1.0 - e), content.y, content.w, content.h);
+            match self.page {
+                Page::Drive => drive::draw(self, content),
+                Page::Multiplayer => multiplayer::draw(self, content),
+                Page::Profile => pages::profile(self, content),
+                Page::Settings => pages::settings(self, content),
+                Page::Controls => pages::controls(self, content),
+                Page::Sessions => pages::sessions(self, content),
+                Page::Mods => pages::mods(self, content),
+                Page::Tutorials => pages::tutorials(self, content),
+                Page::Timetable => timetable::draw(self, content),
+                Page::Setup => pages::setup(self, content),
+            }
+            // the rail over the page (a scrolled page passes under it)
+            self.rail();
+            self.status_bar();
         }
         self.draw_updated_notice();
         if let Some(i) = saved {

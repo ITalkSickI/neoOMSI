@@ -27,7 +27,7 @@ exclude = ["launcher/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-or-later"
 rust-version = "1.85"
 
@@ -37,18 +37,18 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 encoding_rs = "0.8"
-glam = "0.30"
+glam = "0.33"
 rayon = "1.10"
 walkdir = "2"
 clap = { version = "4", features = ["derive"] }
-hashbrown = "0.15"
+hashbrown = "0.17"
 smallvec = "1"
 parking_lot = "0.12"
-rand = "0.9"
-wgpu = { version = "29", default-features = false, features = ["std", "parking_lot", "metal", "vulkan", "dx12", "gles", "wgsl", "noop"] }
+rand = "0.10"
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "metal", "vulkan", "dx12", "gles", "wgsl", "noop"] }
 winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
-pollster = "0.4"
+pollster = "1.0"
 image = { version = "0.25", default-features = false, features = ["png", "bmp", "tga", "dds", "jpeg"] }
 
 [profile.release]

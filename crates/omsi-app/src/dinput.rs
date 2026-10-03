@@ -138,8 +138,8 @@ fn is_controller_device(dev_type: u32, usage_page: u16, usage: u16) -> bool {
 }
 
 unsafe extern "system" fn collect(inst: *mut DIDEVICEINSTANCEW, out: *mut core::ffi::c_void) -> windows::core::BOOL {
-    let v = &mut *(out as *mut Vec<(GUID, String)>);
-    let inst = &*inst;
+    let v = unsafe { &mut *(out as *mut Vec<(GUID, String)>) };
+    let inst = unsafe { &*inst };
     if !is_controller_device(inst.dwDevType, inst.wUsagePage, inst.wUsage) {
         return windows::core::BOOL(DIENUM_CONTINUE as i32);
     }
@@ -210,8 +210,8 @@ struct InputObject {
 }
 
 unsafe extern "system" fn collect_object(inst: *mut DIDEVICEOBJECTINSTANCEW, out: *mut core::ffi::c_void) -> windows::core::BOOL {
-    let objects = &mut *(out as *mut Vec<InputObject>);
-    let inst = &*inst;
+    let objects = unsafe { &mut *(out as *mut Vec<InputObject>) };
+    let inst = unsafe { &*inst };
     objects.push(InputObject { guid: inst.guidType, ty: inst.dwType, flags: inst.dwFlags });
     windows::core::BOOL(DIENUM_CONTINUE as i32)
 }

@@ -413,7 +413,7 @@ fn watch_default_device(first: String, reopen: std::sync::Weak<AtomicBool>) {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(2));
             let Some(flag) = reopen.upgrade() else { return };
-            let name = cpal::default_host().default_output_device().and_then(|d| d.name().ok()).unwrap_or_default();
+            let name = cpal::default_host().default_output_device().and_then(|d| d.description().ok().map(|d| d.name().to_string())).unwrap_or_default();
             if name != current {
                 current = name;
                 flag.store(true, Ordering::Relaxed);
@@ -466,7 +466,7 @@ impl AudioEngine {
             log::warn!("audio: no output device");
             return false;
         };
-        let name = dev.name().unwrap_or_default();
+        let name = dev.description().map(|d| d.name().to_string()).unwrap_or_default();
         let cfg = match dev.default_output_config() {
             Ok(c) => c,
             Err(e) => {
@@ -474,16 +474,16 @@ impl AudioEngine {
                 return false;
             }
         };
-        self.shared.sample_rate.store(cfg.sample_rate().0, Ordering::Relaxed);
+        self.shared.sample_rate.store(cfg.sample_rate(), Ordering::Relaxed);
         self.shared.channels.store(cfg.channels().max(1) as usize, Ordering::Relaxed);
         let s2 = self.shared.clone();
         let lost = self.reopen.clone();
         let stream = dev.build_output_stream(
-            &cfg.config(),
+            cfg.config(),
             move |data: &mut [f32], _| s2.render(data),
             move |e| {
                 // (a lost device only: a driver's hiccups are not worth a new stream)
-                if matches!(e, cpal::StreamError::DeviceNotAvailable) {
+                if e.kind() == cpal::ErrorKind::DeviceNotAvailable {
                     lost.store(true, Ordering::Relaxed);
                 }
                 log::warn!("audio stream error: {e}");
@@ -495,7 +495,7 @@ impl AudioEngine {
                 if let Err(e) = s.play() {
                     log::warn!("audio: cannot start stream: {e}");
                 }
-                log::info!("audio: playing on {name} ({} Hz, {} channels)", cfg.sample_rate().0, cfg.channels());
+                log::info!("audio: playing on {name} ({} Hz, {} channels)", cfg.sample_rate(), cfg.channels());
                 *self.stream.borrow_mut() = Some(s);
                 *self.device.borrow_mut() = name;
                 true
@@ -558,9 +558,9 @@ impl AudioEngine {
         self.clips.lock().retain(|_, (clip, used)| {
             let idle = used.elapsed() >= unused
                 && clip
-                    .as_ref()
-                    .map(|c| Arc::strong_count(c) == 1)
-                    .unwrap_or(false);
+                .as_ref()
+                .map(|c| Arc::strong_count(c) == 1)
+                .unwrap_or(false);
             if idle {
                 freed += clip.as_ref().map(|c| c.samples.len() * 2).unwrap_or(0);
             }
@@ -729,7 +729,7 @@ mod tests {
 
     fn shared() -> Shared {
         Shared { voices: Mutex::new(Vec::new()), updates: Mutex::new(Vec::new()), listener: Mutex::new(Listener::default()),
-                        reverb: Mutex::new(Reverb::default()), limiter: Mutex::new(1.0), sample_rate: AtomicU32::new(48_000), channels: AtomicUsize::new(1), muted: false }
+            reverb: Mutex::new(Reverb::default()), limiter: Mutex::new(1.0), sample_rate: AtomicU32::new(48_000), channels: AtomicUsize::new(1), muted: false }
     }
 
     fn voice(clip: Arc<Clip>, gain: f32) -> Voice {

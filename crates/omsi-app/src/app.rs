@@ -839,7 +839,7 @@ impl App {
                     &lighting,
                 );
                 win.pre_present_notify();
-                frame.present();
+                renderer.queue.present(frame);
                 self.renderer = Some(renderer);
             } else {
                 self.renderer = Some(renderer);

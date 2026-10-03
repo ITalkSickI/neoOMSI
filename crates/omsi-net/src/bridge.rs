@@ -262,13 +262,22 @@ fn parse_mapped(d: &[u8]) -> Option<SocketAddr> {
     plain
 }
 
+/// An HTTP agent with an overall timeout (and our user agent).
+pub(crate) fn http_agent(timeout: Duration, ua: bool) -> ureq::Agent {
+    let b = ureq::Agent::config_builder().timeout_global(Some(timeout));
+    let b = if ua { b.user_agent("neoOMSI") } else { b };
+    b.build().into()
+}
+
 /// The relay side, on its own thread: post our addresses, read the other side's.
 fn relay_loop(host: bool, session: u64, local: Vec<SocketAddr>, sh: &Arc<Mutex<Shared>>, stop: &std::sync::atomic::AtomicBool) {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(5))
-        .timeout_read(Duration::from_secs(8))
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_recv_response(Some(Duration::from_secs(8)))
+        .timeout_recv_body(Some(Duration::from_secs(8)))
         .user_agent("neoOMSI")
-        .build();
+        .build()
+        .into();
     let (mine, theirs) = if host { (topic(session), format!("{}-c", topic(session))) } else { (format!("{}-c", topic(session)), topic(session)) };
     let mut last_post: Option<(Instant, String)> = None;
     // (the host reposts every quarter of an hour: a joining game reads the last half hour)
@@ -326,7 +335,7 @@ fn relay_loop(host: bool, session: u64, local: Vec<SocketAddr>, sh: &Arc<Mutex<S
         let ready = host || public.is_some() || started.elapsed() > Duration::from_secs(3);
         let waiting = last_poll.is_some_and(|t| t.elapsed() < backoff);
         if due && ready && !addrs.is_empty() && !waiting {
-            match agent.post(&format!("{RELAY}/{mine}")).set("Cache", "yes").send_string(&signed(session, &text)) {
+            match agent.post(&format!("{RELAY}/{mine}")).header("Cache", "yes").send(signed(session, &text).as_str()) {
                 Ok(_) => last_post = Some((Instant::now(), text.clone())),
                 Err(e) => {
                     sh.lock().unwrap_or_else(|e| e.into_inner()).note = format!("relay unreachable ({e})");
@@ -357,7 +366,7 @@ fn relay_loop(host: bool, session: u64, local: Vec<SocketAddr>, sh: &Arc<Mutex<S
             None
         };
         if let Some(resp) = polled {
-            let body = resp.into_string().unwrap_or_default();
+            let body = resp.into_body().read_to_string().unwrap_or_default();
             for line in body.lines() {
                 let Some(msg) = json_field(line, "message") else { continue };
                 if let Some(id) = json_field(line, "id") {
@@ -406,8 +415,8 @@ pub fn post_tunnel(session: u64, url: &str) {
     if cfg!(test) || std::env::var_os("OMSI_NO_BRIDGE").is_some() {
         return;
     }
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(6)).user_agent("neoOMSI").build();
-    if let Err(e) = agent.post(&format!("{RELAY}/{}", topic(session))).set("Cache", "yes").send_string(&signed(session, &format!("W 0 {url}"))) {
+    let agent = http_agent(Duration::from_secs(6), true);
+    if let Err(e) = agent.post(&format!("{RELAY}/{}", topic(session))).header("Cache", "yes").send(signed(session, &format!("W 0 {url}")).as_str()) {
         log::warn!("LAN bridge: the tunnel address could not be posted: {e}");
     }
 }
@@ -418,8 +427,8 @@ pub fn lookup_tunnel(session: u64) -> Option<String> {
     if cfg!(test) || std::env::var_os("OMSI_NO_BRIDGE").is_some() {
         return None;
     }
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(8)).user_agent("neoOMSI").build();
-    let body = agent.get(&format!("{RELAY}/{}/json?poll=1&since=6h", topic(session))).call().ok()?.into_string().ok()?;
+    let agent = http_agent(Duration::from_secs(8), true);
+    let body = agent.get(&format!("{RELAY}/{}/json?poll=1&since=6h", topic(session))).call().ok()?.into_body().read_to_string().ok()?;
     body.lines()
         .filter_map(|l| json_field(l, "message"))
         .filter_map(|m| verified(session, &m).and_then(|t| t.strip_prefix("W 0 ")).map(|u| u.trim().to_string()))
@@ -472,8 +481,8 @@ fn upnp_forward(port: u16) -> Option<(SocketAddr, Mapping)> {
         let (k, v) = l.split_once(':')?;
         k.trim().eq_ignore_ascii_case("location").then(|| v.trim().to_string())
     })?;
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(4)).build();
-    let desc = agent.get(&location).call().ok()?.into_string().ok()?;
+    let agent = http_agent(Duration::from_secs(4), false);
+    let desc = agent.get(&location).call().ok()?.into_body().read_to_string().ok()?;
     // the WAN connection service and its control address
     let (service, control) = ["urn:schemas-upnp-org:service:WANIPConnection:1", "urn:schemas-upnp-org:service:WANIPConnection:2", "urn:schemas-upnp-org:service:WANPPPConnection:1"]
         .iter()
@@ -501,11 +510,11 @@ fn upnp_forward(port: u16) -> Option<(SocketAddr, Mapping)> {
         let body = format!("<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:{action} xmlns:u=\"{service}\">{args}</u:{action}></s:Body></s:Envelope>");
         agent
             .post(&url)
-            .set("Content-Type", "text/xml; charset=\"utf-8\"")
-            .set("SOAPAction", &format!("\"{service}#{action}\""))
-            .send_string(&body)
+            .header("Content-Type", "text/xml; charset=\"utf-8\"")
+            .header("SOAPAction", &format!("\"{service}#{action}\""))
+            .send(body.as_str())
             .ok()?
-            .into_string()
+            .into_body().read_to_string()
             .ok()
     };
     soap(
@@ -533,14 +542,14 @@ fn upnp_forward(port: u16) -> Option<(SocketAddr, Mapping)> {
 
 /// Take a port forwarding back (UDP and TCP), briefly: the game is ending.
 fn upnp_remove(m: &Mapping) {
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(2)).build();
+    let agent = http_agent(Duration::from_secs(2), false);
     for proto in ["UDP", "TCP"] {
         let body = format!("<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:DeletePortMapping xmlns:u=\"{}\"><NewRemoteHost></NewRemoteHost><NewExternalPort>{}</NewExternalPort><NewProtocol>{proto}</NewProtocol></u:DeletePortMapping></s:Body></s:Envelope>", m.service, m.port);
         let ok = agent
             .post(&m.url)
-            .set("Content-Type", "text/xml; charset=\"utf-8\"")
-            .set("SOAPAction", &format!("\"{}#DeletePortMapping\"", m.service))
-            .send_string(&body)
+            .header("Content-Type", "text/xml; charset=\"utf-8\"")
+            .header("SOAPAction", &format!("\"{}#DeletePortMapping\"", m.service))
+            .send(body.as_str())
             .is_ok();
         log::info!("LAN bridge: the router's {proto} forwarding of port {} {}", m.port, if ok { "was taken back" } else { "could not be taken back" });
     }

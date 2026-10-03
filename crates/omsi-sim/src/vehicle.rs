@@ -600,8 +600,8 @@ impl VehicleType {
                 let display = self.model.meshes.iter().flat_map(|m| m.materials.iter()).any(|o| {
                     o.texture.trim().eq_ignore_ascii_case(default.trim())
                         && (o.transmap.as_deref().is_some_and(|t| t.trim().starts_with("\\S:"))
-                            || o.use_script_texture.is_some()
-                            || o.use_text_texture.is_some())
+                        || o.use_script_texture.is_some()
+                        || o.use_text_texture.is_some())
                 });
                 if !display {
                     continue;
@@ -842,10 +842,10 @@ pub struct VehicleInstance {
     pub html_textures: Vec<crate::htmltex::HtmlTexture>,
     /// Ground height query (world x, y → z), set by the world.
     /// Ground height sampler (shared: the script host probes the same one).
-    pub ground: Option<std::sync::Arc<dyn Fn(f64, f64) -> Option<f64> + Send + Sync>>,
+    pub ground: Option<Arc<dyn Fn(f64, f64) -> Option<f64> + Send + Sync>>,
     /// What the wheels stand on: the highest face at or below a height and the lowest one
     /// above it. Without it the wheels stand on `ground`.
-    pub contact: Option<std::sync::Arc<dyn crate::rigid::Ground>>,
+    pub contact: Option<Arc<dyn crate::rigid::Ground>>,
     /// Vehicles coupled behind this one.
     pub trailers: Vec<TrailerPart>,
     /// The vehicle's `[smoke]` particle systems (see `crate::particles`).
@@ -1535,7 +1535,7 @@ impl VehicleInstance {
                     } else {
                         def.mass
                     }
-                    .max(0.0),
+                        .max(0.0),
                     driven_wheels: driven.len() * 2,
                     radius: driven
                         .first()
@@ -1767,7 +1767,7 @@ impl VehicleInstance {
     pub fn var_name(&self, index: usize) -> Option<&str> {
         self.var_index
             .iter()
-            .find(|(_, &i)| i as usize == index)
+            .find(|&(_, &i)| i as usize == index)
             .map(|(n, _)| n.as_str())
     }
 
@@ -2070,8 +2070,8 @@ impl VehicleInstance {
         let rot = self.body_rotation();
         let pos = self.position;
         let g = self.ground.clone().unwrap();
-        self.host.ground_probe = Some(std::sync::Arc::new(move |x, y, z| {
-            let w = pos + rot.transform_point3(glam::Vec3::new(x, y, z)).as_dvec3();
+        self.host.ground_probe = Some(Arc::new(move |x, y, z| {
+            let w = pos + rot.transform_point3(Vec3::new(x, y, z)).as_dvec3();
             match g(w.x, w.y) {
                 Some(h) => (w.z - h) as f32,
                 None => 0.0,
@@ -2417,7 +2417,7 @@ impl VehicleInstance {
         let mut lf = std::mem::take(&mut self.light_fade);
         let mut part_fades: Vec<Vec<f32>> = self.trailers.iter_mut().map(|t| std::mem::take(&mut t.light_fade)).collect();
         let value = |n: &str| -> f32 { n.trim().parse::<f32>().ok().or_else(|| self.var(n.trim())).unwrap_or(0.0) };
-        let fade = |model: &omsi_model::Model, fades: &mut Vec<f32>| {
+        let fade = |model: &Model, fades: &mut Vec<f32>| {
             let mut k = 0;
             for md in &model.meshes {
                 for l in &md.light_enh_2 {
@@ -3650,8 +3650,8 @@ impl VehicleInstance {
             for w in self.physics.wheels.iter().flatten() {
                 let p = self.position
                     + rot
-                        .transform_vector3(Vec3::new(w.lat, w.long, 0.0))
-                        .as_dvec3();
+                    .transform_vector3(Vec3::new(w.lat, w.long, 0.0))
+                    .as_dvec3();
                 if let Some(z) = wheel_ground(self.contact.as_deref(), self.ground.as_deref(), p) {
                     points.push(
                         inv.transform_vector3((DVec3::new(p.x, p.y, z) - self.position).as_vec3()),
@@ -3881,8 +3881,8 @@ mod tests {
     #[test]
     fn props_plan_matches_compute_mesh_props() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_EN92_main.bus");
         if !bus.exists() {
             eprintln!("skipped: no {}", bus.display());
@@ -3936,8 +3936,8 @@ mod tests {
     #[test]
     fn a_lightmap_on_an_unknown_variable_is_on() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_EN92_main.bus");
         if !bus.exists() {
             eprintln!("skipped: no {}", bus.display());
@@ -3985,8 +3985,8 @@ mod tests {
     #[test]
     fn articulation_alpha_turns_the_joint_onto_the_rear_section() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_GN92_main.bus");
         let trail = root.join("Vehicles/MAN_NL_NG/MAN_GN92_trail.bus");
         if !bus.exists() || !trail.exists() {
@@ -4085,8 +4085,8 @@ mod tests {
     #[test]
     fn odometer_starts_at_the_default_service_life() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_SD200/MAN_SD77.bus");
         if !bus.exists() {
             eprintln!("skipped: no {}", bus.display());
@@ -4111,8 +4111,8 @@ mod tests {
     #[test]
     fn articulation_stops_at_the_coupling_max_alpha() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_GN92_main.bus");
         let trail = root.join("Vehicles/MAN_NL_NG/MAN_GN92_trail.bus");
         if !bus.exists() || !trail.exists() {
@@ -4140,7 +4140,7 @@ mod tests {
     fn a_jolt_rattles_alike_at_any_frame_rate() {
         fn rattle(fps: f32) -> f32 {
             let dt = 1.0 / fps;
-            let (mut frames, mut last, mut vol, mut peak) = (super::OmsiFrames::default(), 0.0f32, 0.0f32, 0.0f32);
+            let (mut frames, mut last, mut vol, mut peak) = (OmsiFrames::default(), 0.0f32, 0.0f32, 0.0f32);
             for i in 0..(fps as usize) {
                 let t = i as f32 * dt;
                 // a 6 Hz pitching after a bump, 0.5 m/s² along the bus
@@ -4163,15 +4163,15 @@ mod tests {
     /// standing still, on the level or on a grade, and the braking's deceleration alone.
     #[test]
     fn scripts_acceleration_leaves_gravity_out() {
-        let level = super::scripts_acceleration(Vec3::new(0.0, 0.0, 9.81), Quat::IDENTITY);
+        let level = scripts_acceleration(Vec3::new(0.0, 0.0, 9.81), Quat::IDENTITY);
         assert!(level.length() < 1e-4, "{level}");
         // standing nose up on a 10 % grade: the accelerometer reads gravity's share along it
         let rot = Quat::from_rotation_x(0.1f32.atan());
         let reading = rot.inverse().mul_vec3(Vec3::new(0.0, 0.0, 9.81));
-        let grade = super::scripts_acceleration(reading, rot);
+        let grade = scripts_acceleration(reading, rot);
         assert!(grade.length() < 1e-4, "{grade}");
         // braking at 3 m/s² on the level
-        let braking = super::scripts_acceleration(Vec3::new(0.0, -3.0, 9.81), Quat::IDENTITY);
+        let braking = scripts_acceleration(Vec3::new(0.0, -3.0, 9.81), Quat::IDENTITY);
         assert!((braking - Vec3::new(0.0, -3.0, 0.0)).length() < 1e-4, "{braking}");
     }
 
@@ -4180,8 +4180,8 @@ mod tests {
     #[test]
     fn rear_section_turns_about_its_rot_pnt_long() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_GN92_main.bus");
         let trail = root.join("Vehicles/MAN_NL_NG/MAN_GN92_trail.bus");
         if !bus.exists() || !trail.exists() {
@@ -4204,8 +4204,8 @@ mod tests {
     fn rear_section_stays_on_a_viaduct_deck() {
         use std::sync::atomic::{AtomicU8, Ordering};
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_GN92_main.bus");
         let trail = root.join("Vehicles/MAN_NL_NG/MAN_GN92_trail.bus");
         if !bus.exists() || !trail.exists() {
@@ -4256,8 +4256,8 @@ mod tests {
     #[test]
     fn ai_loaded_bellows_keep_their_skin_and_still_bend() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_NL_NG/MAN_GN92_main.bus");
         let trail = root.join("Vehicles/MAN_NL_NG/MAN_GN92_trail.bus");
         if !bus.exists() || !trail.exists() {
@@ -4323,9 +4323,9 @@ mod tests {
     #[test]
     fn o530g_mod_bellows_bend_and_survive_an_ai_load() {
         let content = omsi_cfg::env::var_os("OMSI_CONTENT")
-            .map(std::path::PathBuf::from)
+            .map(PathBuf::from)
             .unwrap_or_else(|| {
-                std::path::PathBuf::from(
+                PathBuf::from(
                     "/Users/savva/OMSI 2 Source Code/neoOMSI/target/release",
                 )
             });
@@ -4387,8 +4387,8 @@ mod tests {
     #[test]
     fn wheel_pivot_report_reads_dropped_meshes() {
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/MAN_F90/AI_MAN_F90_Wechselbruecke.bus");
         if !bus.exists() {
             eprintln!("skipped: no {}", bus.display());
@@ -4472,8 +4472,8 @@ mod grip_tests {
         use super::*;
         use std::sync::Arc;
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_S_2d.bus");
         if !bus.exists() {
             eprintln!("skipped: no {}", bus.display());
@@ -4521,8 +4521,8 @@ mod grip_tests {
         use super::*;
         use std::sync::Arc;
         let root = omsi_cfg::env::var_os("OMSI_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("../../../OMSI 2 Original"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("../../../OMSI 2 Original"));
         let bus = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_L_3d_main.bus");
         let trail = root.join("Vehicles/AA-FR_BusBundle/2002_Agora_L_3d_trail.bus");
         if !bus.exists() || !trail.exists() {

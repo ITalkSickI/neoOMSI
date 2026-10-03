@@ -463,13 +463,13 @@ impl Camera {
     /// View-projection relative to a render origin (the camera itself when `origin` is its
     /// position), so that GPU maths stays in small numbers.
     pub fn view_proj(&self, aspect: f32, origin: DVec3) -> Mat4 {
-        let view = Mat4::look_to_rh((self.position - origin).as_vec3(), self.forward(), self.up());
+        let view = glam::camera::rh::view::look_to_mat4((self.position - origin).as_vec3(), self.forward(), self.up());
         // Reversed Z (near and far swapped): the depth buffer then spends its float
         // precision where the scene is far away instead of where it is close, which is what
         // stops distant roads, kerbs and painted ground from flickering against each other
         // - with a plain 0..1 depth the resolution at a kilometre is a good quarter of a
         // metre, less than the gap between a road surface and the ground under it.
-        let proj = Mat4::perspective_rh(self.fov_deg.to_radians(), aspect, self.far, self.near);
+        let proj = glam::camera::rh::proj::directx::perspective(self.fov_deg.to_radians(), aspect, self.far, self.near);
         proj * view
     }
 
@@ -650,7 +650,7 @@ pub struct GpuTexture {
     bytes: u64,
     /// Which texture this is (a slot is reused and a texture replaced): part of the
     /// key of a material bind group made this frame (see `Scene::bind_groups`).
-    gen: u64,
+    generation: u64,
 }
 
 /// Which picture is behind the glass: the Enhanced path's glow level (true) or the plain
@@ -667,7 +667,7 @@ impl GpuTexture {
     /// A slot showing `view` (a picture the renderer draws: the one behind the rain on the
     /// glass), with `texture` a small stand-in the slot's bookkeeping asks about.
     fn showing(texture: wgpu::Texture, view: wgpu::TextureView, size: (u32, u32)) -> GpuTexture {
-        GpuTexture { texture, view, size, bytes: 0, gen: next_gen() }
+        GpuTexture { texture, view, size, bytes: 0, generation: next_gen() }
     }
 
     fn new(texture: wgpu::Texture, size: (u32, u32), bytes: u64) -> GpuTexture {
@@ -677,7 +677,7 @@ impl GpuTexture {
             view,
             size,
             bytes,
-            gen: next_gen(),
+            generation: next_gen(),
         }
     }
 }
@@ -1122,10 +1122,10 @@ impl Scene {
             &self.corona_buf,
             &self.draw_buf,
         ]
-        .iter()
-        .filter_map(|b| b.as_ref())
-        .map(|b| b.size())
-        .sum();
+            .iter()
+            .filter_map(|b| b.as_ref())
+            .map(|b| b.size())
+            .sum();
         (tex, mesh, other)
     }
 }
@@ -1661,10 +1661,10 @@ impl Renderer {
         let full = omsi_cfg::env::var_os("OMSI_FULL_GPU").is_some();
         let weak = !full
             && (info.backend == wgpu::Backend::Gl
-                // (a phone's chip, whatever type its driver reports: some say "other")
-                || cfg!(target_os = "android")
-                || (info.device_type == wgpu::DeviceType::IntegratedGpu && info.backend != wgpu::Backend::Metal)
-                || vram.is_some_and(|v| v <= 2560));
+            // (a phone's chip, whatever type its driver reports: some say "other")
+            || cfg!(target_os = "android")
+            || (info.device_type == wgpu::DeviceType::IntegratedGpu && info.backend != wgpu::Backend::Metal)
+            || vram.is_some_and(|v| v <= 2560));
         let modest = !full && !weak && vram.is_some_and(|v| v <= 4200);
         let options = if weak {
             log::warn!("{}: a small or shared graphics chip - no SSAO, no MSAA, shadow maps of at most 1024 (OMSI_FULL_GPU=1 keeps the settings)", info.name);
@@ -1737,8 +1737,8 @@ impl Renderer {
         let takes = |flags: wgpu::TextureFormatFeatureFlags, f: wgpu::TextureFormat, n: u32| {
             flags.sample_count_supported(n)
                 && (n == 1
-                    || f.is_depth_stencil_format()
-                    || flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE))
+                || f.is_depth_stencil_format()
+                || flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE))
         };
         let adapter_table_needed = !targets.iter().all(|&f| {
             takes(
@@ -1786,9 +1786,9 @@ impl Renderer {
             .features()
             .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
             || !adapter
-                .get_downlevel_capabilities()
-                .flags
-                .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
         let flags_of = |f: wgpu::TextureFormat| {
             if adapter_table {
                 adapter.get_texture_format_features(f).flags
@@ -2327,7 +2327,7 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[vertex_layout.clone()],
+                    buffers: &[Some(vertex_layout.clone())],
                     compilation_options: Default::default(),
                 },
                 primitive: one_sided_primitive(cull),
@@ -2465,7 +2465,7 @@ impl Renderer {
                         1 => "vs_shadow_far",
                         _ => "vs_shadow_close",
                     }),
-                    buffers: &[vertex_layout.clone()],
+                    buffers: &[Some(vertex_layout.clone())],
                     compilation_options: Default::default(),
                 },
                 primitive: wgpu::PrimitiveState {
@@ -2506,7 +2506,7 @@ impl Renderer {
                         let y = f32(i32(i >> 1u) * 4 - 1);
                         return vec4<f32>(x, y, 1.0, 1.0);
                     }"
-                    .into(),
+                        .into(),
                 ),
             });
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -2701,7 +2701,7 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &corona_shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[corona_vertex.clone()],
+                    buffers: &[Some(corona_vertex.clone())],
                     compilation_options: Default::default(),
                 },
                 primitive: wgpu::PrimitiveState {
@@ -2840,7 +2840,7 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &sky_shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[sky_vertex.clone()],
+                    buffers: &[Some(sky_vertex.clone())],
                     compilation_options: Default::default(),
                 },
                 primitive: wgpu::PrimitiveState {
@@ -3115,7 +3115,7 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[vertex_layout.clone()],
+                    buffers: &[Some(vertex_layout.clone())],
                     compilation_options: Default::default(),
                 },
                 primitive: one_sided_primitive(cull),
@@ -3532,11 +3532,11 @@ impl Renderer {
                     [0u32, 3].map(|first| {
                         let rough = m as f32 / (PROBE_MIPS - 1) as f32;
                         let buf = buffer_init(&device, &queue, Some("probe pass"), bytemuck::cast_slice(&[
-                                first as f32,
-                                rough,
-                                PROBE_SIZE as f32,
-                                m as f32,
-                            ]), wgpu::BufferUsages::UNIFORM);
+                            first as f32,
+                            rough,
+                            PROBE_SIZE as f32,
+                            m as f32,
+                        ]), wgpu::BufferUsages::UNIFORM);
                         device.create_bind_group(&wgpu::BindGroupDescriptor {
                             label: Some("probe"),
                             layout: &probe_layout,
@@ -4380,7 +4380,7 @@ impl Renderer {
                 img.height,
                 mip_count,
             ),
-            gen: next_gen(),
+            generation: next_gen(),
         }
     }
 
@@ -4508,7 +4508,7 @@ impl Renderer {
             view,
             size: (width, height),
             bytes,
-            gen: next_gen(),
+            generation: next_gen(),
         });
         scene.textures.len() - 1
     }
@@ -4771,7 +4771,7 @@ impl Renderer {
             uniform.ambient[3] = snow_texture_flag(scene, texture);
         }
         let slot = |t: Option<TextureId>| {
-            t.and_then(|t| scene.textures.get(t).map(|g| (t, g.gen)))
+            t.and_then(|t| scene.textures.get(t).map(|g| (t, g.generation)))
                 .unwrap_or((usize::MAX, 0))
         };
         let key = BindKey {
@@ -5007,8 +5007,8 @@ impl Renderer {
         // enhanced shader must not brighten it as it does a display (see enhanced.wgsl)
         let mirror = unlit
             && texture
-                .and_then(|t| scene.textures.get(t))
-                .is_some_and(|t| t.texture.usage().contains(wgpu::TextureUsages::RENDER_ATTACHMENT));
+            .and_then(|t| scene.textures.get(t))
+            .is_some_and(|t| t.texture.usage().contains(wgpu::TextureUsages::RENDER_ATTACHMENT));
         let uniform = MaterialUniform {
             color,
             params: [
@@ -5073,7 +5073,7 @@ impl Renderer {
             },
         };
         let slot = |t: Option<TextureId>| {
-            t.and_then(|t| scene.textures.get(t).map(|g| (t, g.gen)))
+            t.and_then(|t| scene.textures.get(t).map(|g| (t, g.generation)))
                 .unwrap_or((usize::MAX, 0))
         };
         let key = BindKey {
@@ -5364,9 +5364,9 @@ impl Renderer {
                 m.env_mask,
                 m.bump.map(|b| b.0),
             ]
-            .iter()
-            .flatten()
-            .any(|t| set.contains(t));
+                .iter()
+                .flatten()
+                .any(|t| set.contains(t));
             if !uses {
                 continue;
             }
@@ -6840,7 +6840,7 @@ impl GpuTimers {
         }
         let n = t.pending.len() * 2;
         {
-            let view = t.read.slice(0..n as u64 * 8).get_mapped_range();
+            let view = t.read.slice(0..n as u64 * 8).get_mapped_range().expect("mapped range");
             let stamps: &[u64] = bytemuck::cast_slice(&view[..n * 8]);
             // The passes in the order the GPU finished them, each counted from where the one
             // before it ended (the untimed passes in between go to the next timed one). A
@@ -7187,7 +7187,7 @@ impl Renderer {
         for eye in 0..2 {
             if let Some((id, transforms)) = navigator.as_ref() {
                 let quad = [Vec4::new(-1.0, 1.0, 0.0, 1.0), Vec4::new(1.0, 1.0, 0.0, 1.0),
-                            Vec4::new(1.0, -1.0, 0.0, 1.0), Vec4::new(-1.0, -1.0, 0.0, 1.0)]
+                    Vec4::new(1.0, -1.0, 0.0, 1.0), Vec4::new(-1.0, -1.0, 0.0, 1.0)]
                     .map(|p| transforms[eye] * p);
                 if let Some(item) = prepare(id, quad) { prepared[eye].push(item); }
             }
@@ -7493,7 +7493,7 @@ impl Renderer {
             let texel = range * 2.0 / self.options.shadow_size as f32;
             let up = if sun.z.abs() > 0.95 { Vec3::Y } else { Vec3::Z };
             let raw = cam_rel;
-            let view0 = Mat4::look_at_rh(sun * 900.0, Vec3::ZERO, up);
+            let view0 = glam::camera::rh::view::look_at_mat4(sun * 900.0, Vec3::ZERO, up);
             let ls = view0.transform_point3(raw);
             let snapped = Vec3::new(
                 (ls.x / texel).round() * texel,
@@ -7501,8 +7501,8 @@ impl Renderer {
                 ls.z,
             );
             let center = view0.inverse().transform_point3(snapped);
-            let view = Mat4::look_at_rh(center + sun * 900.0, center, up);
-            let proj = Mat4::orthographic_rh(-range, range, -range, range, 1.0, 2200.0);
+            let view = glam::camera::rh::view::look_at_mat4(center + sun * 900.0, center, up);
+            let proj = glam::camera::rh::proj::directx::orthographic(-range, range, -range, range, 1.0, 2200.0);
             proj * view
         };
         // The near cascade (140 m, 4096 texels at the top setting: the costliest shadow
@@ -7515,11 +7515,11 @@ impl Renderer {
         let near_jumped = (near_m.project_point3(cam_rel) - near_wanted.project_point3(cam_rel)).length() > 0.03;
         let redraw_near = draw_shadows
             && (near_age >= 1
-                || near_jumped
-                || near_m == Mat4::IDENTITY
-                || near_origin != scene.render_origin
-                || near_sun.dot(sun) < 0.99999
-                || omsi_cfg::env::var_os("OMSI_SHADOW_NEAR_EVERY_FRAME").is_some());
+            || near_jumped
+            || near_m == Mat4::IDENTITY
+            || near_origin != scene.render_origin
+            || near_sun.dot(sun) < 0.99999
+            || omsi_cfg::env::var_os("OMSI_SHADOW_NEAR_EVERY_FRAME").is_some());
         let light_view_proj = if let Some((_, _, near, _, _)) = shared_xr_shadows {
             near
         } else if !shadows {
@@ -7544,11 +7544,11 @@ impl Renderer {
         let far_moved = (far_m.project_point3(cam_rel) - far_wanted.project_point3(cam_rel)).length() > 0.12;
         let redraw_far = draw_shadows
             && (far_age >= 3
-                || far_moved
-                || far_m == Mat4::IDENTITY
-                || far_origin != scene.render_origin
-                || far_sun.dot(sun) < 0.99999
-                || omsi_cfg::env::var_os("OMSI_SHADOW_FAR_EVERY_FRAME").is_some());
+            || far_moved
+            || far_m == Mat4::IDENTITY
+            || far_origin != scene.render_origin
+            || far_sun.dot(sun) < 0.99999
+            || omsi_cfg::env::var_os("OMSI_SHADOW_FAR_EVERY_FRAME").is_some());
         if redraw_far && omsi_cfg::env::var_os("OMSI_DEBUG_SHADOW_FAR").is_some() {
             log::info!("far shadow redrawn: age {far_age} moved {far_moved} origin {} sun {:.6}", far_origin != scene.render_origin, far_sun.dot(sun));
         }
@@ -7577,7 +7577,7 @@ impl Renderer {
         // where the sun stands on the screen (camera uniform post.zw; no shader reads it
         // since the light shafts were removed)
         let vp_mat = projection
-            .map(|p| p * Mat4::look_to_rh((camera.position - ro).as_vec3(), camera.forward(), camera.up()))
+            .map(|p| p * glam::camera::rh::view::look_to_mat4((camera.position - ro).as_vec3(), camera.forward(), camera.up()))
             .unwrap_or_else(|| camera.view_proj(aspect, ro));
         let sun_clip = vp_mat * (cam_rel + sun * 5000.0).extend(1.0);
         let sun_ndc = if sun_clip.w > 0.0 {
@@ -7837,7 +7837,7 @@ impl Renderer {
         // Frustum culling by bounding sphere in view space. OpenXR projections
         // are asymmetric; the desktop field of view must not clip an eye's
         // wider side as the head turns.
-        let view = Mat4::look_to_rh(cam_rel, camera.forward(), camera.up());
+        let view = glam::camera::rh::view::look_to_mat4(cam_rel, camera.forward(), camera.up());
         let (tan_x, tan_y) = if let Some(p) = projection {
             (
                 ((p.z_axis.x - 1.0) / p.x_axis.x)
@@ -8326,7 +8326,7 @@ impl Renderer {
                             // Spline surfaces use the C++ handler's placement-origin distance
                             // in the horizontal plane (Rust's world axes are x/y horizontal,
                             // z vertical).
-                        horizontal_sort_distance(sort_origin, ro, cam_rel)
+                            horizontal_sort_distance(sort_origin, ro, cam_rel)
                         } else if self.blend_by_origin || inst.surface {
                             ((inst.origin - ro).as_vec3() - cam_rel).length()
                         } else {
@@ -8567,7 +8567,7 @@ impl Renderer {
         // --- depth prepass + ambient occlusion (single-sampled, camera projection)
         if prepass_on {
             let proj =
-                Mat4::perspective_rh(camera.fov_deg.to_radians(), aspect, camera.far, camera.near);
+                glam::camera::rh::proj::directx::perspective(camera.fov_deg.to_radians(), aspect, camera.far, camera.near);
             let u = SsaoUniform {
                 inv_proj: proj.inverse().to_cols_array_2d(),
                 params: [
@@ -8883,7 +8883,7 @@ impl Renderer {
                         if let Some(sky) = &scene.sky_bind_group {
                             pass.set_pipeline(&pp.sky_pipeline);
                             pass.set_bind_group(1, sky, &[]);
-                            pass.set_vertex_buffer(0, self.sky_mesh.0.slice(..));
+                            pass.set_vertex_buffer(0, Some(self.sky_mesh.0.slice(..)));
                             pass.set_index_buffer(self.sky_mesh.1.slice(..), wgpu::IndexFormat::Uint32);
                             pass.draw_indexed(0..self.sky_mesh.2, 0, 0..1);
                         }
@@ -8894,18 +8894,18 @@ impl Renderer {
             }
             let tail = (parts - 1) * per_part;
             let main_attachment = Some(wgpu::RenderPassColorAttachment {
-                    view: draw_view,
-                    depth_slice: None,
-                    resolve_target: resolve_view,
-                    ops: wgpu::Operations {
-                        load: if parts > 1 { wgpu::LoadOp::Load } else { sky_clear },
-                        store: if resolve_view.is_none() {
-                            wgpu::StoreOp::Store
-                        } else {
-                            wgpu::StoreOp::Discard
-                        },
+                view: draw_view,
+                depth_slice: None,
+                resolve_target: resolve_view,
+                ops: wgpu::Operations {
+                    load: if parts > 1 { wgpu::LoadOp::Load } else { sky_clear },
+                    store: if resolve_view.is_none() {
+                        wgpu::StoreOp::Store
+                    } else {
+                        wgpu::StoreOp::Discard
                     },
-                });
+                },
+            });
             let colors = [main_attachment, mask_attachment];
             let colors = if colors[1].is_some() { &colors[..] } else { &colors[..1] };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -8941,7 +8941,7 @@ impl Renderer {
             if let Some(sky) = scene.sky_bind_group.as_ref().filter(|_| parts == 1) {
                 pass.set_pipeline(&pp.sky_pipeline);
                 pass.set_bind_group(1, sky, &[]);
-                pass.set_vertex_buffer(0, self.sky_mesh.0.slice(..));
+                pass.set_vertex_buffer(0, Some(self.sky_mesh.0.slice(..)));
                 pass.set_index_buffer(self.sky_mesh.1.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..self.sky_mesh.2, 0, 0..1);
             }
@@ -8961,7 +8961,7 @@ impl Renderer {
                 if let Some(sb) = &scene.smoke_buf {
                     pass.set_pipeline(&pp.smoke_pipeline);
                     pass.set_bind_group(1, &self.smoke_bind_group, &[]);
-                    pass.set_vertex_buffer(0, sb.slice(..));
+                    pass.set_vertex_buffer(0, Some(sb.slice(..)));
                     pass.draw(0..6, 0..scene.smoke_count);
                 }
             }
@@ -8969,7 +8969,7 @@ impl Renderer {
             if scene.corona_count > 0 && omsi_cfg::env::var_os("OMSI_NO_CORONAS").is_none() {
                 if let Some(cb) = &scene.corona_buf {
                     pass.set_pipeline(&pp.corona_pipeline);
-                    pass.set_vertex_buffer(0, cb.slice(..));
+                    pass.set_vertex_buffer(0, Some(cb.slice(..)));
                     // in runs by picture (the standard glow, the lights' own bitmaps, the cone)
                     for &(tex, first, count) in &scene.corona_runs {
                         let bg = self.corona_textures.get(tex as usize).and_then(|b| b.as_ref()).unwrap_or(&self.corona_bind_group);
@@ -9381,7 +9381,7 @@ impl Renderer {
         rx.recv()
             .context("map")?
             .map_err(|e| anyhow!("map: {e:?}"))?;
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().expect("mapped range");
         let mut out = Vec::with_capacity((width * height * 4) as usize);
         for row in 0..height {
             let start = (row * bpr) as usize;
@@ -9501,19 +9501,19 @@ pub fn prepare_texture(
     let (w, h) = (data.width.max(1), data.height.max(1));
     if data.levels.is_empty()
         || (data.format == PixelFormat::Rgba8
-            && data.levels.len() == 1
-            && data.gpu_mips
-            && w > 1
-            && h > 1)
+        && data.levels.len() == 1
+        && data.gpu_mips
+        && w > 1
+        && h > 1)
     {
         return None;
     }
     if data.format.is_compressed()
         && (!device
-            .features()
-            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
-            || w % 4 != 0
-            || h % 4 != 0)
+        .features()
+        .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+        || w % 4 != 0
+        || h % 4 != 0)
     {
         return None;
     }
@@ -9663,7 +9663,7 @@ fn upload_texture(
             img.height,
             mip_count,
         ),
-        gen: next_gen(),
+        generation: next_gen(),
     }
 }
 
@@ -9672,11 +9672,11 @@ fn drawn_by(l: &PointLight, enhanced: bool) -> bool {
     l.radius > 0.0
         && l.intensity > 0.0
         && l.mode
-            != if enhanced {
-                LightMode::Vanilla
-            } else {
-                LightMode::Enhanced
-            }
+        != if enhanced {
+        LightMode::Vanilla
+    } else {
+        LightMode::Enhanced
+    }
 }
 
 /// A light as the shaders read it, at `p` relative to the render origin.
@@ -9759,9 +9759,9 @@ fn sky_input_differs(a: &atmosphere::SkyInput, b: &atmosphere::SkyInput) -> bool
         || !near(a.rain, b.rain, 0.01)
         || !near(a.ground_albedo, b.ground_albedo, 0.01)
         || a.tint
-            .iter()
-            .zip(&b.tint)
-            .any(|(x, y)| (*x - *y).abs().max_element() > 0.01)
+        .iter()
+        .zip(&b.tint)
+        .any(|(x, y)| (*x - *y).abs().max_element() > 0.01)
 }
 
 /// The scene shader: the vanilla path and the enhanced fragment shader in one module.
@@ -9777,7 +9777,7 @@ fn scene_shader_source(gl: bool) -> String {
         include_str!("puddle_common.wgsl"),
         include_str!("enhanced.wgsl"),
     ]
-    .join("\n");
+        .join("\n");
     if !gl {
         return src;
     }
@@ -9850,7 +9850,7 @@ fn sky_shader_source() -> String {
         include_str!("enhanced_common.wgsl"),
         include_str!("sky_enhanced.wgsl"),
     ]
-    .join("\n")
+        .join("\n")
 }
 
 /// The light coronas (both paths).
@@ -9859,7 +9859,7 @@ fn corona_shader_source() -> String {
         include_str!("corona.wgsl"),
         include_str!("enhanced_common.wgsl"),
     ]
-    .join("\n")
+        .join("\n")
 }
 
 /// One full-screen post pass of the enhanced path.
@@ -9942,7 +9942,7 @@ impl ExposureLog {
         self.frame += 1;
         if self.waiting && self.ready.swap(false, std::sync::atomic::Ordering::Relaxed) {
             {
-                let view = self.buf.slice(0..8).get_mapped_range();
+                let view = self.buf.slice(0..8).get_mapped_range().expect("mapped range");
                 let bits = u16::from_le_bytes([view[0], view[1]]);
                 let metered = half_to_f32(bits);
                 let (pre, m) = self.pending;
@@ -10143,11 +10143,11 @@ fn batch_items(
         let start = list.len() as u32;
         while k < items.len()
             && (
-                items[k].pipe,
-                items[k].mesh,
-                items[k].range,
-                items[k].material,
-            ) == (d.pipe, d.mesh, d.range, d.material)
+            items[k].pipe,
+            items[k].mesh,
+            items[k].range,
+            items[k].material,
+        ) == (d.pipe, d.mesh, d.range, d.material)
         {
             list.push(items[k].entry);
             k += 1;
@@ -10206,7 +10206,7 @@ fn encode_batches_filtered<'a, E: wgpu::util::RenderEncoder<'a>>(
         }
         if b.mesh != mesh {
             let m = &scene.meshes[b.mesh as usize];
-            pass.set_vertex_buffer(0, m.vertex_buf.slice(..));
+            pass.set_vertex_buffer(0, Some(m.vertex_buf.slice(..)));
             pass.set_index_buffer(m.index_buf.slice(..), wgpu::IndexFormat::Uint32);
             mesh = b.mesh;
         }
@@ -10445,9 +10445,9 @@ fn record_bundles(
     // memory) panics in `finish`: that part of the picture is left out for the frame and
     // the game goes on - it ended the game on Windows right after an "Out of memory"
     let record = |chunk: &[Batch]| -> Option<wgpu::RenderBundle> {
-        CATCHING.with(|c| c.set(true));
+        CATCHING.set(true);
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| record(chunk)));
-        CATCHING.with(|c| c.set(false));
+        CATCHING.set(false);
         match r {
             Ok(b) => Some(b),
             Err(_) => {
@@ -10580,6 +10580,7 @@ impl<'w> SurfaceState<'w> {
         let mut config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: renderer.format(),
+            color_space: wgpu::SurfaceColorSpace::Auto,
             width: width.max(1),
             height: height.max(1),
             present_mode: if vsync {
@@ -10700,7 +10701,7 @@ impl Renderer {
                 view: self.white_texture.view.clone(),
                 size: (1, 1),
                 bytes: 0,
-                gen: next_gen(),
+                generation: next_gen(),
             };
         }
     }
@@ -10902,7 +10903,7 @@ mod tests {
                 ..Default::default()
             },
         ))
-        .expect("test renderer");
+            .expect("test renderer");
         let mut scene = renderer.new_scene();
         let mut texture = |rgba: [u8; 4]| {
             renderer.add_texture(
@@ -11098,7 +11099,7 @@ mod tests {
             let inst = &scene.instances[i];
             let expected = InstanceBounds::new(&scene.meshes[inst.mesh], inst.transform);
             assert_eq!(Renderer::bounding_sphere(scene, inst),
-                (expected.centre + (inst.origin - scene.render_origin).as_vec3(), expected.radius));
+                       (expected.centre + (inst.origin - scene.render_origin).as_vec3(), expected.radius));
             assert_eq!(Renderer::instance_scale(scene, inst), expected.scale);
         };
         renderer.prepare(&mut scene);
@@ -11182,7 +11183,7 @@ mod tests {
                     ..Default::default()
                 },
             ))
-            .expect("test renderer");
+                .expect("test renderer");
             let mut scene = renderer.new_scene();
             let green = renderer.add_material(
                 &mut scene,
@@ -11327,7 +11328,7 @@ mod tests {
     fn noop_backend_initializes_renderer() {
         let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
         descriptor.backends = wgpu::Backends::NOOP;
-        descriptor.backend_options.noop = wgpu::NoopBackendOptions { enable: true };
+        descriptor.backend_options.noop = wgpu::NoopBackendOptions::enabled();
         let instance = wgpu::Instance::new(descriptor);
         let res = pollster::block_on(Renderer::new_with(
             &instance,
@@ -11514,8 +11515,8 @@ mod tests {
                 naga::valid::ValidationFlags::all(),
                 naga::valid::Capabilities::all(),
             )
-            .validate(&module)
-            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("{name}: {e:?}"));
             // the backends take no override: resolved to their defaults as wgpu does
             let (module, info) = naga::back::pipeline_constants::process_overrides(
                 &module,
@@ -11523,7 +11524,7 @@ mod tests {
                 None,
                 &Default::default(),
             )
-            .unwrap_or_else(|e| panic!("{name}: overrides: {e:?}"));
+                .unwrap_or_else(|e| panic!("{name}: overrides: {e:?}"));
             let (module, info) = (module.into_owned(), info.into_owned());
             #[cfg(target_os = "macos")]
             let options = naga::back::msl::Options {
@@ -11537,7 +11538,7 @@ mod tests {
                 &options,
                 &naga::back::msl::PipelineOptions::default(),
             )
-            .unwrap_or_else(|e| panic!("{name}: Metal: {e:?}"));
+                .unwrap_or_else(|e| panic!("{name}: Metal: {e:?}"));
             for entry in &module.entry_points {
                 let pipeline = naga::back::spv::PipelineOptions {
                     shader_stage: entry.stage,
@@ -11816,14 +11817,14 @@ thread_local! {
 /// Whether a panic on this thread is being caught by the renderer (the game's panic hook
 /// does not report it as the end of the game).
 pub fn catching() -> bool {
-    CATCHING.with(|c| c.get())
+    CATCHING.get()
 }
 
 /// Run `f`; a panic in it (a driver wgpu cannot use, taking it down in a way it does not
 /// turn into an error) is caught and gives None, and is not reported as the end of the game.
 pub fn catch<R>(f: impl FnOnce() -> R) -> Option<R> {
-    let was = CATCHING.with(|c| c.replace(true));
+    let was = CATCHING.replace(true);
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    CATCHING.with(|c| c.set(was));
+    CATCHING.set(was);
     r.ok()
 }

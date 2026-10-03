@@ -71,7 +71,6 @@ fn android_main(app: AndroidApp) {
         }
     }
     log::info!("home {:?}, content {}", std::env::var_os("HOME"), content.display());
-    omsi_cfg::migrate_legacy_data_dir();
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1) % 1_000_000_000;
     omsi_script::set_session_seed(seed);
 

@@ -86,9 +86,9 @@ pub fn ensure_cloudflared() -> Option<PathBuf> {
     let url = format!("https://github.com/cloudflare/cloudflared/releases/download/{RELEASE}/{asset}");
     log::info!("tunnel: cloudflared is not installed; fetching {url}");
     let t0 = Instant::now();
-    let resp = ureq::get(&url).timeout(Duration::from_secs(300)).call().map_err(|e| log::warn!("tunnel: cloudflared could not be fetched: {e}")).ok()?;
+    let resp = crate::bridge::http_agent(Duration::from_secs(300), false).get(&url).call().map_err(|e| log::warn!("tunnel: cloudflared could not be fetched: {e}")).ok()?;
     let mut data = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::Read::take(resp.into_reader(), 200 << 20), &mut data).map_err(|e| log::warn!("tunnel: cloudflared download broke off: {e}")).ok()?;
+    std::io::Read::read_to_end(&mut std::io::Read::take(resp.into_body().into_reader(), 200 << 20), &mut data).map_err(|e| log::warn!("tunnel: cloudflared download broke off: {e}")).ok()?;
     {
         use sha2::{Digest, Sha256};
         let got: String = Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect();

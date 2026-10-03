@@ -209,11 +209,12 @@ pub fn asset_name(version: &str) -> Option<String> {
 // --- the release ----------------------------------------------------------------------------
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(std::time::Duration::from_secs(15))
-        .timeout_read(std::time::Duration::from_secs(60))
-        .user_agent(&format!("neoOMSI/{} (updater)", current_version()))
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(std::time::Duration::from_secs(15)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(60)))
+        .user_agent(format!("neoOMSI/{} (updater)", current_version()))
         .build()
+        .into()
 }
 
 /// A URL's body: `file://` read from the disk (tests), anything else over HTTP(S).
@@ -221,14 +222,14 @@ fn fetch_text(url: &str) -> anyhow::Result<String> {
     if let Some(p) = url.strip_prefix("file://") {
         return Ok(std::fs::read_to_string(p)?);
     }
-    let r = agent().get(url).set("Accept", "application/vnd.github+json").call().map_err(|e| anyhow::anyhow!("{}", short_error(&e)))?;
-    Ok(r.into_string()?)
+    let r = agent().get(url).header("Accept", "application/vnd.github+json").call().map_err(|e| anyhow::anyhow!("{}", short_error(&e)))?;
+    Ok(r.into_body().read_to_string()?)
 }
 
 fn short_error(e: &ureq::Error) -> String {
     match e {
-        ureq::Error::Status(code, _) => format!("the server answered {code}"),
-        ureq::Error::Transport(t) => format!("no connection ({})", t.kind()),
+        ureq::Error::StatusCode(code) => format!("the server answered {code}"),
+        other => format!("no connection ({other})"),
     }
 }
 
@@ -282,9 +283,9 @@ fn download(r: &Release, to: &Path, status: &Mutex<Status>) -> anyhow::Result<()
         let n = f.metadata()?.len();
         (Box::new(f), n)
     } else {
-        let resp = agent().get(&r.asset_url).set("Accept", "application/octet-stream").call().map_err(|e| anyhow::anyhow!("{}", short_error(&e)))?;
-        let n = resp.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(r.size);
-        (Box::new(resp.into_reader()), n)
+        let resp = agent().get(&r.asset_url).header("Accept", "application/octet-stream").call().map_err(|e| anyhow::anyhow!("{}", short_error(&e)))?;
+        let n = resp.body().content_length().unwrap_or(r.size);
+        (Box::new(resp.into_body().into_reader()), n)
     };
     let mut buf = vec![0u8; 256 * 1024];
     let mut done = 0u64;

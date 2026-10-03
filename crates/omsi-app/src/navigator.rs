@@ -945,7 +945,7 @@ impl Navigator {
         let pitch = PITCH.to_radians();
         let back = fwd * self.zoom * pitch.cos();
         let eye = DVec3::new(look_at.x - back.x, look_at.y - back.y, self.zoom * pitch.sin());
-        let view = Mat4::look_at_rh(eye.as_vec3(), Vec3::new(look_at.x as f32, look_at.y as f32, 0.0), Vec3::Z);
+        let view = glam::camera::rh::view::look_at_mat4(eye.as_vec3(), Vec3::new(look_at.x as f32, look_at.y as f32, 0.0), Vec3::Z);
         let clip_panel = [0.0, 0.0, pw, ph];
         let map_layer = Layer::world(view, FOV.to_radians(), vp, [map.x, map.y, map.right(), map.bottom()], 0.0, 1.0);
         let vpm = map_layer.view_proj;
@@ -2215,7 +2215,7 @@ impl Navigator {
         // the view: north up, `mpp` metres a pixel
         let c = self.city.center - anchor;
         let (hw, hh) = (w as f64 * 0.5 * self.city.mpp, h as f64 * 0.5 * self.city.mpp);
-        let proj = Mat4::orthographic_rh((c.x - hw) as f32, (c.x + hw) as f32, (c.y - hh) as f32, (c.y + hh) as f32, -1000.0, 1000.0);
+        let proj = glam::camera::rh::proj::directx::orthographic((c.x - hw) as f32, (c.x + hw) as f32, (c.y - hh) as f32, (c.y + hh) as f32, -1000.0, 1000.0);
         let vp = [0.0, 0.0, w, h];
         let world = Layer { view_proj: proj, viewport: vp, clip: [0.0, 0.0, w, h], radius: 10.0 * s, opacity: 1.0, px_scale: self.city.mpp as f32 };
         let to_screen = |q: DVec3| -> Vec2 {
@@ -2454,7 +2454,7 @@ mod tests {
 
     #[test]
     fn projection_puts_the_look_at_point_in_the_middle() {
-        let view = Mat4::look_at_rh(Vec3::new(0.0, -50.0, 80.0), Vec3::ZERO, Vec3::Z);
+        let view = glam::camera::rh::view::look_at_mat4(Vec3::new(0.0, -50.0, 80.0), Vec3::ZERO, Vec3::Z);
         let l = Layer::world(view, 0.7, [0.0, 0.0, 400.0, 300.0], [0.0; 4], 0.0, 1.0);
         let p = project(l.view_proj, [0.0, 0.0, 400.0, 300.0], Vec3::ZERO).unwrap();
         assert!((p - Vec2::new(200.0, 150.0)).length() < 0.5, "{p}");
