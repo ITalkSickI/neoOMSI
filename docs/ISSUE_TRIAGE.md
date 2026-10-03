@@ -18,6 +18,7 @@ Closing an issue does not mean the report was invalid; it simply means there is 
 - `status: needs-info` – Plausible report, but missing steps, logs, or reproduction details.
 - `status: verified` – Successfully reproduced or substantiated by clear diagnostic evidence.
 - `status: needs-investigation` – Valid problem, but the root cause or correct subsystem fix is unclear.
+- `status: accepted` – Proposal or task reviewed by maintainers and accepted as in scope for neoOMSI. Acceptance does not imply a specific release or implementation date.
 
 ### Scope labels
 
@@ -38,6 +39,7 @@ Maintainers review incoming issues regularly:
 2. **OMSI 2 baseline comparison:** What does OMSI 2.2.032 do under the exact same inputs and conditions?
 3. **Classify:**
    - **Actionable & verified:** Assign `status: verified` and appropriate scope.
+   - **Accepted feature / extension:** Assign `status: accepted` and the appropriate scope.
    - **Missing information:** Request specifics and tag `status: needs-info`.
    - **Duplicate:** Reference the canonical issue and close.
    - **Out of scope / pure extension:** Label `scope: extension` and defer or close if not aligned with current phase goals.
