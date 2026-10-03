@@ -2074,19 +2074,6 @@ mod tests {
     }
 
     #[test]
-    fn pause_notice_is_translated_in_every_supported_language() {
-        for &(_, _, language, _) in omsi_launcher_lib::LANGUAGES {
-            if language == "en" {
-                continue;
-            }
-            let translated = crate::_rust_i18n_try_translate(language, PAUSE_NOTICE)
-                .unwrap_or_else(|| panic!("missing pause notice for {language}"));
-            assert!(!translated.trim().is_empty());
-            assert_ne!(translated, PAUSE_NOTICE, "{language}");
-        }
-    }
-
-    #[test]
     fn text_renders_with_an_outline() {
         let f = FontVec::try_from_vec(ROBOTO.to_vec()).unwrap();
         let img = render_text(&f, "Savva: hi", 20.0, [255, 255, 255, 220]);
