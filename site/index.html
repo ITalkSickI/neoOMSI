@@ -35,24 +35,12 @@
   <div class="drawer-subheader">Project</div>
   <div class="drawer-section">
     <a href="https://discord.gg/Gk7EngX6JK"><span class="material-icons">forum</span>Discord</a>
-    <a href="https://buymeacoffee.com/shlovto" target="_blank" rel="noopener"><span class="material-icons">local_cafe</span>Buy me a coffee</a>
-    <a href="https://ko-fi.com/shlovto" target="_blank" rel="noopener"><span class="material-icons">volunteer_activism</span>Ko-fi</a>
     <a href="https://github.com/neoOMSI/neoOMSI"><span class="material-icons">code</span>Source code</a>
     <a href="#/releases" data-route="/releases"><span class="material-icons">new_releases</span>Releases</a>
     <a href="#/issues" data-route="/issues"><span class="material-icons">bug_report</span>Issues</a>
   </div>
 </nav>
 <div class="scrim" id="scrim"></div>
-
-<div class="donate" id="donate">
-  <div class="donate-menu elevation-4" id="donate-menu" role="menu" aria-labelledby="donate-button" hidden>
-    <a role="menuitem" href="https://buymeacoffee.com/shlovto" target="_blank" rel="noopener"><span class="donate-icon" aria-hidden="true">☕</span>Buy Me a Coffee</a>
-    <a role="menuitem" href="https://ko-fi.com/shlovto" target="_blank" rel="noopener"><span class="material-icons donate-icon" aria-hidden="true">volunteer_activism</span>Ko-fi</a>
-  </div>
-  <button class="donate-fab elevation-4" id="donate-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="donate-menu" title="Support neoOMSI">
-    <span class="material-icons" aria-hidden="true">favorite</span><span class="donate-text">Donate</span>
-  </button>
-</div>
 
 <main id="main">
   <div id="view"></div>
@@ -96,13 +84,13 @@
       <div class="card elevation-1"><span class="material-icons card-icon">extension</span><h3>100% mod compatibility</h3><p>Maps, buses, AI vehicles, scenery and plugins from the community work as they are - no conversion.</p></div>
       <div class="card elevation-1"><span class="material-icons card-icon">speed</span><h3>A modern engine</h3><p>64-bit, no 2&nbsp;GB limit, tile streaming and texture loading on worker threads, Metal / Vulkan / DirectX&nbsp;12.</p></div>
       <div class="card elevation-1"><span class="material-icons card-icon">devices</span><h3>Windows, macOS, Linux, Android</h3><p>Native builds for every platform, released automatically for every change.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">smartphone</span><h3>On your phone</h3><p>The full game on Android: on-screen wheel or tilt steering, analog pedals, doors, gearbox and a cab panel - with the same maps, buses and mods. <a href="#/docs/ANDROID">More</a></p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">texture</span><h3>PBR materials</h3><p>Normal, roughness, metalness and occlusion maps beside a texture give mods modern materials, and still work in OMSI&nbsp;2. <a href="#/docs/PBR">More</a></p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">handyman</span><h3>No limits for modders</h3><p>Textures up to 16K, any number of interior lights per mesh, no 2&nbsp;GB limit - and OMSI&nbsp;2 content still works as it is. <a href="#/docs/MODDING">More</a></p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">smartphone</span><h3>On your phone</h3><p>The full game on Android: on-screen wheel or tilt steering, analog pedals, doors, gearbox and a cab panel - with the same maps, buses and mods.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">texture</span><h3>PBR materials</h3><p>Normal, roughness, metalness and occlusion maps beside a texture give mods modern materials, and still work in OMSI&nbsp;2.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">handyman</span><h3>No limits for modders</h3><p>Textures up to 16K, any number of interior lights per mesh, no 2&nbsp;GB limit - and OMSI&nbsp;2 content still works as it is.</p></div>
       <div class="card elevation-1"><span class="material-icons card-icon">groups</span><h3>Multiplayer</h3><p>LAN sessions and a dedicated server that simulates the whole map without a window.</p></div>
       <div class="card elevation-1"><span class="material-icons card-icon">tune</span><h3>A real launcher</h3><p>Profiles, duties from the timetable, bus and livery preview, settings, one-click mod installs.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">code</span><h3>Lua plugins</h3><p>Write plugins in Lua: one text file in <code>plugins/</code>, reloaded as you save it, the same on every platform. <a href="#/docs/PLUGINS">Plugin docs</a>.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">description</span><h3>Open formats</h3><p>Every OMSI file format is written down - useful for modders and tool makers too.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">code</span><h3>Lua plugins</h3><p>Write plugins in Lua: one text file in <code>plugins/</code>, reloaded as you save it, the same on every platform.</p></div>
+      <div class="card elevation-1"><span class="material-icons card-icon">description</span><h3>Open formats</h3><p>Every OMSI file format is supported - verified against OMSI&nbsp;2.2.032 behavior.</p></div>
     </div>
   </div>
 </template>
@@ -125,11 +113,11 @@
       <li><b>Windows:</b> unpack the zip into a folder of your own (not <code>Program Files</code>) and run <code>neoomsi.exe</code>. SmartScreen may warn about an unknown app: <i>More info</i> → <i>Run anyway</i>. Not sure which one? Almost every PC is <b>x64</b>; <b>ARM</b> is only for Snapdragon laptops.</li>
       <li><b>macOS:</b> unpack and open <code>neoOMSI.app</code>. The first time macOS may refuse an app from the internet: right-click → <i>Open</i> → <i>Open</i>, or run <code>xattr -dr com.apple.quarantine neoOMSI.app</code> once. <b>Apple silicon</b> for M1 and newer, <b>Intel</b> for older Macs.</li>
       <li><b>Linux:</b> unpack and run <code>./neoomsi</code> (<code>chmod +x neoomsi</code> if it does not start; Vulkan or OpenGL drivers needed).</li>
-      <li><b>Android:</b> install the <code>.apk</code>, allow access to all files, copy the whole OMSI&nbsp;2 folder to <code>neoOMSI/OMSI 2</code> on the phone - see <a href="#/docs/ANDROID">Android</a>.</li>
+      <li><b>Android:</b> install the <code>.apk</code>, allow access to all files, copy the whole OMSI&nbsp;2 folder to <code>neoOMSI/OMSI 2</code> on the phone.</li>
       <li><b>Dedicated server:</b> only for hosting a multiplayer session without playing on that machine - to play, take the game above. See <a href="#/docs/SERVER">Dedicated server</a>.</li>
       <li>Mods go into the folder next to the game, or through the launcher's <b>Mods</b> page. The original OMSI&nbsp;2 folder is never changed.</li>
     </ul>
-    <p>All versions: <a href="#/releases">Releases</a>. Versions are numbered <code>MAJOR.MINOR.COMMIT</code> - see <a href="#/docs/VERSIONING">Versioning</a>.</p>
+    <p>All versions: <a href="#/releases">Releases</a>. See <a href="#/docs/RELEASING">Releasing</a>.</p>
   </div>
 </template>
 

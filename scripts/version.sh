@@ -2,7 +2,7 @@
 # Print the version of the checked-out commit: MAJOR.MINOR.COMMIT.
 #   MAJOR.MINOR  the VERSION file (edited by hand)
 #   COMMIT       the commits since VERSION last changed (0 on the commit that changes it)
-# See docs/VERSIONING.md. Needs the full history (CI: fetch-depth: 0).
+# See docs/RELEASING.md. Needs the full history (CI: fetch-depth: 0).
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 base=$(tr -d ' \r\n' < VERSION)

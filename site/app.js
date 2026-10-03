@@ -3,16 +3,12 @@
 const REPO = "neoOMSI/neoOMSI";
 const DOCS = [
   { file: "USER_GUIDE", title: "User guide", icon: "sports_esports" },
-  { file: "ANDROID", title: "Android & mobile", icon: "smartphone" },
-  { file: "MODDING", title: "Modding beyond OMSI 2", icon: "handyman" },
-  { file: "PBR", title: "PBR materials", icon: "texture" },
   { file: "BUILDING", title: "Building", icon: "build" },
-  { file: "FORMATS", title: "Content formats", icon: "description" },
-  { file: "ARCHITECTURE", title: "Architecture", icon: "account_tree" },
-  { file: "ROUTES", title: "Routes", icon: "alt_route" },
-  { file: "PLUGINS", title: "Plugins", icon: "extension" },
+  { file: "COMPATIBILITY", title: "Compatibility", icon: "fact_check" },
+  { file: "DEVELOPMENT", title: "Development workflow", icon: "code" },
+  { file: "ISSUE_TRIAGE", title: "Issue triage", icon: "rule" },
+  { file: "RELEASING", title: "Releasing", icon: "new_releases" },
   { file: "SERVER", title: "Dedicated server", icon: "dns" },
-  { file: "VERSIONING", title: "Versioning & releases", icon: "new_releases" },
 ];
 const PLATFORMS = [
   { key: "windows-x64", name: "Windows", icon: "desktop_windows", note: "64-bit (x64), Windows 10 or newer", os: "windows" },
@@ -273,20 +269,4 @@ function route() {
 window.addEventListener("hashchange", route);
 route();
 
-// Donate: the button opens its menu upwards; a click elsewhere, Escape or a choice closes it
-(() => {
-  const button = document.getElementById("donate-button");
-  const menu = document.getElementById("donate-menu");
-  if (!button || !menu) return;
-  const open = on => {
-    menu.hidden = !on;
-    button.setAttribute("aria-expanded", on ? "true" : "false");
-    if (on) menu.querySelector("a").focus();
-  };
-  button.addEventListener("click", e => { e.stopPropagation(); open(menu.hidden); });
-  menu.addEventListener("click", e => { if (e.target.closest("a")) open(false); });
-  document.addEventListener("click", e => { if (!menu.hidden && !e.target.closest("#donate")) open(false); });
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && !menu.hidden) { open(false); button.focus(); }
-  });
-})();
+

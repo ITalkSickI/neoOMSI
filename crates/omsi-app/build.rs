@@ -1,4 +1,4 @@
-//! Stamps the build with its version (`MAJOR.MINOR.COMMIT`, see docs/VERSIONING.md) and the
+//! Stamps the build with its version (`MAJOR.MINOR.COMMIT`, see docs/RELEASING.md) and the
 //! commit it came from, so a screenshot or a log line says which version is running; on
 //! Windows it also puts the application icon into the executable.
 

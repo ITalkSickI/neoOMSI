@@ -1,7 +1,7 @@
 # Changelog
 
 Every push to `main` is released as `MAJOR.MINOR.COMMIT` (see
-[docs/VERSIONING.md](docs/VERSIONING.md)); the downloads are on the
+[docs/RELEASING.md](docs/RELEASING.md)); the downloads are on the
 [Releases](https://github.com/neoOMSI/neoOMSI/releases) page.
 
 ## 0.1.1098 - 2026-10-02

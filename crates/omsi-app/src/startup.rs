@@ -286,7 +286,7 @@ pub(crate) fn fatal_message(text: &str) {
 /// which version is running.
 pub const BUILD: &str = env!("OMSI_BUILD");
 
-/// The release version, `MAJOR.MINOR.COMMIT` (see `build.rs` and docs/VERSIONING.md).
+/// The release version, `MAJOR.MINOR.COMMIT` (see `build.rs` and docs/RELEASING.md).
 pub const VERSION: &str = env!("neoomsi_VERSION");
 
 /// A window of `w` x `h` points made to fit the screen it opens on, and placed in its
