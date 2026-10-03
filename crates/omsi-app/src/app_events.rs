@@ -2938,10 +2938,10 @@ fn info_line(clock: &omsi_sim::SimClock, player: Option<&Player>, duty: Option<&
     if let Some(p) = player {
         parts.push(format!("{:.0} km/h", p.vehicle.physics.velocity_kmh().abs()));
         let (outside, inside) = vehicle_temperatures(p);
-        parts.push(format!("EXT {:.0} °C / INT {:.0} °C", outside, inside));
+        parts.push(format!("Ext. {:.0} °C / Int. {:.0} °C", outside, inside));
         // the tank as the bus's script says it (OMSI's RL_TankContent: tank_percent)
         if let Some(tank) = p.vehicle.var("tank_percent").filter(|v| v.is_finite()) {
-            parts.push(format!("tank {:.0} %", (tank * 100.0).round()));
+            parts.push(format!("Fuel {:.0} %", (tank * 100.0).round()));
         }
         // how many are aboard right now (None: the passengers are switched off for this
         // drive, so there is nothing to count)
@@ -2953,7 +2953,7 @@ fn info_line(clock: &omsi_sim::SimClock, player: Option<&Player>, duty: Option<&
                 let line = if trip.line.trim().is_empty() { d.line.trim() } else { trip.line.trim() };
                 parts.push(format!("{line} › {}", trip.terminus.trim()));
                 if let Some(s) = trip.stops.get(d.next_stop) {
-                    parts.push(format!("next: {}", s.name.trim()));
+                    parts.push(format!("Next stop: {}", s.name.trim()));
                 }
                 let delay = p.vehicle.host.tt_delay;
                 parts.push(format!("{}{}:{:02}", if delay < 0.0 { "−" } else { "+" }, (delay.abs() / 60.0) as i64, (delay.abs() % 60.0) as i64));
