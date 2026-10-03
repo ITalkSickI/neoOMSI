@@ -2,10 +2,10 @@ name: Build
 
 on:
   schedule:
+    # Runs nightly at 00:00 UTC
     - cron: '0 0 * * *'
-      timezone: 'Europe/Berlin'
   push:
-    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
@@ -19,7 +19,7 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
@@ -203,7 +203,7 @@ jobs:
 
   release:
     needs: [version, test, windows, macos, linux]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     env:
@@ -226,8 +226,9 @@ jobs:
             awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
           else
             : > changes.md
-            for f in changelog/unreleased/*.md; do
+            for f in .changes/*.md; do
               [ -f "$f" ] || continue
+              [ "$(basename "$f")" = "README.md" ] && continue
               cat "$f" >> changes.md
               echo >> changes.md
             done

@@ -12,6 +12,14 @@ When making trade-offs, prioritize:
 4. **Consistency** — follow established crate conventions and standard Rust idioms.
 5. **Minimal churn** — keep diffs focused on the task at hand. Avoid formatting or refactoring untouched code.
 
+## AI-assisted code standards
+
+AI tools may assist with development, but generated code receives **no lower review standard**:
+
+- Every line of submitted code must be understood, verified, and defended by the PR author.
+- Speculative AI code dumps, unreviewed vibe-coded refactors, and phantom abstractions will be rejected during triage.
+- Treat generated code as an untrusted draft: eliminate boilerplate, verify assumptions against OMSI 2.2.032 reference behavior, and write focused regression tests.
+
 ## Branching model
 
 neoOMSI uses a **trunk-based workflow**. `main` is the sole permanent integration branch.

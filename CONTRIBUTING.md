@@ -1,35 +1,82 @@
 # Contributing to neoOMSI
 
-Thank you for contributing to neoOMSI. Please review our project guidelines before opening an issue or pull request:
+Thanks for contributing. neoOMSI optimizes for correctness, simplicity, and long-term maintainability rather than raw merge volume.
 
-## Core principles
+Before starting substantial work, please review:
+- [Development workflow](docs/DEVELOPMENT.md)
+- [OMSI compatibility policy](docs/COMPATIBILITY.md)
+- [Issue triage](docs/ISSUE_TRIAGE.md)
 
-* **Clean-room implementation.** Never import or commit proprietary OMSI 2 source code, binaries, or game assets (textures, meshes, audio, maps, scripts). Tests that require game assets read them dynamically from an existing installation via `OMSI_ROOT`.
-* **Behavioral parity first.** neoOMSI targets behavioral compatibility with OMSI 2.2.032. Changes to engine logic must preserve or improve reference parity rather than invent custom behavior. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
-* **Focused pull requests.** Keep PRs small, well-documented, and scoped to a single architectural or behavioral concern.
-* **Trunk-based workflow.** Branch from `main` using standard prefixes (`feat/`, `fix/`, `parity/`, `refactor/`, `perf/`, `docs/`, `chore/`). See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-* **Code standards.** Standard `rustfmt` formatting, idiomatic Rust, and comments that explain *intent and rationale* rather than obvious code.
+## Core rules
 
-## Local development
+1. **Compatibility first.** If a change touches OMSI-visible simulation behavior, verify what OMSI 2.2.032 actually does before altering engine logic.
+2. **Clean-room implementation.** Never copy proprietary OMSI 2 source code, decompiled binaries, or copyrighted assets (textures, meshes, audio, maps, scripts) into the repository.
+3. **Keep changes focused.** One pull request should have one coherent purpose. Avoid combining bug fixes with unrelated formatting, cosmetic refactoring, or dependency bumps.
+4. **Prefer simplicity.** Delete unnecessary code before introducing abstractions. Never add defensive branches, compatibility layers, or configuration switches for hypothetical future problems.
+5. **Leave touched code cleaner.** Proportional local cleanup is encouraged within the scope of your changes, but avoid sprawling rewrites.
+6. **Code ownership.** The PR author must understand every line submitted and be able to explain the engineering rationale during review.
 
-For fast iteration while developing, use the development scripts:
+## AI-assisted contributions
 
-* **Windows:** `scripts\dev-windows.cmd`
+AI-assisted development is permitted, but generated code receives **no lower review standard**. The contributor remains fully responsible for every submitted line.
+
+* Do not submit large, AI-generated rewrites that you have not personally reviewed, understood, and tested.
+* Treat AI suggestions as drafts: verify assumptions, strip out unnecessary complexity or boilerplate, match existing crate conventions, and add reproducible tests.
+* Unchecked "vibe coding" and speculative AI code dumps will be closed during triage.
+
+## Branch and pull request workflow
+
+Work from latest `main` using short-lived branches:
+
+```text
+feat/<name>       new engine capability
+fix/<name>        bug fix or regression repair
+parity/<name>     OMSI 2 compatibility work
+refactor/<name>   behavior-preserving simplification
+perf/<name>       performance optimization
+docs/<name>       documentation update
+chore/<name>      tooling or build maintenance
+```
+
+Pull requests target `main`. There is no permanent `develop` or `nightly` branch.
+
+### Local development builds
+
+For fast local iteration while developing, use the development scripts:
+
+* **Windows:** `scripts\dev-windows.cmd` (or `scripts\dev-windows-release.cmd` for optimized local testing)
 * **macOS:** `sh scripts/dev-macos.sh`
 
-On Windows, `scripts\dev-windows-release.cmd` compiles an optimized build into `dist\windows-dev` without slow final LTO passes, ideal for testing release-specific behavior.
+### Pull request expectations
 
-Before submitting a pull request, run workspace tests:
+Every PR should document:
+- What was changed and why.
+- Observable impact for players or content authors.
+- Validation performed (unit tests, manual reproduction, maps/buses tested).
+- For parity work: reference OMSI 2.2.032 behavior and verification evidence.
+
+## Changelog fragments
+
+Every user-visible PR must add a fragment in `.changes/<pr-number>.<category>.md`:
+
+```text
+.changes/412.parity.md
+```
+
+```markdown
+Fixed keyboard steering return behavior to match OMSI 2.
+```
+
+Supported categories: `parity`, `fix`, `feature`, `performance`, `breaking`, `internal`.
+If a change is purely internal, maintainers may apply the `skip-changelog` label. See [.changes/README.md](.changes/README.md).
+
+## Verification
+
+Before opening a pull request, run workspace checks:
 
 ```sh
 cargo test --workspace
 cargo build --release
 ```
 
-## Documentation & policies
-
-* **[Development workflow](docs/DEVELOPMENT.md)** — Branching, review requirements, and CI.
-* **[Compatibility policy](docs/COMPATIBILITY.md)** — How OMSI 2 behavior is verified and documented.
-* **[Building guide](docs/BUILDING.md)** — System requirements and cross-platform builds.
-* **[Issue triage](docs/ISSUE_TRIAGE.md)** — Bug reporting and triage lifecycle.
-* **[Release process](docs/RELEASING.md)** — Nightly builds, versioning, and changelog fragments.
+Add deterministic regression tests whenever a bug or parity rule can be reproduced reliably. Tests must never bundle proprietary OMSI assets; read them from `OMSI_ROOT` if required.

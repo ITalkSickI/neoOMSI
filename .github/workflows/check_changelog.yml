@@ -1,0 +1,28 @@
+name: Changelog Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  check:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify changelog fragment or skip-changelog label
+        shell: bash
+        run: |
+          if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q '"skip-changelog"'; then
+            echo "PR has skip-changelog label. Skipping."
+            exit 0
+          fi
+
+          FRAGMENTS=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- '.changes/*.md' | grep -v 'README.md' || true)
+          if [ -z "$FRAGMENTS" ]; then
+            echo "::error::Missing changelog fragment. Please add a fragment in .changes/<pr>.<category>.md or add the 'skip-changelog' label. See .changes/README.md."
+            exit 1
+          fi
+          echo "Found changelog fragment(s):"
+          echo "$FRAGMENTS"
