@@ -2054,7 +2054,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("ff_enabled", true),
         b("brake_hold", true),
         b("auto_clutch", true),
-        b("auto_ibis", true),
+        b("auto_ibis", false),
         n("led_glow", 6).clamp(0, 15),
         f("led_mips", 1.3).clamp(0.0, 4.0),
         f("ui_scale", 1.0).clamp(0.5, 2.0),
