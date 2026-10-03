@@ -435,11 +435,30 @@ pub struct Ui {
     pub dd_rows: usize,
     /// Pictures shown in the interface (a tutorial page's), by file.
     images: hashbrown::HashMap<std::path::PathBuf, Option<(TextureId, u32, u32)>>,
+    /// The loading screen's background (the map's picture), looked for once per load.
+    pub loading_bg: Option<Option<(TextureId, u32, u32)>>,
+    /// The loading screen's full-screen picture (`assets/backgrounds/loading-screen.jpg`).
+    loading_art: Option<Option<(TextureId, u32, u32)>>,
+    /// The wordmark bottom left (`assets/logos/neoOMSI-wordmark.png`, cut to its content).
+    loading_logo: Option<Option<(TextureId, u32, u32)>>,
+    /// The loading screen's spinner: one texture per turn of 1/24.
+    spinner: Vec<TextureId>,
 }
 
 impl Ui {
+    /// The scene the interface draws into was replaced: every texture it made (labels,
+    /// plates, images) belonged to the old one and is made again on demand.
+    pub fn scene_replaced(&mut self) {
+        self.text.labels.clear();
+        self.images.clear();
+        self.loading_bg = None;
+        self.loading_art = None;
+        self.loading_logo = None;
+        self.spinner.clear();
+    }
+
     pub fn new() -> Option<Ui> {
-        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_ctl: Vec::new(), dd_rects: Vec::new(), dd_top: 0, dd_rows: 8, menu_side: Vec::new(), menu_pane: Vec::new(), menu_pane_start: 0, menu_pane_go: None, menu_pane_box: None, menu_time: Vec::new(), anim: Default::default(), anim_dt: 0.0, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default() })
+        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_ctl: Vec::new(), dd_rects: Vec::new(), dd_top: 0, dd_rows: 8, menu_side: Vec::new(), menu_pane: Vec::new(), menu_pane_start: 0, menu_pane_go: None, menu_pane_box: None, menu_time: Vec::new(), anim: Default::default(), anim_dt: 0.0, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default(), loading_bg: None, loading_art: None, loading_logo: None, spinner: Vec::new() })
     }
 
     /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
@@ -748,6 +767,8 @@ impl TextCache {
             5 => vec![255, 255, 255, 28],
             // a hairline between groups (the card's border colour)
             9 => vec![255, 255, 255, 15],
+            // the loading screen's black
+            8 => vec![0, 0, 0, 255],
             // the picture dimmed behind the menu
             6 => vec![0, 0, 0, 120],
             // behind a note or the tooltip (the old HUD's 40 %)
@@ -913,31 +934,128 @@ impl TextCache {
 }
 
 impl Ui {
-    /// The loading screen over a plain dark picture: the map's name in the middle, a thin
-    /// bar of how far the start area got under it, and one quiet line (what is being done).
-    pub fn loading(&mut self, r: &Renderer, scene: &mut Scene, width: f32, height: f32, scale: f32, title: &str, caption: &str, progress: f32) {
+    pub fn loading(&mut self, r: &Renderer, scene: &mut Scene, width: f32, height: f32, scale: f32, title: &str, caption: &str, progress: Option<f32>, _map_dir: Option<&std::path::Path>, t: f32) {
         let s = scale.max(0.5);
-        let t = self.text.label(r, scene, title, (30.0 * s) as u32, [255, 255, 255, 0]);
-        let cy = height * 0.5;
-        let tx = (width - t.w as f32) * 0.5;
-        let ty = cy - t.h as f32 - 14.0 * s;
-        scene.overlays.push((t.tex, [tx, ty, tx + t.w as f32, ty + t.h as f32]));
-        let bw = (320.0 * s).min(width * 0.6);
-        let bh = (3.0 * s).max(2.0);
-        let bx = (width - bw) * 0.5;
-        let by = cy + 4.0 * s;
-        let track = self.text.plate(r, scene, 1);
-        scene.overlays.push((track, [bx, by, bx + bw, by + bh]));
-        let fill = self.text.plate(r, scene, 2);
-        let p = progress.clamp(0.0, 1.0);
-        if p > 0.0 {
-            scene.overlays.push((fill, [bx, by, bx + bw * p, by + bh]));
+        // --- black, so that nothing of the 3D picture shows
+        let black = self.text.plate(r, scene, 8);
+        scene.overlays.push((black, [0.0, 0.0, width, height]));
+        // --- the full-screen picture behind everything, covering the screen and dimmed
+        if self.loading_art.is_none() {
+            static ART: &[u8] = include_bytes!("../../../assets/default-loading-screen/image1.png");
+            self.loading_art = Some(image::load_from_memory(ART).ok().map(|i| {
+                let i = i.into_rgba8();
+                let (iw, ih) = i.dimensions();
+                let img = omsi_texture::Image { width: iw, height: ih, rgba: i.into_raw(), has_alpha: false };
+                (r.add_texture(scene, &img, false), iw, ih)
+            }));
         }
-        if !caption.is_empty() {
-            let c = self.text.label(r, scene, caption, (13.0 * s) as u32, [200, 204, 210, 0]);
-            let cx = (width - c.w as f32) * 0.5;
-            let cy2 = by + bh + 14.0 * s;
-            scene.overlays.push((c.tex, [cx, cy2, cx + c.w as f32, cy2 + c.h as f32]));
+        if let Some(Some((tex, iw, ih))) = self.loading_art {
+            let k = (width / iw.max(1) as f32).max(height / ih.max(1) as f32);
+            let (dw, dh) = (iw as f32 * k, ih as f32 * k);
+            let (x0, y0) = ((width - dw) * 0.5, (height - dh) * 0.5);
+            scene.overlays.push((tex, [x0, y0, x0 + dw, y0 + dh]));
+        }
+        let m = 40.0 * s;
+        // --- the game's name, bottom left
+        if self.loading_logo.is_none() {
+            static LOGO: &[u8] = include_bytes!("../../../assets/logos/neoOMSI-wordmark.png");
+            self.loading_logo = Some(image::load_from_memory(LOGO).ok().map(|i| {
+                let mut i = i.into_rgba8();
+                // the empty margin around the lettering is cut away
+                let (w, h) = i.dimensions();
+                let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+                for (x, y, p) in i.enumerate_pixels() {
+                    if p[3] > 8 {
+                        x0 = x0.min(x);
+                        y0 = y0.min(y);
+                        x1 = x1.max(x + 1);
+                        y1 = y1.max(y + 1);
+                    }
+                }
+                if x1 > x0 && y1 > y0 {
+                    i = image::imageops::crop_imm(&i, x0, y0, x1 - x0, y1 - y0).to_image();
+                }
+                let (iw, ih) = i.dimensions();
+                let img = omsi_texture::Image { width: iw, height: ih, rgba: i.into_raw(), has_alpha: true };
+                (r.add_texture(scene, &img, false), iw, ih)
+            }));
+        }
+        match self.loading_logo {
+            Some(Some((tex, iw, ih))) => {
+                let lh = 52.0 * s;
+                let lw = lh * iw as f32 / ih.max(1) as f32;
+                scene.overlays.push((tex, [m, height - m - lh, m + lw, height - m]));
+            }
+            _ => {
+                let logo = self.text.label(r, scene, "neoOMSI", (64.0 * s) as u32, [255, 255, 255, 0]);
+                scene.overlays.push((logo.tex, [m, height - m - logo.h as f32, m + logo.w as f32, height - m]));
+            }
+        }
+        // --- what is going on, bottom right: a dark box with a thin border, text and spinner
+        if self.spinner.is_empty() {
+            const N: usize = 24;
+            const SZ: usize = 96;
+            for k in 0..N {
+                let head = k as f32 * std::f32::consts::TAU / N as f32;
+                let mut data = vec![255u8; SZ * SZ * 4];
+                for py in 0..SZ {
+                    for px in 0..SZ {
+                        let (dx, dy) = (px as f32 + 0.5 - SZ as f32 * 0.5, py as f32 + 0.5 - SZ as f32 * 0.5);
+                        let rr = (dx * dx + dy * dy).sqrt();
+                        let ring = (45.0 - rr + 0.5).clamp(0.0, 1.0) * (rr - 31.0 + 0.5).clamp(0.0, 1.0);
+                        // angle clockwise from the top; how far behind the head this pixel is
+                        let ang = dx.atan2(-dy).rem_euclid(std::f32::consts::TAU);
+                        let behind = (head - ang).rem_euclid(std::f32::consts::TAU);
+                        let tail = std::f32::consts::PI * 1.1;
+                        let arc = if behind < tail { (1.0 - behind / tail).powf(0.8) } else { 0.0 };
+                        let a = ring * (0.28 + 0.72 * arc);
+                        data[(py * SZ + px) * 4 + 3] = (a * 255.0).round() as u8;
+                    }
+                }
+                let img = omsi_texture::Image { width: SZ as u32, height: SZ as u32, rgba: data, has_alpha: true };
+                let tex = r.add_texture(scene, &img, false);
+                self.spinner.push(tex);
+            }
+        }
+        let pct = progress.map(|p| format!("   {:.0} %", p.clamp(0.0, 1.0) * 100.0)).unwrap_or_default();
+        let compose = |pct: &str| if title.is_empty() { format!("{caption}{pct}") } else { format!("{caption} {title}{pct}") };
+        let line = compose(&pct);
+        // (the box keeps its size while the percentage grows)
+        let widest = compose(if progress.is_some() { "   100 %" } else { "" });
+        let px_text = (18.0 * s) as u32;
+        let text_w = self.text.width(&widest, px_text as f32);
+        let ring = 22.0 * s;
+        let (pad_x, pad_y, gap) = (16.0 * s, 10.0 * s, 16.0 * s);
+        let c = self.text.label(r, scene, &line, px_text, [235, 235, 235, 0]);
+        let box_h = (c.h as f32).max(ring) + pad_y * 2.0;
+        let box_w = text_w + gap + ring + pad_x * 2.0;
+        let (bx1, by1) = (width - m, height - m);
+        let (bx0, by0) = (bx1 - box_w, by1 - box_h);
+        self.text.rounded(r, scene, [bx0, by0, bx1, by1], 3.0 * s, [0, 0, 0, 240]);
+        let cy = (by0 + by1) * 0.5;
+        scene.overlays.push((c.tex, [bx0 + pad_x, cy - c.h as f32 * 0.5, bx0 + pad_x + c.w as f32, cy + c.h as f32 * 0.5]));
+        let frame = ((t * 26.0) as usize) % self.spinner.len().max(1);
+        if let Some(tex) = self.spinner.get(frame).copied() {
+            scene.overlays.push((tex, [bx1 - pad_x - ring, cy - ring * 0.5, bx1 - pad_x, cy + ring * 0.5]));
+        }
+        // --- the hairline along the bottom edge
+        let bh = (2.0 * s).max(2.0);
+        let accent = self.text.plate(r, scene, 4);
+        match progress {
+            Some(p) => {
+                let p = p.clamp(0.0, 1.0);
+                if p > 0.0 {
+                    scene.overlays.push((accent, [0.0, height - bh, width * p, height]));
+                }
+            }
+            None => {
+                let seg = 0.2;
+                let head = -seg + (t * 0.5).fract() * (1.0 + seg);
+                let (a, b) = (head.max(0.0), (head + seg).min(1.0));
+                if b > a {
+                    scene.overlays.push((accent, [width * a, height - bh, width * b, height]));
+                }
+            }
         }
         self.text.end_frame(r, scene);
     }
