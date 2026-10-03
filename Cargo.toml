@@ -59,6 +59,21 @@ lto = "thin"
 
 [profile.dev]
 opt-level = 1
+debug = 0
+incremental = true
+
+# dependencies are built optimised once and then stay cached
+[profile.dev.package."*"]
+opt-level = 3
+debug = 0
+
+# our own crates that are slow at load time in dev
+[profile.dev.package.omsi-o3d]
+opt-level = 3
+[profile.dev.package.omsi-texture]
+opt-level = 3
+[profile.dev.package.omsi-scenery]
+opt-level = 3
 
 # A release-like build for local Windows testing. It keeps the normal optimisation level but
 # skips the slower release-only work. The proper release profile is still used for PRs and
