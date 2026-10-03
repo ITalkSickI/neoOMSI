@@ -676,6 +676,10 @@ impl App {
                 if let Some(n) = self.navigator.as_mut() {
                     n.arrows = self.settings.nav_arrows;
                     n.show_ai = self.settings.nav_ai;
+                    n.show_topbar = self.settings.nav_topbar;
+                    n.show_turn = self.settings.nav_turn;
+                    n.show_stoplist = self.settings.nav_stoplist;
+                    n.schedule = self.settings.nav_stops_ext;
                 }
                 if let Some(d) = self.args.driver.as_deref() {
                     self.career = career::Career::load(&self.args.root, d);

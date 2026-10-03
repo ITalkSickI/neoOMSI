@@ -1842,8 +1842,8 @@ impl Ui {
             let frac: Option<f32> = parts.next().and_then(|p| p.parse().ok());
             let mut ctl: Option<[f32; 4]> = None;
             let left: f32 = match kind {
-                // a switch
-                "s" => {
+                // a switch ("m": the same, on a row that also opens a page: the arrow beside it)
+                "s" | "m" => {
                     let on = value == "on";
                     let (tw, th) = (44.0 * s, 24.0 * s);
                     let tx = rx - tw;
@@ -1858,7 +1858,13 @@ impl Ui {
                     let kn = 18.0 * s;
                     let kx = tx + 3.0 * s + (tw - kn - 6.0 * s) * t;
                     self.text.rounded(r, scene, [kx, cy - kn * 0.5, kx + kn, cy + kn * 0.5], kn * 0.5, mix([142, 142, 142, 255], [240, 240, 240, 255], tq));
-                    tx
+                    if kind == "m" {
+                        let cw = self.put_right(r, scene, "›", px + 6, mix(MUTED, WHITE, a), tx - 12.0 * s, cy);
+                        ctl = Some([tx, rect[1], rx, rect[3]]);
+                        tx - 12.0 * s - cw
+                    } else {
+                        tx
+                    }
                 }
                 // a slider: the track with its knob, the value right of it
                 "v" => {

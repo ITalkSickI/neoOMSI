@@ -821,7 +821,7 @@ fn general_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, out: &mut Outside, c
     toggle_setting(ui, s, dirty, c.row(), "Chat in online games", "chat");
     toggle_setting(ui, s, dirty, c.row(), "Other players' names above their buses", "name_tags");
     c.section(ui, "Navigator");
-    toggle_setting(ui, s, dirty, c.row(), "Navigator (Shift+N: map, schedule, off)", "navigator");
+    toggle_setting(ui, s, dirty, c.row(), "Navigator", "navigator");
     toggle_setting(ui, s, dirty, c.row(), "Route arrows (as in OMSI 2)", "nav_arrows");
     toggle_setting(ui, s, dirty, c.row(), "AI vehicles on the map", "nav_ai");
     // the corner: a little screen with four corners to click

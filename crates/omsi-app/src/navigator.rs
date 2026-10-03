@@ -8,11 +8,11 @@ use omsi_ui::{Atlas, Color, Draw, Fonts, Gpu, Layer, Painter, Rect, Weight};
 use crate::traffic::Traffic;
 
 const NAV_REDRAW_S: f32 = 1.0 / 30.0;
-const PANEL: Color = Color::rgba(22, 22, 22, 0.78);
+const PANEL: Color = Color::rgba(26, 28, 32, 0.97);
 const CARD: Color = Color::rgba(22, 22, 22, 0.92);
 const HAIR: Color = Color::rgba(255, 255, 255, 0.09);
 const ACCENT: Color = Color::rgba(232, 160, 48, 1.0);
-const BAR: Color = Color::rgba(14, 14, 14, 0.62);
+const BAR: Color = Color::rgba(15, 16, 19, 0.94);
 const ROAD_CASING: Color = Color::rgba(30, 30, 30, 0.9);
 const ROAD: Color = Color::rgba(92, 92, 92, 1.0);
 const ROAD_MAIN: Color = Color::rgba(112, 112, 112, 1.0);
@@ -160,6 +160,12 @@ pub struct Navigator {
     turn_t: f32,
     turn_e: f32,
     turn_shown: Option<(i32, f32, f64, Option<String>)>,
+    pub show_topbar: bool,
+    pub show_turn: bool,
+    pub show_stoplist: bool,
+    sched_t: f32,
+    sched_e: f32,
+    sched_rows: f32,
     own_net: Option<std::sync::Arc<Network>>,
     global: Option<std::sync::Arc<Network>>,
     stop_pos: std::sync::Arc<HashMap<i64, DVec3>>,
@@ -254,6 +260,12 @@ impl Navigator {
             turn_t: 0.0,
             turn_e: 0.0,
             turn_shown: None,
+            show_topbar: true,
+            show_turn: true,
+            show_stoplist: true,
+            sched_t: 0.0,
+            sched_e: 0.0,
+            sched_rows: 1.0,
             own_net: None,
             global: None,
             stop_pos: Default::default(),
@@ -713,14 +725,16 @@ impl Navigator {
         let pw = (base * f.ui_scale).min((sh * 0.7).max(300.0)).round();
         let map_h = (pw * 0.62).round();
         let s = pw / 360.0;
-        let has_bottom = !f.stops.is_empty() || !self.route.lanes.is_empty();
+        let has_bottom = self.show_stoplist && (!f.stops.is_empty() || !self.route.lanes.is_empty());
         let step = f.dt.clamp(0.0, 0.1) / 0.2;
         self.bottom_t = if has_bottom { (self.bottom_t + step).min(1.0) } else { (self.bottom_t - step).max(0.0) };
         let t = self.bottom_t;
         self.bottom_e = t * t * (3.0 - 2.0 * t);
-        let want_turn = self.next_turn.is_some();
-        if let Some(t) = self.next_turn.clone() {
-            self.turn_shown = Some(t);
+        let want_turn = self.show_turn && self.next_turn.is_some();
+        if want_turn {
+            if let Some(t) = self.next_turn.clone() {
+                self.turn_shown = Some(t);
+            }
         }
         let tstep = f.dt.clamp(0.0, 0.1) / 0.25;
         self.turn_t = if want_turn { (self.turn_t + tstep).min(1.0) } else { (self.turn_t - tstep).max(0.0) };
@@ -730,8 +744,16 @@ impl Navigator {
         let tt = self.turn_t;
         self.turn_e = tt * tt * (3.0 - 2.0 * tt);
         let turn_animating = self.turn_t > 0.0 && self.turn_t < 1.0 || want_turn != (self.turn_t >= 1.0);
-        let bars = (34.0 + 46.0 * self.bottom_e) * s;
-        let sched = if self.schedule { (f.stops.len().clamp(1, 5) as f32 * 22.0 + 12.0) * s } else { 0.0 };
+        if !f.stops.is_empty() {
+            self.sched_rows = f.stops.len().clamp(1, 5) as f32;
+        }
+        let want_sched = self.schedule && has_bottom && !f.stops.is_empty();
+        self.sched_t = if want_sched { (self.sched_t + step).min(1.0) } else { (self.sched_t - step).max(0.0) };
+        let st = self.sched_t;
+        self.sched_e = st * st * (3.0 - 2.0 * st);
+        let top_px = if self.show_topbar { 34.0 } else { 0.0 };
+        let bars = (top_px + 46.0 * self.bottom_e) * s;
+        let sched = (self.sched_rows * 22.0 + 12.0) * s * self.sched_e;
         let ph = (map_h + bars + sched).round();
         let (w, h) = (pw as u32, ph as u32);
         let margin = (sh * 0.018).max(10.0).round();
@@ -777,7 +799,7 @@ impl Navigator {
         self.atlas.begin_frame();
         let panel = Rect::new(0.0, 0.0, pw, ph);
         let radius = 8.0 * s;
-        let top_h = (34.0 * s).round();
+        let top_h = if self.show_topbar { (34.0 * s).round() } else { 0.0 };
         let has_bottom = self.bottom_e > 0.001;
         let map = Rect::new(0.0, top_h, pw, map_h);
         let vp = [map.x, map.y, map.w, map.h];
@@ -836,7 +858,7 @@ impl Navigator {
         }
 
         let mut bg = Painter::new();
-        bg.rounded(panel, radius, if self.cockpit_display { Color::rgba(22, 22, 22, 1.0) } else { PANEL });
+        bg.rounded(panel, radius, if self.cockpit_display { Color::rgba(26, 28, 32, 1.0) } else { PANEL });
         let n_bg = bg.len();
 
         let mut dy = Painter::new();
@@ -867,7 +889,6 @@ impl Navigator {
         let n_world = dy.len();
 
         let mut ui = Painter::new();
-        ui.gradient(Rect::new(map.x, map.y, map.w, map.h * 0.3), Color::rgba(22, 22, 22, 0.75), Color::rgba(22, 22, 22, 0.0));
         if let Some((dir, angle, dist, street)) = self.turn_shown.clone().as_ref() {
             let ta = self.turn_e;
             let slide = (1.0 - ta) * -14.0 * s;
@@ -929,46 +950,48 @@ impl Navigator {
             ui.tri(tip, m, r, TEXT, TEXT, TEXT);
         }
 
-        let top = Rect::new(0.0, 0.0, pw, top_h);
-        ui.rect(top, BAR);
-        ui.rect(Rect::new(0.0, top.bottom() - 1.0_f32.max(s), pw, 1.0_f32.max(s)), HAIR);
         let pad = 11.0 * s;
-        let base = top.y + top.h * 0.5 + self.fonts.cap_height(22.0 * s, Weight::Bold) * 0.5;
-        let mut x = pad;
         let miles = uses_miles(f.units);
-        let limit = net.and_then(|n| {
-            let lane = if self.route.on_route { self.route.lanes.get(self.route.progress).copied() } else { None };
-            let lane = lane.or_else(|| n.nearest_lane_near(f.bus, LaneKind::Street).filter(|l| l.2 < 8.0).map(|l| l.0))?;
-            let v = n.lanes.get(lane)?.speed_limit_kmh;
-            (v > 1.0 && v < 200.0).then_some(v)
-        });
-        let over = limit.map(|v| ((f.speed_kmh.abs() - v - 1.0) / 4.0).clamp(0.0, 1.0)).unwrap_or(0.0);
-        let speed_color = TEXT.mix(Color::rgba(240, 64, 56, 1.0), over * over * (3.0 - 2.0 * over));
-        x += ui.text(&mut self.atlas, &self.fonts, &format!("{:.0}", speed(f.speed_kmh.abs(), miles)), 22.0 * s, Weight::Bold, Vec2::new(x, base), Align::Left, speed_color);
-        x += 4.0 * s;
-        x += ui.text(&mut self.atlas, &self.fonts, if miles { "mph" } else { wd.kmh }, 14.0 * s, Weight::Medium, Vec2::new(x, base), Align::Left, TEXT_DIM);
-        let stop_size = 26.0 * s;
-        x += 8.0 * s;
-        if f.stop_requested {
-            ui.icon(&mut self.atlas, "stop_request", Vec2::new(x + stop_size * 0.5, top.center().y), stop_size, STOP_REQUEST);
+        if self.show_topbar {
+            let top = Rect::new(0.0, 0.0, pw, top_h);
+            ui.rect(top, BAR);
+            ui.rect(Rect::new(0.0, top.bottom() - 1.0_f32.max(s), pw, 1.0_f32.max(s)), HAIR);
+            let base = top.y + top.h * 0.5 + self.fonts.cap_height(22.0 * s, Weight::Bold) * 0.5;
+            let mut x = pad;
+            let limit = net.and_then(|n| {
+                let lane = if self.route.on_route { self.route.lanes.get(self.route.progress).copied() } else { None };
+                let lane = lane.or_else(|| n.nearest_lane_near(f.bus, LaneKind::Street).filter(|l| l.2 < 8.0).map(|l| l.0))?;
+                let v = n.lanes.get(lane)?.speed_limit_kmh;
+                (v > 1.0 && v < 200.0).then_some(v)
+            });
+            let over = limit.map(|v| ((f.speed_kmh.abs() - v - 1.0) / 4.0).clamp(0.0, 1.0)).unwrap_or(0.0);
+            let speed_color = TEXT.mix(Color::rgba(240, 64, 56, 1.0), over * over * (3.0 - 2.0 * over));
+            x += ui.text(&mut self.atlas, &self.fonts, &format!("{:.0}", speed(f.speed_kmh.abs(), miles)), 22.0 * s, Weight::Bold, Vec2::new(x, base), Align::Left, speed_color);
+            x += 4.0 * s;
+            x += ui.text(&mut self.atlas, &self.fonts, if miles { "mph" } else { wd.kmh }, 14.0 * s, Weight::Medium, Vec2::new(x, base), Align::Left, TEXT_DIM);
+            let stop_size = 26.0 * s;
+            x += 8.0 * s;
+            if f.stop_requested {
+                ui.icon(&mut self.atlas, "stop_request", Vec2::new(x + stop_size * 0.5, top.center().y), stop_size, STOP_REQUEST);
+            }
+            x += stop_size;
+            if let Some(v) = limit {
+                x += 10.0 * s;
+                let c = Vec2::new(x + 10.0 * s, top.center().y);
+                ui.circle(c, 10.5 * s, Color::rgba(200, 40, 40, 1.0));
+                ui.circle(c, 8.3 * s, Color::rgba(235, 235, 235, 1.0));
+                let t = format!("{:.0}", speed((v / 5.0).round() * 5.0, miles));
+                let px = if t.len() > 2 { 9.5 } else { 11.5 } * s;
+                ui.text(&mut self.atlas, &self.fonts, &t, px, Weight::Black, Vec2::new(c.x, c.y + self.fonts.cap_height(px, Weight::Black) * 0.5), Align::Center, Color::rgba(15, 15, 15, 1.0));
+            }
+            let hh = (f.time / 3600.0) as i32 % 24;
+            let mm = ((f.time % 3600.0) / 60.0) as i32;
+            let time_text = format!("{hh:02}:{mm:02}");
+            let day_text = wd.days[f.weekday.clamp(0, 6) as usize];
+            let time_w = self.fonts.width(&time_text, 14.0 * s, Weight::Bold);
+            ui.text(&mut self.atlas, &self.fonts, &time_text, 14.0 * s, Weight::Bold, Vec2::new(pw - pad, base), Align::Right, TEXT);
+            ui.text(&mut self.atlas, &self.fonts, day_text, 12.0 * s, Weight::Medium, Vec2::new(pw - pad - time_w - 5.0 * s, base), Align::Right, TEXT_DIM);
         }
-        x += stop_size;
-        if let Some(v) = limit {
-            x += 10.0 * s;
-            let c = Vec2::new(x + 10.0 * s, top.center().y);
-            ui.circle(c, 10.5 * s, Color::rgba(200, 40, 40, 1.0));
-            ui.circle(c, 8.3 * s, Color::rgba(235, 235, 235, 1.0));
-            let t = format!("{:.0}", speed((v / 5.0).round() * 5.0, miles));
-            let px = if t.len() > 2 { 9.5 } else { 11.5 } * s;
-            ui.text(&mut self.atlas, &self.fonts, &t, px, Weight::Black, Vec2::new(c.x, c.y + self.fonts.cap_height(px, Weight::Black) * 0.5), Align::Center, Color::rgba(15, 15, 15, 1.0));
-        }
-        let hh = (f.time / 3600.0) as i32 % 24;
-        let mm = ((f.time % 3600.0) / 60.0) as i32;
-        let time_text = format!("{hh:02}:{mm:02}");
-        let day_text = wd.days[f.weekday.clamp(0, 6) as usize];
-        let time_w = self.fonts.width(&time_text, 14.0 * s, Weight::Bold);
-        ui.text(&mut self.atlas, &self.fonts, &time_text, 14.0 * s, Weight::Bold, Vec2::new(pw - pad, base), Align::Right, TEXT);
-        ui.text(&mut self.atlas, &self.fonts, day_text, 12.0 * s, Weight::Medium, Vec2::new(pw - pad - time_w - 5.0 * s, base), Align::Right, TEXT_DIM);
 
         let bottom = Rect::new(0.0, map.bottom(), pw, 46.0 * s * self.bottom_e);
         if has_bottom {
@@ -1043,7 +1066,7 @@ impl Navigator {
                 }
             }
         }
-        if self.schedule && !f.stops.is_empty() {
+        if self.sched_e > 0.001 && !f.stops.is_empty() {
             let mut y = bottom.bottom() + 6.0 * s;
             ui.rect(Rect::new(pad, bottom.bottom(), pw - 2.0 * pad, 1.0), Color::WHITE.alpha(0.06));
             let late = f.delay.unwrap_or(0.0);

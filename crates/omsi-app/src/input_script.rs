@@ -458,16 +458,6 @@ impl App {
                                 n.toggle_map();
                             }
                         }
-                    KeyCode::KeyN
-                    if self.keys.contains(&KeyCode::ShiftLeft)
-                        || self.keys.contains(&KeyCode::ShiftRight) =>
-                        {
-                            // Shift+N: navigator → navigator with the schedule → off (N alone is
-                            // the gearbox's neutral)
-                            if self.cycle_navigator() {
-                                return;
-                            }
-                        }
                     KeyCode::F11 => {
                         // (Ctrl+F11; F11 alone is OMSI's pedestrian view)
                         // where am I: so a place that looks wrong can be named
@@ -669,33 +659,6 @@ impl App {
         if let Some(p) = self.player.as_mut() {
             p.vehicle.host.clock = self.clock.clone();
         }
-    }
-
-    /// Shift+N: the navigator, the navigator with the schedule, off. True in VR (where the
-    /// key is used up).
-    pub(crate) fn cycle_navigator(&mut self) -> bool {
-        if self.vr_active() {
-            if !self.vr_nav_profile().enabled {
-                self.vr_nav_adjust("enabled", 1.0);
-            } else if self.navigator.as_ref().is_some_and(|n| n.schedule) {
-                if let Some(n) = self.navigator.as_mut() { n.schedule = false; }
-                self.vr_nav_adjust("enabled", 1.0);
-            } else if let Some(n) = self.navigator.as_mut() {
-                n.schedule = true;
-            }
-            return true;
-        }
-        if let Some(n) = self.navigator.as_mut() {
-            match (n.enabled, n.schedule) {
-                (true, false) => n.schedule = true,
-                (true, true) => {
-                    n.enabled = false;
-                    n.schedule = false;
-                }
-                _ => n.enabled = true,
-            }
-        }
-        false
     }
 
     /// Whether a key the game gives `action` by itself (F1 the driver's view, O the mouse
@@ -1791,6 +1754,10 @@ impl App {
         let n = crate::game_lists::page_titles(self, &kind).map(|t| t.0.len()).unwrap_or(0);
         if i < n {
             self.settings_tab(i);
+        } else if matches!(kind, crate::game_lists::ListKind::Options(t) if t == crate::game_lists::MAP_TAB) {
+            self.menu_top = None;
+            self.open_list(crate::game_lists::ListKind::Options(0));
+            self.chooser = Some(0);
         } else {
             self.close_list();
         }
@@ -1825,7 +1792,7 @@ impl App {
         let Some(action) = self.admin_list.as_ref().and_then(|l| l.get(k)).map(|x| x.1.clone()) else { return false };
         let verb = action.split(' ').next().unwrap_or("");
         let slider = crate::game_lists::is_slider(verb);
-        let mv = if slider {
+        let mv = if slider || verb == "mapopts" {
             Move::To(fx)
         } else if fx < 0.5 {
             Move::Dec
@@ -1858,7 +1825,11 @@ impl App {
         self.menu_top = None;
         match code {
             KeyCode::Escape => {
-                if self.tours_list() {
+                if matches!(self.list_kind, Some(crate::game_lists::ListKind::Options(t)) if t == crate::game_lists::MAP_TAB) {
+                    self.menu_top = None;
+                    self.open_list(crate::game_lists::ListKind::Options(0));
+                    self.chooser = Some(0);
+                } else if self.tours_list() {
                     self.open_list(crate::game_lists::ListKind::Lines);
                 } else {
                     self.chooser = None;

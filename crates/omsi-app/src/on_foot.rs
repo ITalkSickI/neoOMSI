@@ -567,12 +567,6 @@ impl App {
                 }
                 true
             }
-            KeyCode::KeyN if shift && !ctrl => {
-                if pressed && !repeat {
-                    self.cycle_navigator();
-                }
-                true
-            }
             _ if self.on_foot.as_ref().map(|f| f.cam == FootCam::Free).unwrap_or(false) => false,
             KeyCode::KeyG => {
                 if pressed && !repeat {

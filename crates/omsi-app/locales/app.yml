@@ -377,8 +377,6 @@ _version: 2
   de: "Zufallsverkehr"
 "Navigator":
   de: "Navigator"
-"Navigator (Shift+N: map, schedule, off)":
-  de: "Navigator (Shift+N: Karte, Fahrplan, aus)"
 "AI vehicles on the map":
   de: "KI-Fahrzeuge auf der Karte"
 "Route arrows (as in OMSI 2)":

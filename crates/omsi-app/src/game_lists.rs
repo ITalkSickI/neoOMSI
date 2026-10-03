@@ -185,6 +185,9 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
     match kind {
         ListKind::Admin => return crate::admin::items(app),
         ListKind::Options(_) | ListKind::Vehicle(_) | ListKind::World(_) => {
+            if matches!(kind, ListKind::Options(t) if *t == MAP_TAB) {
+                return map_options_page(app).1;
+            }
             let Some((mut pages, tab)) = pages_of(app, kind) else { return out };
             if pages.is_empty() {
                 return vec![(row("Nothing to set here", 'i', "", "", None), "noop".to_string())];
@@ -498,6 +501,15 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                 }
                 // (the preset, the clouds and the precipitation are picked from a drop-down: `App::chooser_pick`)
                 "weather" | "cloudkind" | "precipkind" | "metar_src" | "sel" | "preset" | "gfxprofile" | "reset" => {}
+                // (map sub page)
+                "mapopts" => {
+                    if step {
+                        return Some(ListKind::Options(MAP_TAB));
+                    }
+                    let m = if let Move::To(_) = mv { Move::Next } else { mv };
+                    option_do(app, "navigator", "", m);
+                }
+                "mapback" if step => return Some(ListKind::Options(0)),
                 "metar_icao_edit" if step => {
                     if app.menu_edit_icao { app.apply_icao_edit(); } else { app.start_icao_edit(); }
                 }
@@ -1039,6 +1051,10 @@ fn toggle_now(app: &App, id: &str) -> Option<bool> {
     Some(match id {
         "navigator" => if app.vr_active() { app.vr_nav_profile().enabled } else { app.navigator.as_ref().is_some_and(|n| n.enabled) },
         "nav_ai" => app.navigator.as_ref().map_or(s.nav_ai, |n| n.show_ai),
+        "nav_topbar" => app.navigator.as_ref().map_or(s.nav_topbar, |n| n.show_topbar),
+        "nav_turn" => app.navigator.as_ref().map_or(s.nav_turn, |n| n.show_turn),
+        "nav_stoplist" => app.navigator.as_ref().map_or(s.nav_stoplist, |n| n.show_stoplist),
+        "nav_stops_ext" => app.navigator.as_ref().map_or(s.nav_stops_ext, |n| n.schedule),
         "shadows" => s.shadows,
         "head" => s.head_movement,
         "cam_smooth" => s.driverview_smooth,
@@ -1113,6 +1129,34 @@ fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static str, String
             }
             app.settings.nav_ai = on;
             Some(("nav_ai", bit))
+        }
+        "nav_topbar" => {
+            if let Some(n) = app.navigator.as_mut() {
+                n.show_topbar = on;
+            }
+            app.settings.nav_topbar = on;
+            Some(("nav_topbar", bit))
+        }
+        "nav_turn" => {
+            if let Some(n) = app.navigator.as_mut() {
+                n.show_turn = on;
+            }
+            app.settings.nav_turn = on;
+            Some(("nav_turn", bit))
+        }
+        "nav_stoplist" => {
+            if let Some(n) = app.navigator.as_mut() {
+                n.show_stoplist = on;
+            }
+            app.settings.nav_stoplist = on;
+            Some(("nav_stoplist", bit))
+        }
+        "nav_stops_ext" => {
+            if let Some(n) = app.navigator.as_mut() {
+                n.schedule = on;
+            }
+            app.settings.nav_stops_ext = on;
+            Some(("nav_stops_ext", bit))
         }
         "shadows" => {
             app.settings.shadows = on;
@@ -1718,6 +1762,24 @@ fn sync_live(app: &mut App) {
     }
 }
 
+pub(crate) const MAP_TAB: usize = 99;
+fn map_options_page(app: &App) -> Page {
+    let file = settings_file();
+    let rows: Vec<(String, String)> = vec![
+        switch_row(app, "navigator", "Map", "Enables/Disables the Minimap"),
+        switch_row(app, "nav_topbar", "Top bar", "Speed, speed limit and time at the top of the map"),
+        switch_row(app, "nav_turn", "Turn indicator", "The next turn at the top of the map"),
+        switch_row(app, "nav_stoplist", "Stop list", "The next stop below the map"),
+        switch_row(app, "nav_stops_ext", "Extended stop list", "Shows more stops below the next stop instead of only the basic information"),
+        switch_row(app, "nav_ai", "AI vehicles", "Shows/hides the other (AI) vehicles on the Minimap and the city map"),
+        select_row(&file, "navigator_corner", "Corner", "Takes effect when the game starts the next time"),
+    ]
+        .into_iter()
+        .flatten()
+        .collect();
+    ("Map", rows)
+}
+
 fn options_pages(app: &App) -> Vec<Page> {
     let s = &app.settings;
     let file = settings_file();
@@ -1726,18 +1788,14 @@ fn options_pages(app: &App) -> Vec<Page> {
     let cm = |v: f32| format!("{:+.0} cm", v * 100.0);
     let later = "Takes effect when the game starts the next time";
     let game: Vec<(String, String)> = vec![
-        switch_row(app, "navigator", "Navigator", "Enables/Disables the Minimap"),
-        switch_row(app, "nav_ai", "AI vehicles on the map", "Shows/hides the other (AI) vehicles on the Minimap and the city map"),
+        toggle_now(app, "navigator").map(|on| (row("Map settings...", 'm', if on { "on" } else { "off" }, "Switch the Minimap on/off; click the line for its settings", None), "mapopts".to_string())),
         switch_row(app, "nav_arrows", "Route arrows (as in OMSI 2)", "Shows OMSI 2's route arrows over the road"),
-        pick("navigator_corner", "Corner", later),
         switch_row(app, "auto_ibis", "Automatic IBIS", "When enabled, the selected tour is automatically entered into IBIS"),
+        switch_row(app, "exact_fare", "Passengers pay the exact fare", "No change is given at the cash desk"),
+        pick("boarding", "Boarding", "How passengers get their tickets"),
         switch_row(app, "coll_objects", "Collisions with objects", "Enables/disables collisions with objects such as buildings, streetlights, etc."),
         switch_row(app, "coll_vehicles", "Collisions with vehicles", "Enables/Disables Collisions with Other Vehicles"),
         switch_row(app, "collision_pedestrians", "Collisions with people", "Enables/disables knocking down people"),
-        switch_row(app, "timetable_win", "Timetable window", "Displays a list of all stops (only when a tour is active)"),
-        switch_row(app, "info_bar", "Information bar", "Displays information such as the time, speed, and other details at the top of the screen"),
-        switch_row(app, "exact_fare", "Passengers pay the exact fare", "No change is given at the cash desk"),
-        pick("boarding", "Boarding", "How passengers get their tickets"),
         pick("maintenance", "Maintenance", later),
         pick("ai_unsched_factor", "Random traffic", later),
         pick("ai_max_scheduled", "Timetable vehicles", later),
@@ -1855,6 +1913,8 @@ fn options_pages(app: &App) -> Vec<Page> {
         switch_row(app, "ui_scale_window", "Interface grows with the window", "On a window taller than 1080p the interface grows with it"),
         slider_row(app, "ui_opacity", "Interface opacity", "How much of the interface's backgrounds shows", &pct),
         switch_row(app, "tooltips", "Name of the button under the mouse", "Shows the name of what the cursor points at"),
+        switch_row(app, "timetable_win", "Timetable window", "Displays a list of all stops (only when a tour is active)"),
+        switch_row(app, "info_bar", "Information bar", "Displays information such as the time, speed, and other details at the top of the screen"),
         switch_row(app, "notes", "Notes in the top-left corner", "Why the vehicle does not move, the change due, what a service did"),
         switch_row(app, "chat", "Chat in online games", "Shows the chat of a LAN session"),
         switch_row(app, "name_tags", "Other players' names above their buses", "Shows the names of the other players"),
@@ -2021,6 +2081,7 @@ fn world_pages(app: &App) -> Vec<Page> {
 /// The pages of the settings window `kind` (empty ones left out) and the one shown.
 fn pages_of(app: &App, kind: &ListKind) -> Option<(Vec<Page>, usize)> {
     let (pages, tab) = match kind {
+        ListKind::Options(t) if *t == MAP_TAB => (options_pages(app), 0),
         ListKind::Options(t) => (options_pages(app), *t),
         ListKind::Vehicle(t) => (vehicle_pages(app), *t),
         ListKind::World(t) => (world_pages(app), *t),
