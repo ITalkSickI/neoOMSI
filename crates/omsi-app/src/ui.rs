@@ -441,6 +441,9 @@ pub struct Ui {
     loading_art: Option<Option<(TextureId, u32, u32)>>,
     /// The wordmark bottom left (`assets/logos/neoOMSI-wordmark.png`, cut to its content).
     loading_logo: Option<Option<(TextureId, u32, u32)>>,
+    /// The wordmark cut to its content, full size, and its renderings at exact pixel heights.
+    logo_src: Option<image::RgbaImage>,
+    logo_cache: Vec<(u32, TextureId, u32)>,
     /// The loading screen's spinner: one texture per turn of 1/24.
     spinner: Vec<TextureId>,
 }
@@ -454,11 +457,13 @@ impl Ui {
         self.loading_bg = None;
         self.loading_art = None;
         self.loading_logo = None;
+        self.logo_src = None;
+        self.logo_cache.clear();
         self.spinner.clear();
     }
 
     pub fn new() -> Option<Ui> {
-        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_ctl: Vec::new(), dd_rects: Vec::new(), dd_top: 0, dd_rows: 8, menu_side: Vec::new(), menu_pane: Vec::new(), menu_pane_start: 0, menu_pane_go: None, menu_pane_box: None, menu_time: Vec::new(), anim: Default::default(), anim_dt: 0.0, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default(), loading_bg: None, loading_art: None, loading_logo: None, spinner: Vec::new() })
+        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_ctl: Vec::new(), dd_rects: Vec::new(), dd_top: 0, dd_rows: 8, menu_side: Vec::new(), menu_pane: Vec::new(), menu_pane_start: 0, menu_pane_go: None, menu_pane_box: None, menu_time: Vec::new(), anim: Default::default(), anim_dt: 0.0, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default(), loading_bg: None, loading_art: None, loading_logo: None, logo_src: None, logo_cache: Vec::new(), spinner: Vec::new() })
     }
 
     /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
@@ -966,12 +971,12 @@ impl Ui {
         }
         let m = 40.0 * s;
         // --- the game's name, bottom left
-        self.ensure_logo(r, scene);
-        match self.loading_logo {
-            Some(Some((tex, iw, ih))) => {
-                let lh = 52.0 * s;
-                let lw = lh * iw as f32 / ih.max(1) as f32;
-                scene.overlays.push((tex, [m, height - m - lh, m + lw, height - m]));
+        self.ensure_logo();
+        let logo_px = self.logo_at(r, scene, 52.0 * s);
+        match logo_px {
+            Some((tex, lw, lh)) => {
+                let (lx, ly) = (m.round(), (height - m).round() - lh as f32);
+                scene.overlays.push((tex, [lx, ly, lx + lw as f32, ly + lh as f32]));
             }
             _ => {
                 let logo = self.text.label(r, scene, "neoOMSI", (64.0 * s) as u32, [255, 255, 255, 0]);
@@ -1178,7 +1183,7 @@ impl Ui {
         self.text.rounded(r, scene, [rect[0], by, rect[0] + 2.0 * s, by + bh], 1.0 * s, fade(if danger { DANGER } else { ACCENT }, k));
     }
 
-    fn ensure_logo(&mut self, r: &Renderer, scene: &mut Scene) {
+    fn ensure_logo(&mut self) {
         if self.loading_logo.is_none() {
             static LOGO: &[u8] = include_bytes!("../../../assets/logos/neoOMSI-wordmark.png");
             self.loading_logo = Some(image::load_from_memory(LOGO).ok().map(|i| {
@@ -1198,21 +1203,46 @@ impl Ui {
                     i = image::imageops::crop_imm(&i, x0, y0, x1 - x0, y1 - y0).to_image();
                 }
                 let (iw, ih) = i.dimensions();
-                let img = omsi_texture::Image { width: iw, height: ih, rgba: i.into_raw(), has_alpha: true };
-                (r.add_texture(scene, &img, false), iw, ih)
+                self.logo_src = Some(i);
+                (0, iw, ih)
             }));
         }
+    }
+
+    fn logo_at(&mut self, r: &Renderer, scene: &mut Scene, h: f32) -> Option<(TextureId, u32, u32)> {
+        let h = (h.round() as u32).clamp(8, 1024);
+        if let Some(&(_, tex, w)) = self.logo_cache.iter().find(|c| c.0 == h) {
+            return Some((tex, w, h));
+        }
+        let src = self.logo_src.as_ref()?;
+        let w = ((src.width() as f32 * h as f32 / src.height().max(1) as f32).round() as u32).max(1);
+        let mut pm = src.clone();
+        for p in pm.pixels_mut() {
+            let a = p[3] as u32;
+            for c in 0..3 { p[c] = ((p[c] as u32 * a + 127) / 255) as u8; }
+        }
+        let mut d = image::imageops::resize(&pm, w, h, image::imageops::FilterType::Lanczos3);
+        for p in d.pixels_mut() {
+            let a = p[3] as u32;
+            if a > 0 {
+                for c in 0..3 { p[c] = ((p[c] as u32 * 255 + a / 2) / a).min(255) as u8; }
+            }
+        }
+        let img = omsi_texture::Image { width: w, height: h, rgba: d.into_raw(), has_alpha: true };
+        let tex = r.add_texture(scene, &img, false);
+        if self.logo_cache.len() >= 6 { self.logo_cache.remove(0); }
+        self.logo_cache.push((h, tex, w));
+        Some((tex, w, h))
     }
 
     /// The pause menu's header: the wordmark instead of the game's name and "Paused".
     /// False when the logo could not be loaded (the text header is drawn then).
     fn menu_logo_header(&mut self, r: &Renderer, scene: &mut Scene, x: f32, y: f32, w: f32, header_h: f32, s: f32) -> bool {
-        self.ensure_logo(r, scene);
-        if let Some(Some((tex, iw, ih))) = self.loading_logo {
-            let lh = 30.0 * s;
-            let lw = lh * iw as f32 / ih.max(1) as f32;
-            let left = x + (w - lw) * 0.5;
-            let top = y + (header_h - 6.0 * s - lh) * 0.5;
+        self.ensure_logo();
+        if let Some((tex, iw, ih)) = self.logo_at(r, scene, 30.0 * s) {
+            let (lw, lh) = (iw as f32, ih as f32);
+            let left = (x + (w - lw) * 0.5).round();
+            let top = (y + (header_h - 6.0 * s - lh) * 0.5).round();
             scene.overlays.push((tex, [left, top, left + lw, top + lh]));
             true
         } else {
