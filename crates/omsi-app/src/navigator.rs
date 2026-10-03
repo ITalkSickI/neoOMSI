@@ -56,15 +56,6 @@ pub(crate) fn stop_requested(vehicle: &omsi_sim::vehicle::VehicleInstance) -> bo
     ["haltewunsch", "haltewunschlampe"].iter().any(|name| vehicle.var(name).is_some_and(|v| v > 0.5))
 }
 
-fn stop_request_icon(ui: &mut Painter, atlas: &mut Atlas, requested: bool, mut row: Rect, scale: f32) -> Rect {
-    if requested {
-        let size = 32.0 * scale;
-        ui.icon(atlas, "stop_request", Vec2::new(row.right() - size * 0.5, row.center().y), size, STOP_REQUEST);
-        row.w -= size + 6.0 * scale;
-    }
-    row
-}
-
 const FOV: f32 = 40.0;
 const PITCH: f64 = 52.0;
 const ROAD_RADIUS: f64 = 1300.0;
@@ -164,6 +155,11 @@ pub struct Navigator {
     fonts: Fonts,
     atlas: Atlas,
     target: Option<(TextureId, u32, u32)>,
+    bottom_t: f32,
+    bottom_e: f32,
+    turn_t: f32,
+    turn_e: f32,
+    turn_shown: Option<(i32, f32, f64, Option<String>)>,
     own_net: Option<std::sync::Arc<Network>>,
     global: Option<std::sync::Arc<Network>>,
     stop_pos: std::sync::Arc<HashMap<i64, DVec3>>,
@@ -253,6 +249,11 @@ impl Navigator {
             fonts: Fonts::new(),
             atlas: Atlas::new(1024),
             target: None,
+            bottom_t: 0.0,
+            bottom_e: 0.0,
+            turn_t: 0.0,
+            turn_e: 0.0,
+            turn_shown: None,
             own_net: None,
             global: None,
             stop_pos: Default::default(),
@@ -712,7 +713,24 @@ impl Navigator {
         let pw = (base * f.ui_scale).min((sh * 0.7).max(300.0)).round();
         let map_h = (pw * 0.62).round();
         let s = pw / 360.0;
-        let bars = (34.0 + 46.0) * s;
+        let has_bottom = !f.stops.is_empty() || !self.route.lanes.is_empty();
+        let step = f.dt.clamp(0.0, 0.1) / 0.2;
+        self.bottom_t = if has_bottom { (self.bottom_t + step).min(1.0) } else { (self.bottom_t - step).max(0.0) };
+        let t = self.bottom_t;
+        self.bottom_e = t * t * (3.0 - 2.0 * t);
+        let want_turn = self.next_turn.is_some();
+        if let Some(t) = self.next_turn.clone() {
+            self.turn_shown = Some(t);
+        }
+        let tstep = f.dt.clamp(0.0, 0.1) / 0.25;
+        self.turn_t = if want_turn { (self.turn_t + tstep).min(1.0) } else { (self.turn_t - tstep).max(0.0) };
+        if self.turn_t <= 0.0 && !want_turn {
+            self.turn_shown = None;
+        }
+        let tt = self.turn_t;
+        self.turn_e = tt * tt * (3.0 - 2.0 * tt);
+        let turn_animating = self.turn_t > 0.0 && self.turn_t < 1.0 || want_turn != (self.turn_t >= 1.0);
+        let bars = (34.0 + 46.0 * self.bottom_e) * s;
         let sched = if self.schedule { (f.stops.len().clamp(1, 5) as f32 * 22.0 + 12.0) * s } else { 0.0 };
         let ph = (map_h + bars + sched).round();
         let (w, h) = (pw as u32, ph as u32);
@@ -738,7 +756,7 @@ impl Navigator {
         }
         let (tex, _, _) = self.target.unwrap();
         let Some(view) = renderer.texture_view(scene, tex) else { return };
-        if !self.city.open && (resized || self.time - self.drawn_at >= NAV_REDRAW_S) {
+        if !self.city.open && (resized || turn_animating || self.time - self.drawn_at >= NAV_REDRAW_S) {
             self.drawn_at = self.time;
             self.draw(renderer, &view, (w, h), map_h, f);
         }
@@ -760,6 +778,7 @@ impl Navigator {
         let panel = Rect::new(0.0, 0.0, pw, ph);
         let radius = 8.0 * s;
         let top_h = (34.0 * s).round();
+        let has_bottom = self.bottom_e > 0.001;
         let map = Rect::new(0.0, top_h, pw, map_h);
         let vp = [map.x, map.y, map.w, map.h];
 
@@ -849,7 +868,9 @@ impl Navigator {
 
         let mut ui = Painter::new();
         ui.gradient(Rect::new(map.x, map.y, map.w, map.h * 0.3), Color::rgba(22, 22, 22, 0.75), Color::rgba(22, 22, 22, 0.0));
-        if let Some((dir, angle, dist, street)) = self.next_turn.as_ref() {
+        if let Some((dir, angle, dist, street)) = self.turn_shown.clone().as_ref() {
+            let ta = self.turn_e;
+            let slide = (1.0 - ta) * -14.0 * s;
             let icon = match *dir {
                 2 => "u_turn_left",
                 -1 if *angle < 60.0 => "turn_slight_left",
@@ -861,13 +882,13 @@ impl Navigator {
             let tw = self.fonts.width(&t, 14.0 * s, Weight::Bold);
             let street = street.as_deref().map(|n| self.fonts.fit(n, 12.0 * s, Weight::Medium, map.w * 0.62 - 50.0 * s - tw));
             let sw_ = street.as_deref().map(|n| self.fonts.width(n, 12.0 * s, Weight::Medium) + 10.0 * s).unwrap_or(0.0);
-            let b = Rect::new(map.x + 8.0 * s, map.y + 8.0 * s, 44.0 * s + tw + sw_, 34.0 * s);
-            ui.rounded(b, 6.0 * s, CARD);
-            ui.rounded_border(b, 6.0 * s, 1.0_f32.max(s), HAIR);
-            ui.icon(&mut self.atlas, icon, Vec2::new(b.x + 18.0 * s, b.center().y), 24.0 * s, ACCENT);
-            ui.text_in(&mut self.atlas, &self.fonts, &t, 14.0 * s, Weight::Bold, Rect::new(b.x + 34.0 * s, b.y, tw + 4.0, b.h), Align::Left, TEXT);
+            let b = Rect::new(map.x + 8.0 * s, map.y + 8.0 * s + slide, 44.0 * s + tw + sw_, 34.0 * s);
+            ui.rounded(b, 6.0 * s, CARD.alpha(ta));
+            ui.rounded_border(b, 6.0 * s, 1.0_f32.max(s), HAIR.alpha(ta));
+            ui.icon(&mut self.atlas, icon, Vec2::new(b.x + 18.0 * s, b.center().y), 24.0 * s, ACCENT.alpha(ta));
+            ui.text_in(&mut self.atlas, &self.fonts, &t, 14.0 * s, Weight::Bold, Rect::new(b.x + 34.0 * s, b.y, tw + 4.0, b.h), Align::Left, TEXT.alpha(ta));
             if let Some(n) = street.as_deref() {
-                ui.text_in(&mut self.atlas, &self.fonts, n, 12.0 * s, Weight::Medium, Rect::new(b.x + 42.0 * s + tw, b.y, sw_, b.h), Align::Left, TEXT_DIM);
+                ui.text_in(&mut self.atlas, &self.fonts, n, 12.0 * s, Weight::Medium, Rect::new(b.x + 42.0 * s + tw, b.y, sw_, b.h), Align::Left, TEXT_DIM.alpha(ta));
             }
         }
         if let Some(n) = self.street_here.as_deref() {
@@ -912,25 +933,33 @@ impl Navigator {
         ui.rect(top, BAR);
         ui.rect(Rect::new(0.0, top.bottom() - 1.0_f32.max(s), pw, 1.0_f32.max(s)), HAIR);
         let pad = 11.0 * s;
-        let base = top.y + top.h * 0.5 + self.fonts.cap_height(17.0 * s, Weight::Bold) * 0.5;
+        let base = top.y + top.h * 0.5 + self.fonts.cap_height(22.0 * s, Weight::Bold) * 0.5;
         let mut x = pad;
         let miles = uses_miles(f.units);
-        x += ui.text(&mut self.atlas, &self.fonts, &format!("{:.0}", speed(f.speed_kmh.abs(), miles)), 17.0 * s, Weight::Bold, Vec2::new(x, base), Align::Left, TEXT);
-        x += 4.0 * s;
-        x += ui.text(&mut self.atlas, &self.fonts, if miles { "mph" } else { wd.kmh }, 12.0 * s, Weight::Medium, Vec2::new(x, base), Align::Left, TEXT_DIM);
         let limit = net.and_then(|n| {
             let lane = if self.route.on_route { self.route.lanes.get(self.route.progress).copied() } else { None };
             let lane = lane.or_else(|| n.nearest_lane_near(f.bus, LaneKind::Street).filter(|l| l.2 < 8.0).map(|l| l.0))?;
             let v = n.lanes.get(lane)?.speed_limit_kmh;
             (v > 1.0 && v < 200.0).then_some(v)
         });
+        let over = limit.map(|v| ((f.speed_kmh.abs() - v - 1.0) / 4.0).clamp(0.0, 1.0)).unwrap_or(0.0);
+        let speed_color = TEXT.mix(Color::rgba(240, 64, 56, 1.0), over * over * (3.0 - 2.0 * over));
+        x += ui.text(&mut self.atlas, &self.fonts, &format!("{:.0}", speed(f.speed_kmh.abs(), miles)), 22.0 * s, Weight::Bold, Vec2::new(x, base), Align::Left, speed_color);
+        x += 4.0 * s;
+        x += ui.text(&mut self.atlas, &self.fonts, if miles { "mph" } else { wd.kmh }, 14.0 * s, Weight::Medium, Vec2::new(x, base), Align::Left, TEXT_DIM);
+        let stop_size = 26.0 * s;
+        x += 8.0 * s;
+        if f.stop_requested {
+            ui.icon(&mut self.atlas, "stop_request", Vec2::new(x + stop_size * 0.5, top.center().y), stop_size, STOP_REQUEST);
+        }
+        x += stop_size;
         if let Some(v) = limit {
             x += 10.0 * s;
             let c = Vec2::new(x + 10.0 * s, top.center().y);
             ui.circle(c, 10.5 * s, Color::rgba(200, 40, 40, 1.0));
             ui.circle(c, 8.3 * s, Color::rgba(235, 235, 235, 1.0));
             let t = format!("{:.0}", speed((v / 5.0).round() * 5.0, miles));
-            let px = if t.len() > 2 { 7.5 } else { 9.0 } * s;
+            let px = if t.len() > 2 { 9.5 } else { 11.5 } * s;
             ui.text(&mut self.atlas, &self.fonts, &t, px, Weight::Black, Vec2::new(c.x, c.y + self.fonts.cap_height(px, Weight::Black) * 0.5), Align::Center, Color::rgba(15, 15, 15, 1.0));
         }
         let hh = (f.time / 3600.0) as i32 % 24;
@@ -938,34 +967,19 @@ impl Navigator {
         let time_text = format!("{hh:02}:{mm:02}");
         let day_text = wd.days[f.weekday.clamp(0, 6) as usize];
         let time_w = self.fonts.width(&time_text, 14.0 * s, Weight::Bold);
-        let day_w = self.fonts.width(day_text, 12.0 * s, Weight::Medium);
         ui.text(&mut self.atlas, &self.fonts, &time_text, 14.0 * s, Weight::Bold, Vec2::new(pw - pad, base), Align::Right, TEXT);
         ui.text(&mut self.atlas, &self.fonts, day_text, 12.0 * s, Weight::Medium, Vec2::new(pw - pad - time_w - 5.0 * s, base), Align::Right, TEXT_DIM);
 
-        let fahrenheit = uses_fahrenheit(f.units);
-        let unit = if fahrenheit { "°F" } else { "°C" };
-        let temp = format!("Ext. {:.0}{unit} · Int. {:.0}{unit}", temperature(f.outside_temp, fahrenheit), temperature(f.inside_temp, fahrenheit));
-        let center = match f.line.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
-            Some(line) => format!("{temp} · {line}"),
-            None => temp,
-        };
-        let left_edge = (if limit.is_some() { x + 24.0 * s } else { x }) + 6.0 * s;
-        let right_edge = pw - pad - time_w - 5.0 * s - day_w - 6.0 * s;
-        if right_edge > left_edge {
-            let rect = Rect::new(left_edge, top.y, right_edge - left_edge, top.h);
-            let center = self.fonts.fit(&center, 11.5 * s, Weight::Bold, rect.w);
-            ui.text(&mut self.atlas, &self.fonts, &center, 11.5 * s, Weight::Bold, Vec2::new(rect.center().x, base), Align::Center, TEXT_DIM);
+        let bottom = Rect::new(0.0, map.bottom(), pw, 46.0 * s * self.bottom_e);
+        if has_bottom {
+            ui.rect(bottom, BAR);
+            ui.rect(Rect::new(0.0, bottom.y, pw, 1.0_f32.max(s)), HAIR);
         }
-
-        let bottom = Rect::new(0.0, map.bottom(), pw, 46.0 * s);
-        ui.rect(bottom, BAR);
-        ui.rect(Rect::new(0.0, bottom.y, pw, 1.0_f32.max(s)), HAIR);
         let stop_row = if f.stops.is_empty() {
             Rect::new(pad, bottom.y, pw - 2.0 * pad, bottom.h)
         } else {
             Rect::new(pad, bottom.y + 4.0 * s, pw - 2.0 * pad, 20.0 * s)
         };
-        let stop_row = stop_request_icon(&mut ui, &mut self.atlas, f.stop_requested, stop_row, s);
         let note = if self.route.note > 0.0 {
             Some((wd.recalculated, ON_TIME))
         } else if self.route.joined && !self.route.lanes.is_empty() && !self.route.on_route && self.route.off_for > OFF_ROUTE_AFTER {
@@ -980,7 +994,16 @@ impl Navigator {
         match f.stops.first() {
             Some(st) => {
                 let name = if n_stops == 1 { format!("{} · {}", st.name.trim(), wd.last_stop) } else { st.name.trim().to_string() };
-                ui.text_in(&mut self.atlas, &self.fonts, &name, 13.5 * s, Weight::Bold, stop_row, Align::Left, TEXT);
+                let mut name_row = stop_row;
+                if let Some(line) = f.line.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
+                    let lw = self.fonts.width(line, 12.5 * s, Weight::Bold) + 12.0 * s;
+                    let badge = Rect::new(stop_row.x, stop_row.center().y - 9.0 * s, lw, 18.0 * s);
+                    ui.rounded(badge, 4.0 * s, ACCENT);
+                    ui.text_in(&mut self.atlas, &self.fonts, line, 12.5 * s, Weight::Bold, badge, Align::Center, Color::rgba(18, 14, 8, 1.0));
+                    name_row.x += lw + 7.0 * s;
+                    name_row.w -= lw + 7.0 * s;
+                }
+                ui.text_in(&mut self.atlas, &self.fonts, &name, 13.5 * s, Weight::Bold, name_row, Align::Left, TEXT);
                 let mut parts = Vec::new();
                 if let Some(d) = self.next_dist {
                     parts.push(rounded_distance(d, miles, 0.0));
@@ -1015,7 +1038,7 @@ impl Navigator {
                 }
             }
             None => {
-                if let Some(t) = f.terminus.clone().filter(|t| !t.trim().is_empty()) {
+                if let Some(t) = f.terminus.clone().filter(|t| has_bottom && !t.trim().is_empty()) {
                     ui.text_in(&mut self.atlas, &self.fonts, &t, 13.0 * s, Weight::Medium, stop_row, Align::Left, TEXT_DIM);
                 }
             }
@@ -2116,30 +2139,6 @@ mod tests {
     use super::*;
     use omsi_sim::traffic::Lane;
 
-    #[test]
-    fn stop_request_icon_reserves_space_only_while_active() {
-        let mut atlas = Atlas::new(256);
-        for scale in [0.75, 1.0, 2.0] {
-            for height in [20.0, 46.0] {
-                let row = Rect::new(11.0 * scale, 300.0 * scale, 300.0 * scale, height * scale);
-                for requested in [false, true, false] {
-                    let mut ui = Painter::new();
-                    let text = stop_request_icon(&mut ui, &mut atlas, requested, row, scale);
-                    assert_eq!((text.x, text.y, text.h), (row.x, row.y, row.h));
-                    if requested {
-                        assert!(!ui.verts.is_empty(), "the stop sign must render");
-                        assert!(ui.verts.iter().all(|v| v.color == STOP_REQUEST.0));
-                        assert!(ui.verts.iter().all(|v| v.pos[0] > text.right() && v.pos[0] <= row.right()));
-                        assert!((text.w - (row.w - 38.0 * scale)).abs() < 0.01);
-                    } else {
-                        assert!(ui.verts.is_empty());
-                        assert_eq!(text.w, row.w);
-                    }
-                }
-            }
-        }
-    }
-
     fn straight(a: (f64, f64), b: (f64, f64)) -> Lane {
         omsi_sim::traffic::LaneBuilder::polyline(vec![DVec3::new(a.0, a.1, 0.0), DVec3::new(b.0, b.1, 0.0)], LaneKind::Street, 3.0)
     }
@@ -2301,16 +2300,8 @@ fn uses_miles(units: &str) -> bool {
     units.eq_ignore_ascii_case("uk") || units.eq_ignore_ascii_case("imperial")
 }
 
-fn uses_fahrenheit(units: &str) -> bool {
-    units.eq_ignore_ascii_case("imperial")
-}
-
 fn speed(kmh: f32, miles: bool) -> f32 {
     if miles { kmh * 0.621_371 } else { kmh }
-}
-
-fn temperature(celsius: f32, fahrenheit: bool) -> f32 {
-    if fahrenheit { celsius * 9.0 / 5.0 + 32.0 } else { celsius }
 }
 
 fn distance(metres: f64, miles: bool) -> String {
