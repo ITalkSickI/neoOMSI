@@ -10,9 +10,9 @@
   <a href="https://github.com/neoOMSI/neoOMSI/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/neoOMSI/neoOMSI?label=version&color=f47f30&style=for-the-badge"></a>
   <a href="https://github.com/neoOMSI/neoOMSI/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/neoOMSI/neoOMSI/release.yml?branch=main&style=for-the-badge&label=build"></a>
   <a href="https://neoOMSI.github.io/neoOMSI/"><img alt="Docs" src="https://img.shields.io/badge/docs-website-2d3138?style=for-the-badge"></a>
-  <a href="https://discord.gg/VG2EKVafYG"><img alt="Discord" src="https://img.shields.io/badge/discord-join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
-  <a href="https://buymeacoffee.com/usonskyyy"><img alt="Buy me a coffee" src="https://img.shields.io/badge/buy%20me%20a%20coffee-support-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
-  <a href="https://ko-fi.com/usonance"><img alt="Ko-fi" src="https://img.shields.io/badge/ko--fi-support-29abe0?style=for-the-badge&logo=kofi&logoColor=white"></a>
+  <a href="https://discord.gg/Gk7EngX6JK"><img alt="Discord" src="https://img.shields.io/badge/discord-join%20us-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
+  <a href="https://buymeacoffee.com/shlovto"><img alt="Buy me a coffee" src="https://img.shields.io/badge/buy%20me%20a%20coffee-support-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
+  <a href="https://ko-fi.com/shlovto"><img alt="Ko-fi" src="https://img.shields.io/badge/ko--fi-support-29abe0?style=for-the-badge&logo=kofi&logoColor=white"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/neoOMSI/neoOMSI?style=for-the-badge"></a>
 </p>
 
@@ -20,7 +20,7 @@
 > **Early release. Expect bugs.** neoOMSI is in an early stage of development: things may be
 > missing, broken or change between versions. Please report problems in
 > [Issues](https://github.com/neoOMSI/neoOMSI/issues) or on our
-> [Discord server](https://discord.gg/VG2EKVafYG).
+> [Discord server](https://discord.gg/Gk7EngX6JK).
 
 **neoOMSI** is a from-scratch recreation of the bus simulator **OMSI 2**, written in Rust:
 64-bit, multithreaded, with a modern renderer (Metal / Vulkan / DirectX 12 through wgpu),
@@ -183,8 +183,8 @@ neoOMSI is made in free time. If you enjoy it and want to help it along, you can
 coffee or support it on Ko-fi - thank you!
 
 <p>
-  <a href="https://buymeacoffee.com/usonskyyy"><img alt="Buy me a coffee" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="48"></a>
-  <a href="https://ko-fi.com/usonance"><img alt="Support me on Ko-fi" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" height="48"></a>
+  <a href="https://buymeacoffee.com/shlovto"><img alt="Buy me a coffee" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="48"></a>
+  <a href="https://ko-fi.com/shlovto"><img alt="Support me on Ko-fi" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" height="48"></a>
 </p>
 
 ## License
