@@ -36,10 +36,14 @@ use crate::traffic::Traffic;
 
 // neutral dark, half transparent, calm
 const NAV_REDRAW_S: f32 = 1.0 / 30.0;
-const PANEL: Color = Color::rgba(10, 10, 10, 0.70);
+const PANEL: Color = Color::rgba(22, 22, 22, 0.78);
+// the menu's look: the same panel grey, a hairline round it, amber as the accent
+const CARD: Color = Color::rgba(22, 22, 22, 0.92);
+const HAIR: Color = Color::rgba(255, 255, 255, 0.09);
+const ACCENT: Color = Color::rgba(232, 160, 48, 1.0);
 // (the bars under the texts darken whatever the opacity setting leaves of the panel: at a
 // third the cab showed through behind the next stop)
-const BAR: Color = Color::rgba(0, 0, 0, 0.55);
+const BAR: Color = Color::rgba(14, 14, 14, 0.62);
 const ROAD_CASING: Color = Color::rgba(30, 30, 30, 0.9);
 const ROAD: Color = Color::rgba(92, 92, 92, 1.0);
 const ROAD_MAIN: Color = Color::rgba(112, 112, 112, 1.0);
@@ -908,7 +912,7 @@ impl Navigator {
         let wd = words(f.language);
         self.atlas.begin_frame();
         let panel = Rect::new(0.0, 0.0, pw, ph);
-        let radius = 7.0 * s;
+        let radius = 8.0 * s;
         let top_h = (34.0 * s).round();
         let map = Rect::new(0.0, top_h, pw, map_h);
         let vp = [map.x, map.y, map.w, map.h];
@@ -972,7 +976,7 @@ impl Navigator {
 
         // --- background (half transparent), traffic, markers, text
         let mut bg = Painter::new();
-        bg.rounded(panel, radius, if self.cockpit_display { Color::rgba(10, 10, 10, 1.0) } else { PANEL });
+        bg.rounded(panel, radius, if self.cockpit_display { Color::rgba(22, 22, 22, 1.0) } else { PANEL });
         let n_bg = bg.len();
 
         let mut dy = Painter::new();
@@ -1006,7 +1010,7 @@ impl Navigator {
 
         let mut ui = Painter::new();
         // the far end of the map fades into the panel
-        ui.gradient(Rect::new(map.x, map.y, map.w, map.h * 0.3), Color::rgba(10, 10, 10, 0.75), Color::rgba(10, 10, 10, 0.0));
+        ui.gradient(Rect::new(map.x, map.y, map.w, map.h * 0.3), Color::rgba(22, 22, 22, 0.75), Color::rgba(22, 22, 22, 0.0));
         // the next turn: an arrow and how far, top left of the map
         if let Some((dir, angle, dist, street)) = self.next_turn.as_ref() {
             let icon = match *dir {
@@ -1022,8 +1026,9 @@ impl Navigator {
             let street = street.as_deref().map(|n| self.fonts.fit(n, 12.0 * s, Weight::Medium, map.w * 0.62 - 50.0 * s - tw));
             let sw_ = street.as_deref().map(|n| self.fonts.width(n, 12.0 * s, Weight::Medium) + 10.0 * s).unwrap_or(0.0);
             let b = Rect::new(map.x + 8.0 * s, map.y + 8.0 * s, 44.0 * s + tw + sw_, 34.0 * s);
-            ui.rounded(b, 5.0 * s, Color::rgba(10, 10, 10, 0.85));
-            ui.icon(&mut self.atlas, icon, Vec2::new(b.x + 18.0 * s, b.center().y), 24.0 * s, TEXT);
+            ui.rounded(b, 6.0 * s, CARD);
+            ui.rounded_border(b, 6.0 * s, 1.0_f32.max(s), HAIR);
+            ui.icon(&mut self.atlas, icon, Vec2::new(b.x + 18.0 * s, b.center().y), 24.0 * s, ACCENT);
             ui.text_in(&mut self.atlas, &self.fonts, &t, 14.0 * s, Weight::Bold, Rect::new(b.x + 34.0 * s, b.y, tw + 4.0, b.h), Align::Left, TEXT);
             if let Some(n) = street.as_deref() {
                 ui.text_in(&mut self.atlas, &self.fonts, n, 12.0 * s, Weight::Medium, Rect::new(b.x + 42.0 * s + tw, b.y, sw_, b.h), Align::Left, TEXT_DIM);
@@ -1035,7 +1040,8 @@ impl Navigator {
             let n = self.fonts.fit(n, px, Weight::Medium, map.w * 0.7);
             let w = self.fonts.width(&n, px, Weight::Medium) + 14.0 * s;
             let r = Rect::new(map.center().x - w * 0.5, map.bottom() - 24.0 * s, w, 18.0 * s);
-            ui.rounded(r, 9.0 * s, Color::rgba(10, 10, 10, 0.8));
+            ui.rounded(r, 9.0 * s, CARD);
+            ui.rounded_border(r, 9.0 * s, 1.0_f32.max(s), HAIR);
             ui.text_in(&mut self.atlas, &self.fonts, &n, px, Weight::Medium, r, Align::Center, STREET);
         }
         // Stops ahead use a bus badge so they read as stops, not generic route dots.
@@ -1047,10 +1053,10 @@ impl Navigator {
             }
             let next = k == 0;
             let badge = if next { 8.0 } else { 6.5 } * s;
-            ui.circle(sp, badge + 1.5 * s, Color::rgba(10, 10, 10, 0.95));
-            let fill = if next { Color::rgba(45, 116, 205, 1.0) } else if k + 1 == n_stops { ROUTE } else { Color::rgba(76, 91, 112, 0.98) };
+            ui.circle(sp, badge + 1.5 * s, CARD);
+            let fill = if next { ACCENT } else if k + 1 == n_stops { ROUTE } else { Color::rgba(76, 91, 112, 0.98) };
             ui.circle(sp, badge, fill);
-            ui.icon(&mut self.atlas, "directions_bus", sp, if next { 12.5 } else { 10.5 } * s, TEXT);
+            ui.icon(&mut self.atlas, "directions_bus", sp, if next { 12.5 } else { 10.5 } * s, if next { Color::rgba(18, 14, 8, 1.0) } else { TEXT });
         }
         // the bus: a plain white arrow
         if let Some(bp) = project(vpm, vp, rel(f.bus)) {
@@ -1061,7 +1067,7 @@ impl Navigator {
             let l = bp + rot(Vec2::new(-0.7, 0.8) * k);
             let m = bp + rot(Vec2::new(0.0, 0.4) * k);
             let r = bp + rot(Vec2::new(0.7, 0.8) * k);
-            let dark = Color::rgba(10, 10, 10, 0.8);
+            let dark = Color::rgba(22, 22, 22, 0.85);
             let grow = |p: Vec2| bp + (p - bp) * 1.25;
             ui.tri(grow(tip), grow(l), grow(m), dark, dark, dark);
             ui.tri(grow(tip), grow(m), grow(r), dark, dark, dark);
@@ -1072,6 +1078,7 @@ impl Navigator {
         // top bar: speed (and the limit) · line ……… game time
         let top = Rect::new(0.0, 0.0, pw, top_h);
         ui.rect(top, BAR);
+        ui.rect(Rect::new(0.0, top.bottom() - 1.0_f32.max(s), pw, 1.0_f32.max(s)), HAIR);
         let pad = 11.0 * s;
         let base = top.y + top.h * 0.5 + self.fonts.cap_height(17.0 * s, Weight::Bold) * 0.5;
         let mut x = pad;
@@ -1124,6 +1131,7 @@ impl Navigator {
         // whether the bus is early or late
         let bottom = Rect::new(0.0, map.bottom(), pw, 46.0 * s);
         ui.rect(bottom, BAR);
+        ui.rect(Rect::new(0.0, bottom.y, pw, 1.0_f32.max(s)), HAIR);
         let stop_row = if f.stops.is_empty() {
             Rect::new(pad, bottom.y, pw - 2.0 * pad, bottom.h)
         } else {
@@ -1203,6 +1211,9 @@ impl Navigator {
                 y += 22.0 * s;
             }
         }
+
+        // nice border around the navigator
+        ui.rounded_border(panel, radius, 1.0_f32.max(s), HAIR);
 
         // --- to the GPU
         let (Some(gpu), device, queue) = (self.gpu.as_mut(), &renderer.device, &renderer.queue) else { return };
