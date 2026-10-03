@@ -1,0 +1,22 @@
+neoOMSI
+Copyright (c) 2026 neoOMSI contributors
+
+This product includes software developed by the neoOMSI project
+(https://github.com/neoOMSI/neoOMSI).
+
+--------------------------------------------------------------------------------
+Origin and Upstream Attribution:
+
+neoOMSI was originally forked from openOMSI by usonskyyyy.
+Portions of this software are Copyright (c) 2026 usonskyyyy
+and licensed under the MIT License.
+See LICENSES/MIT-openOMSI.txt for the full license text.
+
+--------------------------------------------------------------------------------
+Community Add-on & Content Clarification:
+
+neoOMSI is an independent game engine designed to simulate and run content
+created for OMSI 2. Loading, mounting, executing, or distributing third-party
+OMSI content (such as maps, vehicles, meshes, textures, audio files, scripts,
+or DLL plugins through public interfaces) does not subject those third-party
+works to the terms of the GNU General Public License.

@@ -69,6 +69,9 @@ Join our [Discord server](https://discord.gg/Gk7EngX6JK) for questions, discussi
 
 ## License and trademarks
 
-neoOMSI is released under the [MIT License](LICENSE).
+- **Source code:** Licensed under the [GNU General Public License v3.0 or later](LICENSE).
+- **Documentation:** Licensed under [Creative Commons Attribution-ShareAlike 4.0](docs/LICENSE).
+- **Brand & logos:** Protected visual identity; see [TRADEMARKS.md](TRADEMARKS.md).
+- **Attribution:** Portions derived from openOMSI; see [NOTICE](NOTICE).
 
-OMSI and OMSI 2 are trademarks of their respective owners. neoOMSI is an independent project and is not affiliated with or endorsed by the OMSI rights holders.
+OMSI and OMSI 2 are trademarks of their respective owners. neoOMSI is an independent project and is not affiliated with or endorsed by the original creators.
