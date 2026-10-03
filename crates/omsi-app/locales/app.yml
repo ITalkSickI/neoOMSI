@@ -799,8 +799,6 @@ _version: 2
   de: "Aufstehen"
 "Sit down":
   de: "Hinsetzen"
-"On foot: W A S D walk, Shift runs, Space jumps, F1 / F2 / F3 cameras, G at a door sits down":
-  de: "Zu Fuß: W A S D gehen, Shift rennen, Leertaste springen, F1 / F2 / F3 Kameras, G an einer Tür hinsetzen"
 "No free seat here: stand by a bus's door":
   de: "Hier ist kein Platz frei: stell dich an eine Bustür"
 "go to":

@@ -109,54 +109,6 @@ fn push_out(p: DVec2, o: &Obb, r: f64) -> DVec2 {
     }
 }
 
-/// Bounding spheres (vehicle frame) of the meshes of a vehicle part that are shown now: a
-/// mesh switched off by its `[visible]` variable, and a shadow blob, are no body.
-fn shown_meshes(ty: &omsi_sim::VehicleType, tf: &[glam::Mat4], visible: impl Fn(usize) -> bool) -> Vec<(glam::Vec3, f32)> {
-    let mut out = Vec::new();
-    for i in 0..ty.meshes.len() {
-        let Some(&(c, r)) = ty.mesh_bounds.get(i) else { continue };
-        if r <= 0.0 || !visible(i) || ty.model.meshes[ty.meshes[i].def_index].is_shadow {
-            continue;
-        }
-        let m = tf.get(i).copied().unwrap_or(glam::Mat4::IDENTITY);
-        let scale = m.x_axis.truncate().length().max(m.y_axis.truncate().length()).max(m.z_axis.truncate().length());
-        out.push((m.transform_point3(c), r * scale));
-    }
-    out
-}
-
-/// A vehicle's collision box for the walker: the OMSI bounding box, cut down to what the
-/// meshes shown now fill of it (an element switched off leaves no invisible wall) and
-/// shrunk a bit so the loose corners stay walkable.
-fn solid_box(bb: [f32; 6], shown: &[(glam::Vec3, f32)], pos: DVec3, heading: f64) -> Obb {
-    let mut bb = bb;
-    if !shown.is_empty() {
-        let fit = |lo: f32, hi: f32, c: f32, size: f32| -> (f32, f32) {
-            let (b0, b1) = (c - size * 0.5, c + size * 0.5);
-            let (lo, hi) = (lo.max(b0), hi.min(b1));
-            if hi - lo < 0.5 {
-                (c, size)
-            } else {
-                ((lo + hi) * 0.5, hi - lo)
-            }
-        };
-        let ext = |f: &dyn Fn(&(glam::Vec3, f32)) -> f32| -> (f32, f32) {
-            shown.iter().fold((f32::MAX, f32::MIN), |(lo, hi), m| (lo.min(f(m) - m.1), hi.max(f(m) + m.1)))
-        };
-        let (x0, x1) = ext(&|m| m.0.x);
-        let (y0, y1) = ext(&|m| m.0.y);
-        let (cx, w) = fit(x0, x1, bb[3], bb[0]);
-        let (cy, l) = fit(y0, y1, bb[4], bb[1]);
-        bb[0] = w;
-        bb[1] = l;
-        bb[3] = cx;
-        bb[4] = cy;
-    }
-    let mut o = Obb::from_box(bb, pos, heading);
-    o.half = (o.half - DVec2::splat(0.12)).max(DVec2::splat(0.05));
-    o
-}
-
 fn outside_spot(h: &mut Humans, world: Option<&crate::scene::World>, v: &omsi_sim::VehicleInstance, others: &[Obb], side: f64, near: DVec3) -> Option<DVec3> {
     let hd = v.heading.to_radians();
     let (fwd, right) = (DVec2::new(hd.sin(), hd.cos()), DVec2::new(hd.cos(), -hd.sin()));
@@ -204,8 +156,7 @@ impl App {
                 return;
             }
             if let Some(bb) = v.ty.def.bounding_box {
-                let shown = shown_meshes(&v.ty, &v.mesh_transforms, |i| v.mesh_props.get(i).is_none_or(|p| p.visible));
-                boxes.push(solid_box(bb, &shown, v.position, v.heading));
+                boxes.push(Obb::from_box(bb, v.position, v.heading));
             }
         };
         if let Some(p) = self.player.as_ref() {
@@ -232,7 +183,7 @@ impl App {
         let others: Vec<Obb> = {
             let at = self.player.as_ref().map(|p| p.vehicle.position.truncate()).unwrap_or_default();
             let own = self.player.as_ref().and_then(|p| p.vehicle.ty.def.bounding_box.map(|bb| Obb::from_box(bb, p.vehicle.position, p.vehicle.heading)));
-            self.vehicle_boxes(at, 30.0).into_iter().filter(|o| own.map(|w| (w.center - o.center).length() > 1.5).unwrap_or(true)).collect()
+            self.vehicle_boxes(at, 30.0).into_iter().filter(|o| own.map(|w| (w.center - o.center).length() > 0.01).unwrap_or(true)).collect()
         };
         let Some(p) = self.player.as_mut() else { return };
         p.axes.release_all();
@@ -302,42 +253,6 @@ impl App {
             arrive: None,
         });
         self.view = "foot".into();
-        self.service_msg = Some(("On foot: W A S D walk, Shift runs, F4 free camera / F1 back, G sits down (by the driver's place: back at the wheel), Ctrl+Shift+G steps out of the bus".into(), 7.0));
-    }
-
-    fn step_out(&mut self) {
-        let Some(f) = self.on_foot.as_ref() else { return };
-        let Some((bus, _)) = f.inside else { return };
-        let (pos, yaw) = (f.pos, f.yaw as f64);
-        let spot = if bus == BusId::Player {
-            let others: Vec<Obb> = {
-                let own = self.player.as_ref().and_then(|p| p.vehicle.ty.def.bounding_box.map(|bb| Obb::from_box(bb, p.vehicle.position, p.vehicle.heading)));
-                self.vehicle_boxes(pos.truncate(), 30.0).into_iter().filter(|o| own.map(|w| (w.center - o.center).length() > 1.5).unwrap_or(true)).collect()
-            };
-            match (self.player.as_ref(), self.humans.as_mut()) {
-                (Some(p), Some(h)) => {
-                    let v = &p.vehicle;
-                    let hd = v.heading.to_radians();
-                    let right = DVec2::new(hd.cos(), -hd.sin());
-                    let ly = yaw.to_radians();
-                    let look_side = DVec2::new(ly.sin(), ly.cos()).dot(right);
-                    let near_side = h.vehicle_doors(v).into_iter().min_by(|a, b| (*a - pos).length().total_cmp(&(*b - pos).length())).map(|d| (d - v.position).truncate().dot(right).signum()).unwrap_or(1.0);
-                    let first = if look_side.abs() > 0.3 { look_side.signum() } else { near_side };
-                    outside_spot(h, self.world.as_deref(), v, &others, first, pos).or_else(|| outside_spot(h, self.world.as_deref(), v, &others, -first, pos))
-                }
-                _ => None,
-            }
-        } else {
-            self.humans.as_ref().and_then(|h| h.cabin_doors(bus).into_iter().map(|d| d.1).filter(|d| (*d - pos).truncate().length() < DOOR_OUT_REACH).min_by(|a, b| (*a - pos).length().total_cmp(&(*b - pos).length())))
-        };
-        if let Some(d) = spot {
-            let z = self.world.as_ref().and_then(|w| w.walk_height_near(d.x, d.y, d.z)).unwrap_or(d.z);
-            let f = self.on_foot.as_mut().unwrap();
-            f.transit = Some(Transit::walk(f.pos, DVec3::new(d.x, d.y, z), None));
-            f.vel = DVec2::ZERO;
-        } else {
-            self.service_msg = Some(("No door within reach here (or no room outside it): walk to a door first".into(), 3.0));
-        }
     }
 
     pub(crate) fn remove_driven_vehicle(&mut self) {
@@ -661,11 +576,7 @@ impl App {
             _ if self.on_foot.as_ref().map(|f| f.cam == FootCam::Free).unwrap_or(false) => false,
             KeyCode::KeyG => {
                 if pressed && !repeat {
-                    if ctrl && shift && self.on_foot.as_ref().map(|f| f.inside.is_some()).unwrap_or(false) {
-                        self.step_out();
-                    } else {
-                        self.use_seat();
-                    }
+                    self.use_seat();
                 }
                 true
             }
@@ -844,7 +755,6 @@ impl App {
                 let walls = w.collision.lock().obstacles_near(&probe);
                 let mut boxes: Vec<Obb> = walls.into_iter().filter(|o| o.z0 < z + 1.6 + f.lift && o.z1 > z + 0.45 + f.lift).collect();
                 let mut vehicles = self.vehicle_boxes(next, 20.0);
-                vehicles.retain(|o| o.z0 < z + 1.6 + f.lift && o.z1 > z + 0.45 + f.lift);
                 if let Some(e) = exempt {
                     vehicles.retain(|o| (push_out(e, o, 0.0) - e).length() < 1e-6);
                 }
