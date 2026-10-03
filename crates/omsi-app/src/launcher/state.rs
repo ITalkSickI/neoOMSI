@@ -185,7 +185,7 @@ pub struct State {
     pub choice: Choice,
     pub choice_dirty: f32,
     /// Map, whether it has a `laststn.osn`, when that was looked up.
-    pub last_sit: Option<(String, Vec<core::SavedSituation>, std::time::Instant)>,
+    pub last_sit: Option<(String, Vec<core::SavedSituation>, Instant)>,
     /// Which of them "Continue" starts (0: the newest, the last situation when there is one).
     pub save_pick: usize,
     pub profiles: Vec<String>,
@@ -202,7 +202,7 @@ pub struct State {
     pub queued_launch: Option<core::Duty>,
     /// Start was pressed: the graphics device stays given up until the list of games has the
     /// game started (its process, once it is known), 15 s at most.
-    pub launch_hold: Option<std::time::Instant>,
+    pub launch_hold: Option<Instant>,
     launched_pid: Option<u32>,
     /// A game started from here ended on an error: what it said, and the end of its log
     /// (see `crash_of`), for the dialog that asks to report it.
@@ -243,7 +243,6 @@ impl State {
         let config = core::load_config();
         let settings = core::get_settings().unwrap_or_else(|_| core::settings_from_text(None));
         crate::ui_language(settings.get("language").and_then(|x| x.as_str()).unwrap_or("ENG"));
-        crate::mt::enable(settings.get("machine_translation").and_then(|x| x.as_bool()).unwrap_or(false));
         let keybindings = core::get_keybindings().unwrap_or(serde_json::Value::Null);
         let choice = Choice::load();
         let mut s = State {
@@ -329,7 +328,7 @@ impl State {
     }
 
     pub fn spawn_launch(&mut self, d: core::Duty) {
-        self.launch_hold = Some(std::time::Instant::now());
+        self.launch_hold = Some(Instant::now());
         self.launched_pid = None;
         self.spawn(move || Msg::Launched(core::launch(&d).map_err(|e| format!("{e:#}"))));
     }
@@ -610,7 +609,7 @@ impl State {
             }
             let list = core::saved_situations(&self.choice.map);
             self.save_pick = self.save_pick.min(list.len().saturating_sub(1));
-            self.last_sit = Some((self.choice.map.clone(), list, std::time::Instant::now()));
+            self.last_sit = Some((self.choice.map.clone(), list, Instant::now()));
         }
         self.last_sit.as_ref().map(|x| x.1.as_slice()).unwrap_or(&[])
     }
@@ -778,8 +777,6 @@ impl State {
                 if !self.content_first {
                     return;
                 }
-                crate::mt::protect(maps.iter().flat_map(|m| [m.name.as_str(), m.friendly.as_str()]));
-                crate::mt::protect(weathers.iter().map(|w| w.name.as_str()));
                 self.maps = maps;
                 self.weathers = weathers;
                 self.pick_map();
@@ -790,15 +787,11 @@ impl State {
                 if !self.content_first {
                     return;
                 }
-                crate::mt::protect(batch.iter().flat_map(|v| [v.name.as_str(), v.manufacturer.as_str(), v.type_name.as_str()]).chain(batch.iter().flat_map(|v| v.paints.iter().map(|p| p.as_str()))));
                 self.vehicles.extend(batch);
                 self.set_status(format!("{} maps, {} buses - reading the vehicle folders: {done} of {total}", self.maps.len(), self.vehicles.len()), false);
             }
             Msg::Content(Ok((maps, vehicles, weathers))) => {
                 // (names of things, not the interface: never machine-translated)
-                crate::mt::protect(maps.iter().flat_map(|m| [m.name.as_str(), m.friendly.as_str()]));
-                crate::mt::protect(vehicles.iter().flat_map(|v| [v.name.as_str(), v.manufacturer.as_str(), v.type_name.as_str()]).chain(vehicles.iter().flat_map(|v| v.paints.iter().map(|p| p.as_str()))));
-                crate::mt::protect(weathers.iter().map(|w| w.name.as_str()));
                 let known: std::collections::HashSet<String> = self.maps.iter().map(|m| m.file.clone()).chain(self.vehicles.iter().map(|v| v.file.clone())).chain(self.weathers.iter().map(|w| w.file.clone())).collect();
                 if !known.is_empty() {
                     for f in maps.iter().map(|m| &m.file).chain(vehicles.iter().map(|v| &v.file)).chain(weathers.iter().map(|w| &w.file)) {
@@ -840,9 +833,6 @@ impl State {
                 }
             }
             Msg::Lines { map, date, lines } => {
-                if let Ok(ls) = lines.as_ref() {
-                    crate::mt::protect(ls.iter().flat_map(|l| l.termini.iter().map(|t| t.as_str()).chain([l.name.as_str()])).chain(ls.iter().flat_map(|l| l.tours.iter().map(|t| t.number.as_str()))));
-                }
                 if (map, date) != self.lines_for {
                     return;
                 }
