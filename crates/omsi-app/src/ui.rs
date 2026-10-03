@@ -569,14 +569,18 @@ impl Ui {
         }
         // --- the information bar, along the top in the middle
         if let Some(info) = f.info.as_ref() {
-            let l = self.text.label(r, scene, info, (15.0 * s) as u32, [255, 255, 255, 0]);
-            let pad = 10.0 * s;
+            self.text.flat = true;
+            let l = self.text.label(r, scene, info, (15.0 * s) as u32, WHITE);
+            let pad = 12.0 * s;
             let (w, h) = (l.w as f32 + pad * 2.0, l.h as f32 + pad * 0.8);
-            let x = (f.width - w) * 0.5;
-            let y = 8.0 * s;
-            let plate = self.text.plate(r, scene, 3);
-            scene.overlays.push((plate, [x, y, x + w, y + h]));
+            let x = ((f.width - w) * 0.5).round();
+            let y = (8.0 * s).round();
+            let radius = ROW_R * s;
+            let card = [14, 14, 14, 245];
+            self.text.rounded(r, scene, [x - 1.0, y - 1.0, x + w + 1.0, y + h + 1.0], radius + 1.0, BORDER);
+            self.text.rounded(r, scene, [x, y, x + w, y + h], radius, card);
             scene.overlays.push((l.tex, [x + pad, y + pad * 0.4, x + pad + l.w as f32, y + pad * 0.4 + l.h as f32]));
+            self.text.flat = false;
         }
         let tutorial_w = (420.0 * s).min(f.width * 0.42);
         // --- the timetable window, on the right
@@ -593,29 +597,34 @@ impl Ui {
             let beside = if f.tutorial.is_some() { tutorial_w + 12.0 * s } else { 0.0 };
             let x = (f.width - w - 16.0 * s - beside).max(16.0 * s);
             let y = corner_top;
-            let plate = self.text.plate(r, scene, 3);
-            scene.overlays.push((plate, [x, y, x + w, y + h]));
-            let t = self.text.label(r, scene, &clip_to(&self.text, title, px as f32 * 1.1, w - 20.0 * s), (px as f32 * 1.1) as u32, [255, 255, 255, 0]);
+            self.text.flat = true;
+            let radius = CARD_R * s;
+            let card = [14, 14, 14, 245];
+            self.text.rounded(r, scene, [x - 1.0, y - 1.0, x + w + 1.0, y + h + 1.0], radius + 1.0, BORDER);
+            self.text.rounded(r, scene, [x, y, x + w, y + h], radius, card);
+            let t = self.text.label(r, scene, &clip_to(&self.text, title, px as f32 * 1.1, w - 20.0 * s), (px as f32 * 1.1) as u32, WHITE);
             scene.overlays.push((t.tex, [x + 10.0 * s, y + 6.0 * s, x + 10.0 * s + t.w as f32, y + 6.0 * s + t.h as f32]));
+            let hair = (y + lh * 1.25).round();
+            self.text.rounded(r, scene, [x, hair, x + w, hair + 1.0_f32.max(s).round()], 0.0, BORDER);
             // (the names start after the widest time: "12:03-05" of a stop with a wait)
             let time_w = rows.iter().map(|r| self.text.width(&r.1, px as f32)).fold(0.0f32, f32::max).max(40.0 * s);
             let name_x = x + 10.0 * s + time_w + 12.0 * s;
             for (k, (name, time, state)) in rows.iter().skip(first).take(shown).enumerate() {
                 let ry = y + lh * (k as f32 + 1.3);
                 if *state == 1 {
-                    let hl = self.text.plate(r, scene, 5);
-                    scene.overlays.push((hl, [x + 4.0 * s, ry - 2.0 * s, x + w - 4.0 * s, ry + lh - 4.0 * s]));
+                    self.text.rounded(r, scene, [x + 4.0 * s, ry - 2.0 * s, x + w - 4.0 * s, ry + lh - 4.0 * s], ROW_R * s, ACCENT_SOFT);
                 }
                 let color = match state {
-                    0 => [140, 140, 140, 0],
-                    1 => [255, 200, 110, 0],
-                    _ => [235, 235, 235, 0],
+                    0 => MUTED,
+                    1 => [232, 160, 48, 0],
+                    _ => WHITE,
                 };
                 let tl = self.text.label(r, scene, time, px, color);
                 scene.overlays.push((tl.tex, [x + 10.0 * s, ry, x + 10.0 * s + tl.w as f32, ry + tl.h as f32]));
                 let nl = self.text.label(r, scene, &clip_to(&self.text, name, px as f32, x + w - name_x - 10.0 * s), px, color);
                 scene.overlays.push((nl.tex, [name_x, ry, name_x + nl.w as f32, ry + nl.h as f32]));
             }
+            self.text.flat = false;
         }
         // --- a tutorial page, on the right
         if let Some((title, text, image, at, count)) = f.tutorial {
