@@ -44,10 +44,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: test
-      - name: Texture lookup regression tests
-        run: cargo test --locked -p omsi-texture --lib
-      - name: Scripted traffic lamp regression test
-        run: cargo test --locked -p omsi-app --lib scripted_lamp_channels_override_stock_phases_and_switch_led_materials
+      - name: Run workspace tests
+        run: cargo test --workspace --locked
 
   windows:
     needs: version

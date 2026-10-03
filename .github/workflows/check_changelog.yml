@@ -26,3 +26,16 @@ jobs:
           fi
           echo "Found changelog fragment(s):"
           echo "$FRAGMENTS"
+
+          for f in $FRAGMENTS; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            if ! [[ "$base" =~ ^[0-9]+\.(parity|fix|feature|performance|breaking|internal)\.md$ ]]; then
+              echo "::error::Fragment '$base' does not match naming rule '<pr-number>.<category>.md' with a valid category (parity, fix, feature, performance, breaking, internal)."
+              exit 1
+            fi
+            if [ ! -s "$f" ]; then
+              echo "::error::Fragment '$base' is empty."
+              exit 1
+            fi
+          done
