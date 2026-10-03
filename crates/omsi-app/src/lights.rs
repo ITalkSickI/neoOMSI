@@ -460,8 +460,18 @@ fn assign_occluders(
         scene.occluders.extend_from_slice(occ);
         for (o, oc) in &bodies {
             if (o.center - l.position.truncate()).length() < o.radius() + l.radius.min(SHADOW_REACH as f32) as f64 {
-                if seg_hit(l.position, l.position + DVec3::Z * 1e-3, o).is_none() {
+                let at = (l.position, l.position + DVec3::Z * 1e-3);
+                let core = omsi_sim::collision::Obb {
+                    half: (o.half - glam::DVec2::splat(0.6)).max(glam::DVec2::splat(0.05)),
+                    z0: o.z0 + 0.6,
+                    z1: o.z1 - 0.2,
+                    ..*o
+                };
+                if seg_hit(at.0, at.1, o).is_none() {
                     scene.occluders.push(*oc);
+                } else if seg_hit(at.0, at.1, &core).is_none() {
+                    // a lamp in the skin of the body (a head or tail light): the body
+                    // neither shades nor holds it
                 } else {
                     // a light inside the body lights only the inside (and a little through
                     // the windows): negative half width marks the box as a container
@@ -529,6 +539,40 @@ fn body_hides(v: &VehicleInstance, camera_pos: DVec3, c: DVec3) -> bool {
         }
         if hit && t0 < 1.0 {
             return true;
+        }
+    }
+    false
+}
+
+fn blocked_by_meshes(
+    coll: &omsi_sim::collision::CollisionWorld,
+    seen: &omsi_sim::collision::CollisionWorld,
+    eye: DVec3,
+    p: DVec3,
+) -> bool {
+    let d = p - eye;
+    let len = d.length();
+    if len < 3.0 || len > 150.0 {
+        return false;
+    }
+    let dir = d / len;
+    let end = p - dir * 0.4;
+    let steps = (len / 5.0).ceil() as usize;
+    for k in 0..=steps {
+        let q = eye + dir * (k as f64 * 5.0).min(len);
+        let probe = omsi_sim::collision::Obb::point(q, 3.0);
+        let mut parts = seen.obstacles_near(&probe);
+        parts.extend(coll.obstacles_near(&probe));
+        for o in parts {
+            if o.mass != 0.0 || o.pole.is_some() || o.half.x.max(o.half.y) < 0.1 || o.z1 - o.z0 < 0.8 {
+                continue;
+            }
+            if seg_hit(eye, eye + DVec3::Z * 1e-3, &o).is_some() {
+                continue;
+            }
+            if seg_hit(eye, end, &o).is_some() {
+                return true;
+            }
         }
     }
     false
@@ -698,10 +742,21 @@ pub fn collect(
         let first_corona = scene.coronas.len();
         vehicle_lights(v, &mut scene.coronas, &mut scene.lights, night);
         let mut k = first_corona;
-        scene.coronas.retain(|c| {
-            let keep = k < first_corona || !body_hides(v, camera_pos, c.position);
+        let seen_world = world.light_occluders.lock().clone();
+        scene.coronas.retain_mut(|c| {
+            let mine = k >= first_corona;
             k += 1;
-            keep
+            if !mine {
+                return true;
+            }
+            if body_hides(v, camera_pos, c.position) || blocked_by_meshes(&coll, &seen_world, camera_pos, c.position) {
+                return false;
+            }
+            if !c.beam && !c.halo {
+                c.size = c.size.min(0.6);
+                c.brightness = c.brightness.min(1.0);
+            }
+            true
         });
         particle_sprites(&v.particles, &mut scene.smoke, &mut scene.coronas);
         for t in &v.trailers {
