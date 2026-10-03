@@ -2586,6 +2586,9 @@ impl ApplicationHandler for App {
                 return;
             }
             // (in a view of the bus the cursor's own way turns it: move_cursor)
+            if self.game_menu.is_some() {
+                return;
+            }
             if self.mouse_look {
                 if !self.cursor_looks() {
                     if self.view == "outside" {
