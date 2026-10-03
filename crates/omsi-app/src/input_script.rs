@@ -799,7 +799,7 @@ impl App {
     /// Looking round with the mouse goes by the cursor's way in the window (a view of the
     /// bus); on foot and with the free camera it keeps the raw mouse movement.
     pub(crate) fn cursor_looks(&self) -> bool {
-        self.mouse_look && self.player.is_some() && !matches!(self.view.as_str(), "foot" | "free")
+        self.mouse_look && self.game_menu.is_none() && self.player.is_some() && !matches!(self.view.as_str(), "foot" | "free")
     }
 
     /// The right button alone zooms, as in Omsi.exe (TForm_main.Panel1MouseMove 0x82c5f8:
