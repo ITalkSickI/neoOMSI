@@ -281,6 +281,7 @@ struct PointLight {
     color: vec4<f32>, // rgb, w intensity
     dir: vec4<f32>,   // spot direction, w cosine of the outer cone (< -1.5: a point light)
     extra: vec4<f32>, // enhanced path: cosine of the inner cone, core radius, beam gain, radius
+    occ: vec4<f32>,   // x: first occluder entry, y: how many (box entries, see lib.rs `Occluder`)
 };
 @group(0) @binding(3) var<storage, read> lights: array<PointLight>;
 // per cell CELL_CAP light indices, 0xffffffff = empty
@@ -890,6 +891,48 @@ fn sun_shadow(world_in: vec3<f32>, n: vec3<f32>, thin: bool) -> f32 {
 // `map_k`: how much of the map's lamps a surface takes (0 on a light-mapped road in the
 // classic picture, whose lamps are in its light map); a vehicle's own lights (dir.x 1, see
 // lib.rs `gpu_light`) always shine - the headlights lit no road at all in vanilla.
+// 0 when one of the light's occluder boxes (a wall, a roof) stands between `p` and the
+// light, else 1. A box entry: pos = centre xy, z0, half x; color = half y, z1, cos, sin of
+// its heading.
+fn light_shadow(l: PointLight, p: vec3<f32>) -> f32 {
+    let count = u32(l.occ.y + 0.5);
+    if (count == 0u) {
+        return 1.0;
+    }
+    let first = u32(l.occ.x + 0.5);
+    let b = l.pos.xyz;
+    for (var i = 0u; i < count; i = i + 1u) {
+        let o = lights[first + i];
+        let ca = o.color.z;
+        let sa = o.color.w;
+        let c = o.pos.xy;
+        let ra = p.xy - c;
+        let rb = b.xy - c;
+        let a3 = vec3<f32>(ra.x * ca - ra.y * sa, ra.x * sa + ra.y * ca, p.z);
+        let b3 = vec3<f32>(rb.x * ca - rb.y * sa, rb.x * sa + rb.y * ca, b.z);
+        if (o.pos.w < 0.0) {
+            // a container (the body a lamp sits in): the light reaches only what is inside it,
+            // and a hand's breadth through the windows
+            if (abs(a3.x) > -o.pos.w + 0.3 || abs(a3.y) > o.color.x + 0.3 || a3.z < o.pos.z + 0.6 || a3.z > o.color.y + 0.3) {
+                return 0.0;
+            }
+            continue;
+        }
+        let lo = vec3<f32>(-o.pos.w + 0.04, -o.color.x + 0.04, o.pos.z + 0.04);
+        let hi = vec3<f32>(o.pos.w - 0.04, o.color.x - 0.04, o.color.y - 0.04);
+        let d = b3 - a3;
+        let dd = select(d, vec3<f32>(1e-6), abs(d) < vec3<f32>(1e-6));
+        let u0 = (lo - a3) / dd;
+        let u1 = (hi - a3) / dd;
+        let tmin = max(max(min(u0.x, u1.x), min(u0.y, u1.y)), min(u0.z, u1.z));
+        let tmax = min(min(max(u0.x, u1.x), max(u0.y, u1.y)), max(u0.z, u1.z));
+        if (tmax > max(tmin, 0.0) && tmin < 0.97) {
+            return 0.0;
+        }
+    }
+    return 1.0;
+}
+
 fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let cell = camera.light_grid.z;
@@ -918,7 +961,7 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
             // times (see above), so it is three times what it was, to keep the lamp pools
             let r0 = l.pos.w * 0.125;
             let att = min(1.0, (r0 * r0) / max(dist * dist, 0.01)) * clamp(1.0 - dist / l.pos.w, 0.0, 1.0) * 3.75;
-            let ndl = max(dot(n, d / max(dist, 0.01)), 0.15);
+            let ndl = max(dot(n, d / max(dist, 0.01)), 0.0);
             var k = select(map_k, 1.0, l.dir.x > 0.5 && l.dir.w < -1.5);
             if (l.dir.w >= -1.5) {
                 // a spot (a vehicle's [spotlight], as Direct3D lights with it): full inside
@@ -926,6 +969,7 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
                 let c = dot(-d / max(dist, 0.01), l.dir.xyz);
                 k = smoothstep(l.dir.w, max(l.extra.x, l.dir.w + 1e-3), c);
             }
+            k = k * light_shadow(l, p + n * 0.08);
             sum = sum + l.color.rgb * l.color.w * att * ndl * k;
         }
     }

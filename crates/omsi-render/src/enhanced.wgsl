@@ -170,7 +170,8 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
     if (x < 0 || y < 0 || x >= i32(side) || y >= i32(side)) {
         return sum;
     }
-    let a = max(sf.rough * sf.rough, 0.02);
+    // a lamp is not a mirror's point source: no sharp dot of it on glass or wet paint
+    let a = max(sf.rough * sf.rough, 0.3);
     let nv = max(dot(n, v), 1e-4);
     let base = (u32(y) * side + u32(x)) * CELL_CAP;
     for (var j = 0u; j < CELL_CAP; j = j + 1u) {
@@ -210,6 +211,10 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
                 e = e * mix(1.0, gain, smoothstep(-0.04, 0.0, drop));
             }
         }
+        if (e <= 0.0) {
+            continue;
+        }
+        e = e * light_shadow(l, p + n * 0.08);
         if (e <= 0.0) {
             continue;
         }

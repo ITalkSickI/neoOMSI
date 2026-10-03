@@ -234,6 +234,7 @@ fn sky_radiance(d: vec3<f32>, pix: f32) -> vec3<f32> {
 @fragment
 fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     let d = normalize(in.dir);
+    let star_pix = length(fwidth(d));
     let pre = enh.exposure.x;
     // the cube is drawn from its own eye (lib.rs Probe::cube_eye): look the clouds' base up
     // from there, so the sky does not slide with a camera that moved since
@@ -261,7 +262,25 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     }
     // the dome is drawn pre-exposed; the disc is kept within what the target and the glow
     // filter handle
-    return vec4<f32>(min(col * pre, vec3<f32>(4000.0)), 1.0);
+    // (with the night at brightness 0 the table scale is ~0 and the cube holds huge values:
+    // a non-finite pixel must not take the stars with it)
+    let col_bits = bitcast<vec3<u32>>(col) & vec3<u32>(0x7f800000u);
+    if (!all(col_bits != vec3<u32>(0x7f800000u))) {
+        col = vec3<f32>(0.0);
+    }
+    var out_col = min(col * pre, vec3<f32>(4000.0));
+    // stars: added in picture units, so neither the night's brightness setting nor the
+    // exposure dims them; only at night, above the horizon, behind clouds and fog
+    {
+        let night_f = 1.0 - smoothstep(-0.25, -0.05, sd.z);
+        if (night_f > 0.001 && d.z > 0.0) {
+            let h0s = camera.cam_pos.z - enh.fog.z;
+            let ts = air_of(d, 30000.0, h0s, h0s + 30000.0 * max(d.z, 0.0), 0.0).a;
+            let vis = night_f * smoothstep(0.0, 0.08, d.z) * (1.0 - cube.a) * ts;
+            out_col = out_col + star_field(d, star_pix, camera.post.y, camera.sky.x) * vis * 0.6;
+        }
+    }
+    return vec4<f32>(out_col, 1.0);
 }
 
 // --- the reflection probe: a cube map of the sky seen from the camera, drawn now and then

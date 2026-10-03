@@ -190,6 +190,8 @@ struct GpuPointLight {
     /// radius (`pos.w` is 0 on a light only the enhanced path draws, which the vanilla
     /// shader then passes by).
     extra: [f32; 4],
+    /// x: index of the light's first occluder entry, y: how many (see `Occluder`).
+    occ: [f32; 4],
 }
 
 #[repr(C)]
@@ -203,6 +205,17 @@ struct GpuCorona {
     up: [f32; 4],
     /// x: inner cone cosine, y: z offset, z: flags
     extra: [f32; 4],
+}
+
+/// A solid box that stops a point light's rays (a wall or a roof of a collision mesh).
+#[derive(Debug, Clone, Copy)]
+pub struct Occluder {
+    pub center: glam::DVec2,
+    pub half: glam::Vec2,
+    pub z0: f64,
+    pub z1: f64,
+    /// Radians, clockwise from north.
+    pub heading: f64,
 }
 
 /// A point light in world space (`[maplight]`, `[interiorlight]`, headlights).
@@ -225,6 +238,9 @@ pub struct PointLight {
     pub beam: f32,
     /// Which path draws the light.
     pub mode: LightMode,
+    /// The light's occluders: `count` entries of `Scene::occluders` from `first`.
+    pub occ_first: u32,
+    pub occ_count: u32,
 }
 
 impl Default for PointLight {
@@ -239,6 +255,8 @@ impl Default for PointLight {
             core: 0.0,
             beam: 0.0,
             mode: LightMode::Both,
+            occ_first: 0,
+            occ_count: 0,
         }
     }
 }
@@ -737,6 +755,8 @@ pub struct Scene {
     pub render_origin: DVec3,
     /// Point lights and coronas for the next frame (set by the app every frame).
     pub lights: Vec<PointLight>,
+    /// Boxes the lights' rays are tested against (shadows of the point lights).
+    pub occluders: Vec<Occluder>,
     /// The vehicles' `[interiorlight]` lamps, in slots each vehicle keeps
     /// (`Renderer::alloc_interior_lights`): they light only the meshes that name them.
     pub interior_lights: Vec<PointLight>,
@@ -4012,6 +4032,7 @@ impl Renderer {
             interior_lights: Vec::new(),
             interior_free: Vec::new(),
             coronas: Vec::new(),
+            occluders: Vec::new(),
             model_buf: None,
             params_buf: None,
             light_buf: None,
@@ -5360,6 +5381,7 @@ impl Renderer {
             gpu_lights.push(gpu_light(l, (l.position - ro).as_vec3()));
         }
         let mut grid = vec![u32::MAX; side * side * LIGHT_CELL_CAP];
+        let mut occ_users: Vec<(usize, u32)> = Vec::new();
         for l in &scene.lights {
             if !drawn_by(l, enhanced) {
                 continue;
@@ -5374,6 +5396,10 @@ impl Renderer {
             }
             let idx = gpu_lights.len() as u32;
             gpu_lights.push(gpu_light(l, p));
+            if l.occ_count > 0 && (l.occ_first as usize + l.occ_count as usize) <= scene.occluders.len() {
+                occ_users.push((idx as usize, l.occ_first));
+                gpu_lights[idx as usize].occ[1] = l.occ_count as f32;
+            }
             for y in (y0.max(0.0) as usize)..=(y1.min(side as f32 - 1.0) as usize) {
                 for x in (x0.max(0.0) as usize)..=(x1.min(side as f32 - 1.0) as usize) {
                     let base = (y * side + x) * LIGHT_CELL_CAP;
@@ -5398,12 +5424,30 @@ impl Renderer {
                 }
             }
         }
+        if !occ_users.is_empty() {
+            let base = gpu_lights.len() as u32;
+            for o in &scene.occluders {
+                let c = o.center - ro.truncate();
+                let (sa, ca) = (o.heading.sin() as f32, o.heading.cos() as f32);
+                gpu_lights.push(GpuPointLight {
+                    pos: [c.x as f32, c.y as f32, (o.z0 - ro.z) as f32, o.half.x],
+                    color: [o.half.y, (o.z1 - ro.z) as f32, ca, sa],
+                    dir: [0.0; 4],
+                    extra: [0.0; 4],
+                    occ: [0.0; 4],
+                });
+            }
+            for (i, first) in occ_users {
+                gpu_lights[i].occ[0] = (base + first) as f32;
+            }
+        }
         if gpu_lights.is_empty() {
             gpu_lights.push(GpuPointLight {
                 pos: [0.0; 4],
                 color: [0.0; 4],
                 dir: [0.0; 4],
                 extra: [0.0; 4],
+                occ: [0.0; 4],
             });
         }
         let lbytes: &[u8] = bytemuck::cast_slice(&gpu_lights);
@@ -8777,6 +8821,7 @@ fn gpu_light(l: &PointLight, p: Vec3) -> GpuPointLight {
         color: [l.color[0], l.color[1], l.color[2], l.intensity],
         dir,
         extra: [l.cone[0], l.core, l.beam, l.radius],
+        occ: [0.0; 4],
     }
 }
 

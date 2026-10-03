@@ -97,6 +97,37 @@ fn cloud_cover_at(p: vec2<f32>, lod: f32) -> vec3<f32> {
     return vec3<f32>(clamp((shape - thr) / 0.14, 0.0, 1.0), t.a, clamp((smooth_shape - thr) / 0.14, 0.0, 1.0));
 }
 
+// Stars: a hashed grid on the unit sphere (one random point per cell), turned with the
+// sun's azimuth so they wander across the night. Returns a colour in 0..~1.
+fn star_hash3(p: vec3<f32>) -> vec3<f32> {
+    var q = fract(p * vec3<f32>(0.1031, 0.1030, 0.0973));
+    q = q + dot(q, q.yzx + 33.33);
+    return fract((q.xxy + q.yzz) * q.zyx);
+}
+
+fn star_field(d: vec3<f32>, pix: f32, time: f32, sun_az: f32) -> vec3<f32> {
+    let ca = cos(sun_az);
+    let sa = sin(sun_az);
+    let q = vec3<f32>(d.x * ca - d.y * sa, d.x * sa + d.y * ca, d.z);
+    let S = 110.0;
+    let p = q * S;
+    let cell = floor(p);
+    let h = star_hash3(cell);
+    if (h.x > 0.16) {
+        return vec3<f32>(0.0);
+    }
+    let r = star_hash3(cell + vec3<f32>(7.7, 3.1, 5.3));
+    let pos = cell + vec3<f32>(0.25) + r * 0.5;
+    let dist = length(p - pos);
+    let rad = max(pix * S, 0.06);
+    let bright = 0.25 + 1.6 * h.y * h.y * h.y;
+    let tw = 0.85 + 0.15 * sin(time * (2.0 + 4.0 * h.z) + h.y * 40.0);
+    let peak = bright * tw * min(1.0, (0.06 / rad) + 0.35);
+    let k = exp(-(dist * dist) / (2.0 * rad * rad * 0.25));
+    let tint = mix(vec3<f32>(0.75, 0.85, 1.0), vec3<f32>(1.0, 0.85, 0.65), r.z);
+    return tint * peak * k;
+}
+
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) dir: vec3<f32>,
@@ -117,6 +148,7 @@ fn vs_main(@location(0) pos: vec3<f32>) -> VsOut {
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let d = normalize(in.dir);
+    let star_pix = length(fwidth(d));
     let az = atan2(d.x, d.y);
     let u = fract((az - camera.sky.x) / 6.2831853 + 0.5);
     let elev = asin(clamp(d.z, -1.0, 1.0));
@@ -125,6 +157,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let uv = vec2<f32>(u, v);
     let c = textureSample(t_day, s_sky, uv).rgb * camera.sky.y + textureSample(t_twilight, s_sky, uv).rgb * camera.sky.z * 0.8 + textureSample(t_night, s_sky, uv).rgb * camera.sky.w * 0.6;
     var col = c;
+    // stars at night, fading out with the night weight, horizon and cloud cover
+    let star_vis = (1.0 - smoothstep(-0.25, -0.05, camera.sun_dir.z)) * smoothstep(0.0, 0.08, d.z) * (1.0 - 0.9 * clamp(camera.clouds.x, 0.0, 1.0));
+    if (star_vis > 0.001) {
+        col = col + star_field(d, star_pix, camera.post.y, camera.sky.x) * star_vis;
+    }
     if (camera.clouds.x > 0.001 && d.z > 0.01) {
         // a flat layer 1500 m up drawn from the cloud field (weather_setup::cloud_field)
         let t = 1500.0 / d.z;
