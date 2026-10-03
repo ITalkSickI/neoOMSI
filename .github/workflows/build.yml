@@ -36,17 +36,6 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - run: echo "### neoOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
 
-  test:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: test
-      - name: Run workspace tests
-        run: cargo test --workspace --locked
-
   windows:
     needs: version
     runs-on: windows-latest
@@ -200,7 +189,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [version, test, windows, macos, linux]
+    needs: [version, windows, macos, linux]
     runs-on: ubuntu-slim
     permissions:
       contents: write

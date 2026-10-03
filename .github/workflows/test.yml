@@ -2,10 +2,13 @@ name: Test
 
 on:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,6 +24,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: test
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run workspace tests
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked
