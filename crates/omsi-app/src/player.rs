@@ -512,23 +512,6 @@ fn door_group_plan(v: &omsi_sim::VehicleInstance, group: &[String]) -> Vec<Strin
     group.iter().zip(&states).filter(|(_, s)| !any_open || **s == Some(true)).map(|(n, _)| n.clone()).collect()
 }
 
-/// `Digit1`..`Digit9` as 1..9 (`Digit0` and the numpad digits are left for whatever
-/// `Inputs/keyboard.cfg` already puts on them).
-pub(crate) fn digit_of(code: KeyCode) -> Option<usize> {
-    Some(match code {
-        KeyCode::Digit1 => 1,
-        KeyCode::Digit2 => 2,
-        KeyCode::Digit3 => 3,
-        KeyCode::Digit4 => 4,
-        KeyCode::Digit5 => 5,
-        KeyCode::Digit6 => 6,
-        KeyCode::Digit7 => 7,
-        KeyCode::Digit8 => 8,
-        KeyCode::Digit9 => 9,
-        _ => return None,
-    })
-}
-
 impl Player {
     pub(crate) fn toggle_indicator(&mut self, want: u8) {
         let lever = if self.vehicle.var("lights_sw_warnblinker").is_some_and(|v| v > 0.5) {

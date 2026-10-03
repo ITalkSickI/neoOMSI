@@ -71,6 +71,9 @@ pub(crate) fn fatal_dialog(title: &str, text: &str) {
 /// saved key bindings there, else the original installation's (never written) - or, where
 /// that has none, its `keyboard_reset.cfg`, the standard keys OMSI falls back to as well.
 pub(crate) fn keyboard_cfg(root: &Path) -> PathBuf {
+    if let Some(own) = omsi_launcher_lib::saved_keyboard_cfg() {
+        return own;
+    }
     if let Some(own) = content_dir().map(|c| c.join("Inputs/keyboard.cfg")).filter(|p| p.exists()) {
         return own;
     }

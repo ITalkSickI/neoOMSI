@@ -188,6 +188,9 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             if matches!(kind, ListKind::Options(t) if *t == MAP_TAB) {
                 return map_options_page(app).1;
             }
+            if matches!(kind, ListKind::Options(t) if *t == KEYS_TAB) {
+                return key_rows(app);
+            }
             let Some((mut pages, tab)) = pages_of(app, kind) else { return out };
             if pages.is_empty() {
                 return vec![(row("Nothing to set here", 'i', "", "", None), "noop".to_string())];
@@ -388,6 +391,7 @@ pub(crate) fn menu_extras(
     // (no kind: the vehicle chooser)
     let Some(kind) = kind else { return (MenuKind::List, head("Place a vehicle..."), None) };
     match kind {
+        ListKind::Options(t) if *t == KEYS_TAB => (MenuKind::Options, head("Key bindings..."), None),
         ListKind::Options(_) => (MenuKind::Options, head("Options..."), None),
         ListKind::Vehicle(_) => (MenuKind::Options, head("Vehicle options..."), None),
         ListKind::World(_) => (MenuKind::Options, head("World options..."), None),
@@ -509,6 +513,16 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                     let m = if let Move::To(_) = mv { Move::Next } else { mv };
                     option_do(app, "navigator", "", m);
                 }
+                "keysearch" => {}
+                // (the button on a line clears the key)
+                "keybind" if matches!(mv, Move::Dec | Move::Inc) => {
+                    let mut it = arg.splitn(3, ' ');
+                    if let (Some(sec), Some(idx), Some(name)) = (it.next().and_then(|x| x.parse::<usize>().ok()), it.next().and_then(|x| x.parse::<usize>().ok()), it.next()) {
+                        let name = name.to_string();
+                        app.keybind_edit(sec, idx, &name, crate::game_menu::KeyEdit::Clear);
+                    }
+                }
+                "keysopts" if step => return Some(ListKind::Options(KEYS_TAB)),
                 "mapback" if step => return Some(ListKind::Options(0)),
                 "metar_icao_edit" if step => {
                     if app.menu_edit_icao { app.apply_icao_edit(); } else { app.start_icao_edit(); }
@@ -523,6 +537,12 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                         app.service_msg = Some(("The time cannot be changed while the real-time sync is on".into(), 3.0));
                     } else {
                         app.menu_edit = Some(String::new());
+                    }
+                }
+                "keybind" if step => {
+                    let mut it = arg.split(' ');
+                    if let (Some(sec), Some(idx)) = (it.next().and_then(|x| x.parse::<usize>().ok()), it.next().and_then(|x| x.parse::<usize>().ok())) {
+                        app.key_capture = Some((sec, idx));
                     }
                 }
                 "seat_reset" if step => {
@@ -1769,6 +1789,11 @@ fn sync_live(app: &mut App) {
 }
 
 pub(crate) const MAP_TAB: usize = 99;
+pub(crate) const KEYS_TAB: usize = 98;
+
+pub(crate) fn is_sub_tab(t: usize) -> bool {
+    t == MAP_TAB || t == KEYS_TAB
+}
 fn map_options_page(app: &App) -> Page {
     let file = settings_file();
     let rows: Vec<(String, String)> = vec![
@@ -1823,6 +1848,7 @@ fn options_pages(app: &App) -> Vec<Page> {
         .collect();
     let controls: Vec<(String, String)> = vec![
         pick("drive_keys", "Driving keys", "Which keys drive the vehicle"),
+        Some(opens("Key bindings", "Set every key of the bus and of the game", "keysopts")),
         switch_row(app, "mouse", "Steering with the mouse", "Steer and control the pedals using the mouse"),
         switch_row(app, "mouse_right", "A right click ends the mouse steering", "As in OMSI; off: the right button only looks round"),
         slider_row(app, "mouse_sens", "Mouse steering sensitivity", "Adjust how much the steering wheel turns based on mouse movement", &pct),
@@ -1950,6 +1976,71 @@ fn options_pages(app: &App) -> Vec<Page> {
         vr.push(button("Reset navigator position", "Reset", desc, "vr_nav_reset"));
     }
     vec![("Gameplay", game), ("Driving", driving), ("Controls", controls), ("Camera", camera), ("Graphics", graphics), ("Display", display), ("Sound", sound), ("Interface", interface), ("VR", vr)]
+}
+
+fn key_rows(app: &App) -> Vec<(String, String)> {
+    let Ok(v) = omsi_launcher_lib::get_keybindings() else {
+        return vec![(row("The key bindings could not be read", 'i', "", "", None), "noop".to_string())];
+    };
+    let names = crate::describe::names(&app.args.root, &app.settings.language);
+    let head = |t: &str, n: usize| (row(&t.to_uppercase(), 'i', &n.to_string(), "", None), HEADING.to_string());
+    let q = app.key_filter.trim().to_lowercase();
+    let mut out = vec![(
+        row("Find a key binding", if app.key_search { 'E' } else { 'a' }, &app.key_filter, "", None),
+        "keysearch".to_string(),
+    )];
+    let mut all: Vec<(usize, usize, String, i64, i64)> = Vec::new();
+    for (sec, key) in ["vehicles", "game"].iter().enumerate() {
+        if let Some(a) = v.get(*key).and_then(|a| a.as_array()) {
+            for (i, b) in a.iter().enumerate() {
+                let action = b.get("action").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                if !action.is_empty() {
+                    all.push((sec, i, action, b.get("scan_code").and_then(|x| x.as_i64()).unwrap_or(0), b.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0)));
+                }
+            }
+        }
+    }
+    let groups: [(&str, Box<dyn Fn(&(usize, usize, String, i64, i64)) -> bool>); 3] = [
+        ("Driving and the bus", Box::new(|b| b.0 == 0)),
+        ("The game", Box::new(|b| b.0 == 1 && !b.2.starts_with("vr_"))),
+        ("Headset (VR)", Box::new(|b| b.0 == 1 && b.2.starts_with("vr_"))),
+    ];
+    let mut any = false;
+    for (title, pick) in groups.iter() {
+        let members: Vec<&(usize, usize, String, i64, i64)> = all
+            .iter()
+            .filter(|b| pick(b))
+            .filter(|b| {
+                q.is_empty()
+                    || app.key_capture == Some((b.0, b.1))
+                    || names.control(&b.2).to_lowercase().contains(&q)
+                    || b.2.to_lowercase().contains(&q)
+                    || crate::keys::key_name(b.3, b.4).to_lowercase().contains(&q)
+            })
+            .collect();
+        if members.is_empty() {
+            continue;
+        }
+        any = true;
+        out.push(head(title, members.len()));
+        for b in members {
+            let (sec, i, action, scan, m) = (b.0, b.1, &b.2, b.3, b.4);
+            // another action of the same section on the same key
+            let other = (scan != 0).then(|| all.iter().find(|o| o.0 == sec && o.1 != i && o.3 == scan && (o.4 & 6) == (m & 6))).flatten();
+            let label = names.control(action);
+            if app.key_capture == Some((sec, i)) {
+                out.push((row(&label, 'E', "press a key...", "Escape leaves it as it is", None), format!("keybind {sec} {i} {action}")));
+                continue;
+            }
+            let value = if scan == 0 { "Not set".to_string() } else { crate::keys::key_name(scan, m) };
+            let desc = other.map(|o| format!("Same key as: {}", names.control(&o.2))).unwrap_or_default();
+            out.push((row(&label, 'k', &value, &desc, None), format!("keybind {sec} {i} {action}")));
+        }
+    }
+    if !any {
+        out.push((row("Nothing matches", 'i', "", "Try another name or key", None), HEADING.to_string()));
+    }
+    out
 }
 
 fn vehicle_pages(app: &App) -> Vec<Page> {
@@ -2092,7 +2183,7 @@ fn world_pages(app: &App) -> Vec<Page> {
 /// The pages of the settings window `kind` (empty ones left out) and the one shown.
 fn pages_of(app: &App, kind: &ListKind) -> Option<(Vec<Page>, usize)> {
     let (pages, tab) = match kind {
-        ListKind::Options(t) if *t == MAP_TAB => (options_pages(app), 0),
+        ListKind::Options(t) if is_sub_tab(*t) => (options_pages(app), app.map_return_tab),
         ListKind::Options(t) => (options_pages(app), *t),
         ListKind::Vehicle(t) => (vehicle_pages(app), *t),
         ListKind::World(t) => (world_pages(app), *t),

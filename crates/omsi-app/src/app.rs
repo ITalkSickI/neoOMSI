@@ -215,6 +215,10 @@ pub(crate) struct App {
     pub(crate) admin_list: Option<Vec<(String, String)>>,
     /// Which of the game menu's lists `admin_list` holds (see `game_lists`).
     pub(crate) list_kind: Option<crate::game_lists::ListKind>,
+    pub(crate) map_return_tab: usize,
+    pub(crate) key_capture: Option<(usize, usize)>,
+    pub(crate) key_filter: String,
+    pub(crate) key_search: bool,
     /// OMSI 2's route arrows over the road (the `nav_arrows` setting).
     pub(crate) route_arrows: crate::route_arrows::RouteArrows,
     /// OMSI's global key actions from `Inputs/keyboard.cfg` ([game]).

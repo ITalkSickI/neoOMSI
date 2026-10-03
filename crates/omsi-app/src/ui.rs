@@ -429,6 +429,8 @@ pub struct Ui {
     /// finger's drag is turned into lines with it.
     pub menu_rows: usize,
     pub menu_row_h: f32,
+    pub menu_search: Option<[f32; 4]>,
+    pub caret_up: bool,
     /// The entries of the drop-down shown (their rects), the first of them, and how many fit.
     pub dd_rects: Vec<[f32; 4]>,
     pub dd_top: usize,
@@ -463,7 +465,7 @@ impl Ui {
     }
 
     pub fn new() -> Option<Ui> {
-        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_ctl: Vec::new(), dd_rects: Vec::new(), dd_top: 0, dd_rows: 8, menu_side: Vec::new(), menu_pane: Vec::new(), menu_pane_start: 0, menu_pane_go: None, menu_pane_box: None, menu_time: Vec::new(), anim: Default::default(), anim_dt: 0.0, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, images: Default::default(), loading_bg: None, loading_art: None, loading_logo: None, logo_src: None, logo_cache: Vec::new(), spinner: Vec::new() })
+        Some(Ui { text: TextCache::new()?, chat: ChatWidget::default(), menu_rects: Vec::new(), menu_arrows: Vec::new(), menu_scroll_thumb: None, menu_scroll_track: None, menu_ctl: Vec::new(), dd_rects: Vec::new(), dd_top: 0, dd_rows: 8, menu_side: Vec::new(), menu_pane: Vec::new(), menu_pane_start: 0, menu_pane_go: None, menu_pane_box: None, menu_time: Vec::new(), anim: Default::default(), anim_dt: 0.0, menu_overlay_range: 0..0, vr_cursor_overlay: None, vr_tooltip_overlay: None, menu_start: 0, menu_rows: 0, menu_row_h: 1.0, menu_search: None, caret_up: false, images: Default::default(), loading_bg: None, loading_art: None, loading_logo: None, logo_src: None, logo_cache: Vec::new(), spinner: Vec::new() })
     }
 
     /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
@@ -1268,6 +1270,66 @@ impl Ui {
         y + band * 0.5
     }
 
+    /// The key bindings page's own parts: the search field above the list (`label` is the
+    /// search line's row: its value is the text typed) and the bar of key hints under it.
+    fn keys_chrome(&mut self, r: &Renderer, scene: &mut Scene, label: &str, span: [f32; 2], top: f32, cursor: (f32, f32), _tin: f32, s: f32) {
+        let mut parts = label.split('\u{1f}');
+        let _ = parts.next();
+        let typing = parts.next() == Some("E");
+        let text = parts.next().unwrap_or("");
+        let [x0, x1] = span;
+        let h = 38.0 * s;
+        let field = [x0, top + 3.0 * s, x1, top + 3.0 * s + h];
+        let cy = (field[1] + field[3]) * 0.5;
+        self.menu_search = Some(field);
+        // (the focus fades in and out: glow, border, fill, magnifier and hint follow it)
+        let hovered = cursor.0 >= field[0] && cursor.0 <= field[2] && cursor.1 >= field[1] && cursor.1 <= field[3];
+        let f = self.easeq((20, "keysearch", 0), if typing { 1.0 } else { 0.0 }, 6.0);
+        let hv = self.easeq((21, "keysearch", 0), if hovered && !typing { 1.0 } else { 0.0 }, 8.0);
+        let lit = f.max(hv * 0.6);
+        let rad = h * 0.5;
+        let glow = 0.22 * f + 0.07 * hv;
+        if glow > 0.0 {
+            let g = (4.0 * f + 2.0 * hv) * s;
+            self.text.rounded(r, scene, [field[0] - g, field[1] - g, field[2] + g, field[3] + g], rad + g, fade(ACCENT, glow));
+        }
+        let fill = mix(PANEL_ALT, [40, 40, 40, 255], lit);
+        self.text.rounded(r, scene, [field[0] - 1.0, field[1] - 1.0, field[2] + 1.0, field[3] + 1.0], rad + 1.0, mix(BORDER, ACCENT, lit));
+        self.text.rounded(r, scene, field, rad, fill);
+        // the magnifier: a ring and its handle, lit by the focus
+        let ink = mix([142, 142, 142, 255], ACCENT, f.max(hv * 0.8));
+        let (mx, my) = (field[0] + 22.0 * s, cy - 1.5 * s);
+        self.text.rounded(r, scene, [mx - 6.5 * s, my - 6.5 * s, mx + 6.5 * s, my + 6.5 * s], 6.5 * s, ink);
+        self.text.rounded(r, scene, [mx - 4.5 * s, my - 4.5 * s, mx + 4.5 * s, my + 4.5 * s], 4.5 * s, fill);
+        for n in 0..4 {
+            let o = (5.5 + n as f32 * 1.6) * s;
+            self.text.rounded(r, scene, [mx + o - 1.1 * s, my + o - 1.1 * s, mx + o + 1.1 * s, my + o + 1.1 * s], 1.1 * s, ink);
+        }
+        let px = (15.0 * s) as u32;
+        let tx = field[0] + 42.0 * s;
+        let room = field[2] - tx - 18.0 * s;
+        let mut caret_x = tx;
+        if text.is_empty() {
+            let hint = clip_to(&self.text, "Search key bindings", px as f32, room);
+            self.put(r, scene, &hint, px, txt(mix([142, 142, 142, 0], [92, 92, 92, 0], f)), tx + 4.0 * s * f, cy);
+        } else {
+            let t = clip_left(&self.text, text, px as f32, room);
+            let w = self.put(r, scene, &t, px, WHITE, tx, cy);
+            caret_x = tx + w + 2.0 * s;
+        }
+        // the text cursor: blinks (fades in and out) while the field is being typed in
+        if typing {
+            let cv = self.ease((23, "keysearch", 0), if self.caret_up { 1.0 } else { 0.0 }, 2.5);
+            if cv >= 1.0 {
+                self.caret_up = false;
+            } else if cv <= 0.0 {
+                self.caret_up = true;
+            }
+            let a = quant(cv).max(0.125);
+            self.text.rounded(r, scene, [caret_x, cy - 9.0 * s, caret_x + 2.0 * s, cy + 9.0 * s], 1.0 * s, fade([236, 236, 236, 255], a));
+        }
+    }
+
     /// A pill (`cap`: a key cap) of `fill` with `text` in it, ending at `right`; returns
     /// its left edge.
     fn chip(&mut self, r: &Renderer, scene: &mut Scene, text: &str, px: u32, color: [u8; 4], fill: [u8; 4], cap: bool, right: f32, cy: f32, s: f32) -> f32 {
@@ -1719,13 +1781,22 @@ impl Ui {
         let tin = TEXT_IN * s;
         let fixed_h = (if f.vr { 440.0 } else { 600.0 }) * s;
         let h = fixed_h.min(f.height * (if f.vr { 0.70 } else { 0.94 })).max(220.0 * s);
-        let room = h - header_h - pad;
-        let row_h = ((if f.vr { 54.0 } else { 62.0 }) * s).min(room).max(30.0 * s);
-        let rows = ((room / row_h).floor() as usize).clamp(1, items.len().max(1));
-        let start = match (items.len() > rows, f.menu_top) {
+        // the key bindings page: its first line is the search (drawn as a field above the
+        // list, not a row of it), a hint bar under the list, and slimmer rows
+        let keys_page = items.first().is_some_and(|i| i.0 == "keysearch");
+        self.menu_search = None;
+        let lead = keys_page as usize;
+        let top_off = if keys_page { 48.0 * s } else { 0.0 };
+        let bot_off = 0.0;
+        let room = h - header_h - pad - top_off - bot_off;
+        let row_h = if keys_page { (50.0 * s).min(room).max(30.0 * s) } else { ((if f.vr { 54.0 } else { 62.0 }) * s).min(room).max(30.0 * s) };
+        let n_items = items.len() - lead;
+        let rows = ((room / row_h).floor() as usize).clamp(1, n_items.max(1));
+        let start = lead
+            + match (n_items > rows, f.menu_top) {
             (false, _) => 0,
-            (true, Some(top)) => (top.max(0.0).round() as usize).min(items.len() - rows),
-            (true, None) => sel.saturating_sub(rows / 2).min(items.len() - rows),
+            (true, Some(top)) => (top.max(0.0).round() as usize).saturating_sub(lead).min(n_items - rows),
+            (true, None) => sel.saturating_sub(lead).saturating_sub(rows / 2).min(n_items - rows),
         };
         self.menu_start = start;
         self.menu_rows = rows;
@@ -1791,29 +1862,46 @@ impl Ui {
             self.menu_side.push(rect);
         }
         // the scroll bar of a long page
-        let scrolls = items.len() > rows;
+        let scrolls = n_items > rows;
         let cx0 = x + side_w + if side_w > 0.0 { 8.0 * s } else { pad };
         let cx1 = x + w - pad - if scrolls { 8.0 * s } else { 0.0 };
         if scrolls {
-            let top = y + header_h;
+            let top = y + header_h + top_off;
             let track = [x + w - 12.0 * s, top, x + w - 9.0 * s, top + row_h * rows as f32 - 4.0 * s];
             self.menu_scroll_track = Some(track);
             self.text.rounded(r, scene, track, 1.5 * s, [255, 255, 255, 22]);
             let th = track[3] - track[1];
-            let t0 = track[1] + th * start as f32 / items.len() as f32;
-            let t1 = track[1] + th * (start + rows) as f32 / items.len() as f32;
+            let t0 = track[1] + th * (start - lead) as f32 / n_items as f32;
+            let t1 = track[1] + th * (start - lead + rows) as f32 / n_items as f32;
             let thumb = [track[0], t0, track[2], t1];
             self.text.rounded(r, scene, thumb, 1.5 * s, ACCENT);
             self.menu_scroll_thumb = Some([thumb[0] - 6.0 * s, thumb[1], thumb[2] + 6.0 * s, thumb[3]]);
         }
         // the rows
-        let any_hovered = over([x + side_w, y + header_h, x + w, y + h]);
+        let any_hovered = over([x + side_w, y + header_h + top_off, x + w, y + h - bot_off]);
         let px = ((15.0 * s).min(row_h * 0.34)) as u32;
+        if keys_page {
+            self.keys_chrome(r, scene, items[0].1, [cx0, x + w - pad], y + header_h, f.cursor, tin, s);
+        }
         // (the light of the row above: the line between two rows is hidden when either is lit)
         let mut prev_a = 0.0f32;
         for (k, &(id, label)) in items.iter().enumerate().skip(start).take(rows) {
-            let ry = y + header_h + row_h * (k - start) as f32;
+            let ry = y + header_h + top_off + row_h * (k - start) as f32;
             let rect = [cx0, ry, cx1, ry + row_h - 4.0 * s];
+            // (a group's name on the key bindings page: a small label, nothing to click)
+            if keys_page && id == "#" {
+                let mut parts = label.split('\u{1f}');
+                let name = parts.next().unwrap_or("");
+                let _ = parts.next();
+                let count = parts.next().unwrap_or("");
+                let cy = rect[3] - 12.0 * s;
+                self.put(r, scene, name, (12.0 * s) as u32, MUTED, cx0 + tin, cy);
+                self.put_right(r, scene, count, (12.0 * s) as u32, MUTED, cx1 - tin, cy);
+                self.menu_rects.push([-1.0e9; 4]);
+                self.menu_ctl.push(None);
+                prev_a = 0.0;
+                continue;
+            }
             // (lit by the mouse over it; by the keyboard's choice only when the keyboard chose)
             let lit = f.dropdown.is_none() && (over(rect) || (k == sel && f.menu_kbd && !any_hovered));
             // the light of the row eases in and out
@@ -1907,6 +1995,26 @@ impl Ui {
                 "i" => {
                     let cw = self.put_right(r, scene, value, (14.0 * s) as u32, SOFT, rx, cy);
                     rx - cw
+                }
+                // a key (or a chord) as key caps, one cap for each part
+                "k" => {
+                    let unset = value == "Not set";
+                    let mut parts: Vec<&str> = Vec::new();
+                    let mut rest = value;
+                    if !unset {
+                        while let Some(p) = ["Shift+", "Ctrl+", "Alt+"].iter().find_map(|m| rest.strip_prefix(m).map(|r| (*m, r))) {
+                            parts.push(p.0.trim_end_matches('+'));
+                            rest = p.1;
+                        }
+                    }
+                    parts.push(rest);
+                    let fg = if unset { mix(MUTED, SOFT, a) } else { mix(SOFT, AMBER, a) };
+                    let bg = if unset { mix([255, 255, 255, 12], CHIP, a) } else { mix(CHIP, ACCENT_SOFT, a) };
+                    let mut cx = rx;
+                    for p in parts.iter().rev() {
+                        cx = self.chip(r, scene, p, (13.0 * s) as u32, fg, bg, !unset, cx, cy, s) - 5.0 * s;
+                    }
+                    cx + 5.0 * s
                 }
                 // a value being typed: lit in the accent
                 "E" => self.chip(r, scene, value, (13.0 * s) as u32, AMBER, ACCENT_SOFT, false, rx, cy, s),

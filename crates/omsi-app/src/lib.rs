@@ -71,7 +71,13 @@ mod dinput;
 mod evdev_ff;
 mod cli;
 mod duty_start;
+mod editor_ctl;
+mod game_menu;
+mod input_keys;
+mod input_mouse;
 mod input_script;
+mod session;
+mod world_ctl;
 mod launcher_link;
 mod lan_mods;
 mod memory;
@@ -518,6 +524,10 @@ pub(crate) fn make_app(mut args: Args, server_cfg: Option<server::ServerCfg>) ->
         placing: None,
         admin_list: None,
         list_kind: None,
+        map_return_tab: 0,
+        key_capture: None,
+        key_filter: String::new(),
+        key_search: false,
         route_arrows: Default::default(),
         game_keys: omsi_content::KeyboardCfg::load(&crate::startup::keyboard_cfg(&args_root_for_keys)).unwrap_or_default().with_game_defaults().with_vr_defaults().game,
         own_keys: crate::startup::own_keys(&args_root_for_keys),

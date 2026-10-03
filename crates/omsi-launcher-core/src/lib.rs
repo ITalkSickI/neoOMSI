@@ -1539,6 +1539,16 @@ fn keyboard_cfg_read_path() -> Result<PathBuf> {
     Ok(omsi_cfg::original_keyboard_cfg(&root()?))
 }
 
+/// The `keyboard.cfg` the launcher saved, if there is one: where [`save_keybindings`] writes it.
+pub fn saved_keyboard_cfg() -> Option<PathBuf> {
+    let own = keyboard_cfg_write_path().ok()?;
+    if own.exists() {
+        return Some(own);
+    }
+    let fallback = data_dir().join("Inputs").join("keyboard.cfg");
+    fallback.exists().then_some(fallback)
+}
+
 fn binding_to_json(b: &omsi_content::input::KeyBinding) -> Value {
     json!({ "action": b.action, "scan_code": b.scan_code, "modifier": b.modifier })
 }

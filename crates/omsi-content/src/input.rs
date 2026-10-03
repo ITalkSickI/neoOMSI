@@ -111,6 +111,70 @@ impl KeyboardCfg {
                 self.vehicles.push(KeyBinding { action: action.into(), scan_code: 0, modifier: 0 });
             }
         }
+        // The game's own keys that are not in OMSI's file (or that a short file lacks): in the
+        // same editable list as the rest, so the player can move or unbind each. An entry in
+        // the file (an unbound one too) wins.
+        let mut keys: Vec<(String, i32, i32)> = [
+            ("sim_pause", 25, 0),
+            ("quicksave", 31, KEY_CTRL),
+            ("screenshot", 25, KEY_SHIFT | KEY_CTRL),
+            ("toggel_mouse_ctrl", 24, 0),
+            ("view_set_driver", 59, 0),
+            ("view_set_passenger", 60, 0),
+            ("view_set_outside", 61, 0),
+            ("view_set_map", 62, 0),
+            ("view_set_schedule", 210, KEY_HOLD),
+            ("view_toggle_informationdisplay", 21, KEY_SHIFT),
+            ("toggle_fullscreen", 28, KEY_ALT),
+            ("toggle_editor", 18, KEY_SHIFT | KEY_CTRL),
+            ("gear_up", 200, KEY_CTRL),
+            ("gear_down", 208, KEY_CTRL),
+            ("indicator_left", 44, 0),
+            ("indicator_hazard", 45, 0),
+            ("indicator_right", 46, 0),
+            ("saloon_lights", 23, 0),
+            ("bus_startup", 22, KEY_SHIFT),
+            ("radio_next", 19, KEY_SHIFT),
+            ("toggle_city_map", 50, KEY_SHIFT),
+            ("show_position", 87, KEY_CTRL),
+            ("save_personnel", 67, 0),
+            ("open_mainmenue", 1, 0),
+            ("tutorial_next", 28, 0),
+            ("tutorial_back", 201, 0),
+            ("tutorial_toggle", 20, KEY_CTRL),
+            ("navigator_close", 1, 0),
+            ("menu_exit", 1, 0),
+        ]
+            .into_iter()
+            .map(|(a, s, m)| (a.to_string(), s, m))
+            .collect();
+        // Shift+1..9: the doors, front to back
+        keys.extend((1..=9).map(|n| (format!("doorkey_{n}"), 1 + n, KEY_SHIFT)));
+        for (action, scan_code, modifier) in keys {
+            if !self.game.iter().any(|b| b.action.eq_ignore_ascii_case(&action)) {
+                self.game.push(KeyBinding { action, scan_code, modifier });
+            }
+        }
+        for (action, scan) in [("view_interiorcam_minus", 203), ("view_interiorcam_plus", 205)] {
+            let other = self.game.iter().any(|b| b.action.eq_ignore_ascii_case(action) && !(b.scan_code == scan && b.modifier == KEY_CTRL));
+            if other {
+                self.game.retain(|b| !(b.action.eq_ignore_ascii_case(action) && b.scan_code == scan && b.modifier == KEY_CTRL));
+            } else {
+                self.game.retain(|b| !b.action.eq_ignore_ascii_case(action));
+                self.game.push(KeyBinding { action: action.into(), scan_code: scan, modifier: 0 });
+            }
+        }
+        // Second bindings of the same action, listed like any other entry (F12 and Page Down as extra keys): added
+        // while the action still sits on its first key
+        for (action, first, extra) in [
+            ("screenshot", (25, KEY_SHIFT | KEY_CTRL), (88, 0)),
+            ("tutorial_next", (28, 0), (209, 0)),
+        ] {
+            let has = |sc: i32, m: i32| self.game.iter().any(|b| b.action.eq_ignore_ascii_case(action) && b.scan_code == sc && b.modifier == m);
+            if has(first.0, first.1) && !has(extra.0, extra.1) {
+                self.game.push(KeyBinding { action: action.into(), scan_code: extra.0, modifier: extra.1 });
+            }
+        }
         self
     }
 
@@ -123,6 +187,9 @@ impl KeyboardCfg {
             ("vr_toggle_mode", 66, 0),
             ("vr_toggle_navigator", 49, KEY_SHIFT | KEY_CTRL),
             ("vr_position_navigator", 50, KEY_SHIFT | KEY_CTRL),
+            ("vr_nav_confirm", 28, 0),
+            ("vr_nav_cancel", 1, 0),
+            ("vr_nav_reset", 19, 0),
         ] {
             if !self.game.iter().any(|b| b.action.eq_ignore_ascii_case(action)) {
                 self.game.push(KeyBinding { action: action.into(), scan_code, modifier });

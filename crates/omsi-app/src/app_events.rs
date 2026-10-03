@@ -108,6 +108,11 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed && self.key_search {
+                    if let Some(text) = event.text.as_deref() {
+                        self.key_search_text(text);
+                    }
+                }
                 if event.state == ElementState::Pressed && self.menu_edit_icao {
                     if let Some(text)=event.text.as_deref(){ self.icao_edit_text(text); }
                 }
@@ -1452,31 +1457,6 @@ impl ApplicationHandler for App {
                     // a controller's look buttons (Settings → Controllers: view_look_*)
                     self.look.0 += step * 1.5 * (self.pad_look[1] as i32 - self.pad_look[0] as i32) as f32;
                     self.look.1 = (self.look.1 + step * 0.7 * (self.pad_look[2] as i32 - self.pad_look[3] as i32) as f32).clamp(-85.0, 85.0);
-                    // with a wheel steering, the arrow keys look around as in OMSI
-                    if !ctrl_alt && self.controllers.as_ref().is_some_and(|c| c.wheel_steering()) && !self.keys.contains(&KeyCode::ControlLeft) && !self.keys.contains(&KeyCode::ControlRight) {
-                        // a glance: held, the head turns (to 140 degrees at most); let go, it
-                        // comes back to the road - held, it went round and round, and the
-                        // other key never brought it back straight
-                        let (l, r) = (self.keys.contains(&KeyCode::ArrowLeft), self.keys.contains(&KeyCode::ArrowRight));
-                        if l || r {
-                            self.look.0 = (self.look.0 + step * 1.5 * (r as i32 - l as i32) as f32).clamp(-140.0, 140.0);
-                            self.arrow_glance = true;
-                        } else if self.arrow_glance {
-                            self.look.0 *= (-6.0 * dt).exp();
-                            // (down to a hundredth of a degree before it is set to 0: at half a
-                            // degree the last step was a visible snap of several pixels)
-                            if self.look.0.abs() < 0.02 {
-                                self.look.0 = 0.0;
-                                self.arrow_glance = false;
-                            }
-                        }
-                        if self.keys.contains(&KeyCode::ArrowUp) {
-                            self.look.1 = (self.look.1 + step * 0.7).min(85.0);
-                        }
-                        if self.keys.contains(&KeyCode::ArrowDown) {
-                            self.look.1 = (self.look.1 - step * 0.7).max(-85.0);
-                        }
-                    }
                     let alt = self.keys.contains(&KeyCode::AltLeft)
                         || self.keys.contains(&KeyCode::AltRight);
                     if alt && self.keys.contains(&KeyCode::KeyJ) {
@@ -2791,6 +2771,18 @@ impl App {
                     if let Some(i) = pane {
                         self.tour_pane_click(i);
                         return;
+                    }
+                }
+
+                // The search field of the key bindings page: a click starts typing.
+                if self.chooser.is_some() && self.key_capture.is_none() {
+                    let on_field = self.ui.as_ref().and_then(|u| u.menu_search).is_some_and(|r| self.cursor.0 >= r[0] && self.cursor.0 <= r[2] && self.cursor.1 >= r[1] && self.cursor.1 <= r[3]);
+                    if on_field {
+                        self.key_search_start();
+                        return;
+                    }
+                    if self.key_search {
+                        self.key_search_stop();
                     }
                 }
 

@@ -126,18 +126,57 @@ pub fn scan_name(scan: i32) -> Option<String> {
         Escape, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0, Minus, Equal, Backspace, Tab, KeyQ, KeyW, KeyE, KeyR, KeyT, KeyY, KeyU, KeyI, KeyO, KeyP, BracketLeft, BracketRight, Enter, ControlLeft, KeyA, KeyS, KeyD, KeyF, KeyG, KeyH, KeyJ, KeyK, KeyL, Semicolon, Quote, Backquote, ShiftLeft, Backslash, KeyZ, KeyX, KeyC, KeyV, KeyB, KeyN, KeyM, Comma, Period, Slash, ShiftRight, NumpadMultiply, AltLeft, Space, CapsLock, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, NumLock, ScrollLock, Numpad7, Numpad8, Numpad9, NumpadSubtract, Numpad4, Numpad5, Numpad6, NumpadAdd, Numpad1, Numpad2, Numpad3, Numpad0, NumpadDecimal, IntlBackslash, F11, F12, F13, F14, F15, NumpadEqual, NumpadEnter, ControlRight, NumpadDivide, PrintScreen, AltRight, Pause, Home, ArrowUp, PageUp, ArrowLeft, ArrowRight, End, ArrowDown, PageDown, Insert, Delete, SuperLeft, SuperRight, ContextMenu,
     ];
     let k = ALL.iter().find(|k| dik_code(**k) == Some(scan))?;
-    let n = format!("{k:?}");
-    let n = n.strip_prefix("Key").or_else(|| n.strip_prefix("Digit")).map(String::from).unwrap_or(n.clone());
-    let n = n.replace("Numpad", "Num").replace("Arrow", "");
-    Some(match n.as_str() {
-        "Period" => ".".into(),
-        "Comma" => ",".into(),
-        "Minus" => "-".into(),
-        "Equal" => "=".into(),
-        "Slash" => "/".into(),
-        "Semicolon" => ";".into(),
-        _ => n,
-    })
+    let raw = format!("{k:?}");
+    let named = match raw.as_str() {
+        "NumpadAdd" => "Numpad +",
+        "NumpadSubtract" => "Numpad -",
+        "NumpadMultiply" => "Numpad *",
+        "NumpadDivide" => "Numpad /",
+        "NumpadDecimal" => "Numpad .",
+        "NumpadEnter" => "Numpad Enter",
+        "NumpadEqual" => "Numpad =",
+        "NumLock" => "Num Lock",
+        "ScrollLock" => "Scroll Lock",
+        "CapsLock" => "Caps Lock",
+        "PrintScreen" => "Print Screen",
+        "PageUp" => "Page Up",
+        "PageDown" => "Page Down",
+        "ArrowUp" => "Up",
+        "ArrowDown" => "Down",
+        "ArrowLeft" => "Left",
+        "ArrowRight" => "Right",
+        "ControlLeft" => "Left Ctrl",
+        "ControlRight" => "Right Ctrl",
+        "ShiftLeft" => "Left Shift",
+        "ShiftRight" => "Right Shift",
+        "AltLeft" => "Left Alt",
+        "AltRight" => "Right Alt",
+        "SuperLeft" => "Left Win",
+        "SuperRight" => "Right Win",
+        "ContextMenu" => "Menu",
+        "Escape" => "Esc",
+        "Delete" => "Del",
+        "Period" => ".",
+        "Comma" => ",",
+        "Minus" => "-",
+        "Equal" => "=",
+        "Slash" => "/",
+        "Semicolon" => ";",
+        "Quote" => "'",
+        "Backquote" => "`",
+        "BracketLeft" => "[",
+        "BracketRight" => "]",
+        "Backslash" => "\\",
+        "IntlBackslash" => "<",
+        _ => "",
+    };
+    if !named.is_empty() {
+        return Some(named.to_string());
+    }
+    if let Some(d) = raw.strip_prefix("Numpad") {
+        return Some(format!("Numpad {d}"));
+    }
+    Some(raw.strip_prefix("Key").or_else(|| raw.strip_prefix("Digit")).map(String::from).unwrap_or(raw.clone()))
 }
 
 #[cfg(test)]
@@ -145,7 +184,7 @@ mod scan_name_tests {
     #[test]
     fn names() {
         assert_eq!(super::scan_name(17).as_deref(), Some("W"));
-        assert_eq!(super::scan_name(72).as_deref(), Some("Num8"));
+        assert_eq!(super::scan_name(72).as_deref(), Some("Numpad 8"));
         assert_eq!(super::scan_name(200).as_deref(), Some("Up"));
         assert_eq!(super::scan_name(52).as_deref(), Some("."));
     }
