@@ -2,8 +2,10 @@ name: Build
 
 on:
   schedule:
-    # Runs nightly at 00:00 UTC
-    - cron: '0 0 * * *'
+    # Local German time, DST-aware. Seven minutes past midnight avoids GitHub's
+    # documented top-of-hour scheduling peak while still being a midnight nightly.
+    - cron: '7 0 * * *'
+      timezone: 'Europe/Berlin'
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -27,14 +29,19 @@ jobs:
         with:
           fetch-depth: 0
       - id: v
+        shell: bash
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             v="${GITHUB_REF_NAME#v}"
           else
-            v="$(sh scripts/version.sh)-nightly.${{ github.run_number }}"
+            short_sha="${GITHUB_SHA:0:8}"
+            v="$(sh scripts/version.sh)-nightly.g${short_sha}"
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
-      - run: echo "### neoOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+      - shell: bash
+        run: |
+          echo "### neoOMSI ${{ steps.v.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit \`${GITHUB_SHA:0:8}\` · Actions run #${GITHUB_RUN_NUMBER}" >> "$GITHUB_STEP_SUMMARY"
 
   windows:
     needs: version
@@ -213,62 +220,109 @@ jobs:
           path: out
           merge-multiple: true
       - name: Publish v${{ needs.version.outputs.version }}
+        shell: bash
         run: |
+          set -euo pipefail
           ls -l out
+
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # Stable/RC releases prefer the prepared CHANGELOG section. If release
+            # preparation has not compiled it yet, fall back to all pending fragments.
             awk -v v="## $VERSION" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} f && /^## / {exit} f {print}' CHANGELOG.md > changes.md
+            if ! grep -q '[^[:space:]]' changes.md; then
+              bash scripts/render-changelog-fragments.sh changes.md
+            fi
           else
-            : > changes.md
-            for f in .changes/*.md; do
-              [ -f "$f" ] || continue
-              [ "$(basename "$f")" = "README.md" ] && continue
-              cat "$f" >> changes.md
-              echo >> changes.md
-            done
-          fi
-          if ! grep -q '[^[:space:]]' changes.md; then
-            prev=$(git tag -l 'v*' --sort=-v:refname | grep -vx "$TAG" | head -1)
-            if [ -n "$prev" ]; then
-              git diff --unified=0 "$prev" HEAD -- CHANGELOG.md | grep '^+' | grep -v '^+++' | sed 's/^+//' | grep -v '^## ' > changes.md || true
+            # Nightlies show only fragments changed since the previous rolling
+            # nightly. The first nightly falls back to all pending fragments.
+            if git rev-parse --verify --quiet refs/tags/nightly >/dev/null; then
+              previous_nightly="$(git rev-parse refs/tags/nightly)"
+              fragments=()
+              while IFS= read -r fragment; do
+                [ "$fragment" = ".changes/README.md" ] && continue
+                [ -f "$fragment" ] && fragments+=("$fragment")
+              done < <(git diff --name-only "$previous_nightly" "$GITHUB_SHA" -- '.changes/*.md')
+
+              if [ "${#fragments[@]}" -gt 0 ]; then
+                bash scripts/render-changelog-fragments.sh changes.md "${fragments[@]}"
+              else
+                : > changes.md
+              fi
+            else
+              bash scripts/render-changelog-fragments.sh changes.md
             fi
           fi
-          if ! grep -q '[^[:space:]]' changes.md; then
-            echo "Small changes and fixes." > changes.md
-          fi
-          cat > notes.md <<NOTES
-          **neoOMSI $VERSION**
 
-          > **Early release, expect bugs.** neoOMSI needs an original OMSI 2 installation to run; it contains no game content.
+          if ! grep -q '[^[:space:]]' changes.md; then
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              echo "- Small changes and fixes." > changes.md
+            else
+              echo "- No notable user-facing changes since the previous nightly." > changes.md
+            fi
+          fi
+
+          download_base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
+
+          cat > notes.md <<NOTES
+          > **Early development build.** Expect bugs. An original OMSI 2 installation is required; neoOMSI does not include game content.
+
+          **Source:** [\`${GITHUB_SHA:0:8}\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA) · **Build:** [#${GITHUB_RUN_NUMBER}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)
+
+          ## What's changed
 
           NOTES
           cat changes.md >> notes.md
           cat >> notes.md <<NOTES
 
-          ### Downloads
+          ## Downloads
 
-          | Platform | Download |
-          | --- | --- |
-          | Windows x64 | \`neoOMSI-$VERSION-windows-x64.zip\` |
-          | Windows ARM64 | \`neoOMSI-$VERSION-windows-arm64.zip\` |
-          | macOS (Apple silicon) | \`neoOMSI-$VERSION-macos-arm64.zip\` |
-          | macOS (Intel) | \`neoOMSI-$VERSION-macos-x64.zip\` |
-          | Linux x64 | \`neoOMSI-$VERSION-linux-x64.zip\` |
-          | Linux ARM64 | \`neoOMSI-$VERSION-linux-arm64.zip\` |
-          | Dedicated server, Linux | \`neoOMSI-$VERSION-server-linux-x64.zip\`, \`neoOMSI-$VERSION-server-linux-arm64.zip\` |
-          | Dedicated server, Windows | \`neoOMSI-$VERSION-server-windows-x64.zip\`, \`neoOMSI-$VERSION-server-windows-arm64.zip\` |
+          | Platform | Game | Dedicated server |
+          | --- | --- | --- |
+          | Windows x64 | [\`neoOMSI-$VERSION-windows-x64.zip\`]($download_base/neoOMSI-$VERSION-windows-x64.zip) | [\`neoOMSI-$VERSION-server-windows-x64.zip\`]($download_base/neoOMSI-$VERSION-server-windows-x64.zip) |
+          | Windows ARM64 | [\`neoOMSI-$VERSION-windows-arm64.zip\`]($download_base/neoOMSI-$VERSION-windows-arm64.zip) | [\`neoOMSI-$VERSION-server-windows-arm64.zip\`]($download_base/neoOMSI-$VERSION-server-windows-arm64.zip) |
+          | macOS (Apple silicon) | [\`neoOMSI-$VERSION-macos-arm64.zip\`]($download_base/neoOMSI-$VERSION-macos-arm64.zip) | — |
+          | macOS (Intel) | [\`neoOMSI-$VERSION-macos-x64.zip\`]($download_base/neoOMSI-$VERSION-macos-x64.zip) | — |
+          | Linux x64 | [\`neoOMSI-$VERSION-linux-x64.zip\`]($download_base/neoOMSI-$VERSION-linux-x64.zip) | [\`neoOMSI-$VERSION-server-linux-x64.zip\`]($download_base/neoOMSI-$VERSION-server-linux-x64.zip) |
+          | Linux ARM64 | [\`neoOMSI-$VERSION-linux-arm64.zip\`]($download_base/neoOMSI-$VERSION-linux-arm64.zip) | [\`neoOMSI-$VERSION-server-linux-arm64.zip\`]($download_base/neoOMSI-$VERSION-server-linux-arm64.zip) |
           NOTES
+
           if [ "$PRERELEASE" = "true" ]; then
             flag="--prerelease"
           else
             flag="--prerelease=false"
           fi
+
           if [ "$GITHUB_REF_TYPE" != "tag" ]; then
-            gh release delete "$TAG" --cleanup-tag --yes || true
-            gh release create "$TAG" out/*.zip \
-              --target "$GITHUB_SHA" \
-              --title "neoOMSI $VERSION" \
-              --notes-file notes.md \
-              "$flag"
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              # Upload first: a failed build/upload never destroys the last usable nightly.
+              gh release upload "$TAG" out/*.zip --clobber
+
+              # Move the rolling tag only after all new assets are present.
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" \
+                -f sha="$GITHUB_SHA" -F force=true >/dev/null
+
+              gh release edit "$TAG" \
+                --title "neoOMSI $VERSION" \
+                --notes-file notes.md \
+                "$flag"
+
+              # The version is part of each asset name, so remove assets from older
+              # nightlies after the new release is safely in place.
+              current_prefix="neoOMSI-$VERSION-"
+              while IFS= read -r asset; do
+                [ -n "$asset" ] || continue
+                case "$asset" in
+                  "$current_prefix"*) ;;
+                  *) gh release delete-asset "$TAG" "$asset" --yes ;;
+                esac
+              done < <(gh release view "$TAG" --json assets --jq '.assets[].name')
+            else
+              gh release create "$TAG" out/*.zip \
+                --target "$GITHUB_SHA" \
+                --title "neoOMSI $VERSION" \
+                --notes-file notes.md \
+                "$flag"
+            fi
           elif gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/*.zip --clobber
             gh release edit "$TAG" --title "neoOMSI $VERSION" --notes-file notes.md "$flag"

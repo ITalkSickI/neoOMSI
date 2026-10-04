@@ -1,52 +1,32 @@
 # Changelog fragments
 
-User-visible changes are recorded as small per-PR fragments instead of editing
-`CHANGELOG.md` directly in every pull request.
-
-## File name
+Each notable PR adds one short release-note fragment:
 
 ```text
-<pr-number>.<category>.md
+.changes/<pr-number>.<category>.md
 ```
+
+Categories: `parity`, `fix`, `feature`, `performance`, `breaking`, `docs`, `internal`.
+
+The number must match the PR. Release tooling groups fragments by category and adds a
+linked `#<pr>` reference automatically.
+
+Write one concise paragraph describing the result, not the implementation process. No
+headings, lists, jokes or PR-template prose. Use multiple category files for one PR when
+needed.
 
 Example:
 
 ```text
-412.parity.md
+.changes/412.parity.md
 ```
-
-## Categories
-
-- `parity` – OMSI 2 compatibility correction
-- `fix` – bug or regression fix
-- `feature` – intentional neoOMSI feature
-- `performance` – meaningful performance improvement
-- `breaking` – intentional compatibility/API/configuration break
-- `internal` – relevant internal/tooling change worth mentioning
-
-## Contents
-
-Write one short user-facing statement describing the result, not the implementation process.
-
-Good:
 
 ```markdown
 Fixed keyboard steering return behaviour to match OMSI 2.
 ```
 
-Avoid:
+Use the reviewer-approved `skip-changelog` label for trivial changes that should not appear
+in release notes.
 
-```markdown
-Refactored three functions and changed a HashMap to a Vec.
-```
-
-unless that internal change is itself important to release consumers.
-
-## When no fragment is needed
-
-Purely internal changes that should not appear in release notes may use an explicitly
-reviewer-approved `skip-changelog` label.
-
-Nightly builds read unreleased fragments without deleting them. Stable release preparation
-compiles the accumulated fragments into `CHANGELOG.md` and removes the processed fragment
-files.
+Nightlies show fragments changed since the previous rolling nightly. Stable release
+preparation compiles all pending fragments into `CHANGELOG.md` and removes them.
