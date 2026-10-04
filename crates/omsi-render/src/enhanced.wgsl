@@ -303,7 +303,7 @@ fn fs_enhanced(in: FsIn) -> EnhancedOut {
     let screen = material.flags.x > 0.5;
     // an LED panel's dots stay in the glow's source (`post.wgsl`), the other screens'
     // letters stay out of it
-    let led = select(0.0, 1.0, material.emissive.w < -1.5);
+    let led = select(0.0, step(0.5, c.a), material.emissive.w < -1.5);
     var out: EnhancedOut;
     out.color = c;
     // The sub-0.5 range of g carries water's occluded sky weight; LED detection uses
@@ -571,7 +571,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // plastic in every headlight)
     let dry_snow = 1.0 - clamp(enh.weather.y, 0.0, 1.0);
     let wet_road = camera.shadow.w * material.params2.z * outside * dry_snow;
-    let wet_any = camera.shadow.w * outside * select(0.35, 0.0, glass) * dry_snow;
+    let wet_any = camera.shadow.w * outside * select(0.35, 0.0, glass || material.emissive.w < -1.5) * dry_snow;
     var puddle = 0.0;
     if (wet_road > 0.0) {
         albedo = albedo * mix(1.0, 0.5, wet_road);
