@@ -8971,7 +8971,20 @@ impl World {
                 }
             }
             // [htmltexture] pages: only near the listener (a page is a whole browser frame)
+            if !o.htmls.is_empty() && dist > HTML_OBJECT_NEAR * 2.5 {
+                for (_, tex) in &o.htmls {
+                    if renderer.texture_levels(scene, *tex).is_some_and(|(w, _, _)| w > 4) {
+                        let blank = Image { width: 4, height: 4, rgba: [0, 0, 0, 255].repeat(16), has_alpha: true };
+                        if renderer.update_texture_mips(scene, *tex, &blank) {
+                            renderer.rebind_textures(scene, &[*tex]);
+                        }
+                    }
+                }
+            }
             if !o.htmls.is_empty() && dist < HTML_OBJECT_NEAR {
+                if o.htmls.iter().any(|(_, tex)| renderer.texture_levels(scene, *tex).is_some_and(|(w, _, _)| w <= 4)) {
+                    o.inst.invalidate_html();
+                }
                 for (index, w, h, rgba) in o.inst.update_html_textures() {
                     if let Some((_, tex)) = o.htmls.iter().find(|(i, _)| *i == index) {
                         if renderer.update_texture_mips(scene, *tex, &Image { width: w, height: h, rgba, has_alpha: true }) {
