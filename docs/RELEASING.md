@@ -8,7 +8,7 @@ neoOMSI follows Semantic Versioning (`MAJOR.MINOR.PATCH`) during pre-1.0 develop
 
 | Type | Format | Example |
 | --- | --- | --- |
-| **Nightly** | `0.x.y-nightly.<run-id>` | `0.2.0-nightly.312` |
+| **Nightly** | `0.x.y-nightly.g<short-sha>` | `0.2.0-nightly.gdb76899d` |
 | **Release Candidate** | `v0.x.y-rc.<n>` | `v0.2.0-rc.1` |
 | **Stable** | `v0.x.y` | `v0.2.0` |
 | **Patch** | `v0.x.y+1` | `v0.2.1` |
@@ -33,7 +33,7 @@ Nightly releases update a rolling `nightly` tag on GitHub Releases rather than c
 ```text
 main branch (trunk)
     │
-    ├── Nightly builds (scheduled 00:00 UTC & manual dispatch)
+    ├── Nightly builds (00:07 Europe/Berlin & manual dispatch)
     │
     └── Create release branch: release/0.2
             │
@@ -45,7 +45,9 @@ main branch (trunk)
 
 ### 1. Nightly builds
 
-Automated CI builds run nightly at 00:00 UTC (and on manual workflow dispatch) for Windows, macOS, and Linux. Nightlies provide immediate visibility into recent changes but carry no guarantee against regressions. Android packages are built locally using `scripts/build-android.sh`.
+Automated CI builds run nightly at 00:07 in `Europe/Berlin` (and on manual workflow dispatch) for Windows, macOS, and Linux. Nightlies provide immediate visibility into recent changes but carry no guarantee against regressions. Android packages are built locally using `scripts/build-android.sh`.
+
+The public Nightly version uses the source commit (`0.x.y-nightly.g<short-sha>`). The Actions run number remains linked in the release notes for CI traceability. The rolling `nightly` release shows changelog fragments changed since the previous nightly; the first nightly falls back to all pending fragments.
 
 ### 2. Preparing a Stable release
 
@@ -82,6 +84,6 @@ To prevent merge conflicts across concurrent pull requests, contributors add sma
 .changes/<pr-number>.<category>.md
 ```
 
-- **Nightly CI:** Aggregates pending fragments into release summaries without deleting them.
-- **Stable Releases:** A release automation script compiles all accumulated fragments into a new section in `CHANGELOG.md` and deletes the processed fragment files.
+- **Nightly CI:** Groups fragments changed since the previous rolling nightly by category, links each entry to its PR, and links packaged downloads directly.
+- **Stable Releases:** `scripts/compile-changelog.sh` uses the same renderer to compile all accumulated fragments into a new section in `CHANGELOG.md` and deletes the processed fragment files.
 - **Fragment Guide:** See [.changes/README.md](../.changes/README.md) for naming rules, categories, and fragment formatting.
