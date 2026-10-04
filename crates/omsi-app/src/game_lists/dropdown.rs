@@ -323,7 +323,7 @@ pub(super) fn select_options(key: &str) -> Vec<(&'static str, &'static str)> {
         ],
         "render_scale" => vec![
             ("auto", "Auto"),
-            ("1", "100%"),
+            ("1", "Off (no upscaler)"),
             ("0.85", "85%"),
             ("0.75", "75%"),
             ("0.67", "67%"),

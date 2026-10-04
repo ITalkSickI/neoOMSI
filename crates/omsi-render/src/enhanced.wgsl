@@ -209,12 +209,23 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
                 let axis = max(-l.dir.z, 0.05);
                 let gain = clamp(axis * axis / max(drop * drop, 1e-6), 1.0, l.extra.z);
                 e = e * mix(1.0, gain, smoothstep(-0.04, 0.0, drop));
+                // a dipped beam's cut-off: sharp just under the horizon on the oncoming
+                // side, kicked up on the kerb side (right-hand traffic), a little scatter above
+                let fwd = -ld;
+                let hr = vec2<f32>(l.dir.y, -l.dir.x);
+                let hl = max(length(hr), 1e-4);
+                let hf = max(length(fwd.xy), 1e-4);
+                let lat = dot(fwd.xy / hf, hr / hl);
+                let allowed = mix(-0.012, 0.11, smoothstep(0.0, 0.3, lat));
+                e = e * mix(0.02, 1.0, 1.0 - smoothstep(allowed, allowed + 0.025, fwd.z));
             }
         }
         if (e < 0.003 || (!thin && dot(n, ld) <= 0.0)) {
             continue;
         }
-        e = e * light_shadow(l, p + n * 0.08);
+        if (n.z > 0.7) {
+            e = e * light_shadow(l, p + n * 0.08);
+        }
         if (e <= 0.0) {
             continue;
         }

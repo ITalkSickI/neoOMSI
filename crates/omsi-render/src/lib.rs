@@ -10108,6 +10108,9 @@ fn record_bundles(
 /// on a 3200x1800 window), and the automatic scale would never have drawn that many.
 fn scene_scale_for(requested: f32, width: u32, height: u32) -> f32 {
     let pixels = width as f32 * height as f32;
+    if requested >= 1.0 {
+        return 1.0;
+    }
     if requested > 0.0 {
         let requested = requested.clamp(0.5, 1.0);
         if (cfg!(target_os = "macos") || cfg!(target_os = "android")) && pixels > AUTO_SCALE_PIXELS

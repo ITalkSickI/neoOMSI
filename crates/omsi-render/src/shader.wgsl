@@ -1050,7 +1050,9 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
             if (ndl <= 0.0 || k <= 0.0 || att < 0.003) {
                 continue;
             }
-            k = k * light_shadow(l, p + n * 0.08);
+            if (n.z > 0.7) {
+                k = k * light_shadow(l, p + n * 0.08);
+            }
             sum = sum + l.color.rgb * l.color.w * att * ndl * k;
         }
     }

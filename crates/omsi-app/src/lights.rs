@@ -129,7 +129,9 @@ pub fn vehicle_lights(
     }
     let body = v.body_rotation();
     let forced = omsi_cfg::env::var("OMSI_SPOT_SELECT").ok().and_then(|s| s.trim().parse::<f32>().ok());
-    if let Some(sel) = forced.or_else(|| v.var("Spot_Select")) {
+    let ai_on = v.ai_lights;
+    let selected = forced.or_else(|| v.var("Spot_Select")).filter(|s| *s >= 0.0 || !ai_on);
+    if let Some(sel) = selected.or(ai_on.then_some(0.0)) {
         if sel >= 0.0 {
             if let Some(sp) = ty.model.spotlights.get(sel as usize) {
                 let vals = sp.values;
@@ -205,7 +207,7 @@ pub fn vehicle_lights(
                         direction: d,
                         cone,
                         core: headlight_core(vals[9]),
-                        beam: 0.0,
+                        beam: if v.var("lights_fern").is_some_and(|x| x > 0.5) { 0.0 } else { 6.0 },
                         mode: LightMode::Enhanced,
                         ..Default::default()
                     });
@@ -385,17 +387,18 @@ fn enclosure(coll: &omsi_sim::collision::CollisionWorld, p: DVec3) -> Option<f32
     (walls >= ENCL_MIN_WALLS).then_some(extent as f32)
 }
 
+const NO_LIGHT_SHADOWS: bool = false;
 const SHADOW_RANGE: f64 = 50.0;
 const SHADOW_REACH: f64 = 25.0;
-const SHADOW_MAX: usize = 16;
-const SHADOW_LIGHTS: usize = 10;
+const SHADOW_MAX: usize = 32;
+const SHADOW_LIGHTS: usize = 16;
 const SHADOW_SPOTS: usize = 8;
 const SPOT_SHADOW_RANGE: f64 = 60.0;
 const SPOT_REACH: f64 = 40.0;
 const SPOT_MAX: usize = 32;
 const SPOT_MIN_AREA: f64 = 0.01;
 const SPOT_MARGIN: f64 = 2.0;
-const GATHERS_PER_FRAME: usize = 3;
+const GATHERS_PER_FRAME: usize = 6;
 
 type OccKey = (i64, i64, i64, u32, i32);
 
@@ -503,6 +506,13 @@ fn assign_occluders(
     vehicles: &[&VehicleInstance],
 ) {
     scene.occluders.clear();
+    if NO_LIGHT_SHADOWS {
+        for l in scene.lights.iter_mut() {
+            l.occ_first = 0;
+            l.occ_count = 0;
+        }
+        return;
+    }
     let mut bodies: Vec<(omsi_sim::collision::Obb, omsi_render::Occluder)> = Vec::new();
     for v in vehicles.iter().filter(|v| (v.position - camera_pos).length() < SHADOW_RANGE + 60.0) {
         let mut sections = vec![(body_box(&v.ty), v.body_rotation(), v.position)];

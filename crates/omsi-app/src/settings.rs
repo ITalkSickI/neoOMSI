@@ -555,6 +555,8 @@ impl Settings {
                 "render_scale" => {
                     s.render_scale = if v.eq_ignore_ascii_case("auto") {
                         0.0
+                    } else if v.eq_ignore_ascii_case("off") {
+                        1.0
                     } else {
                         match v.trim_end_matches('%').parse::<f32>() {
                             Ok(x) if x > 1.5 => (x / 100.0).clamp(0.5, 1.0),
