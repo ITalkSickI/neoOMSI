@@ -1182,17 +1182,22 @@ fn wipe_texel(c: vec2<i32>, z: f32) -> f32 {
 
 fn wipe_mask_wet(uv: vec2<f32>, z: f32) -> f32 {
     let dims = textureDimensions(t_trans);
-    let p = uv * vec2<f32>(dims) - 0.5;
-    let base = floor(p);
-    let f = p - base;
-    let w = f;
-    let c = vec2<i32>(base);
     let hi = vec2<i32>(dims) - vec2<i32>(1);
-    let a = wipe_texel(clamp(c, vec2<i32>(0), hi), z);
-    let b = wipe_texel(clamp(c + vec2<i32>(1, 0), vec2<i32>(0), hi), z);
-    let d = wipe_texel(clamp(c + vec2<i32>(0, 1), vec2<i32>(0), hi), z);
-    let e = wipe_texel(clamp(c + vec2<i32>(1, 1), vec2<i32>(0), hi), z);
-    return mix(mix(a, b, w.x), mix(d, e, w.x), w.y);
+    var sum = 0.0;
+    for (var k = 0; k < 4; k = k + 1) {
+        let o = vec2<f32>(select(-0.5, 0.5, (k & 1) == 1), select(-0.5, 0.5, (k & 2) == 2));
+        let p = uv * vec2<f32>(dims) - 0.5 + o;
+        let base = floor(p);
+        let f = p - base;
+        let w = f * f * (3.0 - 2.0 * f);
+        let c = vec2<i32>(base);
+        let a = wipe_texel(clamp(c, vec2<i32>(0), hi), z);
+        let b = wipe_texel(clamp(c + vec2<i32>(1, 0), vec2<i32>(0), hi), z);
+        let d = wipe_texel(clamp(c + vec2<i32>(0, 1), vec2<i32>(0), hi), z);
+        let e = wipe_texel(clamp(c + vec2<i32>(1, 1), vec2<i32>(0), hi), z);
+        sum = sum + mix(mix(a, b, w.x), mix(d, e, w.x), w.y);
+    }
+    return sum * 0.25;
 }
 
 fn window_wetness(in: FsIn) -> f32 {
