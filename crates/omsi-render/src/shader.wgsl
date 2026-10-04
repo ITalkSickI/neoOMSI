@@ -1092,12 +1092,32 @@ fn finite_or(v: vec3<f32>, fallback: vec3<f32>) -> vec3<f32> {
     return select(fallback, v, all_finite(v));
 }
 
+fn wipe_texel(c: vec2<i32>, z: f32) -> f32 {
+    let m = textureLoad(t_trans, c, 0);
+    let depth = dot(m.rg, vec2<f32>(256.0, 1.0)) * (64.0 / 257.0) - 32.0;
+    return select(m.b, (m.a * 255.0 - 8.0) * (2.0 / 247.0), abs(depth - z) <= 0.1);
+}
+
+fn wipe_mask_wet(uv: vec2<f32>, z: f32) -> f32 {
+    let dims = textureDimensions(t_trans);
+    let p = uv * vec2<f32>(dims) - 0.5;
+    let base = floor(p);
+    let f = p - base;
+    let w = f * f * (3.0 - 2.0 * f);
+    let c = vec2<i32>(base);
+    let hi = vec2<i32>(dims) - vec2<i32>(1);
+    let a = wipe_texel(clamp(c, vec2<i32>(0), hi), z);
+    let b = wipe_texel(clamp(c + vec2<i32>(1, 0), vec2<i32>(0), hi), z);
+    let d = wipe_texel(clamp(c + vec2<i32>(0, 1), vec2<i32>(0), hi), z);
+    let e = wipe_texel(clamp(c + vec2<i32>(1, 1), vec2<i32>(0), hi), z);
+    return mix(mix(a, b, w.x), mix(d, e, w.x), w.y);
+}
+
 fn window_wetness(in: FsIn) -> f32 {
     if (material.wipe_bounds.z != 0.0) {
         let mask = sample_transmap(in.wipe_uv.xy);
-        let depth = dot(mask.rg, vec2<f32>(256.0, 1.0)) * (64.0 / 257.0) - 32.0;
         let inside = all(in.wipe_uv.xy >= vec2<f32>(0.0)) && all(in.wipe_uv.xy <= vec2<f32>(1.0));
-        return select(mask.b, (mask.a * 255.0 - 8.0) * (2.0 / 247.0), inside && abs(depth - in.wipe_uv.z) <= 0.1);
+        return select(mask.b, wipe_mask_wet(in.wipe_uv.xy, in.wipe_uv.z), inside);
     }
     return in.params.x;
 }
@@ -1268,10 +1288,10 @@ fn rain_glass(world: vec3<f32>, uv: vec2<f32>, n: vec3<f32>, water: f32, t: f32,
         var along = vec2<f32>(0.0, 1.0);
         if (length(gradient) > 0.01) { along = normalize(vec2<f32>(dot(gradient, side), dot(gradient, down))); }
         let across = vec2<f32>(-along.y, along.x);
-        let streak = rain_patches(vec2<f32>(dot(q, across) * 600.0, dot(q, along) * 4.0));
-        let strength = wiped_film * (0.012 + 0.018 * streak.x);
+        let streak = rain_patches(vec2<f32>(dot(q, across) * 90.0, dot(q, along) * 2.0));
+        let strength = wiped_film * (0.003 + 0.005 * streak.x);
         g.cover = strength;
-        g.n = normalize(out + (side_w * across.x + down_w * across.y) * (streak.y - 0.5) * wiped_film * 0.003);
+        g.n = normalize(out + (side_w * across.x + down_w * across.y) * (streak.y - 0.5) * wiped_film * 0.0008);
         return g;
     }
     var slope = clamp(-0.00005 * vec2<f32>(dot(gradient, side), dot(gradient, down)), vec2<f32>(-0.15), vec2<f32>(0.15)) * best;

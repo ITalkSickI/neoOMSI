@@ -7,7 +7,7 @@ use omsi_geometry::MeshData;
 use omsi_render::{MaterialId, Renderer, Scene, TextureId};
 use omsi_sim::VehicleInstance;
 
-const SIZE: usize = 128;
+const SIZE: usize = 256;
 const WIPED_FILM: f32 = -0.04;
 
 // Eight codes below zero identify a short-lived residual film, without another texture.
@@ -16,7 +16,7 @@ fn encode_wetness(wet: f32) -> u8 {
 }
 
 fn advance_wetness(wet: f32, rate: f32, dt: f32) -> f32 {
-    let ridge = (wet - 1.0).max(0.0);
+    let ridge = ((wet - 1.0).max(0.0) - dt * 0.6).max(0.0);
     let mut base = wet.min(1.0);
     let mut remaining = dt;
     if base < 0.0 {
@@ -82,8 +82,8 @@ impl WindowWipers {
             if !animated
                 || !["wiper", "wisch"].iter().any(|s| name.contains(s))
                 || ["wash", "wasser", "schalter", "switch", "hebel", "motor"]
-                    .iter()
-                    .any(|s| name.contains(s))
+                .iter()
+                .any(|s| name.contains(s))
             {
                 continue;
             }
@@ -124,23 +124,23 @@ impl WindowWipers {
                     let controlled = vm.overrides.iter().any(|m| {
                         omsi_sim::vehicle::override_slot(&vm.materials, m) == Some(slot)
                             && m.alphascale.as_deref().is_some_and(|v| {
-                                matches!(
+                            matches!(
                                     v.trim().to_ascii_lowercase().as_str(),
                                     "rain_window_front_wetness"
                                         | "rain_window_wiped_wetness"
                                         | "rain_window_norm_wetness"
                                 )
-                            })
+                        })
                     });
                     if !controlled
                         || render
-                            .variants
-                            .iter()
-                            .any(|v| v.mesh == mesh && v.slot == slot)
+                        .variants
+                        .iter()
+                        .any(|v| v.mesh == mesh && v.slot == slot)
                         || vm.overrides.iter().any(|m| {
-                            omsi_sim::vehicle::override_slot(&vm.materials, m) == Some(slot)
-                                && (m.use_script_texture.is_some() || m.use_text_texture.is_some())
-                        })
+                        omsi_sim::vehicle::override_slot(&vm.materials, m) == Some(slot)
+                            && (m.use_script_texture.is_some() || m.use_text_texture.is_some())
+                    })
                     {
                         continue;
                     }
@@ -256,7 +256,7 @@ impl WindowWipers {
             return;
         }
         let now = vehicle.host.clock.run_time;
-        let dt = (now - self.time).max(0.0) as f32;
+        let dt = (now - self.time).clamp(0.0, 0.1) as f32;
         self.time = now;
         let washer = vehicle.var("wiper_wash").unwrap_or(0.0).clamp(0.0, 1.0);
         // Do not read Front/Wiped wetness: the script resets those for the whole pane.
@@ -367,8 +367,8 @@ impl WindowWipers {
                     film.drops.drops.retain(|d| {
                         d.pos.cmpge(Vec2::ZERO).all()
                             && (d.pos * Vec2::new(bounds[2].abs(), bounds[3]))
-                                .cmplt(Vec2::ONE)
-                                .all()
+                            .cmplt(Vec2::ONE)
+                            .all()
                             && film.points[drop_pixel(d.pos, bounds)].is_finite()
                     });
                 } else {
@@ -607,10 +607,10 @@ fn film_points_in_cab(
         for x in 0..SIZE {
             let p = lo
                 + size
-                    * Vec2::new(
-                        (x as f32 + 0.5) / SIZE as f32,
-                        (y as f32 + 0.5) / SIZE as f32,
-                    );
+                * Vec2::new(
+                (x as f32 + 0.5) / SIZE as f32,
+                (y as f32 + 0.5) / SIZE as f32,
+            );
             for &[a, b, c] in &triangles {
                 let (a2, b2, c2) = (
                     pane_project(a, side),
@@ -794,7 +794,7 @@ fn drain_water(
                     let j = ny as usize * SIZE + nx as usize;
                     if !points[j].is_finite()
                         || (pane_depth(points[j], bounds) - pane_depth(points[i], bounds)).abs()
-                            > 0.1
+                        > 0.1
                     {
                         continue;
                     }
@@ -831,7 +831,7 @@ fn release_runoff(
     let down = velocity.normalize_or_zero();
     let score = |i: usize| wet[i] + pane_project(points[i], side).dot(down) * 0.1;
     let Some(i) = (0..wet.len())
-        .filter(|&i| wet[i] > 1.15 && points[i].is_finite())
+        .filter(|&i| wet[i] > 1.04 && points[i].is_finite())
         .max_by(|&a, &b| score(a).total_cmp(&score(b)))
     else {
         return;
@@ -921,8 +921,8 @@ impl SweepTriangle {
             (self.v * cell).abs().element_sum(),
             ((self.u + self.v) * cell).abs().element_sum(),
         )
-        .max(Vec3::splat(1e-6))
-        .recip()
+            .max(Vec3::splat(1e-6))
+            .recip()
     }
 
     fn coverage(&self, p: Vec3, filter: Vec3) -> f32 {
@@ -999,7 +999,7 @@ mod tests {
             Vec3::new(0.1, 0.04, 1.0),
             false,
         )
-        .unwrap();
+            .unwrap();
         assert!(sweep.contains(Vec3::new(0.045, 0.1, 0.5)));
         assert!(!sweep.contains(Vec3::new(0.09, 0.1, 0.5)));
         assert!(sweep.crosses(Vec3::new(0.045, 0.1, 1.1), Vec3::new(0.045, 0.1, 0.2)));
