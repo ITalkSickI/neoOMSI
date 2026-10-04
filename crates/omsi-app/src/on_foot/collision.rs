@@ -208,3 +208,30 @@ impl App {
             .and_then(|w| w.walk_height_reach(p.x, p.y, feet, reach))
     }
 }
+
+#[cfg(all(feature = "devtools", debug_assertions))]
+impl App {
+    pub(crate) fn dev_hitboxes(&self, at: glam::DVec3, radius: f64) -> Vec<Obb> {
+        let at2 = DVec2::new(at.x, at.y);
+        let mut boxes: Vec<Obb> = Vec::new();
+        if let Some(w) = self.world.as_ref() {
+            let probe = probe_box(at2, radius, at.z);
+            boxes.extend(w.collision.lock().obstacles_near(&probe));
+        }
+        boxes.extend(self.vehicle_boxes(at2, radius + 20.0));
+        boxes.retain(|o| (o.center - at2).length() <= radius + o.half.length());
+        boxes.truncate(2000);
+        boxes
+    }
+
+    pub(crate) fn dev_blockers(&self, exempt: Option<DVec2>) -> Vec<Obb> {
+        let Some(f) = self.on_foot.as_ref() else {
+            return Vec::new();
+        };
+        let at = DVec2::new(f.pos.x, f.pos.y);
+        self.foot_solids(at, f.pos.z, exempt)
+            .into_iter()
+            .filter(|o| (push_out(at, o, RADIUS + 0.3) - at).length() > 1e-6)
+            .collect()
+    }
+}

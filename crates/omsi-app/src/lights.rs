@@ -8,6 +8,50 @@ const HEADLIGHT_INTENSITY: f32 = 22.0;
 const VANILLA_HEADLIGHT_INTENSITY: f32 = 0.2;
 const HIGH_BEAM_GAIN: f32 = 0.5;
 
+#[derive(Clone, Copy)]
+pub(crate) struct LightSettings {
+    pub headlight: f32,
+    pub vanilla: f32,
+    pub low_beam_gain: f32,
+    pub high_beam: f32,
+    pub high_beam_range: f32,
+    pub high_beam_spread: f32,
+    pub force_high_beam: bool,
+    pub weather_boost: f32,
+    pub weather_night: f32,
+    pub corona: f32,
+}
+
+impl LightSettings {
+    pub(crate) const DEFAULT: Self = Self {
+        headlight: HEADLIGHT_INTENSITY,
+        vanilla: VANILLA_HEADLIGHT_INTENSITY,
+        low_beam_gain: 3.5,
+        high_beam: HIGH_BEAM_GAIN,
+        high_beam_range: 1.0,
+        high_beam_spread: 1.0,
+        force_high_beam: false,
+        weather_boost: 0.8,
+        weather_night: 0.6,
+        corona: 1.0,
+    };
+}
+
+static SETTINGS: std::sync::Mutex<LightSettings> = std::sync::Mutex::new(LightSettings::DEFAULT);
+
+pub(crate) fn settings() -> LightSettings {
+    *SETTINGS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+pub(crate) fn set_settings(s: LightSettings) {
+    *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = s;
+}
+
+fn weather_darkness() -> f32 {
+    let (vis, _) = cone_weather();
+    (1.0 - vis / 3000.0).clamp(0.0, 1.0)
+}
+
 /// `[spotlight]` range is content-authored.  In particular, full beams commonly use a
 /// substantially longer range than dipped beams, so it must not be capped to the latter.
 fn headlight_radius(range: f32) -> f32 {
@@ -151,6 +195,9 @@ pub fn vehicle_lights(
     let body = v.body_rotation();
     let forced = omsi_cfg::env::var("OMSI_SPOT_SELECT").ok().and_then(|s| s.trim().parse::<f32>().ok());
     let ai_on = v.ai_lights;
+    let cfg = settings();
+    let bad = weather_darkness();
+    let night = night.max(bad * cfg.weather_night);
     let selected = forced.or_else(|| v.var("Spot_Select")).filter(|s| *s >= 0.0 || !ai_on);
     if let Some(sel) = selected.or(ai_on.then_some(0.0)) {
         if sel >= 0.0 {
@@ -206,25 +253,33 @@ pub fn vehicle_lights(
                 let sides: &[f32] = if spread > 0.1 { &[-1.0, 1.0] } else { &[0.0] };
                 for side in sides {
                     let at = v.position + (apex + right * spread * side).as_dvec3();
+                    let high_beam = cfg.force_high_beam || v.var("lights_fern").is_some_and(|x| x > 0.5);
+                    let radius = headlight_radius(vals[9]) * if high_beam { cfg.high_beam_range } else { 1.0 };
+                    let cone = if high_beam {
+                        let k = cfg.high_beam_spread.max(0.1);
+                        [1.0 - (1.0 - cone[0]) * k, 1.0 - (1.0 - cone[1]) * k]
+                    } else {
+                        cone
+                    };
                     let lamp = PointLight {
                         position: at,
-                        radius: headlight_radius(vals[9]),
+                        radius,
                         color,
                         direction: d,
                         cone,
                         ..Default::default()
                     };
                     lights.push(PointLight {
-                        intensity: VANILLA_HEADLIGHT_INTENSITY / sides.len() as f32 * (0.3 + 0.7 * night),
+                        intensity: cfg.vanilla / sides.len() as f32 * (0.3 + 0.7 * night),
                         mode: LightMode::Vanilla,
                         ..lamp
                     });
-                    let high_beam = v.var("lights_fern").is_some_and(|x| x > 0.5);
                     lights.push(PointLight {
-                        intensity: HEADLIGHT_INTENSITY / sides.len() as f32
-                            * if high_beam { HIGH_BEAM_GAIN } else { 1.0 },
-                        core: headlight_core(vals[9]),
-                        beam: if high_beam { -1.0 } else { 3.5 },
+                        intensity: cfg.headlight / sides.len() as f32
+                            * (1.0 + bad * cfg.weather_boost)
+                            * if high_beam { cfg.high_beam } else { 1.0 },
+                        core: headlight_core(radius),
+                        beam: if high_beam { -1.0 } else { cfg.low_beam_gain },
                         mode: LightMode::Enhanced,
                         ..lamp
                     });
@@ -1095,7 +1150,7 @@ pub fn collect(
         if vis >= 2000.0 {
             return false;
         }
-        let glow = (night * night + 0.8) * 0.6 * c.brightness;
+        let glow = (night * night + 0.8) * 0.6 * c.brightness * settings().corona;
         let reach = 3.0 * (100.0 / vis.max(1.0)).sqrt() * glow * c.size;
         c.size = if c.beam { 2.0 * reach } else { reach };
         c.brightness = if c.beam { 0.3 } else { 0.2 };
