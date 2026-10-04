@@ -389,8 +389,15 @@ const SHADOW_RANGE: f64 = 50.0;
 const SHADOW_REACH: f64 = 25.0;
 const SHADOW_MAX: usize = 16;
 const SHADOW_LIGHTS: usize = 10;
+const SHADOW_SPOTS: usize = 8;
+const SPOT_SHADOW_RANGE: f64 = 60.0;
+const SPOT_REACH: f64 = 40.0;
+const SPOT_MAX: usize = 32;
+const SPOT_MIN_AREA: f64 = 0.01;
+const SPOT_MARGIN: f64 = 2.0;
+const GATHERS_PER_FRAME: usize = 3;
 
-type OccKey = (i64, i64, i64, u32);
+type OccKey = (i64, i64, i64, u32, i32);
 
 struct OccCache {
     generation: u64,
@@ -398,6 +405,56 @@ struct OccCache {
 }
 
 static OCC_CACHE: std::sync::Mutex<Option<OccCache>> = std::sync::Mutex::new(None);
+
+fn gather_spot_occluders(
+    seen: &omsi_sim::collision::CollisionWorld,
+    pos: DVec3,
+    dir: Vec3,
+    radius: f32,
+    cone_out: f32,
+) -> Vec<omsi_render::Occluder> {
+    let range = (radius as f64).clamp(2.0, SPOT_REACH);
+    let d = dir.as_dvec3().normalize_or_zero();
+    let mid = pos + d * (range * 0.5);
+    let probe = omsi_sim::collision::Obb::point(mid, range * 0.5 + SPOT_MARGIN + 2.0);
+    let half_angle = (cone_out as f64).clamp(-1.0, 1.0).acos();
+    let mut tris: Vec<(f64, [DVec3; 3])> = seen
+        .triangles_near(&probe)
+        .into_iter()
+        .filter_map(|t| {
+            let area = 0.5 * (t[1] - t[0]).cross(t[2] - t[0]).length();
+            if area < SPOT_MIN_AREA {
+                return None;
+            }
+            let c = (t[0] + t[1] + t[2]) / 3.0;
+            let reach = t.iter().map(|v| (*v - c).length()).fold(0.0, f64::max);
+            let rel = c - pos;
+            let len = rel.length();
+            if len - reach > range + SPOT_MARGIN {
+                return None;
+            }
+            if len > reach + 1.0 {
+                let angle = (rel.dot(d) / len).clamp(-1.0, 1.0).acos();
+                if angle > half_angle + (reach / len).atan() + 0.35 {
+                    return None;
+                }
+            }
+            Some((area / (len * len + 1.0), t))
+        })
+        .collect();
+    tris.sort_by(|a, b| b.0.total_cmp(&a.0));
+    tris.truncate(SPOT_MAX);
+    tris.into_iter()
+        .map(|(_, t)| omsi_render::Occluder {
+            center: glam::DVec2::ZERO,
+            half: glam::Vec2::ZERO,
+            z0: 0.0,
+            z1: 0.0,
+            heading: 0.0,
+            tri: Some(t),
+        })
+        .collect()
+}
 
 fn gather_occluders(
     coll: &omsi_sim::collision::CollisionWorld,
@@ -432,6 +489,7 @@ fn gather_occluders(
             z0: o.z0,
             z1: o.z1,
             heading: o.heading,
+            tri: None,
         })
         .collect()
 }
@@ -464,6 +522,7 @@ fn assign_occluders(
                     z0: o.z0,
                     z1: o.z1,
                     heading: o.heading,
+                    tri: None,
                 },
             ));
         }
@@ -476,40 +535,65 @@ fn assign_occluders(
     }
     let mut lights = std::mem::take(&mut scene.lights);
     let mut shadowed = 0usize;
+    let mut shadowed_spots = 0usize;
     let mut gathers = 0usize;
     for l in lights.iter_mut() {
         l.occ_first = 0;
         l.occ_count = 0;
-        if shadowed >= SHADOW_LIGHTS
-            || (l.position - camera_pos).length() > SHADOW_RANGE
-            || l.radius <= 0.0
-        {
+        let spill = l.radius == INTERIOR_SPILL_RADIUS;
+        let spot = !spill && l.direction.length_squared() > 0.5;
+        if l.radius <= 0.0 {
             continue;
         }
-        shadowed += 1;
+        if spot {
+            if shadowed_spots >= SHADOW_SPOTS || (l.position - camera_pos).length() > SPOT_SHADOW_RANGE {
+                continue;
+            }
+            shadowed_spots += 1;
+        } else {
+            if shadowed >= SHADOW_LIGHTS || (l.position - camera_pos).length() > SHADOW_RANGE {
+                continue;
+            }
+            shadowed += 1;
+        }
         // (a moving vehicle's window light would make a new key every frame at half a metre:
         // it takes 2 m cells and a reach that much longer)
-        let spill = l.radius == INTERIOR_SPILL_RADIUS;
-        let (grid, extra) = if spill { (0.5, 2.0) } else { (2.0, 0.0) };
+        let (grid, extra) = if spill { (0.5, 2.0) } else if spot { (1.0, 0.0) } else { (2.0, 0.0) };
+        let dir_key = if spot {
+            ((l.direction.x.atan2(l.direction.y).to_degrees() / 10.0).round() as i32) * 64
+                + (l.cone[1] * 100.0).round() as i32 * 4096
+                + (l.direction.z.clamp(-1.0, 1.0) * 8.0).round() as i32
+                + 1
+        } else {
+            0
+        };
         let key = (
             (l.position.x * grid).round() as i64,
             (l.position.y * grid).round() as i64,
             (l.position.z * grid).round() as i64,
             l.radius.to_bits(),
+            dir_key,
         );
         if !cache.map.contains_key(&key) {
-            if gathers >= 1 {
+            if gathers >= GATHERS_PER_FRAME {
                 continue;
             }
             gathers += 1;
-            let made = if spill { Vec::new() } else { gather_occluders(coll, seen, l.position, l.radius + extra) };
+            let made = if spill {
+                Vec::new()
+            } else if spot {
+                gather_spot_occluders(seen, l.position, l.direction, l.radius, l.cone[1])
+            } else {
+                gather_occluders(coll, seen, l.position, l.radius + extra)
+            };
             cache.map.insert(key, made);
         }
         let occ = &cache.map[&key];
         let first = scene.occluders.len() as u32;
         scene.occluders.extend_from_slice(occ);
         for (o, oc) in &bodies {
-            if (o.center - l.position.truncate()).length() < o.radius() + l.radius.min(SHADOW_REACH as f32) as f64 {
+            let body_reach = if spot { l.radius.min(SPOT_REACH as f32) } else { l.radius.min(SHADOW_REACH as f32) };
+            if (o.center - l.position.truncate()).length() < o.radius() + body_reach as f64 {
                 let at = (l.position, l.position + DVec3::Z * 1e-3);
                 let core = omsi_sim::collision::Obb {
                     half: (o.half - glam::DVec2::splat(0.6)).max(glam::DVec2::splat(0.05)),
@@ -522,7 +606,7 @@ fn assign_occluders(
                 } else if seg_hit(at.0, at.1, &core).is_none() {
                     // a lamp in the skin of the body (a head or tail light): the body
                     // neither shades nor holds it
-                } else {
+                } else if spill {
                     // a light inside the body lights only the inside (and a little through
                     // the windows): negative half width marks the box as a container
                     let mut hollow = *oc;

@@ -65,6 +65,11 @@ struct CameraUniform {
     /// The player's vehicle's velocity (m/s, world) and 1: the airstream the rain on its
     /// glass meets (see `Lighting::glass_wind`).
     wind: [f32; 4],
+    /// The spot light shadow maps' matrices (render-origin relative) and the atlas: x, y a
+    /// tile's size in the far map's texture (uv), z the far cascade's share of its height,
+    /// w a tile's pixels.
+    spot_vp: [[[f32; 4]; 4]; SPOT_SLOTS],
+    spot_info: [f32; 4],
 }
 
 /// The period the sky's cloud patterns repeat with (m): 5 x the cloud field (14 km), 8 x
@@ -216,6 +221,7 @@ pub struct Occluder {
     pub z1: f64,
     /// Radians, clockwise from north.
     pub heading: f64,
+    pub tri: Option<[DVec3; 3]>,
 }
 
 /// A point light in world space (`[maplight]`, `[interiorlight]`, headlights).
@@ -450,6 +456,9 @@ pub struct Lighting {
     /// switches them - on with the lamps, not faded in with the dusk (its stage is set when
     /// the object's `NightlightA` is over 0.5, 0x61197a/0x7fee02); None: by `night`.
     pub night_maps: Option<f32>,
+    /// The spot and lamp light shadow maps (the player's shadow setting): they do not follow
+    /// `shadows`, which is off under an overcast sky and in fog although lamps still shade.
+    pub light_shadows: bool,
     /// Sun azimuth (radians, clockwise from north) and day/twilight/night sky texture weights.
     pub sun_azimuth: f32,
     pub sky_weights: [f32; 3],
@@ -542,6 +551,7 @@ impl Default for Lighting {
             cloud_density: 0.0,
             cloud_offset: [0.0; 2],
             shadows: true,
+            light_shadows: true,
             wetness: 0.0,
             snow: 0.0,
             enhanced: false,
@@ -778,6 +788,8 @@ pub struct Scene {
     draw_buf: Option<wgpu::Buffer>,
     camera_bind_group: Option<wgpu::BindGroup>,
     shadow_bind_group: Option<wgpu::BindGroup>,
+    /// The spot light shadow passes' bind groups, one per tile.
+    spot_bind_groups: Vec<wgpu::BindGroup>,
     sky_bind_group: Option<wgpu::BindGroup>,
     /// HUD images drawn after the scene: (texture, rect in pixels x0,y0,x1,y1).
     pub overlays: Vec<(TextureId, [f32; 4])>,
@@ -1013,6 +1025,12 @@ pub struct Renderer {
     shadow_view_far: wgpu::TextureView,
     shadow_sampler: wgpu::Sampler,
     shadow_layout: wgpu::BindGroupLayout,
+    /// The spot light shadow atlas lies under the far cascade in its texture: tiles of this
+    /// many texels, 4 a row.
+    spot_tile: u32,
+    spot_state: std::cell::RefCell<SpotShadowState>,
+    /// One camera uniform per tile, holding the tile's matrix where the sun's lies.
+    spot_cam_bufs: Vec<wgpu::Buffer>,
     /// [near opaque, near alpha-tested, far opaque, far alpha-tested]
     shadow_pipelines: [wgpu::RenderPipeline; 6],
     /// The settings this renderer was built with.
@@ -1309,6 +1327,68 @@ pub const SHADOW_RANGE_CLOSE: f32 = 32.0;
 /// setting: 3 cm texels. At the 4096 setting it had been 1.6 cm, and drawing it was a third
 /// of the shadow pass's 4.6 ms.
 const SHADOW_CLOSE_MAX: u32 = 2048;
+
+/// Spot lights (headlights, lamps) that cast a shadow map at once: tiles of an atlas that
+/// lies under the far cascade in the same texture.
+const SPOT_SLOTS: usize = 8;
+/// Spot shadow maps drawn per frame. The others keep their last picture, which is redrawn
+/// when its light has moved or after `SPOT_REDRAW_AGE` frames (moving casters).
+const SPOT_DRAWS_PER_FRAME: usize = 2;
+const SPOT_REDRAW_AGE: u32 = 24;
+/// Lights further from the camera than this cast no shadow map.
+const SPOT_CAM_RANGE: f64 = 70.0;
+/// Longest reach of a spot light's shadow map (m) and the nearest thing it draws.
+const SPOT_RANGE_MAX: f32 = 45.0;
+const SPOT_NEAR: f32 = 0.8;
+/// Caster lists of a frame: near, far, close cascade and the spot tiles.
+const SHADOW_SETS: usize = 3 + SPOT_SLOTS;
+
+/// Where a spot light stood and looked, and what its shadow map covers.
+#[derive(Clone, Copy)]
+struct SpotPose {
+    pos: DVec3,
+    dir: Vec3,
+    fov: f32,
+    far: f32,
+}
+
+#[derive(Clone, Copy, Default)]
+struct SpotSlot {
+    /// The light last given this tile (found again by where it is).
+    seen: Option<SpotPose>,
+    /// The pose the tile's picture was drawn with.
+    drawn: Option<SpotPose>,
+    age: u32,
+}
+
+#[derive(Default)]
+struct SpotShadowState {
+    slots: [SpotSlot; SPOT_SLOTS],
+    /// The tiles to draw this frame.
+    draws: Vec<usize>,
+}
+
+/// A spot light's view: depth 0..1, looking along `dir`.
+fn spot_view_proj(pos: Vec3, dir: Vec3, fov: f32, near: f32, far: f32) -> Mat4 {
+    let f = dir.normalize_or_zero();
+    let hint = if f.z.abs() > 0.95 { Vec3::Y } else { Vec3::Z };
+    let r = f.cross(hint).normalize_or_zero();
+    let u = r.cross(f);
+    let view = Mat4::from_cols(
+        glam::Vec4::new(r.x, u.x, -f.x, 0.0),
+        glam::Vec4::new(r.y, u.y, -f.y, 0.0),
+        glam::Vec4::new(r.z, u.z, -f.z, 0.0),
+        glam::Vec4::new(-r.dot(pos), -u.dot(pos), f.dot(pos), 1.0),
+    );
+    let t = 1.0 / (fov * 0.5).tan();
+    let proj = Mat4::from_cols(
+        glam::Vec4::new(t, 0.0, 0.0, 0.0),
+        glam::Vec4::new(0.0, t, 0.0, 0.0),
+        glam::Vec4::new(0.0, 0.0, far / (near - far), -1.0),
+        glam::Vec4::new(0.0, 0.0, near * far / (near - far), 0.0),
+    );
+    proj * view
+}
 
 const FOG_MIN_DENSITY: f32 = 5e-4;
 
@@ -2289,6 +2369,7 @@ impl Renderer {
             out
         };
         let hdr_format = wgpu::TextureFormat::Rgba16Float;
+        let spot_tile = (shadow_size / 4).clamp(128, 512);
         // sun shadow map: depth only, from the light's orthographic camera
         let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow map"),
@@ -2310,7 +2391,8 @@ impl Renderer {
             label: Some("shadow map far"),
             size: wgpu::Extent3d {
                 width: shadow_size,
-                height: shadow_size,
+                // (the far cascade on top, the spot light atlas of 4 x 2 tiles under it)
+                height: shadow_size + 2 * spot_tile,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -2468,6 +2550,16 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let spot_cam_bufs: Vec<wgpu::Buffer> = (0..SPOT_SLOTS)
+            .map(|_| {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("spot shadow camera"),
+                    size: std::mem::size_of::<CameraUniform>() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                })
+            })
+            .collect();
         let white = omsi_texture::Image::solid([255, 255, 255, 255]);
         let white_texture = upload_texture(&device, &queue, &white, false);
         let black_texture = upload_texture(
@@ -3899,6 +3991,9 @@ impl Renderer {
             shadow_view_far,
             shadow_sampler,
             shadow_layout,
+            spot_tile,
+            spot_state: Default::default(),
+            spot_cam_bufs,
             shadow_pipelines,
             shadow_blobs: options.shadow_blobs,
             options,
@@ -4048,6 +4143,7 @@ impl Renderer {
             draw_buf: None,
             camera_bind_group: None,
             shadow_bind_group: None,
+            spot_bind_groups: Vec::new(),
             sky_bind_group: None,
             overlays: Vec::new(),
             premultiplied: Default::default(),
@@ -5356,6 +5452,175 @@ impl Renderer {
             ],
         });
         scene.shadow_bind_group = Some(sbg);
+        scene.spot_bind_groups = self
+            .spot_cam_bufs
+            .iter()
+            .map(|buf| {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("spot shadow camera"),
+                    layout: &self.shadow_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: model_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 10,
+                            resource: draw_buf.as_entire_binding(),
+                        },
+                    ],
+                })
+            })
+            .collect();
+    }
+
+    /// Which spot lights get a shadow map tile: the most important ones within reach of the
+    /// camera, each keeping its tile from frame to frame (found again by where it is). With
+    /// `plan` the tiles to draw this frame are chosen (a new light first, then the ones that
+    /// have moved, then the oldest) and noted in the state; without it (a mirror, the
+    /// second eye) the state is only read. Returns per light of `scene.lights` the tile + 1
+    /// whose picture is ready, or 0.
+    fn plan_spot_shadows(&self, scene: &Scene, cam: DVec3, enhanced: bool, plan: bool) -> Vec<u32> {
+        let mut out = vec![0u32; scene.lights.len()];
+        let mut st = self.spot_state.borrow_mut();
+        let mut cands: Vec<(f32, usize, SpotPose)> = Vec::new();
+        for (i, l) in scene.lights.iter().enumerate() {
+            if !drawn_by(l, enhanced) {
+                continue;
+            }
+            let d = (l.position - cam).length();
+            if d > SPOT_CAM_RANGE {
+                continue;
+            }
+            let far = l.radius.clamp(6.0, SPOT_RANGE_MAX);
+            let pose = if l.direction.length_squared() < 1e-6 {
+                // a point light (a street lamp, a map light): its map looks straight down in
+                // a wide cone - lamps hang above what they light. What lies outside the cone
+                // is lit without a shadow map (the box occluders still apply).
+                SpotPose {
+                    pos: l.position,
+                    dir: -Vec3::Z,
+                    fov: 2.5,
+                    far,
+                }
+            } else {
+                if l.cone[1] <= -0.99 {
+                    continue;
+                }
+                let half = l.cone[1].clamp(-1.0, 1.0).acos();
+                SpotPose {
+                    pos: l.position,
+                    dir: l.direction.normalize(),
+                    fov: (2.0 * half + 0.09).clamp(0.2, 2.6),
+                    far,
+                }
+            };
+            let score = l.intensity.max(0.05) * far * far / (1.0 + (d * d) as f32);
+            cands.push((score, i, pose));
+        }
+        cands.sort_by(|a, b| b.0.total_cmp(&a.0));
+        cands.truncate(SPOT_SLOTS);
+        let mut slots = st.slots;
+        let mut claimed = [false; SPOT_SLOTS];
+        let mut assign: Vec<Option<usize>> = vec![None; cands.len()];
+        for (ci, (_, _, pose)) in cands.iter().enumerate() {
+            let mut best: Option<usize> = None;
+            let mut best_d = 2.5f64;
+            for (k, sl) in slots.iter().enumerate() {
+                if claimed[k] {
+                    continue;
+                }
+                if let Some(seen) = sl.seen {
+                    let dd = (seen.pos - pose.pos).length();
+                    if dd < best_d && seen.dir.dot(pose.dir) > 0.7 {
+                        best = Some(k);
+                        best_d = dd;
+                    }
+                }
+            }
+            if let Some(k) = best {
+                claimed[k] = true;
+                assign[ci] = Some(k);
+            }
+        }
+        for a in assign.iter_mut() {
+            if a.is_none() {
+                if let Some(k) = (0..SPOT_SLOTS).find(|&k| !claimed[k]) {
+                    claimed[k] = true;
+                    slots[k] = SpotSlot::default();
+                    *a = Some(k);
+                }
+            }
+        }
+        for k in 0..SPOT_SLOTS {
+            if !claimed[k] {
+                slots[k] = SpotSlot::default();
+            }
+        }
+        if plan {
+            let mut wants: Vec<(f32, usize)> = Vec::new();
+            for (ci, (score, _, pose)) in cands.iter().enumerate() {
+                let Some(k) = assign[ci] else { continue };
+                slots[k].age += 1;
+                let prio = match slots[k].drawn {
+                    None => 1000.0 + *score,
+                    Some(d) => {
+                        let moved = (d.pos - pose.pos).length() > 0.04 || d.dir.dot(pose.dir) < 0.99999;
+                        if moved {
+                            10.0 + *score
+                        } else if slots[k].age >= SPOT_REDRAW_AGE {
+                            1.0 + slots[k].age as f32 * 0.01
+                        } else {
+                            slots[k].seen = Some(*pose);
+                            continue;
+                        }
+                    }
+                };
+                slots[k].seen = Some(*pose);
+                wants.push((prio, k));
+            }
+            for (ci, (_, _, pose)) in cands.iter().enumerate() {
+                if let Some(k) = assign[ci] {
+                    slots[k].seen = Some(*pose);
+                }
+            }
+            wants.sort_by(|a, b| b.0.total_cmp(&a.0));
+            st.draws.clear();
+            for &(_, k) in wants.iter().take(SPOT_DRAWS_PER_FRAME) {
+                slots[k].drawn = slots[k].seen;
+                slots[k].age = 0;
+                st.draws.push(k);
+            }
+            st.slots = slots;
+            if omsi_cfg::env::var_os("OMSI_DEBUG_LIGHT_SHADOWS").is_some() {
+                static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let now = self.started.elapsed().as_secs();
+                if LAST.swap(now, std::sync::atomic::Ordering::Relaxed) != now {
+                    log::info!(
+                        "light shadows: {} lights, {} candidates in reach, {} drawn this frame",
+                        scene.lights.len(),
+                        cands.len(),
+                        st.draws.len()
+                    );
+                }
+            }
+        }
+        for (ci, (_, li, _)) in cands.iter().enumerate() {
+            if let Some(k) = assign[ci] {
+                if slots[k].drawn.is_some() {
+                    out[*li] = k as u32 + 1;
+                }
+            }
+        }
+        out
     }
 
     /// Upload this frame's point lights into the light grid around the camera. Returns the
@@ -5366,8 +5631,15 @@ impl Renderer {
     /// by, whose radius it reads as 0, and the mirrors show no headlight pools. The three
     /// stand-in points stay out of it, or a street full of cars would fill the grid cells'
     /// sixteen places before the street lamps got theirs.
-    fn prepare_lights(&self, scene: &mut Scene, cam_rel: Vec3, enhanced: bool) -> [f32; 4] {
+    fn prepare_lights(
+        &self,
+        scene: &mut Scene,
+        cam_rel: Vec3,
+        enhanced: bool,
+        plan_spots: bool,
+    ) -> [f32; 4] {
         let ro = scene.render_origin;
+        let spot_slots = self.plan_spot_shadows(scene, ro + cam_rel.as_dvec3(), enhanced, plan_spots);
         let side = LIGHT_GRID_SIDE;
         let half = side as f32 * LIGHT_CELL * 0.5;
         // snapped to whole cells, so that the grid stays the same while nothing moves
@@ -5384,7 +5656,7 @@ impl Renderer {
         }
         let mut grid = vec![u32::MAX; side * side * LIGHT_CELL_CAP];
         let mut occ_users: Vec<(usize, u32)> = Vec::new();
-        for l in &scene.lights {
+        for (li, l) in scene.lights.iter().enumerate() {
             if !drawn_by(l, enhanced) {
                 continue;
             }
@@ -5398,6 +5670,7 @@ impl Renderer {
             }
             let idx = gpu_lights.len() as u32;
             gpu_lights.push(gpu_light(l, p));
+            gpu_lights[idx as usize].occ[2] = spot_slots[li] as f32;
             if l.occ_count > 0 && (l.occ_first as usize + l.occ_count as usize) <= scene.occluders.len() {
                 occ_users.push((idx as usize, l.occ_first));
                 gpu_lights[idx as usize].occ[1] = l.occ_count as f32;
@@ -5429,6 +5702,17 @@ impl Renderer {
         if !occ_users.is_empty() {
             let base = gpu_lights.len() as u32;
             for o in &scene.occluders {
+                if let Some(t) = o.tri {
+                    let v = t.map(|p| (p - ro).as_vec3());
+                    gpu_lights.push(GpuPointLight {
+                        pos: [v[0].x, v[0].y, v[0].z, 0.0],
+                        color: [v[1].x, v[1].y, v[1].z, 0.0],
+                        dir: [v[2].x, v[2].y, v[2].z, 0.0],
+                        extra: [1.0, 0.0, 0.0, 0.0],
+                        occ: [0.0; 4],
+                    });
+                    continue;
+                }
                 let c = o.center - ro.truncate();
                 let (sa, ca) = (o.heading.sin() as f32, o.heading.cos() as f32);
                 gpu_lights.push(GpuPointLight {
@@ -5885,6 +6169,7 @@ impl Renderer {
         scene.params_buf = None;
         scene.camera_bind_group = None;
         scene.shadow_bind_group = None;
+        scene.spot_bind_groups.clear();
     }
 
     /// Render the scene into `target` (which must have the renderer's format).
@@ -6243,7 +6528,16 @@ impl Renderer {
         // the mirrors are drawn by the same path as the window (their picture graded with
         // the window's exposure, see the post passes)
         let enhanced = enhanced_frame;
-        let grid = self.prepare_lights(scene, cam_rel, enhanced_frame);
+        // spot light shadow maps: the real picture only (a mirror and the second eye read
+        // what it drew), and whatever the sun does - they are for the night
+        let spot_plan = lighting.light_shadows
+            && (with_overlays || (xr_view && !second_eye))
+            && omsi_cfg::env::var_os("OMSI_NO_LIGHT_SHADOWS").is_none();
+        if !lighting.light_shadows {
+            // (switched off: the tiles' last pictures must not be read any more)
+            *self.spot_state.borrow_mut() = Default::default();
+        }
+        let grid = self.prepare_lights(scene, cam_rel, enhanced_frame, spot_plan);
         self.prepare_coronas(scene, lighting.night);
         self.prepare_smoke(scene, camera.position);
         // ambient occlusion only for the real picture, not for the mirrors
@@ -6479,6 +6773,26 @@ impl Renderer {
             self.queue
                 .write_buffer(&self.lm_uniform, 0, bytemuck::cast_slice(&v));
         }
+        let (spot_vp, spot_info) = {
+            let st = self.spot_state.borrow();
+            let mut m = [[[0.0f32; 4]; 4]; SPOT_SLOTS];
+            for (k, sl) in st.slots.iter().enumerate() {
+                if let Some(p) = sl.drawn {
+                    m[k] = spot_view_proj(
+                        (p.pos - scene.render_origin).as_vec3(),
+                        p.dir,
+                        p.fov,
+                        SPOT_NEAR,
+                        p.far,
+                    )
+                        .to_cols_array_2d();
+                }
+            }
+            let sz = self.options.shadow_size as f32;
+            let tile = self.spot_tile as f32;
+            let h = sz + 2.0 * tile;
+            (m, [tile / sz, tile / h, sz / h, tile])
+        };
         let cu = CameraUniform {
             post: [
                 if enhanced { 1.0 } else { 0.0 },
@@ -6611,6 +6925,8 @@ impl Renderer {
                 lighting.glass_wind.z,
                 1.0,
             ],
+            spot_vp,
+            spot_info,
         };
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&cu));
@@ -6634,7 +6950,7 @@ impl Renderer {
         let mut list: Vec<u32> = Vec::new();
         let mut items: Vec<DrawItem> = Vec::new();
         // near, far, close
-        let mut shadow_batches: [Vec<Batch>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        let mut shadow_batches: [Vec<Batch>; SHADOW_SETS] = std::array::from_fn(|_| Vec::new());
         let kind_of = |alpha: AlphaMode| -> u8 {
             match alpha {
                 AlphaMode::Opaque => PIPE_OPAQUE,
@@ -6658,11 +6974,35 @@ impl Renderer {
                 2.0 * radius / (d.max(0.01) * lod_fov)
             }
         };
-        let active = [
-            draw_shadows && redraw_near,
-            draw_shadows && redraw_far,
-            draw_shadows,
-        ];
+        // the spot light tiles to draw: (tile, pose), and per tile where to look
+        let spot_draws: Vec<(usize, SpotPose)> = if spot_plan {
+            let st = self.spot_state.borrow();
+            st.draws
+                .iter()
+                .filter_map(|&k| st.slots[k].drawn.map(|p| (k, p)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let spot_cull: Vec<(usize, Vec3, Vec3, f32, f32)> = spot_draws
+            .iter()
+            .map(|&(k, p)| {
+                (
+                    k,
+                    (p.pos - scene.render_origin).as_vec3(),
+                    p.dir,
+                    p.fov * 0.5,
+                    p.far,
+                )
+            })
+            .collect();
+        let mut active = [false; SHADOW_SETS];
+        active[0] = draw_shadows && redraw_near;
+        active[1] = draw_shadows && redraw_far;
+        active[2] = draw_shadows;
+        for &(k, _, _, _, _) in &spot_cull {
+            active[3 + k] = true;
+        }
         let boxes = [
             (SHADOW_RANGE, light_view_proj, 0.4f32),
             (SHADOW_RANGE_FAR, light_view_proj_far, 6.0),
@@ -6673,8 +7013,8 @@ impl Renderer {
             .ok()
             .and_then(|v| v.trim().parse().ok())
             .unwrap_or(3.0);
-        let casters = |span: std::ops::Range<usize>| -> [Vec<DrawItem>; 3] {
-            let mut out: [Vec<DrawItem>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        let casters = |span: std::ops::Range<usize>| -> [Vec<DrawItem>; SHADOW_SETS] {
+            let mut out: [Vec<DrawItem>; SHADOW_SETS] = std::array::from_fn(|_| Vec::new());
             let mut ranges: Vec<(u8, u32, u32, usize)> = Vec::new();
             for inst in &scene.instances[span] {
                 if !inst.visible
@@ -6764,6 +7104,29 @@ impl Renderer {
                         });
                     }
                 }
+                // the spot lights' maps: what lies in a light's cone and reach
+                for &(k, lpos, ldir, half, far) in &spot_cull {
+                    let v = c - lpos;
+                    let d = v.length();
+                    if r < 0.1 || d - r > far {
+                        continue;
+                    }
+                    if d > r * 1.01 {
+                        let ang = (v.dot(ldir) / d).clamp(-1.0, 1.0).acos();
+                        if ang > half * 1.45 + (r / d).clamp(0.0, 1.0).asin() {
+                            continue;
+                        }
+                    }
+                    for &(kind, ri, slot, mat_id) in &ranges {
+                        out[3 + k].push(DrawItem {
+                            pipe: kind,
+                            mesh: inst.mesh as u32,
+                            range: ri,
+                            material: depth_only_material(kind, mat_id),
+                            entry: inst.base + slot,
+                        });
+                    }
+                }
             }
             out
         };
@@ -6777,7 +7140,7 @@ impl Renderer {
                     + 1,
             );
             let chunk = n.div_ceil(parts);
-            let mut found: [Vec<DrawItem>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+            let mut found: [Vec<DrawItem>; SHADOW_SETS] = std::array::from_fn(|_| Vec::new());
             for part in run_parts(self.encoding_pool.as_ref(), parts, |p| {
                 casters(p * chunk..((p + 1) * chunk).min(n))
             }) {
@@ -6785,7 +7148,7 @@ impl Renderer {
                     a.extend(b);
                 }
             }
-            for cascade in 0..3 {
+            for cascade in 0..SHADOW_SETS {
                 if !active[cascade] {
                     continue;
                 }
@@ -7596,7 +7959,9 @@ impl Renderer {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view,
                     depth_ops: Some(wgpu::Operations {
-                        load: if keep_near {
+                        // (the far cascade shares its texture with the spot light atlas:
+                        // only its own part is cleared)
+                        load: if keep_near || cascade == 1 {
                             wgpu::LoadOp::Load
                         } else {
                             wgpu::LoadOp::Clear(1.0)
@@ -7637,10 +8002,60 @@ impl Renderer {
                     &self.shadow_pipelines[4 + pipe as usize]
                 });
             } else {
+                let sz = self.options.shadow_size;
+                pass.set_viewport(0.0, 0.0, sz as f32, sz as f32, 0.0, 1.0);
+                pass.set_scissor_rect(0, 0, sz, sz);
+                pass.set_pipeline(&self.shadow_clear_pipeline);
+                pass.draw(0..3, 0..1);
+                pass.set_bind_group(0, scene.shadow_bind_group.as_ref().unwrap(), &[]);
                 encode_batches(&mut pass, scene, &shadow_batches[cascade], |pipe| {
                     &self.shadow_pipelines[cascade * 2 + pipe as usize]
                 });
             }
+        }
+        // spot light shadow maps: a tile each, the same casters and pipelines as the sun's
+        // near cascade seen from the light
+        for &(k, pose) in &spot_draws {
+            let Some(bg) = scene.spot_bind_groups.get(k) else {
+                continue;
+            };
+            let mut cu_spot: CameraUniform = bytemuck::Zeroable::zeroed();
+            cu_spot.light_view_proj = spot_view_proj(
+                (pose.pos - scene.render_origin).as_vec3(),
+                pose.dir,
+                pose.fov,
+                SPOT_NEAR,
+                pose.far,
+            )
+                .to_cols_array_2d();
+            self.queue
+                .write_buffer(&self.spot_cam_bufs[k], 0, bytemuck::bytes_of(&cu_spot));
+            let tile = self.spot_tile;
+            let x = (k as u32 % 4) * tile;
+            let y = self.options.shadow_size + (k as u32 / 4) * tile;
+            let mut pass = shadow_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("spot shadow"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_view_far,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_viewport(x as f32, y as f32, tile as f32, tile as f32, 0.0, 1.0);
+            pass.set_scissor_rect(x, y, tile, tile);
+            pass.set_pipeline(&self.shadow_clear_pipeline);
+            pass.draw(0..3, 0..1);
+            pass.set_bind_group(0, bg, &[]);
+            encode_batches(&mut pass, scene, &shadow_batches[3 + k], |pipe| {
+                &self.shadow_pipelines[pipe as usize]
+            });
         }
         // --- depth prepass + ambient occlusion (single-sampled, camera projection)
         if prepass_on {

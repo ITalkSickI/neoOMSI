@@ -649,6 +649,7 @@ pub(crate) fn weather_lighting(
         .to_ascii_lowercase()
         .starts_with("overcast");
     lighting.shadows = shadows && !overcast && w.fog.0 > 350.0;
+    lighting.light_shadows = shadows;
     lighting
 }
 

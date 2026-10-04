@@ -22,6 +22,8 @@ struct Camera {
     flags: vec4<f32>,        // x detail texturing, y enhanced graphics, z never set (see fs_main's end), w close cascade half range
     light_view_proj_close: mat4x4<f32>,
     wind: vec4<f32>,         // the player's vehicle's velocity (m/s, world): the airstream on its glass
+    spot_vp: array<mat4x4<f32>, 8>, // the spot light shadow maps' matrices (see `spot_shadow`)
+    spot_info: vec4<f32>,    // x tile width, y tile height (uv of the far map's texture), z the far cascade's share of its height, w tile pixels
 };
 
 // 1 when the point lies inside the player's vehicle (its [boundingbox], shrunk a little so
@@ -823,13 +825,17 @@ fn shadow_close(world: vec3<f32>, n: vec3<f32>, ndl: f32, thin: bool) -> vec2<f3
     return vec2<f32>(shadow_pcf_close(uv, lp.z, slope, camera.shadow.y), w);
 }
 
+fn far_uv(uv: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(uv.x, uv.y * camera.spot_info.z);
+}
+
 fn shadow_pcf_far(uv: vec2<f32>, z: f32, slope: vec2<f32>, texel: f32) -> f32 {
     let bias = SHADOW_BIAS_FAR / SHADOW_DEPTH_RANGE;
     // (corners first, as in `shadow_pcf_atlas`)
     var corners = 0.0;
     for (var k = 0; k < 5; k = k + 1) {
         let o = SHADOW_OFFSETS[SHADOW_CORNERS[k]] * texel * 2.2;
-        corners = corners + textureSampleCompareLevel(t_shadow_far, s_shadow, uv + o, z + dot(slope, o) - bias);
+        corners = corners + textureSampleCompareLevel(t_shadow_far, s_shadow, far_uv(uv + o), z + dot(slope, o) - bias);
     }
     if (corners <= 0.0 || corners >= 5.0) {
         return corners * 0.2;
@@ -837,7 +843,7 @@ fn shadow_pcf_far(uv: vec2<f32>, z: f32, slope: vec2<f32>, texel: f32) -> f32 {
     var sum = corners;
     for (var k = 0; k < 11; k = k + 1) {
         let o = SHADOW_OFFSETS[SHADOW_REST[k]] * texel * 2.2;
-        sum = sum + textureSampleCompareLevel(t_shadow_far, s_shadow, uv + o, z + dot(slope, o) - bias);
+        sum = sum + textureSampleCompareLevel(t_shadow_far, s_shadow, far_uv(uv + o), z + dot(slope, o) - bias);
     }
     return sum / 16.0;
 }
@@ -894,7 +900,51 @@ fn sun_shadow(world_in: vec3<f32>, n: vec3<f32>, thin: bool) -> f32 {
 // 0 when one of the light's occluder boxes (a wall, a roof) stands between `p` and the
 // light, else 1. A box entry: pos = centre xy, z0, half x; color = half y, z1, cos, sin of
 // its heading.
+// A spot light's shadow map (an 8 tile atlas under the far cascade): 1 lit, 0 in shadow.
+// The point is pulled a little towards the light, more with the distance, instead of a depth
+// bias that would have to follow the perspective depth.
+fn spot_shadow(slot: u32, lpos: vec3<f32>, p: vec3<f32>) -> f32 {
+    let to_l = lpos - p;
+    let d = length(to_l);
+    let pb = p + to_l / max(d, 1e-3) * (0.06 + 0.012 * d);
+    let lp = camera.spot_vp[slot] * vec4<f32>(pb, 1.0);
+    if (lp.w <= 0.0) {
+        return 1.0;
+    }
+    let ndc = lp.xyz / lp.w;
+    if (abs(ndc.x) >= 0.97 || abs(ndc.y) >= 0.97 || ndc.z <= 0.0 || ndc.z >= 1.0) {
+        return 1.0;
+    }
+    let info = camera.spot_info;
+    let col = f32(slot % 4u);
+    let row = f32(slot / 4u);
+    let tu = ndc.x * 0.5 + 0.5;
+    let tv = 0.5 - ndc.y * 0.5;
+    let uv = vec2<f32>((col + tu) * info.x, info.z + (row + tv) * info.y);
+    let o = vec2<f32>(info.x, info.y) / info.w * 0.75;
+    var sum = 0.0;
+    sum = sum + textureSampleCompareLevel(t_shadow_far, s_shadow, uv + vec2<f32>(-o.x, -o.y), ndc.z);
+    sum = sum + textureSampleCompareLevel(t_shadow_far, s_shadow, uv + vec2<f32>(o.x, -o.y), ndc.z);
+    sum = sum + textureSampleCompareLevel(t_shadow_far, s_shadow, uv + vec2<f32>(-o.x, o.y), ndc.z);
+    sum = sum + textureSampleCompareLevel(t_shadow_far, s_shadow, uv + vec2<f32>(o.x, o.y), ndc.z);
+    // fades out towards the edge of the map, where the light's cone is nearly gone anyway
+    let edge = clamp((0.97 - max(abs(ndc.x), abs(ndc.y))) * 12.0, 0.0, 1.0);
+    return mix(1.0, sum * 0.25, edge);
+}
+
 fn light_shadow(l: PointLight, p: vec3<f32>) -> f32 {
+    let slot = u32(l.occ.z + 0.5);
+    if (slot > 0u && slot <= 8u) {
+        let m = spot_shadow(slot - 1u, l.pos.xyz, p);
+        if (m <= 0.0) {
+            return 0.0;
+        }
+        return m * light_shadow_boxes(l, p);
+    }
+    return light_shadow_boxes(l, p);
+}
+
+fn light_shadow_boxes(l: PointLight, p: vec3<f32>) -> f32 {
     let count = u32(l.occ.y + 0.5);
     if (count == 0u) {
         return 1.0;
@@ -903,6 +953,32 @@ fn light_shadow(l: PointLight, p: vec3<f32>) -> f32 {
     let b = l.pos.xyz;
     for (var i = 0u; i < count; i = i + 1u) {
         let o = lights[first + i];
+        if (o.extra.x > 0.5) {
+            let e1 = o.color.xyz - o.pos.xyz;
+            let e2 = o.dir.xyz - o.pos.xyz;
+            let sd = b - p;
+            let h = cross(sd, e2);
+            let det = dot(e1, h);
+            if (abs(det) < 1e-9) {
+                continue;
+            }
+            let f = 1.0 / det;
+            let s0 = p - o.pos.xyz;
+            let u = f * dot(s0, h);
+            if (u < -0.002 || u > 1.002) {
+                continue;
+            }
+            let q = cross(s0, e1);
+            let v = f * dot(sd, q);
+            if (v < -0.002 || u + v > 1.002) {
+                continue;
+            }
+            let t = f * dot(e2, q);
+            if (t > 0.0 && t < 0.97) {
+                return 0.0;
+            }
+            continue;
+        }
         let ca = o.color.z;
         let sa = o.color.w;
         let c = o.pos.xy;
@@ -918,8 +994,10 @@ fn light_shadow(l: PointLight, p: vec3<f32>) -> f32 {
             }
             continue;
         }
-        let lo = vec3<f32>(-o.pos.w + 0.04, -o.color.x + 0.04, o.pos.z + 0.04);
-        let hi = vec3<f32>(o.pos.w - 0.04, o.color.x - 0.04, o.color.y - 0.04);
+        let mx = min(0.04, o.pos.w * 0.4);
+        let my = min(0.04, o.color.x * 0.4);
+        let lo = vec3<f32>(-o.pos.w + mx, -o.color.x + my, o.pos.z + 0.04);
+        let hi = vec3<f32>(o.pos.w - mx, o.color.x - my, o.color.y - 0.04);
         let d = b3 - a3;
         let dd = select(d, vec3<f32>(1e-6), abs(d) < vec3<f32>(1e-6));
         let u0 = (lo - a3) / dd;
