@@ -1,7 +1,6 @@
 //! The timetable evaluation card uses the game's menu input, scrolling and VR surface.
 
 use super::*;
-use crate::run_statistics::Report;
 
 impl Ui {
     fn report_label(
@@ -13,7 +12,7 @@ impl Ui {
         px: u32,
         color: [u8; 4],
     ) {
-        let text = clip_to(&self.text, &omsi_ui::tr(text), px as f32, rect[2] - rect[0]);
+        let text = clip_to(&self.text, &crate::tr(text), px as f32, rect[2] - rect[0]);
         let l = self.text.label(r, scene, &text, px, color);
         scene.overlays.push((
             l.tex,
@@ -49,7 +48,7 @@ impl Ui {
         r: &Renderer,
         scene: &mut Scene,
         f: &Frame,
-        report: &Report,
+        report: &RunReportView,
         selected: usize,
     ) {
         let s = (f.scale.max(0.5) * f.ui_scale)
@@ -108,7 +107,7 @@ impl Ui {
         self.report_label(
             r,
             scene,
-            &report.caption(),
+            &report.caption,
             [left, y + 61.0 * s, right, y + 82.0 * s],
             (14.0 * s) as u32,
             SOFT,
@@ -116,7 +115,7 @@ impl Ui {
         self.report_label(
             r,
             scene,
-            &report.context(),
+            &report.context,
             [left, y + 83.0 * s, right, y + 100.0 * s],
             (11.0 * s) as u32,
             MUTED,
@@ -126,10 +125,10 @@ impl Ui {
         let footer = y + h - 88.0 * s;
         let row_h = if compact { 109.0 * s } else { 46.0 * s };
         let rows = (((footer - body) / row_h).floor() as usize).max(1);
-        let count = report.trip.stops.len();
+        let count = report.rows.len();
         let first =
             (f.menu_top.unwrap_or(0.0).round().max(0.0) as usize).min(count.saturating_sub(rows));
-        self.menu_start = 0; // the two fixed footer buttons use indices 0 and 1
+        self.menu_start = 0;
         self.menu_rows = rows;
         self.menu_row_h = row_h;
         self.text.rounded(
@@ -187,8 +186,8 @@ impl Ui {
                 "Actual",
                 "Difference",
             ]
-            .iter()
-            .enumerate()
+                .iter()
+                .enumerate()
             {
                 self.report_label(
                     r,
@@ -216,8 +215,8 @@ impl Ui {
                     [255, 255, 255, 5],
                 );
             }
-            let cells = report.cells(index);
-            let status = report.status(index);
+            let cells = report.rows[index].cells.clone();
+            let status = report.rows[index].status;
             let status_color = match status {
                 "Late" | "Late / too early" => txt(DANGER),
                 "Too early" => AMBER,
@@ -367,17 +366,15 @@ impl Ui {
             };
             self.text.rounded(r, scene, rect, ROW_R * s, fill);
             let px = (14.0 * s) as u32;
-            let label = clip_to(&self.text, &omsi_ui::tr(label), px as f32, bw - 16.0 * s);
+            let label = clip_to(&self.text, &crate::tr(label), px as f32, bw - 16.0 * s);
             let l = self
                 .text
                 .label(r, scene, &label, px, if i == 1 { ON_ACCENT } else { WHITE });
             let tx = bx + (bw - l.w as f32) * 0.5;
             let ty = rect[1] + (rect[3] - rect[1] - l.h as f32) * 0.5;
-            scene
-                .overlays
-                .push((l.tex, [tx, ty, tx + l.w as f32, ty + l.h as f32]));
+            l.place(scene, tx, ty);
         }
-        if !f.vr && !crate::platform::touch_controls() {
+        if !f.vr && !f.touch {
             self.report_label(
                 r,
                 scene,
@@ -387,144 +384,5 @@ impl Ui {
                 MUTED,
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::schedule::{PlannedStop, PlannedTrip, StopDir};
-
-    #[test]
-    #[ignore = "requires a graphics adapter and OMSI_REPORT_PREVIEW output directory"]
-    fn render_report_preview() {
-        let out = std::path::PathBuf::from(std::env::var("OMSI_REPORT_PREVIEW").unwrap());
-        std::fs::create_dir_all(&out).unwrap();
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let mut renderer = pollster::block_on(Renderer::new(
-            &instance,
-            None,
-            Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-        ))
-        .unwrap();
-        let camera = omsi_render::Camera {
-            position: glam::DVec3::new(0.0, 0.0, 1.0),
-            yaw: 0.0,
-            pitch: 0.0,
-            roll: 0.0,
-            fov_deg: 60.0,
-            near: 0.1,
-            far: 1000.0,
-        };
-        let trip = PlannedTrip {
-            name: "76_North-Central".into(),
-            line: "76".into(),
-            terminus: "Central station".into(),
-            departure: 8.0 * 3600.0,
-            end: 9.0 * 3600.0,
-            stops: (0..25)
-                .map(|i| PlannedStop {
-                    object_id: i,
-                    name: match i % 5 {
-                        0 => "Northern depot",
-                        1 => "Market square",
-                        2 => "University / Botanical garden",
-                        3 => "West park",
-                        _ => "Central station",
-                    }
-                    .into(),
-                    arr: 28800.0 + i as f64 * 150.0,
-                    dep: 28830.0 + i as f64 * 150.0,
-                    position: None,
-                    dir: StopDir::default(),
-                    stops: true,
-                })
-                .collect(),
-        };
-        let mut log = crate::run_statistics::TripLog::default();
-        for i in 0..24 {
-            if i == 4 {
-                continue;
-            }
-            let offset = match i % 5 {
-                0 => 12.0,
-                1 => 210.0,
-                2 => -160.0,
-                _ => 0.0,
-            };
-            log.arrive(i, trip.stops[i].arr + offset);
-            log.depart(i, trip.stops[i].dep + offset);
-        }
-        log.skip(4, 5);
-        log.arrive(24, trip.stops[24].arr);
-        let mut report = log.report(&trip, "1", true);
-        report.map = "Demo city".into();
-        report.date = 20261004;
-        let items = [("report_save", "Save as text…"), ("resume", "Continue")];
-        for (name, width, height, language, top) in [
-            ("desktop", 1600, 900, "de", 0.0),
-            ("desktop-end", 1600, 900, "de", 25.0),
-            ("compact", 800, 600, "de", 0.0),
-            ("phone", 390, 844, "de", 0.0),
-        ] {
-            crate::ui_language(language);
-            let mut scene = renderer.new_scene();
-            let mut ui = Ui::new().unwrap();
-            let frame = Frame {
-                scale: 1.0,
-                ui_scale: 1.0,
-                opacity: 1.0,
-                width: width as f32,
-                height: height as f32,
-                cursor: (-100.0, -100.0),
-                vr: false,
-                tooltip: None,
-                chat: None,
-                notes: &[],
-                fps: None,
-                paused: true,
-                menu: Some((1, &items)),
-                menu_top: Some(top),
-                menu_disabled: &[],
-                timetable: None,
-                info: None,
-                tutorial: None,
-                tags: vec![],
-                menu_kind: MenuKind::Game,
-                report: Some(&report),
-                report_status: "",
-                menu_head: None,
-                menu_preview: None,
-                pane_first: None,
-                menu_tabs: None,
-                menu_kbd: true,
-                dropdown: None,
-            };
-            ui.draw(&renderer, &mut scene, &frame, 0.016);
-            assert_eq!(ui.menu_rects.len(), 2);
-            assert!(ui.menu_scroll_thumb.is_some());
-            for rect in &ui.menu_rects {
-                assert!(rect[0] >= 0.0 && rect[2] <= width as f32);
-                assert!(rect[1] >= 0.0 && rect[3] <= height as f32);
-            }
-            let rgba = renderer
-                .render_to_image(
-                    &mut scene,
-                    width,
-                    height,
-                    &camera,
-                    &omsi_render::Lighting::default(),
-                )
-                .unwrap();
-            image::save_buffer(
-                out.join(format!("{name}.png")),
-                &rgba,
-                width,
-                height,
-                image::ColorType::Rgba8,
-            )
-            .unwrap();
-        }
-        std::fs::write(out.join("evaluation.txt"), report.text()).unwrap();
     }
 }

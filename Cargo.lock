@@ -3013,8 +3013,11 @@ dependencies = [
  "image",
  "log",
  "naga",
+ "omsi-render",
+ "omsi-texture",
  "pollster 1.0.1",
  "resvg",
+ "rustrict",
  "wgpu",
 ]
 

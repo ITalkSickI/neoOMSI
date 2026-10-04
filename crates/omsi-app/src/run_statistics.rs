@@ -150,6 +150,20 @@ impl Report {
         ]
     }
 
+    pub fn view(&self) -> omsi_ui::ingame::RunReportView {
+        omsi_ui::ingame::RunReportView {
+            completed: self.completed,
+            caption: self.caption(),
+            context: self.context(),
+            rows: (0..self.trip.stops.len())
+                .map(|i| omsi_ui::ingame::RunReportRow {
+                    cells: self.cells(i),
+                    status: self.status(i),
+                })
+                .collect(),
+        }
+    }
+
     pub fn caption(&self) -> String {
         format!(
             "{} {} · {} {} · {}",
@@ -287,8 +301,8 @@ impl crate::App {
         let bus = &player.vehicle;
         let ready = bus.physics.velocity_kmh().abs() < 1.0
             && (report.trip.line.trim().is_empty()
-                || bus.ty.def.passenger_cabin.is_none()
-                || crate::humans::Humans::any_door_open(bus));
+            || bus.ty.def.passenger_cabin.is_none()
+            || crate::humans::Humans::any_door_open(bus));
         if ready {
             self.report_pending = false;
             self.open_run_report(false);
@@ -321,7 +335,7 @@ impl crate::App {
                     .set_file_name(filename)
                     .save_file(),
             )
-            .map(|file| file.path().to_path_buf());
+                .map(|file| file.path().to_path_buf());
             #[cfg(target_os = "android")]
             let path = content_dir.map(|p| p.join("Reports").join(filename));
             let result = (|| -> std::io::Result<Option<std::path::PathBuf>> {
@@ -477,5 +491,149 @@ mod tests {
         assert_eq!(difference(None, 60.0), "—");
         assert_eq!(difference(Some(60.9), 60.1), "+0 s");
         assert_eq!(difference(Some(59.0), 60.0), "-1 s");
+    }
+}
+
+#[cfg(test)]
+mod preview {
+    use super::*;
+    use omsi_render::Renderer;
+    use omsi_ui::ingame::{Frame, MenuKind, Ui};
+    use crate::schedule::{PlannedStop, PlannedTrip, StopDir};
+
+    #[test]
+    #[ignore = "requires a graphics adapter and OMSI_REPORT_PREVIEW output directory"]
+    fn render_report_preview() {
+        let out = std::path::PathBuf::from(std::env::var("OMSI_REPORT_PREVIEW").unwrap());
+        std::fs::create_dir_all(&out).unwrap();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let mut renderer = pollster::block_on(Renderer::new(
+            &instance,
+            None,
+            Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+        ))
+            .unwrap();
+        let camera = omsi_render::Camera {
+            position: glam::DVec3::new(0.0, 0.0, 1.0),
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov_deg: 60.0,
+            near: 0.1,
+            far: 1000.0,
+        };
+        let trip = PlannedTrip {
+            name: "76_North-Central".into(),
+            line: "76".into(),
+            terminus: "Central station".into(),
+            departure: 8.0 * 3600.0,
+            end: 9.0 * 3600.0,
+            stops: (0..25)
+                .map(|i| PlannedStop {
+                    object_id: i,
+                    name: match i % 5 {
+                        0 => "Northern depot",
+                        1 => "Market square",
+                        2 => "University / Botanical garden",
+                        3 => "West park",
+                        _ => "Central station",
+                    }
+                        .into(),
+                    arr: 28800.0 + i as f64 * 150.0,
+                    dep: 28830.0 + i as f64 * 150.0,
+                    position: None,
+                    dir: StopDir::default(),
+                    stops: true,
+                })
+                .collect(),
+        };
+        let mut log = crate::run_statistics::TripLog::default();
+        for i in 0..24 {
+            if i == 4 {
+                continue;
+            }
+            let offset = match i % 5 {
+                0 => 12.0,
+                1 => 210.0,
+                2 => -160.0,
+                _ => 0.0,
+            };
+            log.arrive(i, trip.stops[i].arr + offset);
+            log.depart(i, trip.stops[i].dep + offset);
+        }
+        log.skip(4, 5);
+        log.arrive(24, trip.stops[24].arr);
+        let mut report = log.report(&trip, "1", true);
+        report.map = "Demo city".into();
+        report.date = 20261004;
+        let items = [("report_save", "Save as text…"), ("resume", "Continue")];
+        for (name, width, height, language, top) in [
+            ("desktop", 1600, 900, "de", 0.0),
+            ("desktop-end", 1600, 900, "de", 25.0),
+            ("compact", 800, 600, "de", 0.0),
+            ("phone", 390, 844, "de", 0.0),
+        ] {
+            crate::ui_language(language);
+            let view = report.view();
+            let mut scene = renderer.new_scene();
+            let mut ui = Ui::new().unwrap();
+            let frame = Frame {
+                scale: 1.0,
+                ui_scale: 1.0,
+                opacity: 1.0,
+                width: width as f32,
+                height: height as f32,
+                cursor: (-100.0, -100.0),
+                vr: false,
+                tooltip: None,
+                chat: None,
+                notes: &[],
+                fps: None,
+                paused: true,
+                menu: Some((1, &items)),
+                menu_top: Some(top),
+                menu_disabled: &[],
+                timetable: None,
+                info: None,
+                tutorial: None,
+                tags: vec![],
+                menu_kind: MenuKind::Game,
+                report: Some(&view),
+                touch: false,
+                build: "",
+                report_status: "",
+                menu_head: None,
+                menu_preview: None,
+                pane_first: None,
+                menu_tabs: None,
+                menu_kbd: true,
+                dropdown: None,
+            };
+            ui.draw(&renderer, &mut scene, &frame, 0.016);
+            assert_eq!(ui.menu_rects.len(), 2);
+            assert!(ui.menu_scroll_thumb.is_some());
+            for rect in &ui.menu_rects {
+                assert!(rect[0] >= 0.0 && rect[2] <= width as f32);
+                assert!(rect[1] >= 0.0 && rect[3] <= height as f32);
+            }
+            let rgba = renderer
+                .render_to_image(
+                    &mut scene,
+                    width,
+                    height,
+                    &camera,
+                    &omsi_render::Lighting::default(),
+                )
+                .unwrap();
+            image::save_buffer(
+                out.join(format!("{name}.png")),
+                &rgba,
+                width,
+                height,
+                image::ColorType::Rgba8,
+            )
+                .unwrap();
+        }
+        std::fs::write(out.join("evaluation.txt"), report.text()).unwrap();
     }
 }

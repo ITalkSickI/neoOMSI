@@ -242,6 +242,7 @@ impl App {
                     self.schedule.as_ref(),
                     self.clock.time,
                 );
+                let report_view = self.report_view.as_ref().map(|r| r.view());
                 let frame = ui::Frame {
                     scale,
                     ui_scale: ui::size_factor(
@@ -283,7 +284,9 @@ impl App {
                     },
                     menu_disabled,
                     menu_kind,
-                    report: self.report_view.as_ref(),
+                    report: report_view.as_ref(),
+                    touch: crate::platform::touch_controls(),
+                    build: crate::startup::BUILD,
                     report_status: &self.report_status,
                     menu_head,
                     menu_preview,
