@@ -12,6 +12,9 @@ const WIPED_FILM: f32 = -0.04;
 
 // Eight codes below zero identify a short-lived residual film, without another texture.
 fn encode_wetness(wet: f32) -> u8 {
+    if wet < 0.0 {
+        return (8.0 + wet * 200.0).round().clamp(0.0, 8.0) as u8;
+    }
     (wet * (247.0 / 2.0) + 8.0).round() as u8
 }
 
@@ -20,9 +23,9 @@ fn advance_wetness(wet: f32, rate: f32, dt: f32) -> f32 {
     let mut base = wet.min(1.0);
     let mut remaining = dt;
     if base < 0.0 {
-        let drying = -base / 0.08;
+        let drying = -base / 0.03;
         if dt < drying {
-            return base + dt * 0.08;
+            return base + dt * 0.03;
         }
         base = 0.0;
         remaining -= drying;
@@ -685,6 +688,7 @@ fn wipe(
                     .zip(&filters)
                     .filter_map(|(t, f)| Some(t.as_ref()?.coverage(points[i], (*f)?)))
                     .sum::<f32>()
+                    .mul_add(2.0, 0.0)
                     .min(1.0);
                 water += (wet[i] - 0.004).max(0.0) * coverage;
                 if wet[i] > 0.004 {
@@ -1012,7 +1016,7 @@ mod tests {
     fn a_wipe_leaves_brief_sheen_then_rewets_gradually_without_a_frame_rate_dependency() {
         assert!(advance_wetness(WIPED_FILM, 0.1, 0.1) < 0.0);
         let after_two_seconds = advance_wetness(WIPED_FILM, 0.1, 2.0);
-        assert!(after_two_seconds > 0.1 && after_two_seconds < 0.2);
+        assert!(after_two_seconds > 0.05 && after_two_seconds < 0.2);
         let mut stepped = WIPED_FILM;
         for _ in 0..120 {
             stepped = advance_wetness(stepped, 0.1, 1.0 / 60.0);
