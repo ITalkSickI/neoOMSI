@@ -670,6 +670,7 @@ impl App {
                     }
                     h.exact_fare = self.settings.exact_fare;
                     h.boarding = self.settings.boarding.clone();
+                    h.prefer_seats = self.settings.pax_prefer_seats;
                     h.voices = match self.settings.pax_voices.as_str() {
                         "off" => 2,
                         "tickets" => 1,
@@ -1112,6 +1113,7 @@ pub(crate) struct FrozenMirrors {
 pub(crate) struct CamBlend {
     pub key: Option<(String, (usize, usize))>,
     pub resetting: bool,
+    pub reset_zoom: Option<f32>,
     pub from: Option<omsi_vehicle::Camera>,
     pub shown: Option<omsi_vehicle::Camera>,
     pub entering: bool,
