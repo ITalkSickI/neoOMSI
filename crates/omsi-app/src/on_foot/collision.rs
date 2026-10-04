@@ -195,7 +195,7 @@ impl App {
         }
         let mut vehicles = self.vehicle_boxes(at, 20.0);
         if let Some(e) = exempt {
-            vehicles.retain(|o| (push_out(e, o, 0.0) - e).length() < 1e-6);
+            vehicles.retain(|o| (push_out(e, o, 0.8) - e).length() < 1e-6);
         }
         boxes.extend(vehicles);
         boxes.retain(|o| o.z0 < feet + BODY_HEIGHT - 0.2 && o.z1 > feet + STEP_UP);

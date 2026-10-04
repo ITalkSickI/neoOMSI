@@ -47,6 +47,7 @@ impl App {
             return BusStep { inside_moved: true, exempt: None, door: None };
         }
         let mut out = BusStep::none();
+        let mut best: Option<(f64, crate::humans::BusId, glam::Vec3, glam::DVec3, DVec2, DVec2, f64, f64, f64)> = None;
         for bus in h.bus_ids_near(f.pos, 25.0) {
             for (inside, outside, _, open) in h.cabin_doors(bus) {
                 if !open {
@@ -67,21 +68,26 @@ impl App {
                 if along < -1.2 || along > len + 1.0 || lateral > 1.0 {
                     continue;
                 }
-                out.exempt = Some(b);
-                let z0 = self
-                    .world
-                    .as_ref()
-                    .and_then(|w| w.walk_height_near(a.x, a.y, outside.z))
-                    .unwrap_or(outside.z);
-                out.door = Some((a, dir, len, z0, wi.z));
-                if along >= len - 0.1 && f.vel.dot(dir) > 0.0 {
-                    if let Some(l) = cabin_local(h, bus, f.pos.truncate(), inside.z) {
-                        f.inside = Some((bus, l));
-                        f.lift = 0.0;
-                        f.vz = 0.0;
-                        out.inside_moved = true;
-                        return out;
-                    }
+                if best.as_ref().is_none_or(|x| lateral < x.0) {
+                    best = Some((lateral, bus, inside, wi, a, dir, len, along, outside.z));
+                }
+            }
+        }
+        if let Some((_, bus, inside, wi, a, dir, len, along, oz)) = best {
+            out.exempt = Some(wi.truncate());
+            let z0 = self
+                .world
+                .as_ref()
+                .and_then(|w| w.walk_height_near(a.x, a.y, oz))
+                .unwrap_or(oz);
+            out.door = Some((a, dir, len, z0, wi.z));
+            if along >= len - 0.1 && f.vel.dot(dir) > 0.0 {
+                if let Some(l) = cabin_local(h, bus, f.pos.truncate(), inside.z) {
+                    f.inside = Some((bus, l));
+                    f.lift = 0.0;
+                    f.vz = 0.0;
+                    out.inside_moved = true;
+                    return out;
                 }
             }
         }

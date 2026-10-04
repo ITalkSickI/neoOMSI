@@ -562,7 +562,7 @@ impl App {
         ));
     }
 
-    pub(super) fn vehicle_boxes(&self, at: DVec2, r: f64) -> Vec<Obb> {
+    pub(crate) fn vehicle_boxes(&self, at: DVec2, r: f64) -> Vec<Obb> {
         let mut boxes = Vec::new();
         let mut add = |v: &omsi_sim::VehicleInstance| {
             if (v.position.truncate() - at).length() > r {
