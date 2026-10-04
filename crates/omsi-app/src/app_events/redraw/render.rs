@@ -334,6 +334,7 @@ impl App {
         let mut lighting = match self.weather.as_ref() {
             Some(w) => {
                 self.wetness = road_wetness(precip_of(w).1, dt as f64, self.wetness);
+                set_cloud_day(self.clock.year, self.clock.day_of_year);
                 weather_lighting(
                     &daylight,
                     w,
@@ -389,10 +390,10 @@ impl App {
             .map(|p| lights::vehicle_velocity(&p.vehicle))
             .unwrap_or_default()
             - self
-                .weather
-                .as_ref()
-                .map(crate::rain::weather_wind)
-                .unwrap_or_default();
+            .weather
+            .as_ref()
+            .map(rain::weather_wind)
+            .unwrap_or_default();
         lighting.animation_time = Some(self.clock.run_time as f32);
         lighting.led_glow = self.settings.led_glow as f32 * 0.25;
         lighting.led_mips = self.settings.led_mips;
@@ -455,47 +456,47 @@ impl App {
             let acquired = match s.surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(_)
                 | wgpu::CurrentSurfaceTexture::Suboptimal(_)
-                    if hidden_now =>
-                {
-                    wgpu::CurrentSurfaceTexture::Occluded
-                }
+                if hidden_now =>
+                    {
+                        wgpu::CurrentSurfaceTexture::Occluded
+                    }
                 other => other,
             };
             let (frame, stand_in) = match acquired {
                 wgpu::CurrentSurfaceTexture::Success(frame)
                 | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => (Some(frame), None),
                 wgpu::CurrentSurfaceTexture::Occluded
-                    if omsi_cfg::env::var_os("OMSI_RENDER_OCCLUDED").is_some() =>
-                {
-                    let (w, h) = (s.config.width, s.config.height);
-                    if self
-                        .stand_in
-                        .as_ref()
-                        .map(|t| (t.width(), t.height()) != (w, h))
-                        .unwrap_or(true)
+                if omsi_cfg::env::var_os("OMSI_RENDER_OCCLUDED").is_some() =>
                     {
-                        self.stand_in = Some(r.device.create_texture(&wgpu::TextureDescriptor {
-                            label: Some("hidden window"),
-                            size: wgpu::Extent3d {
-                                width: w,
-                                height: h,
-                                depth_or_array_layers: 1,
-                            },
-                            mip_level_count: 1,
-                            sample_count: 1,
-                            dimension: wgpu::TextureDimension::D2,
-                            format: r.format(),
-                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                            view_formats: &[],
-                        }));
-                    }
-                    (
-                        None,
-                        self.stand_in
+                        let (w, h) = (s.config.width, s.config.height);
+                        if self
+                            .stand_in
                             .as_ref()
-                            .map(|t| t.create_view(&Default::default())),
-                    )
-                }
+                            .map(|t| (t.width(), t.height()) != (w, h))
+                            .unwrap_or(true)
+                        {
+                            self.stand_in = Some(r.device.create_texture(&wgpu::TextureDescriptor {
+                                label: Some("hidden window"),
+                                size: wgpu::Extent3d {
+                                    width: w,
+                                    height: h,
+                                    depth_or_array_layers: 1,
+                                },
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: wgpu::TextureDimension::D2,
+                                format: r.format(),
+                                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                                view_formats: &[],
+                            }));
+                        }
+                        (
+                            None,
+                            self.stand_in
+                                .as_ref()
+                                .map(|t| t.create_view(&Default::default())),
+                        )
+                    }
                 wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                     reconfigure = true;
                     (None, None)
@@ -609,11 +610,11 @@ impl App {
                     }
                     while (self.in_cab || near)
                         && drawn
-                            < (if vr_active {
-                                draw_limit
-                            } else {
-                                self.mirrors_seen.clamp(1, 2)
-                            })
+                        < (if vr_active {
+                        draw_limit
+                    } else {
+                        self.mirrors_seen.clamp(1, 2)
+                    })
                         && (vr_active || self.mirror_budget >= 1.0)
                     {
                         let (Some(w), Some(p)) = (self.world.as_ref(), self.player.as_ref()) else {
