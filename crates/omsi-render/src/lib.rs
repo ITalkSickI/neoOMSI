@@ -1310,6 +1310,8 @@ pub const SHADOW_RANGE_CLOSE: f32 = 32.0;
 /// of the shadow pass's 4.6 ms.
 const SHADOW_CLOSE_MAX: u32 = 2048;
 
+const FOG_MIN_DENSITY: f32 = 5e-4;
+
 impl Renderer {
     /// Create a renderer with the default options. `surface` is used to pick a compatible
     /// adapter and format.
@@ -1549,8 +1551,8 @@ impl Renderer {
         let takes = |flags: wgpu::TextureFormatFeatureFlags, f: wgpu::TextureFormat, n: u32| {
             flags.sample_count_supported(n)
                 && (n == 1
-                    || f.is_depth_stencil_format()
-                    || flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE))
+                || f.is_depth_stencil_format()
+                || flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE))
         };
         let adapter_table_needed = !targets.iter().all(|&f| {
             takes(
@@ -1611,9 +1613,9 @@ impl Renderer {
             .features()
             .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
             || !adapter
-                .get_downlevel_capabilities()
-                .flags
-                .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
         let flags_of = |f: wgpu::TextureFormat| {
             if adapter_table {
                 adapter.get_texture_format_features(f).flags
@@ -2389,7 +2391,7 @@ impl Renderer {
                         let y = f32(i32(i >> 1u) * 4 - 1);
                         return vec4<f32>(x, y, 1.0, 1.0);
                     }"
-                    .into(),
+                        .into(),
                 ),
             });
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -2780,8 +2782,8 @@ impl Renderer {
         // the enhanced path: its own lighting in all three
         let leave_out_enhanced = options.no_enhanced
             && (cfg!(target_os = "android")
-                || adapter_name.to_ascii_lowercase().contains("opengl")
-                || GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed));
+            || adapter_name.to_ascii_lowercase().contains("opengl")
+            || GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed));
         let hdr_pass = (!leave_out_enhanced).then(|| PassPipelines {
             pipelines: scene_pipelines(hdr_format, "fs_enhanced"),
             corona_pipeline: corona_pipeline_for(hdr_format, "fs_enhanced", additive),
@@ -3075,7 +3077,7 @@ impl Renderer {
                 (2, false),
                 (2, true),
             ]
-            .map(|(kind, cull)| make_prepass_samples(kind, cull, msaa))
+                .map(|(kind, cull)| make_prepass_samples(kind, cull, msaa))
         });
         // --- mipmaps on the GPU: the CPU box filter took up to a second per bus spawn
         log::info!("renderer: compiling the mip maps shaders");
@@ -4896,14 +4898,14 @@ impl Renderer {
         let fog_rgb = avg * 0.9 / std::f32::consts::PI;
         // the weather's own fog (vanilla's density, which the culling uses as well); a
         // clear day's air is the sky model's
-        let weather_fog = if lighting.fog_density > 1e-4 {
+        let weather_fog = if lighting.fog_density > FOG_MIN_DENSITY {
             lighting.fog_density
         } else {
             0.0
         };
         // (the air near the ground: the Rayleigh part and half the aerosols of the sky
         // model's, whose layer is thinner where a street is than its average)
-        let clear_air = 1.3e-5 + 2.2e-5 * haze;
+        let clear_air = 0.0;
         // the fog lies on the ground under the player's vehicle, or just under the camera
         let base = match lighting.fog_base.or(lighting.inside.map(|v| v.0.z)) {
             Some(z) => (z - ro.z) as f32,
@@ -5994,7 +5996,7 @@ impl Renderer {
                     Vec4::new(1.0, -1.0, 0.0, 1.0),
                     Vec4::new(-1.0, -1.0, 0.0, 1.0),
                 ]
-                .map(|p| transforms[eye] * p);
+                    .map(|p| transforms[eye] * p);
                 if let Some(item) = prepare(id, quad) {
                     prepared[eye].push(item);
                 }
@@ -6190,8 +6192,8 @@ impl Renderer {
             && self.options.fxaa
             && self.options.msaa <= 1
             && !(lighting.enhanced
-                && self.hdr_pass.is_some()
-                && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none())
+            && self.hdr_pass.is_some()
+            && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none())
             && omsi_cfg::env::var_os("OMSI_NO_FXAA").is_none();
         // The rain on the glass shows last frame's picture through its drops: the Enhanced
         // path keeps it anyway (its glow's first level), the plain graphics draw into a
@@ -6207,9 +6209,9 @@ impl Renderer {
         // (what the films may read this frame: the picture the last window frame left)
         let glass_ok = with_overlays
             && self
-                .glass_live
-                .take()
-                .is_some_and(|k| Some(k) == scene.glass_key && Some(k) == glass_key);
+            .glass_live
+            .take()
+            .is_some_and(|k| Some(k) == scene.glass_key && Some(k) == glass_key);
         let scaled =
             (width, height) != (full_w, full_h) || vanilla_fxaa || (glass_on && !enhanced_view);
         let scene_target: Option<(wgpu::TextureView, wgpu::BindGroup)> = if scaled {
@@ -6236,8 +6238,8 @@ impl Renderer {
             && self.hdr_pass.is_some()
             && omsi_cfg::env::var_os("OMSI_NO_ENHANCED").is_none()
             && (with_overlays
-                || xr_view
-                || omsi_cfg::env::var_os("OMSI_MIRROR_ENHANCED").is_some());
+            || xr_view
+            || omsi_cfg::env::var_os("OMSI_MIRROR_ENHANCED").is_some());
         // the mirrors are drawn by the same path as the window (their picture graded with
         // the window's exposure, see the post passes)
         let enhanced = enhanced_frame;
@@ -6380,11 +6382,11 @@ impl Renderer {
             (near_m.project_point3(cam_rel) - near_wanted.project_point3(cam_rel)).length() > 0.03;
         let redraw_near = draw_shadows
             && (near_age >= 1
-                || near_jumped
-                || near_m == Mat4::IDENTITY
-                || near_origin != scene.render_origin
-                || near_sun.dot(sun) < 0.99999
-                || omsi_cfg::env::var_os("OMSI_SHADOW_NEAR_EVERY_FRAME").is_some());
+            || near_jumped
+            || near_m == Mat4::IDENTITY
+            || near_origin != scene.render_origin
+            || near_sun.dot(sun) < 0.99999
+            || omsi_cfg::env::var_os("OMSI_SHADOW_NEAR_EVERY_FRAME").is_some());
         let light_view_proj = if let Some((_, _, near, _, _)) = shared_xr_shadows {
             near
         } else if !shadows {
@@ -6412,11 +6414,11 @@ impl Renderer {
             (far_m.project_point3(cam_rel) - far_wanted.project_point3(cam_rel)).length() > 0.12;
         let redraw_far = draw_shadows
             && (far_age >= 3
-                || far_moved
-                || far_m == Mat4::IDENTITY
-                || far_origin != scene.render_origin
-                || far_sun.dot(sun) < 0.99999
-                || omsi_cfg::env::var_os("OMSI_SHADOW_FAR_EVERY_FRAME").is_some());
+            || far_moved
+            || far_m == Mat4::IDENTITY
+            || far_origin != scene.render_origin
+            || far_sun.dot(sun) < 0.99999
+            || omsi_cfg::env::var_os("OMSI_SHADOW_FAR_EVERY_FRAME").is_some());
         if redraw_far && omsi_cfg::env::var_os("OMSI_DEBUG_SHADOW_FAR").is_some() {
             log::info!(
                 "far shadow redrawn: age {far_age} moved {far_moved} origin {} sun {:.6}",
@@ -6509,12 +6511,12 @@ impl Renderer {
                 .to_array(),
             ambient: (lighting.ambient
                 * if enhanced {
-                    1.0
-                } else {
-                    night_scale(lighting.night, lighting.atmosphere_brightness)
-                })
-            .extend(lighting.snow.clamp(0.0, 1.0))
-            .to_array(),
+                1.0
+            } else {
+                night_scale(lighting.night, lighting.atmosphere_brightness)
+            })
+                .extend(lighting.snow.clamp(0.0, 1.0))
+                .to_array(),
             fog: lighting.fog_color.extend(lighting.fog_density).to_array(),
             sun_color: lighting
                 .sun_color
@@ -6522,16 +6524,16 @@ impl Renderer {
                 .to_array(),
             sky_color: (lighting.secondary
                 * if enhanced {
-                    1.0
-                } else {
-                    night_scale(lighting.night, lighting.atmosphere_brightness)
-                })
-            .extend(if lighting.classic && !enhanced {
                 1.0
             } else {
-                0.0
+                night_scale(lighting.night, lighting.atmosphere_brightness)
             })
-            .to_array(),
+                .extend(if lighting.classic && !enhanced {
+                    1.0
+                } else {
+                    0.0
+                })
+                .to_array(),
             light_grid: grid,
             sky: [
                 lighting.sun_azimuth,
@@ -6836,7 +6838,7 @@ impl Renderer {
         // in thin fog went missing in plain sight - most of all seen from above, with the
         // camera zoomed out.
         let fog_far = if enhanced_frame {
-            if lighting.fog_density > 1e-4 {
+            if lighting.fog_density > FOG_MIN_DENSITY {
                 let base = lighting
                     .fog_base
                     .or(lighting.inside.map(|v| v.0.z))
@@ -6853,7 +6855,7 @@ impl Renderer {
             } else {
                 camera.far
             }
-        } else if lighting.fog_density > 1e-7 {
+        } else if lighting.fog_density > FOG_MIN_DENSITY {
             (4.6 / lighting.fog_density).min(camera.far)
         } else {
             camera.far
@@ -7404,9 +7406,9 @@ impl Renderer {
                         // three or four such screen-sized layers.
                         if mat.alpha == AlphaMode::Blend
                             && inst
-                                .slot_alpha
-                                .get(*slot as usize)
-                                .is_some_and(|a| *a < 1.0 / 512.0)
+                            .slot_alpha
+                            .get(*slot as usize)
+                            .is_some_and(|a| *a < 1.0 / 512.0)
                         {
                             continue;
                         }
@@ -8183,11 +8185,11 @@ impl Renderer {
         // the visible batches contain no moisture-tagged surface (a showroom, bare terrain).
         let puddles_on = puddles_wanted
             && main_batches
-                .iter()
-                .any(|b| scene.materials[b.material as usize].uniform.params2[2] > 0.0)
+            .iter()
+            .any(|b| scene.materials[b.material as usize].uniform.params2[2] > 0.0)
             && self.prepare_puddle_reflections(
-                width, height, camera, aspect, projection, &cu, lighting,
-            );
+            width, height, camera, aspect, projection, &cu, lighting,
+        );
         if puddles_on {
             self.encode_puddle_reflections(
                 &mut encoder,
@@ -8792,11 +8794,11 @@ fn drawn_by(l: &PointLight, enhanced: bool) -> bool {
     l.radius > 0.0
         && l.intensity > 0.0
         && l.mode
-            != if enhanced {
-                LightMode::Vanilla
-            } else {
-                LightMode::Enhanced
-            }
+        != if enhanced {
+        LightMode::Vanilla
+    } else {
+        LightMode::Enhanced
+    }
 }
 
 /// A light as the shaders read it, at `p` relative to the render origin.
@@ -8886,9 +8888,9 @@ fn sky_input_differs(a: &atmosphere::SkyInput, b: &atmosphere::SkyInput) -> bool
         || !near(a.ground_albedo, b.ground_albedo, 0.01)
         || !near(a.night_light, b.night_light, 0.01)
         || a.tint
-            .iter()
-            .zip(&b.tint)
-            .any(|(x, y)| (*x - *y).abs().max_element() > 0.01)
+        .iter()
+        .zip(&b.tint)
+        .any(|(x, y)| (*x - *y).abs().max_element() > 0.01)
 }
 
 /// The scene shader: the vanilla path and the enhanced fragment shader in one module.
@@ -8904,7 +8906,7 @@ fn scene_shader_source(gl: bool) -> String {
         include_str!("puddle_common.wgsl"),
         include_str!("enhanced.wgsl"),
     ]
-    .join("\n");
+        .join("\n");
     if !gl {
         return src;
     }
@@ -9027,7 +9029,7 @@ fn sky_shader_source() -> String {
         include_str!("enhanced_common.wgsl"),
         include_str!("sky_enhanced.wgsl"),
     ]
-    .join("\n")
+        .join("\n")
 }
 
 /// The light coronas (both paths).
@@ -9036,7 +9038,7 @@ fn corona_shader_source() -> String {
         include_str!("corona.wgsl"),
         include_str!("enhanced_common.wgsl"),
     ]
-    .join("\n")
+        .join("\n")
 }
 
 /// One full-screen post pass of the enhanced path.
@@ -9337,11 +9339,11 @@ fn batch_items(
         let start = list.len() as u32;
         while k < items.len()
             && (
-                items[k].pipe,
-                items[k].mesh,
-                items[k].range,
-                items[k].material,
-            ) == (d.pipe, d.mesh, d.range, d.material)
+            items[k].pipe,
+            items[k].mesh,
+            items[k].range,
+            items[k].material,
+        ) == (d.pipe, d.mesh, d.range, d.material)
         {
             list.push(items[k].entry);
             k += 1;
@@ -9772,10 +9774,10 @@ impl Drop for SurfaceState<'_> {
         // took the place of the panic that ended the game in its report (#112: a sort).
         if !std::thread::panicking()
             && self
-                .lost
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_none()
+            .lost
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_none()
         {
             // SAFETY: dropped only here, once
             unsafe { std::mem::ManuallyDrop::drop(&mut self.surface) };
@@ -10152,7 +10154,7 @@ mod tests {
                 ..Default::default()
             },
         ))
-        .expect("test renderer");
+            .expect("test renderer");
         let mut scene = renderer.new_scene();
         let mut texture = |rgba: [u8; 4]| {
             renderer.add_texture(
@@ -10339,7 +10341,7 @@ mod tests {
                 ..Default::default()
             },
         ))
-        .expect("test renderer");
+            .expect("test renderer");
         let mut scene = renderer.new_scene();
         scene.cache_bounds = true;
         let material = renderer.add_material(&mut scene, None, AlphaMode::Opaque, [1.0; 4], true);
@@ -10452,7 +10454,7 @@ mod tests {
                     ..Default::default()
                 },
             ))
-            .expect("test renderer");
+                .expect("test renderer");
             let mut scene = renderer.new_scene();
             let green = renderer.add_material(
                 &mut scene,
@@ -10730,9 +10732,9 @@ mod tests {
                 .position(|p| *p == RenderPhase::OnSurface)
                 .unwrap()
                 < order
-                    .iter()
-                    .position(|p| *p == RenderPhase::BeforeNormal)
-                    .unwrap()
+                .iter()
+                .position(|p| *p == RenderPhase::BeforeNormal)
+                .unwrap()
         );
     }
 
@@ -10834,8 +10836,8 @@ mod tests {
                 naga::valid::ValidationFlags::all(),
                 naga::valid::Capabilities::all(),
             )
-            .validate(&module)
-            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("{name}: {e:?}"));
             // the backends take no override: resolved to their defaults as wgpu does
             let (module, info) = naga::back::pipeline_constants::process_overrides(
                 &module,
@@ -10843,7 +10845,7 @@ mod tests {
                 None,
                 &Default::default(),
             )
-            .unwrap_or_else(|e| panic!("{name}: overrides: {e:?}"));
+                .unwrap_or_else(|e| panic!("{name}: overrides: {e:?}"));
             let (module, info) = (module.into_owned(), info.into_owned());
             #[cfg(target_os = "macos")]
             let options = naga::back::msl::Options {
@@ -10857,7 +10859,7 @@ mod tests {
                 &options,
                 &naga::back::msl::PipelineOptions::default(),
             )
-            .unwrap_or_else(|e| panic!("{name}: Metal: {e:?}"));
+                .unwrap_or_else(|e| panic!("{name}: Metal: {e:?}"));
             for entry in &module.entry_points {
                 let pipeline = naga::back::spv::PipelineOptions {
                     shader_stage: entry.stage,
@@ -10913,15 +10915,15 @@ mod tests {
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),
         )
-        .validate(&module)
-        .expect("validate");
+            .validate(&module)
+            .expect("validate");
         let (module, info) = naga::back::pipeline_constants::process_overrides(
             &module,
             &info,
             None,
             &Default::default(),
         )
-        .expect("overrides");
+            .expect("overrides");
         for version in [
             glsl::Version::Embedded {
                 version: 310,
@@ -10948,8 +10950,8 @@ mod tests {
                     &pipeline,
                     Default::default(),
                 )
-                .and_then(|mut w| w.write())
-                .unwrap_or_else(|e| panic!("{version:?} {}: {e:?}", entry.name));
+                    .and_then(|mut w| w.write())
+                    .unwrap_or_else(|e| panic!("{version:?} {}: {e:?}", entry.name));
                 assert!(
                     !out.contains("invariant gl_FragCoord"),
                     "{version:?} {}",
