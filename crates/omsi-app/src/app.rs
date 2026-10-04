@@ -136,6 +136,7 @@ pub(crate) struct App {
     pub(crate) timetable: bool,
     pub(crate) dragging: bool,
     pub(crate) html_pressed: Option<(usize, f32, f32)>,
+    pub(crate) placed_grab: Option<usize>,
     pub(crate) html_object_pressed: Option<(i64, usize, f32, f32)>,
     pub(crate) drag_delta: (f32, f32),
     pub(crate) look: (f32, f32),

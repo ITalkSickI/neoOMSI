@@ -534,6 +534,7 @@ pub(crate) fn make_app(
         timetable: false,
         dragging: false,
         html_pressed: None,
+        placed_grab: None,
         html_object_pressed: None,
         drag_delta: (0.0, 0.0),
         look: (0.0, 0.0),

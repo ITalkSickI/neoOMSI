@@ -315,12 +315,40 @@ impl App {
         best.map(|b| b.0)
     }
 
+    pub(crate) fn update_placed_sounds(&mut self) {
+        const NEAR: f64 = 250.0;
+        let (Some(a), Some(cam)) = (self.audio.as_ref(), self.camera.as_ref()) else {
+            return;
+        };
+        if self.paused {
+            return;
+        }
+        let listener = cam.position;
+        let muffled = self.in_cab;
+        for q in self.placed.iter_mut() {
+            let d = (q.vehicle.position - listener).length();
+            if d > NEAR * 1.2 {
+                if let Some(mut s) = q.sounds.take() {
+                    s.stop_all(a);
+                }
+                continue;
+            }
+            if q.sounds.is_none() && d < NEAR {
+                q.load_sounds(a);
+            }
+            q.tick_sounds(Some(a), muffled, false, false);
+        }
+    }
+
     pub(crate) fn take_placed(&mut self, k: usize) {
         if k >= self.placed.len() {
             return;
         }
         let mut next = self.placed.remove(k);
         if let Some(a) = self.audio.as_ref() {
+            if let Some(mut s) = next.sounds.take() {
+                s.stop_all(a);
+            }
             next.load_sounds(a);
         }
         next.vehicle.host.auto_clutch = if self.settings.auto_clutch { 1.0 } else { 0.0 };
