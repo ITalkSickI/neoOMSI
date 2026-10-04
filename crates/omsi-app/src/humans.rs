@@ -1011,10 +1011,10 @@ impl PedNet {
                 let (q, _) = net.lanes[i].at(s);
                 !crosses_street(net, p.truncate(), q.truncate())
                     && !self
-                        .crossings
-                        .get(&i)
-                        .map(|x| !x.is_empty())
-                        .unwrap_or(false)
+                    .crossings
+                    .get(&i)
+                    .map(|x| !x.is_empty())
+                    .unwrap_or(false)
             })
             // on an island between carriageways: the nearest after all
             .or(first)
@@ -1813,7 +1813,7 @@ impl Humans {
         }
         if debug_pax()
             || (omsi_cfg::env::var_os("OMSI_PROFILE").is_some()
-                && (removed > 0 || !gone.is_empty()))
+            && (removed > 0 || !gone.is_empty()))
         {
             log::info!(
                 "people: tiles changed: {} stops gone, {rebuilt} set up again, {removed} people taken away",
@@ -2543,9 +2543,9 @@ impl Humans {
                 let s = &self.stops[&id];
                 (s.pos - center).length() < STOP_RANGE
                     || self
-                        .lan_centers
-                        .iter()
-                        .any(|c| (s.pos - *c).length() < STOP_RANGE)
+                    .lan_centers
+                    .iter()
+                    .any(|c| (s.pos - *c).length() < STOP_RANGE)
             };
             let changed = {
                 let s = self.stops.get_mut(&id).unwrap();
@@ -2846,9 +2846,9 @@ impl Humans {
     fn script_reports(v: &VehicleInstance, name: &str) -> bool {
         v.has_script_var(name)
             || v.ty
-                .program
-                .var(name)
-                .is_some_and(|id| v.ty.program.stores(id))
+            .program
+            .var(name)
+            .is_some_and(|id| v.ty.program.stores(id))
     }
 
     /// `PAX_Entry<i>_Open` / `PAX_Exit<i>_Open` as the bus script reports them. A bus whose
@@ -4404,14 +4404,14 @@ impl Humans {
         let width = (lane.width as f64).max(1.0);
         let crossing = lane.traffic_light.is_some()
             || ped
-                .as_ref()
-                .map(|p| {
-                    p.crossings
-                        .get(&leg.lane)
-                        .map(|x| !x.is_empty())
-                        .unwrap_or(false)
-                })
-                .unwrap_or(false);
+            .as_ref()
+            .map(|p| {
+                p.crossings
+                    .get(&leg.lane)
+                    .map(|x| !x.is_empty())
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
         // keep to the right of the pavement (less so on a crossing) - the left where the
         // traffic drives on the left
         let side = if crossing {
@@ -4883,8 +4883,8 @@ impl Humans {
             // (the same bones as the mesh was made with: nothing to skin or upload)
             if skins.len() == ty.meshes.len()
                 && skin_bones
-                    .as_ref()
-                    .is_some_and(|b| b.iter().zip(&bones).all(|(a, c)| a.abs_diff_eq(*c, 1e-6)))
+                .as_ref()
+                .is_some_and(|b| b.iter().zip(&bones).all(|(a, c)| a.abs_diff_eq(*c, 1e-6)))
             {
                 return;
             }
@@ -5142,10 +5142,10 @@ impl Humans {
                 bn.world(
                     s.pos
                         + Vec3::new(
-                            -r.sin() * 0.05,
-                            -r.cos() * 0.05,
-                            (eye_h - rig.hip[0].z as f64) as f32 + 0.04,
-                        ),
+                        -r.sin() * 0.05,
+                        -r.cos() * 0.05,
+                        (eye_h - rig.hip[0].z as f64) as f32 + 0.04,
+                    ),
                 )
             }
             _ => p.position + DVec3::new(0.0, 0.0, eye_h),
@@ -5316,8 +5316,14 @@ impl Humans {
     /// metres): kept within a corridor round the cabin's own path network (the aisles,
     /// the door areas, the space by the driver) and on its floor. Gives the new cabin point
     /// and where that is in the world now.
-    pub fn cabin_walk(&self, bus: BusId, local: Vec3, step: glam::Vec2) -> Option<(Vec3, DVec3)> {
-        const WIDTH: f32 = 0.3;
+    pub fn cabin_walk(
+        &self,
+        bus: BusId,
+        local: Vec3,
+        step: glam::Vec2,
+        pass: bool,
+    ) -> Option<(Vec3, DVec3)> {
+        const WIDTH: f32 = 0.5;
         let bn = self.last_buses.iter().find(|b| b.id == bus)?;
         let pts = &bn.cabin.graph.points;
         let want = glam::Vec2::new(local.x + step.x, local.y + step.y);
@@ -5349,11 +5355,49 @@ impl Humans {
             }
         }
         let (d, q, z) = best?;
-        let xy = if d > WIDTH {
+        let mut xy = if d > WIDTH {
             q + (want - q) / d * WIDTH
         } else {
             want
         };
+        if !pass {
+            let (eo, xo) = bn
+                .walk_open
+                .as_ref()
+                .map(|w| (&w.0, &w.1))
+                .unwrap_or((&bn.entry_open, &bn.exit_open));
+            let doors = bn
+                .cabin
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(k, dr)| (dr, eo.get(k).copied().unwrap_or(false)))
+                .chain(
+                    bn.cabin
+                        .exits
+                        .iter()
+                        .enumerate()
+                        .map(|(k, dr)| (dr, xo.get(k).copied().unwrap_or(false))),
+                );
+            for (dr, open) in doors {
+                if open || (dr.inside.z - z).abs() > 0.8 {
+                    continue;
+                }
+                let p = dr.inside.truncate();
+                let out = (dr.outside.truncate() - p).normalize_or_zero();
+                if out == glam::Vec2::ZERO {
+                    continue;
+                }
+                let rel = xy - p;
+                if rel.dot(glam::Vec2::new(-out.y, out.x)).abs() > 0.9 {
+                    continue;
+                }
+                let along = rel.dot(out);
+                if along > -0.1 {
+                    xy -= out * (along + 0.1);
+                }
+            }
+        }
         // not through the seats and the driver's place: no nearer to one than 0.38 m
         // (walking away from one that close is let be)
         let from = local.truncate();
@@ -6499,14 +6543,14 @@ mod tests {
             dir.join("test.bus"),
             "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(dir.join("model.cfg"), "").unwrap();
         // Front door leaf 0 uses PAX_Entry0_Open. Rear door (door_2) has no PAX_Exit0_Open in varlist.
         std::fs::write(
             dir.join("vars.txt"),
             "door_0\ndoor_1\ndoor_2\nPAX_Entry0_Open\n",
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(dir.join("main.osc"), "{init}\n{end}\n").unwrap();
 
         let ty =
@@ -6548,14 +6592,14 @@ mod tests {
             dir.join("test.bus"),
             "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(dir.join("model.cfg"), "").unwrap();
         std::fs::write(dir.join("vars.txt"), "door_0\n").unwrap();
         std::fs::write(
             dir.join("main.osc"),
             "{frame}\n1 (S.L.PAX_Entry0_Open)\n{end}\n",
         )
-        .unwrap();
+            .unwrap();
 
         let ty =
             std::sync::Arc::new(omsi_sim::VehicleType::load(&dir, &dir.join("test.bus")).unwrap());
@@ -6577,13 +6621,13 @@ mod tests {
             dir.join("test.bus"),
             "[model]\nmodel.cfg\n[varnamelist]\n1\nvars.txt\n[script]\n1\nmain.osc\n",
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(dir.join("model.cfg"), "").unwrap();
         std::fs::write(
             dir.join("vars.txt"),
             "door_0\ndoor_1\ndoor_2\ndoor_3\ndoor_4\ndoor_5\n",
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(dir.join("main.osc"), "{init}\n{end}\n").unwrap();
 
         let ty =
