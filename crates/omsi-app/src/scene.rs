@@ -6942,17 +6942,15 @@ impl World {
                             if let Some((_, o3d_mats, overrides)) = ot.meshes.get(mi) {
                                 for o in overrides.iter().filter(|o| !o.item) {
                                     let Some(page) = o.use_script_texture.map(|n| n.max(0) as usize) else { continue };
-                                    let Some(def) = ot.model.html_textures.iter().find(|d| d.script_index == page) else { continue };
+                                    if !ot.model.html_textures.iter().any(|d| d.script_index == page) { continue; }
                                     let Some(slot) = omsi_sim::vehicle::override_slot(o3d_mats, o) else { continue };
                                     let mat = match html_mats.get(&page) {
                                         Some(m) => *m,
                                         None => {
-                                            let (w, h) = (def.width.max(1) as u32, def.height.max(1) as u32);
                                             let tex = gpu.add_image(
                                                 renderer,
                                                 scene,
-                                                // (black until the page first draws: a page far away starts later)
-                                                &Image { width: w, height: h, rgba: [0, 0, 0, 255].repeat((w * h) as usize), has_alpha: true },
+                                                &Image { width: 4, height: 4, rgba: [0, 0, 0, 255].repeat(16), has_alpha: true },
                                                 false,
                                             );
                                             let mat = renderer.add_material(scene, Some(tex), text_alpha(o3d_mats, slot, overrides), [1.0; 4], true);
@@ -8152,7 +8150,7 @@ impl World {
         {
             let pending = self.upgrades_pending.lock();
             for (d, p) in &entries {
-                if *d >= NEAR || restoring >= 24 {
+                if *d >= NEAR || restoring >= 24 || usage > limit + limit / 32 {
                     continue;
                 }
                 if gpu.textures.get(p).is_some_and(|e| e.dropped > 0) && !pending.contains(p) && !gpu.wants_restore.contains(p) {
@@ -8161,13 +8159,13 @@ impl World {
                 }
             }
         }
-        if usage > limit {
+        if usage > limit + limit / 32 {
             entries.sort_by(|a, b| b.0.total_cmp(&a.0));
-            let mut over = usage - limit;
+            let mut over = usage - (limit - limit / 10);
             for (d, p) in &entries {
                 // (96 a second: at 16 a map's first tiles stayed over a small card's budget
                 // for a minute and a half)
-                if over == 0 || shrunk.len() >= 96 || *d < NEAR {
+                if over == 0 || shrunk.len() >= 256 || *d < NEAR * 1.0 {
                     break;
                 }
                 if spline_textures.contains(p) {
@@ -8850,7 +8848,7 @@ impl World {
         let mut inputs: Vec<Option<omsi_sim::scenery::SceneryVars>> = Vec::with_capacity(scripted.len());
         for o in scripted.iter_mut() {
             let dist = (o.pos - center).length();
-            if dist > 800.0 {
+            if dist > 400.0 {
                 inputs.push(None);
                 if let (Some(a), Some(mut ss)) = (audio, o.sounds.take()) {
                     ss.stop_all(a);
@@ -8938,7 +8936,7 @@ impl World {
             // text textures from the script's strings whenever they change (`update` leaves
             // an unchanged one alone): read only on `Refresh_Strings`, a board whose string
             // was still empty at its first frame stayed blank for good (#367)
-            if !o.texts.is_empty() {
+            if !o.texts.is_empty() && dist < 250.0 {
                 let _ = o.inst.take_refresh_strings();
                 for (tex, st) in o.texts.iter_mut() {
                     let text = o.inst.str_var(st.def.variable.trim()).to_string();
@@ -8976,7 +8974,9 @@ impl World {
             if !o.htmls.is_empty() && dist < HTML_OBJECT_NEAR {
                 for (index, w, h, rgba) in o.inst.update_html_textures() {
                     if let Some((_, tex)) = o.htmls.iter().find(|(i, _)| *i == index) {
-                        renderer.update_texture(scene, *tex, &Image { width: w, height: h, rgba, has_alpha: true });
+                        if renderer.update_texture_mips(scene, *tex, &Image { width: w, height: h, rgba, has_alpha: true }) {
+                            renderer.rebind_textures(scene, &[*tex]);
+                        }
                     }
                 }
             }

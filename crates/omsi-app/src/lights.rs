@@ -287,6 +287,8 @@ const OCC_HEIGHT: f64 = 2.5;
 const OCC_LIGHT_RANGE: f64 = 150.0;
 const OCC_CORONA_RANGE: f64 = 300.0;
 const OCC_RECHECK: f64 = 3.0;
+const VIS_PER_FRAME: usize = 48;
+const LAMP_RAYS_PER_FRAME: usize = 32;
 
 const ENCL_REACH: f64 = 12.0;
 const ENCL_UP: f64 = 10.0;
@@ -358,9 +360,10 @@ fn enclosure(coll: &omsi_sim::collision::CollisionWorld, p: DVec3) -> Option<f32
     (walls >= ENCL_MIN_WALLS).then_some(extent as f32)
 }
 
-const SHADOW_RANGE: f64 = 80.0;
-const SHADOW_REACH: f64 = 40.0;
-const SHADOW_MAX: usize = 48;
+const SHADOW_RANGE: f64 = 50.0;
+const SHADOW_REACH: f64 = 25.0;
+const SHADOW_MAX: usize = 16;
+const SHADOW_LIGHTS: usize = 10;
 
 type OccKey = (i64, i64, i64, u32);
 
@@ -447,12 +450,18 @@ fn assign_occluders(
         cache.map.clear();
     }
     let mut lights = std::mem::take(&mut scene.lights);
+    let mut shadowed = 0usize;
+    let mut gathers = 0usize;
     for l in lights.iter_mut() {
         l.occ_first = 0;
         l.occ_count = 0;
-        if (l.position - camera_pos).length() > SHADOW_RANGE || l.radius <= 0.0 {
+        if shadowed >= SHADOW_LIGHTS
+            || (l.position - camera_pos).length() > SHADOW_RANGE
+            || l.radius <= 0.0
+        {
             continue;
         }
+        shadowed += 1;
         // (a moving vehicle's window light would make a new key every frame at half a metre:
         // it takes 2 m cells and a reach that much longer)
         let spill = l.radius == INTERIOR_SPILL_RADIUS;
@@ -463,10 +472,15 @@ fn assign_occluders(
             (l.position.z * grid).round() as i64,
             l.radius.to_bits(),
         );
-        let occ = cache
-            .map
-            .entry(key)
-            .or_insert_with(|| if spill { Vec::new() } else { gather_occluders(coll, seen, l.position, l.radius + extra) });
+        if !cache.map.contains_key(&key) {
+            if gathers >= 1 {
+                continue;
+            }
+            gathers += 1;
+            let made = if spill { Vec::new() } else { gather_occluders(coll, seen, l.position, l.radius + extra) };
+            cache.map.insert(key, made);
+        }
+        let occ = &cache.map[&key];
         let first = scene.occluders.len() as u32;
         scene.occluders.extend_from_slice(occ);
         for (o, oc) in &bodies {
@@ -623,13 +637,36 @@ struct NearLights {
     counts: (usize, usize),
     lights: Vec<PointLight>,
     coronas: Vec<Corona>,
+    build: Option<NearBuild>,
     vis_centre: DVec3,
+    vis_eye: DVec3,
+    vis_cursor: usize,
     vis_valid: bool,
     light_vis: Vec<bool>,
     corona_vis: Vec<bool>,
 }
 
+/// A rebuild of the near lists in progress: the enclosure test of every light costs 300 ms
+/// at once, so it goes on for a few milliseconds a frame while the old lists serve.
+struct NearBuild {
+    world: usize,
+    generation: u64,
+    lamps_on: bool,
+    centre: DVec3,
+    counts: (usize, usize),
+    src_lights: Vec<PointLight>,
+    src_coronas: Vec<Corona>,
+    li: usize,
+    ci: usize,
+    lights: Vec<PointLight>,
+    coronas: Vec<Corona>,
+}
+
 static NEAR_LIGHTS: std::sync::Mutex<Option<NearLights>> = std::sync::Mutex::new(None);
+
+type LampVis = (Option<DVec3>, std::collections::HashMap<[i64; 3], (bool, u32)>, u32);
+static LAMP_VIS: std::sync::LazyLock<std::sync::Mutex<LampVis>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new((None, Default::default(), 0)));
 
 pub fn collect(
     world: &World,
@@ -638,6 +675,7 @@ pub fn collect(
     camera_pos: DVec3,
     vehicles: &[&VehicleInstance],
 ) {
+    let t_start = std::time::Instant::now();
     scene.lights.clear();
     scene.coronas.clear();
     scene.smoke.clear();
@@ -660,67 +698,112 @@ pub fn collect(
             || near.lamps_on != daylight.lamps_on
             || near.counts != (static_lights.len(), static_coronas.len())
             || (near.centre - camera_pos).length() > NEAR_MARGIN;
-        if stale {
-            *near = NearLights {
+        let restart = near.build.as_ref().is_some_and(|b| {
+            b.world != world_id || b.generation != generation || b.lamps_on != daylight.lamps_on
+        });
+        if restart {
+            near.build = None;
+        }
+        if stale && near.build.is_none() {
+            let src_lights: Vec<PointLight> = if daylight.lamps_on {
+                static_lights
+                    .iter()
+                    .filter(|l| (l.position - camera_pos).length() < MAP_LIGHT_RANGE + NEAR_MARGIN)
+                    .copied()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let src_coronas: Vec<Corona> = static_coronas
+                .iter()
+                .filter_map(|c| {
+                    let on = match &c.switch {
+                        LightSwitch::Constant(x) => *x,
+                        LightSwitch::Night => daylight.lamps_on as i32 as f32,
+                        LightSwitch::Variable(_) => daylight.lamps_on as i32 as f32,
+                    };
+                    if on <= 0.0 || (c.corona.position - camera_pos).length() > CORONA_RANGE + NEAR_MARGIN {
+                        return None;
+                    }
+                    let mut corona = c.corona;
+                    corona.brightness *= on.min(1.0);
+                    Some(corona)
+                })
+                .collect();
+            near.build = Some(NearBuild {
                 world: world_id,
                 generation,
                 lamps_on: daylight.lamps_on,
                 centre: camera_pos,
                 counts: (static_lights.len(), static_coronas.len()),
+                src_lights,
+                src_coronas,
+                li: 0,
+                ci: 0,
                 lights: Vec::new(),
                 coronas: Vec::new(),
-                ..Default::default()
-            };
-            if daylight.lamps_on {
-                near.lights.extend(static_lights.iter().filter(|l| {
-                    (l.position - camera_pos).length() < MAP_LIGHT_RANGE + NEAR_MARGIN
-                }));
-            }
-            near.lights.retain_mut(|l| match enclosure(&coll, l.position) {
-                Some(ext) => {
+            });
+        }
+        if let Some(mut b) = near.build.take() {
+            let t_build = std::time::Instant::now();
+            while b.li < b.src_lights.len() && t_build.elapsed().as_micros() < 4000 {
+                let mut l = b.src_lights[b.li];
+                b.li += 1;
+                if let Some(ext) = enclosure(&coll, l.position) {
                     let r = (ext + 1.0).max(ENCL_MIN_RADIUS);
                     l.radius = l.radius.min(r);
                     if l.core > l.radius {
                         l.core = l.radius;
                     }
-                    true
                 }
-                None => true,
-            });
-            for c in static_coronas.iter() {
-                let on = match &c.switch {
-                    LightSwitch::Constant(x) => *x,
-                    LightSwitch::Night => daylight.lamps_on as i32 as f32,
-                    LightSwitch::Variable(_) => daylight.lamps_on as i32 as f32,
+                b.lights.push(l);
+            }
+            while b.li >= b.src_lights.len() && b.ci < b.src_coronas.len() && t_build.elapsed().as_micros() < 4000 {
+                let c = b.src_coronas[b.ci];
+                b.ci += 1;
+                if enclosure(&coll, c.position).is_none() {
+                    b.coronas.push(c);
+                }
+            }
+            if b.li >= b.src_lights.len() && b.ci >= b.src_coronas.len() {
+                *near = NearLights {
+                    world: b.world,
+                    generation: b.generation,
+                    lamps_on: b.lamps_on,
+                    centre: b.centre,
+                    counts: b.counts,
+                    lights: b.lights,
+                    coronas: b.coronas,
+                    ..Default::default()
                 };
-                if on <= 0.0
-                    || (c.corona.position - camera_pos).length() > CORONA_RANGE + NEAR_MARGIN
-                {
-                    continue;
-                }
-                if enclosure(&coll, c.corona.position).is_some() {
-                    continue;
-                }
-                let mut corona = c.corona;
-                corona.brightness *= on.min(1.0);
-                near.coronas.push(corona);
+            } else {
+                near.build = Some(b);
             }
         }
-        if !near.vis_valid || (near.vis_centre - camera_pos).length() > OCC_RECHECK {
-            let lv: Vec<bool> = near
-                .lights
-                .iter()
-                .map(|l| (l.position - camera_pos).length() > OCC_LIGHT_RANGE || sees(&coll, camera_pos, l.position))
-                .collect();
-            let cv: Vec<bool> = near
-                .coronas
-                .iter()
-                .map(|c| (c.position - camera_pos).length() > OCC_CORONA_RANGE || sees(&coll, camera_pos, c.position))
-                .collect();
-            near.light_vis = lv;
-            near.corona_vis = cv;
+        // (the ray tests are spread over frames: all at once they cost 250-700 ms)
+        near.light_vis.resize(near.lights.len(), true);
+        near.corona_vis.resize(near.coronas.len(), true);
+        let total = near.lights.len() + near.coronas.len();
+        if !near.vis_valid || (near.vis_cursor >= total && (near.vis_centre - camera_pos).length() > OCC_RECHECK) {
+            near.vis_eye = camera_pos;
             near.vis_centre = camera_pos;
+            near.vis_cursor = 0;
             near.vis_valid = true;
+        }
+        let mut budget = VIS_PER_FRAME;
+        let eye = near.vis_eye;
+        while near.vis_cursor < total && budget > 0 {
+            let i = near.vis_cursor;
+            let nl = near.lights.len();
+            if i < nl {
+                let p = near.lights[i].position;
+                near.light_vis[i] = (p - eye).length() > OCC_LIGHT_RANGE || sees(&coll, eye, p);
+            } else {
+                let p = near.coronas[i - nl].position;
+                near.corona_vis[i - nl] = (p - eye).length() > OCC_CORONA_RANGE || sees(&coll, eye, p);
+            }
+            near.vis_cursor += 1;
+            budget -= 1;
         }
         scene.lights.extend(
             near.lights
@@ -737,13 +820,40 @@ pub fn collect(
                 .map(|(c, _)| *c),
         );
     }
+    let t_lamps = std::time::Instant::now();
+    // (whether a street lamp is seen is asked again only after the camera has moved a few
+    // metres, as for the map's own lights: the ray went through the collision world for
+    // every lamp in range every frame)
+    let mut lamp_vis = LAMP_VIS.lock().unwrap_or_else(|e| e.into_inner());
+    if lamp_vis.0.is_none() || lamp_vis.0.map(|c| (c - camera_pos).length() > OCC_RECHECK).unwrap_or(true) {
+        lamp_vis.0 = Some(camera_pos);
+        lamp_vis.2 = lamp_vis.2.wrapping_add(1);
+        if lamp_vis.1.len() > 20000 {
+            lamp_vis.1.clear();
+        }
+    }
+    let epoch = lamp_vis.2;
+    let mut rays = LAMP_RAYS_PER_FRAME;
     for lamp in world.light_objects.lock().iter() {
         let dist = (lamp.pos - camera_pos).length();
         if dist > visible_range {
             continue;
         }
-        if dist < OCC_CORONA_RANGE && !sees(&coll, camera_pos, lamp.pos) {
-            continue;
+        if dist < OCC_CORONA_RANGE {
+            let key = [
+                (lamp.pos.x * 2.0).round() as i64,
+                (lamp.pos.y * 2.0).round() as i64,
+                (lamp.pos.z * 2.0).round() as i64,
+            ];
+            let entry = lamp_vis.1.entry(key).or_insert((true, epoch.wrapping_sub(1)));
+            if entry.1 != epoch && rays > 0 {
+                rays -= 1;
+                *entry = (sees(&coll, camera_pos, lamp.pos), epoch);
+            }
+            let seen_lamp = entry.0;
+            if !seen_lamp {
+                continue;
+            }
         }
         for ((c, _), lit) in lamp.coronas.iter().zip(&lamp.lit) {
             if *lit <= 0.0 {
@@ -754,6 +864,7 @@ pub fn collect(
             scene.coronas.push(corona);
         }
     }
+    let t_lamp_loop = std::time::Instant::now();
     for list in world.particle_objects.lock().values() {
         for po in list {
             if (po.pos - camera_pos).length() < visible_range {
@@ -766,6 +877,7 @@ pub fn collect(
             log::info!("smoke: {} particles from objects, first at ({:.1}, {:.1}, {:.1}) size {:.2} alpha {:.2}", scene.smoke.len(), p.position.x, p.position.y, p.position.z, p.size, p.alpha);
         }
     }
+    let t_particles = std::time::Instant::now();
     // window light only for the few vehicles nearest the camera (each is up to six lights
     // the shaders test every pixel); OMSI_NO_SPILL=1 switches it off altogether
     let spill_ok: Vec<bool> = {
@@ -786,19 +898,52 @@ pub fn collect(
         }
         ok
     };
+    // (the mesh walk per lamp is the costliest part of this loop: a few per frame, the rest
+    // of the vehicles' lamps are judged by one test for the whole vehicle)
+    // (each vehicle keeps the last answers of its mesh walks and asks again for an eighth of
+    // them a frame, the whole-vehicle answer every eighth frame)
+    static VEH_OCC: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<usize, (bool, Vec<bool>)>>> =
+        std::sync::LazyLock::new(Default::default);
+    static OCC_FRAME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let frame = OCC_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut veh_occ = VEH_OCC.lock().unwrap_or_else(|e| e.into_inner());
+    if veh_occ.len() > 128 {
+        veh_occ.clear();
+    }
+    let mut mesh_tests = 8usize;
     for (vi, v) in vehicles.iter().enumerate() {
+        // (a vehicle out of sight: no lamps, no ray tests, no smoke)
+        if (v.position - camera_pos).length() > visible_range {
+            continue;
+        }
         let first_corona = scene.coronas.len();
         vehicle_lights(v, &mut scene.coronas, &mut scene.lights, night, spill_ok[vi]);
         let seen_world = world.light_occluders.lock().clone();
         let sections = body_sections(v);
+        let vkey = *v as *const VehicleInstance as usize;
+        let entry = veh_occ.entry(vkey).or_insert_with(|| (false, Vec::new()));
+        if (frame + vi) % 8 == 0 {
+            entry.0 = blocked_by_meshes(&coll, &seen_world, camera_pos, v.position);
+        }
         // (the mesh walk costs a probe every few metres: near vehicles test each lamp, far
         // ones once for the whole vehicle)
-        let near_v = (v.position - camera_pos).length() < 40.0;
-        let far_hidden = !near_v && blocked_by_meshes(&coll, &seen_world, camera_pos, v.position);
+        let near_v = (v.position - camera_pos).length() < 15.0;
+        let far_hidden = !near_v && entry.0;
         // (only this vehicle's own coronas are tested, not every one of the scene so far)
         let mut mine = scene.coronas.split_off(first_corona);
+        entry.1.resize(mine.len(), false);
+        let mut ci = 0usize;
         mine.retain_mut(|c| {
-            if body_hides(&sections, camera_pos, c.position) || far_hidden || (near_v && blocked_by_meshes(&coll, &seen_world, camera_pos, c.position)) {
+            let i = ci;
+            ci += 1;
+            let blocked = near_v && !body_hides(&sections, camera_pos, c.position) && {
+                if (i + frame) % 8 == 0 && mesh_tests > 0 {
+                    mesh_tests -= 1;
+                    entry.1[i] = blocked_by_meshes(&coll, &seen_world, camera_pos, c.position);
+                }
+                entry.1[i]
+            };
+            if body_hides(&sections, camera_pos, c.position) || far_hidden || blocked {
                 return false;
             }
             if !c.beam && !c.halo {
@@ -813,6 +958,7 @@ pub fn collect(
             particle_sprites(&t.particles, &mut scene.smoke, &mut scene.coronas);
         }
     }
+    let t_vehicles = std::time::Instant::now();
     let (vis, night) = cone_weather();
     scene.coronas.retain_mut(|c| {
         if !c.beam && !c.halo {
@@ -875,7 +1021,30 @@ pub fn collect(
         .tiles_generation
         .load(std::sync::atomic::Ordering::Relaxed);
     let seen = world.light_occluders.lock().clone();
+    let t_occ = std::time::Instant::now();
     assign_occluders(&coll, &seen, generation, scene, camera_pos, vehicles);
+    let total = t_start.elapsed();
+    if total.as_millis() > 40 {
+        static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if last.map(|t| t.elapsed().as_secs_f32() > 2.0).unwrap_or(true) {
+            *last = Some(std::time::Instant::now());
+            log::info!(
+                "lights.collect {:.0} ms: map lights {:.0}, lamp objects + vehicles {:.0} (lamp loop {:.0}, particles {:.0}, vehicles {:.0}), occluders {:.0} ({} lights, {} coronas, {} occluders, {} vehicles)",
+                total.as_secs_f64() * 1000.0,
+                (t_lamps - t_start).as_secs_f64() * 1000.0,
+                (t_occ - t_lamps).as_secs_f64() * 1000.0,
+                (t_lamp_loop - t_lamps).as_secs_f64() * 1000.0,
+                (t_particles - t_lamp_loop).as_secs_f64() * 1000.0,
+                (t_vehicles - t_particles).as_secs_f64() * 1000.0,
+                t_occ.elapsed().as_secs_f64() * 1000.0,
+                scene.lights.len(),
+                scene.coronas.len(),
+                scene.occluders.len(),
+                vehicles.len()
+            );
+        }
+    }
 }
 
 pub fn particle_sprites(set: &omsi_sim::particles::ParticleSet, smoke: &mut Vec<omsi_render::SmokeParticle>, coronas: &mut Vec<Corona>) {

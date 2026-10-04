@@ -211,7 +211,7 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
                 e = e * mix(1.0, gain, smoothstep(-0.04, 0.0, drop));
             }
         }
-        if (e <= 0.0) {
+        if (e < 0.003 || (!thin && dot(n, ld) <= 0.0)) {
             continue;
         }
         e = e * light_shadow(l, p + n * 0.08);

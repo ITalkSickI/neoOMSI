@@ -1395,7 +1395,7 @@ impl Renderer {
                 if v <= 2560 {
                     v * 35 / 100
                 } else {
-                    (v / 2).min(1600)
+                    (v * 55 / 100).min(6000)
                 }
             }),
             wgpu::DeviceType::IntegratedGpu if info.backend == wgpu::Backend::Metal => 3000,

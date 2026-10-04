@@ -969,6 +969,9 @@ fn point_lights(p: vec3<f32>, n: vec3<f32>, map_k: f32) -> vec3<f32> {
                 let c = dot(-d / max(dist, 0.01), l.dir.xyz);
                 k = smoothstep(l.dir.w, max(l.extra.x, l.dir.w + 1e-3), c);
             }
+            if (ndl <= 0.0 || k <= 0.0 || att < 0.003) {
+                continue;
+            }
             k = k * light_shadow(l, p + n * 0.08);
             sum = sum + l.color.rgb * l.color.w * att * ndl * k;
         }
