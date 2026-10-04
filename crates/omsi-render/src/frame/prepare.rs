@@ -81,7 +81,7 @@ impl Renderer {
                 Self::instance_entries(i, ro, &mut mats, &mut params);
                 base = scene.uploaded_entries + mats.len() as u32;
             }
-            let (buf, pbuf) = (
+            let (buf, params_buf) = (
                 scene.model_buf.as_ref().unwrap(),
                 scene.params_buf.as_ref().unwrap(),
             );
@@ -90,12 +90,12 @@ impl Renderer {
             let mb: &[u8] = bytemuck::cast_slice(&mats);
             let pb: &[u8] = bytemuck::cast_slice(&params);
             if mo + mb.len() as u64 <= buf.size()
-                && po + pb.len() as u64 <= pbuf.size()
+                && po + pb.len() as u64 <= params_buf.size()
                 && scene.cpu_models.len() == scene.uploaded_entries as usize
             {
                 if !mb.is_empty() {
                     self.queue.write_buffer(buf, mo, mb);
-                    self.queue.write_buffer(pbuf, po, pb);
+                    self.queue.write_buffer(params_buf, po, pb);
                 }
                 scene.cpu_models.extend_from_slice(&mats);
                 scene.cpu_params.extend_from_slice(&params);
@@ -114,7 +114,7 @@ impl Renderer {
                         scene.instances.len()
                     );
                 }
-                if let (Some(buf), Some(pbuf)) = (&scene.model_buf, &scene.params_buf) {
+                if let (Some(buf), Some(params_buf)) = (&scene.model_buf, &scene.params_buf) {
                     let ro = scene.render_origin;
                     const MERGE_GAP: u32 = 4096;
                     scene.changed.sort_unstable_by_key(|&i| {
@@ -149,10 +149,10 @@ impl Renderer {
                             &scene.cpu_params[start as usize * 2..end as usize * 2],
                         );
                         let (mo, po) = (start as u64 * 64, start as u64 * 32);
-                        if mo + mb.len() as u64 <= buf.size() && po + pb.len() as u64 <= pbuf.size()
+                        if mo + mb.len() as u64 <= buf.size() && po + pb.len() as u64 <= params_buf.size()
                         {
                             self.queue.write_buffer(buf, mo, mb);
-                            self.queue.write_buffer(pbuf, po, pb);
+                            self.queue.write_buffer(params_buf, po, pb);
                         }
                     }
                 }
@@ -184,20 +184,20 @@ impl Renderer {
         scene.cpu_models = mats;
         scene.cpu_params = params;
         let bytes: &[u8] = bytemuck::cast_slice(&scene.cpu_models);
-        let pbytes: &[u8] = bytemuck::cast_slice(&scene.cpu_params);
-        if let (Some(buf), Some(pbuf), Some(_)) = (
+        let cpu_param_bytes: &[u8] = bytemuck::cast_slice(&scene.cpu_params);
+        if let (Some(buf), Some(params_buf), Some(_)) = (
             &scene.model_buf,
             &scene.params_buf,
             &scene.camera_bind_group,
         ) {
-            if buf.size() as usize >= bytes.len() && pbuf.size() as usize >= pbytes.len() {
+            if buf.size() as usize >= bytes.len() && params_buf.size() as usize >= cpu_param_bytes.len() {
                 self.queue.write_buffer(buf, 0, bytes);
-                self.queue.write_buffer(pbuf, 0, pbytes);
+                self.queue.write_buffer(params_buf, 0, cpu_param_bytes);
                 scene.dirty = false;
                 return;
             }
         }
-        let cap = |n: usize| (((n as f64 * 1.35) as u64 + 65536).max(256)).div_ceil(256) * 256;
+        let cap = |n: usize| ((n as f64 * 1.35) as u64 + 65536).max(256).div_ceil(256) * 256;
         let model_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("models"),
             size: cap(bytes.len()),
@@ -206,12 +206,12 @@ impl Renderer {
         });
         let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("params"),
-            size: cap(pbytes.len()),
+            size: cap(cpu_param_bytes.len()),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         self.queue.write_buffer(&model_buf, 0, bytes);
-        self.queue.write_buffer(&params_buf, 0, pbytes);
+        self.queue.write_buffer(&params_buf, 0, cpu_param_bytes);
         scene.model_buf = Some(model_buf);
         scene.params_buf = Some(params_buf);
         self.rebuild_camera_bind_group(scene);

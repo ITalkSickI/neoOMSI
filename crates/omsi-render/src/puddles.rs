@@ -84,7 +84,7 @@ impl Pipelines {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<Uniform>() as u64
+                            size_of::<Uniform>() as u64
                         ),
                     },
                     count: None,
@@ -114,7 +114,7 @@ impl Pipelines {
         });
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("puddle reflection params"),
-            size: std::mem::size_of::<Uniform>() as u64,
+            size: size_of::<Uniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -170,7 +170,7 @@ impl Pipelines {
                     module: scene_shader,
                     entry_point: Some("vs_main"),
                     buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        array_stride: size_of::<Vertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
                     })],
@@ -204,7 +204,7 @@ impl Pipelines {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: wgpu::BufferSize::new(
-                        std::mem::size_of::<VehicleUniform>() as u64
+                        size_of::<VehicleUniform>() as u64
                     ),
                 },
                 count: None,
@@ -212,7 +212,7 @@ impl Pipelines {
         });
         let vehicle_params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("puddle vehicle plane"),
-            size: std::mem::size_of::<VehicleUniform>() as u64,
+            size: size_of::<VehicleUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -247,7 +247,7 @@ impl Pipelines {
                             module: scene_shader,
                             entry_point: Some("vs_puddle_vehicle"),
                             buffers: &[Some(wgpu::VertexBufferLayout {
-                                array_stride: std::mem::size_of::<Vertex>() as u64,
+                                array_stride: size_of::<Vertex>() as u64,
                                 step_mode: wgpu::VertexStepMode::Vertex,
                                 attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
                             })],
@@ -757,7 +757,7 @@ impl Renderer {
     }
 }
 
-fn reflection_plane(point: DVec3, normal: Vec3, origin: DVec3) -> glam::Vec4 {
+fn reflection_plane(point: DVec3, normal: Vec3, origin: DVec3) -> Vec4 {
     normal.extend(normal.dot((point - origin).as_vec3()))
 }
 

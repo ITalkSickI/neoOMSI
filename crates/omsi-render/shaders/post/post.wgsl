@@ -215,7 +215,6 @@ fn from_srgb(c: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, c <= vec3<f32>(0.04045));
 }
 
-// The tone-mapped picture, encoded for the display (gamma), dithered.
 fn graded(in: VsOut) -> vec3<f32> {
     let hdr = clean(textureSampleLevel(t_src, s_lin, in.uv, 0.0).rgb);
     let glow = clean(textureSampleLevel(t_base, s_lin, in.uv, 0.0).rgb);

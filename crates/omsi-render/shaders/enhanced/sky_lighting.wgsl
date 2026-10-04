@@ -24,7 +24,6 @@ const CLOUD_BOTTOM: f32 = 1400.0;
 const CLOUD_TOP: f32 = 4200.0;
 const EARTH_R: f32 = 6371000.0;
 const CLOUD_STEPS: i32 = 64;
-// Extinction per metre of the densest cloud.
 const CLOUD_SIGMA: f32 = 0.04;
 const CLOUD_SHAPE_PERIOD: f32 = 13000.0;
 const CLOUD_DETAIL_PERIOD: f32 = 420.0;
@@ -45,7 +44,6 @@ fn linearstep(a: f32, b: f32, v: f32) -> f32 {
     return clamp((v - a) / (b - a), 0.0, 1.0);
 }
 
-// Height over the curved ground of the point t metres along d from the camera.
 fn cloud_height(d: vec3<f32>, t: f32) -> f32 {
     return camera.cam_pos.z + eye_off.z + d.z * t + t * t * (1.0 - d.z * d.z) / (2.0 * EARTH_R);
 }

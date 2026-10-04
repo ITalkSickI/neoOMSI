@@ -92,6 +92,11 @@ pub(crate) fn in_scope<'s, R>(pool: Option<&rayon::ThreadPool>, op: impl FnOnce(
     }
 }
 
+pub(crate) fn split_parts(pool: Option<&rayon::ThreadPool>, n: usize) -> (usize, usize) {
+    let parts = (n / 8192).clamp(1, pool.map_or(3, |p| p.current_num_threads()) + 1);
+    (parts, n.div_ceil(parts))
+}
+
 pub(crate) fn run_parts<T: Send>(
     pool: Option<&rayon::ThreadPool>,
     parts: usize,

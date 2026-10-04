@@ -40,17 +40,17 @@ pub(crate) fn spot_view_proj(pos: Vec3, dir: Vec3, fov: f32, near: f32, far: f32
     let r = f.cross(hint).normalize_or_zero();
     let u = r.cross(f);
     let view = Mat4::from_cols(
-        glam::Vec4::new(r.x, u.x, -f.x, 0.0),
-        glam::Vec4::new(r.y, u.y, -f.y, 0.0),
-        glam::Vec4::new(r.z, u.z, -f.z, 0.0),
-        glam::Vec4::new(-r.dot(pos), -u.dot(pos), f.dot(pos), 1.0),
+        Vec4::new(r.x, u.x, -f.x, 0.0),
+        Vec4::new(r.y, u.y, -f.y, 0.0),
+        Vec4::new(r.z, u.z, -f.z, 0.0),
+        Vec4::new(-r.dot(pos), -u.dot(pos), f.dot(pos), 1.0),
     );
     let t = 1.0 / (fov * 0.5).tan();
     let proj = Mat4::from_cols(
-        glam::Vec4::new(t, 0.0, 0.0, 0.0),
-        glam::Vec4::new(0.0, t, 0.0, 0.0),
-        glam::Vec4::new(0.0, 0.0, far / (near - far), -1.0),
-        glam::Vec4::new(0.0, 0.0, near * far / (near - far), 0.0),
+        Vec4::new(t, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, t, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, far / (near - far), -1.0),
+        Vec4::new(0.0, 0.0, near * far / (near - far), 0.0),
     );
     proj * view
 }

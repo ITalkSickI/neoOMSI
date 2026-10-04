@@ -1,13 +1,11 @@
 use super::{DEPTH_FORMAT, MASK_FORMAT, Renderer, puddles};
 
-/// Enhanced-path colour targets and the bind groups used by its post-processing passes.
 pub(crate) struct HdrTargets {
     pub(crate) msaa_view: Option<wgpu::TextureView>,
     pub(crate) view: wgpu::TextureView,
     /// The screen mask (`MASK_FORMAT`), multisampled and resolved like the picture.
     pub(crate) mask_msaa: Option<wgpu::TextureView>,
     pub(crate) mask: wgpu::TextureView,
-    /// Downsampled glow levels and their upsampled sums.
     pub(crate) down: Vec<wgpu::TextureView>,
     pub(crate) up: Vec<wgpu::TextureView>,
     pub(crate) ldr: wgpu::TextureView,
@@ -16,14 +14,12 @@ pub(crate) struct HdrTargets {
     pub(crate) down_bg: Vec<wgpu::BindGroup>,
     pub(crate) up_bg: Vec<wgpu::BindGroup>,
     pub(crate) meter_bg: wgpu::BindGroup,
-    /// Tone-mapping bind groups for each adapted exposure texture.
     pub(crate) tonemap_bg: [wgpu::BindGroup; 2],
     pub(crate) fxaa_bg: wgpu::BindGroup,
     /// Allocated only when wet roads need scene reflections in the main view.
     pub(crate) puddles: Option<puddles::Targets>,
 }
 
-/// Textures and bind groups for SSAO at one target size.
 pub(crate) struct AoTargets {
     size: (u32, u32),
     pub(crate) depth_view: wgpu::TextureView,
@@ -36,7 +32,6 @@ pub(crate) struct AoTargets {
 const GLOW_LEVELS: usize = 6;
 
 impl Renderer {
-    /// Rebuild the SSAO targets when the render size changes.
     pub(crate) fn ensure_ao(&mut self, w: u32, h: u32) -> bool {
         if self.ao.as_ref().map(|a| a.size == (w, h)).unwrap_or(false) {
             return false;
@@ -56,10 +51,10 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
                 | if self.puddles.is_some() {
-                    wgpu::TextureUsages::COPY_SRC
-                } else {
-                    wgpu::TextureUsages::empty()
-                },
+                wgpu::TextureUsages::COPY_SRC
+            } else {
+                wgpu::TextureUsages::empty()
+            },
             view_formats: &[],
         });
         // Half-resolution AO uses one quarter of the pixels; the blur masks the lower resolution.
@@ -143,7 +138,6 @@ impl Renderer {
         self.hdr_targets.retain(|k, _| keep.contains(k));
     }
 
-    /// Cached multisampled colour and depth views for this size.
     pub(crate) fn msaa_targets(
         &mut self,
         w: u32,
@@ -187,7 +181,6 @@ impl Renderer {
         t
     }
 
-    /// Allocate the enhanced-path targets for this size; return whether they were rebuilt.
     pub(crate) fn hdr_targets(&mut self, w: u32, h: u32) -> bool {
         self.target_use.insert((w, h), std::time::Instant::now());
         if self.hdr_targets.contains_key(&(w, h)) {

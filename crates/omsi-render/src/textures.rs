@@ -61,17 +61,14 @@ pub(crate) fn texture_bytes(format: wgpu::TextureFormat, w: u32, h: u32, levels:
 }
 
 impl Scene {
-    /// Bytes of one texture on the GPU (0 for a freed slot or an unknown id).
     pub fn texture_bytes_of(&self, id: TextureId) -> u64 {
         self.textures.get(id).map(|t| t.bytes).unwrap_or(0)
     }
 
-    /// Base-level dimensions of one texture.
     pub fn texture_size_of(&self, id: TextureId) -> Option<(u32, u32)> {
         self.textures.get(id).map(|t| t.size)
     }
 
-    /// The GPU format of one texture, for statistics.
     pub fn texture_format_of(&self, id: TextureId) -> String {
         self.textures
             .get(id)
@@ -81,7 +78,6 @@ impl Scene {
 }
 
 impl Renderer {
-    /// Put a texture made on another thread ([`prepare_texture`]) into the scene.
     pub fn add_prepared_texture(&self, scene: &mut Scene, texture: PreparedTexture) -> TextureId {
         scene.textures.push(texture.0);
         scene.textures.len() - 1
@@ -130,15 +126,12 @@ impl Renderer {
         scene.textures.len() - 1
     }
 
-    /// The device takes BC1-3 (DXT) textures.
     pub fn supports_bc(&self) -> bool {
         self.device
             .features()
             .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
     }
 
-    /// Upload a texture prepared by `omsi_texture::gpu` (blocks with their levels, or RGBA
-    /// whose chain is made here).
     pub fn add_texture_data(
         &self,
         scene: &mut Scene,
@@ -161,7 +154,6 @@ impl Renderer {
         let blocks_ok =
             !data.format.is_compressed() || (self.supports_bc() && w % 4 == 0 && h % 4 == 0);
         if !blocks_ok || data.levels.is_empty() {
-            // Decode when the prepared levels cannot be uploaded directly.
             let rgba = match (data.format, data.levels.first()) {
                 (PixelFormat::Rgba8, Some(l)) => l.clone(),
                 (f, Some(l)) => omsi_texture::bc::decode(
@@ -183,7 +175,6 @@ impl Renderer {
                 has_alpha: data.has_alpha,
             });
         }
-        // The GPU builds the mip chain directly from the borrowed RGBA level.
         self.upload_rgba_gpu_mips(w, h, &data.levels[0])
     }
 
@@ -191,13 +182,10 @@ impl Renderer {
         scene.textures.iter().map(|t| t.bytes).sum()
     }
 
-    /// Bytes of one texture (0 for a freed slot).
     pub fn texture_size_bytes(&self, scene: &Scene, id: TextureId) -> u64 {
-        scene.textures.get(id).map(|t| t.bytes).unwrap_or(0)
+        scene.texture_bytes_of(id)
     }
 
-    /// Upload a texture and build its mip chain on the GPU: level 0 is written, every
-    /// further level is the one above drawn at half size.
     fn upload_texture_gpu_mips(&self, img: &omsi_texture::Image) -> GpuTexture {
         self.upload_rgba_gpu_mips(img.width, img.height, &img.rgba)
     }
@@ -314,7 +302,6 @@ impl Renderer {
         self.queue.submit([encoder.finish()]);
     }
 
-    /// The view of a texture of the scene (to draw into it with another pipeline).
     pub fn texture_view(&self, scene: &Scene, id: TextureId) -> Option<wgpu::TextureView> {
         scene.textures.get(id).map(|t| t.view.clone())
     }
@@ -381,7 +368,6 @@ impl Renderer {
         scene.textures[id] = self.upload_texture_data(data);
     }
 
-    /// Mip levels and size of a texture: (width, height, levels).
     pub fn texture_levels(&self, scene: &Scene, id: TextureId) -> Option<(u32, u32, u32)> {
         let t = scene.textures.get(id)?;
         (t.bytes > 0).then(|| (t.size.0, t.size.1, t.texture.mip_level_count()))
@@ -456,8 +442,6 @@ impl Renderer {
         true
     }
 
-    /// Rebuild the bind groups of the materials that sample any of `ids` (after
-    /// [`Renderer::replace_texture`]). Returns how many were rebuilt.
     pub fn rebind_textures(&self, scene: &mut Scene, ids: &[TextureId]) -> usize {
         if ids.is_empty() {
             return 0;
@@ -476,9 +460,9 @@ impl Renderer {
                 m.env_mask,
                 m.bump.map(|b| b.0),
             ]
-            .iter()
-            .flatten()
-            .any(|t| set.contains(t));
+                .iter()
+                .flatten()
+                .any(|t| set.contains(t));
             if !uses {
                 continue;
             }
@@ -503,8 +487,6 @@ impl Renderer {
     }
 }
 
-/// A texture on the GPU, made on a worker thread; [`Renderer::add_prepared_texture`] puts it
-/// into a scene.
 pub struct PreparedTexture(GpuTexture);
 
 impl PreparedTexture {
@@ -535,19 +517,19 @@ pub fn prepare_texture(
     let (w, h) = (data.width.max(1), data.height.max(1));
     if data.levels.is_empty()
         || (data.format == PixelFormat::Rgba8
-            && data.levels.len() == 1
-            && data.gpu_mips
-            && w > 1
-            && h > 1)
+        && data.levels.len() == 1
+        && data.gpu_mips
+        && w > 1
+        && h > 1)
     {
         return None;
     }
     if data.format.is_compressed()
         && (!device
-            .features()
-            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
-            || w % 4 != 0
-            || h % 4 != 0)
+        .features()
+        .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+        || w % 4 != 0
+        || h % 4 != 0)
     {
         return None;
     }
@@ -653,7 +635,6 @@ fn upload_texture_format(
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    // CPU box-filter mip chain
     let mut level: Vec<u8> = img.rgba.clone();
     let (mut w, mut h) = (img.width, img.height);
     for mip in 0..mip_count {

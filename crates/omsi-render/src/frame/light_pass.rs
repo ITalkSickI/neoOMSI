@@ -103,24 +103,24 @@ impl Renderer {
                 occ: [0.0; 4],
             });
         }
-        let lbytes: &[u8] = bytemuck::cast_slice(&gpu_lights);
-        let gbytes: &[u8] = bytemuck::cast_slice(&grid);
+        let gpu_lights_bytes: &[u8] = bytemuck::cast_slice(&gpu_lights);
+        let grid_bytes: &[u8] = bytemuck::cast_slice(&grid);
         let mut rebuilt = false;
         match &scene.light_buf {
-            Some(b) if b.size() as usize >= lbytes.len() => {
-                if scene.last_lights != lbytes {
-                    self.queue.write_buffer(b, 0, lbytes);
+            Some(b) if b.size() as usize >= gpu_lights_bytes.len() => {
+                if scene.last_lights != gpu_lights_bytes {
+                    self.queue.write_buffer(b, 0, gpu_lights_bytes);
                 }
             }
             _ => {
-                let cap = (lbytes.len() * 2).max(64 * std::mem::size_of::<GpuPointLight>());
+                let cap = (gpu_lights_bytes.len() * 2).max(64 * size_of::<GpuPointLight>());
                 let b = self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("lights"),
                     size: cap as u64,
                     usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                self.queue.write_buffer(&b, 0, lbytes);
+                self.queue.write_buffer(&b, 0, gpu_lights_bytes);
                 scene.light_buf = Some(b);
                 rebuilt = true;
             }
@@ -128,7 +128,7 @@ impl Renderer {
         match &scene.grid_buf {
             Some(b) => {
                 if scene.last_grid != grid {
-                    self.queue.write_buffer(b, 0, gbytes);
+                    self.queue.write_buffer(b, 0, grid_bytes);
                 }
             }
             None => {
@@ -136,14 +136,14 @@ impl Renderer {
                     &self.device,
                     &self.queue,
                     Some("light grid"),
-                    gbytes,
+                    grid_bytes,
                     wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 ));
                 rebuilt = true;
             }
         }
         scene.last_lights.clear();
-        scene.last_lights.extend_from_slice(lbytes);
+        scene.last_lights.extend_from_slice(gpu_lights_bytes);
         scene.last_grid = grid;
         if rebuilt {
             self.rebuild_camera_bind_group(scene);
@@ -238,21 +238,7 @@ impl Renderer {
     }
 
     pub fn set_corona_texture(&mut self, id: u16, img: &omsi_texture::Image) {
-        let t = upload_texture(&self.device, &self.queue, img, true);
-        let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("corona picture"),
-            layout: &self.corona_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&t.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.corona_sampler),
-                },
-            ],
-        });
+        let bg = self.picture_bind_group("corona picture", img);
         let i = id as usize;
         if self.corona_textures.len() <= i {
             self.corona_textures.resize_with(i + 1, || None);
@@ -261,9 +247,13 @@ impl Renderer {
     }
 
     pub fn set_smoke_texture(&mut self, img: &omsi_texture::Image) {
+        self.smoke_bind_group = self.picture_bind_group("smoke", img);
+    }
+
+    fn picture_bind_group(&self, label: &str, img: &omsi_texture::Image) -> wgpu::BindGroup {
         let t = upload_texture(&self.device, &self.queue, img, true);
-        self.smoke_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("smoke"),
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
             layout: &self.corona_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -275,7 +265,7 @@ impl Renderer {
                     resource: wgpu::BindingResource::Sampler(&self.corona_sampler),
                 },
             ],
-        });
+        })
     }
 
     pub(crate) fn prepare_coronas(&self, scene: &mut Scene, night: f32) {

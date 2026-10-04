@@ -1,5 +1,31 @@
 use crate::*;
 
+const ALPHA_BLEND: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::SrcAlpha,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: wgpu::BlendComponent::REPLACE,
+};
+
+fn linear_sampler(
+    device: &wgpu::Device,
+    mode: wgpu::AddressMode,
+    anisotropy_clamp: u16,
+) -> wgpu::Sampler {
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: mode,
+        address_mode_v: mode,
+        address_mode_w: mode,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        anisotropy_clamp,
+        ..Default::default()
+    })
+}
+
 pub(crate) fn color_targets(
     format: wgpu::TextureFormat,
     blend: Option<wgpu::BlendState>,
@@ -14,14 +40,7 @@ pub(crate) fn color_targets(
     if format == HDR_FORMAT {
         v.push(Some(wgpu::ColorTargetState {
             format: MASK_FORMAT,
-            blend: blend.map(|_| wgpu::BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent::REPLACE,
-            }),
+            blend: blend.map(|_| ALPHA_BLEND),
             write_mask: if mask {
                 wgpu::ColorWrites::ALL
             } else {
@@ -356,7 +375,7 @@ impl Renderer {
             info.device,
             required_features,
             limits.max_buffer_size / 1_000_000,
-            limits.max_storage_buffer_binding_size as u64 / 1_000_000
+            limits.max_storage_buffer_binding_size / 1_000_000
         );
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -923,7 +942,7 @@ impl Renderer {
             immediate_size: 0,
         });
         let vertex_layout = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as u64,
+            array_stride: size_of::<Vertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
         };
@@ -1171,39 +1190,14 @@ impl Renderer {
             make_shadow(PIPE_OPAQUE, 2),
             make_shadow(PIPE_ALPHA_TEST, 2),
         ];
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            anisotropy_clamp: options.anisotropy,
-            ..Default::default()
-        });
-        let clamp_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            anisotropy_clamp: options.anisotropy,
-            ..Default::default()
-        });
-        let mirror_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::MirrorRepeat,
-            address_mode_v: wgpu::AddressMode::MirrorRepeat,
-            address_mode_w: wgpu::AddressMode::MirrorRepeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            anisotropy_clamp: options.anisotropy,
-            ..Default::default()
-        });
+        let sampler = linear_sampler(&device, wgpu::AddressMode::Repeat, options.anisotropy);
+        let clamp_sampler =
+            linear_sampler(&device, wgpu::AddressMode::ClampToEdge, options.anisotropy);
+        let mirror_sampler =
+            linear_sampler(&device, wgpu::AddressMode::MirrorRepeat, options.anisotropy);
         let camera_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("camera"),
-            size: std::mem::size_of::<CameraUniform>() as u64,
+            size: size_of::<CameraUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1211,7 +1205,7 @@ impl Renderer {
             .map(|_| {
                 device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("spot shadow camera"),
-                    size: std::mem::size_of::<CameraUniform>() as u64,
+                    size: size_of::<CameraUniform>() as u64,
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 })
@@ -1243,7 +1237,7 @@ impl Renderer {
                 let dx = (x as f32 + 0.5) / cs as f32 * 2.0 - 1.0;
                 let dy = (y as f32 + 0.5) / cs as f32 * 2.0 - 1.0;
                 let r = (dx * dx + dy * dy).sqrt();
-                let v = ((1.0 - r).max(0.0)).powf(1.6) * 255.0;
+                let v = (1.0 - r).max(0.0).powf(1.6) * 255.0;
                 let o = ((y * cs + x) * 4) as usize;
                 corona_img.rgba[o..o + 4].copy_from_slice(&[v as u8, v as u8, v as u8, 255]);
             }
@@ -1312,7 +1306,7 @@ impl Renderer {
             immediate_size: 0,
         });
         let corona_vertex = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<GpuCorona>() as u64,
+            array_stride: size_of::<GpuCorona>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4],
         };
@@ -1332,14 +1326,7 @@ impl Renderer {
             },
             alpha: wgpu::BlendComponent::REPLACE,
         };
-        let alpha_blend = wgpu::BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::SrcAlpha,
-                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent::REPLACE,
-        };
+        let alpha_blend = ALPHA_BLEND;
         let corona_pipeline_for = |f: wgpu::TextureFormat, fs: &str, blend: wgpu::BlendState| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("corona"),
@@ -1717,7 +1704,7 @@ impl Renderer {
         });
         let ao_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ssao params"),
-            size: std::mem::size_of::<SsaoUniform>() as u64,
+            size: size_of::<SsaoUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1938,7 +1925,7 @@ impl Renderer {
         });
         let post_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("post params"),
-            size: std::mem::size_of::<PostUniform>() as u64,
+            size: size_of::<PostUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -2048,7 +2035,7 @@ impl Renderer {
         });
         let enh_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("enhanced lighting"),
-            size: std::mem::size_of::<EnhancedUniform>() as u64,
+            size: size_of::<EnhancedUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -2067,15 +2054,7 @@ impl Renderer {
             view_formats: &[],
         });
         let sky_lut_view = sky_lut.create_view(&Default::default());
-        let lin_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            ..Default::default()
-        });
+        let lin_sampler = linear_sampler(&device, wgpu::AddressMode::ClampToEdge, 1);
         let uniform_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,

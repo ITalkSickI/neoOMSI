@@ -40,7 +40,6 @@ struct Enhanced {
 
 const PI: f32 = 3.14159265;
 
-// Irradiance from the sky and the ground on a surface facing n.
 fn sh_irradiance(n: vec3<f32>) -> vec3<f32> {
     let c = enh.sh;
     let e = c[0].rgb * 0.282095
@@ -70,7 +69,6 @@ fn sky_table(d: vec3<f32>) -> vec3<f32> {
     return sky_table_raw(d) * enh.ground.w;
 }
 
-// Henyey-Greenstein phase function.
 fn hg_phase(c: f32, g: f32) -> f32 {
     let g2 = g * g;
     return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5));

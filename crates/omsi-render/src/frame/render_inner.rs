@@ -678,14 +678,7 @@ impl Renderer {
         };
         if active.iter().any(|a| *a) {
             let n = scene.instances.len();
-            let parts = (n / 8192).clamp(
-                1,
-                self.encoding_pool
-                    .as_ref()
-                    .map_or(3, |p| p.current_num_threads())
-                    + 1,
-            );
-            let chunk = n.div_ceil(parts);
+            let (parts, chunk) = split_parts(self.encoding_pool.as_ref(), n);
             let mut found: [Vec<DrawItem>; SHADOW_SETS] = std::array::from_fn(|_| Vec::new());
             for part in run_parts(self.encoding_pool.as_ref(), parts, |p| {
                 casters(p * chunk..((p + 1) * chunk).min(n))
@@ -904,14 +897,7 @@ impl Renderer {
             Some((i, z, inside))
         };
         let n = scene.instances.len();
-        let parts = (n / 8192).clamp(
-            1,
-            self.encoding_pool
-                .as_ref()
-                .map_or(3, |p| p.current_num_threads())
-                + 1,
-        );
-        let chunk = n.div_ceil(parts);
+        let (parts, chunk) = split_parts(self.encoding_pool.as_ref(), n);
         let (mut visible, mut found): (Vec<(usize, f32, bool)>, Vec<([u64; 4], f32)>) =
             (Vec::new(), Vec::new());
         for (v, sizes) in run_parts(self.encoding_pool.as_ref(), parts, |p| {
@@ -2092,12 +2078,7 @@ impl Renderer {
                 }
                 if !overlays.is_empty() && !scaled {
                     pass.set_pipeline(&self.overlay_pipeline_1x);
-                    for (k, _) in overlays.iter().enumerate() {
-                        if let Some((_, _, bg, _)) = scene.overlay_res.get(k) {
-                            pass.set_bind_group(0, bg, &[]);
-                            pass.draw(0..6, 0..1);
-                        }
-                    }
+                    draw_overlays(&mut pass, scene, overlays.len());
                 }
             }
         }
@@ -2174,12 +2155,7 @@ impl Renderer {
             pass.draw(0..3, 0..1);
             if !overlays.is_empty() {
                 pass.set_pipeline(&self.overlay_pipeline_1x);
-                for (k, _) in overlays.iter().enumerate() {
-                    if let Some((_, _, bg, _)) = scene.overlay_res.get(k) {
-                        pass.set_bind_group(0, bg, &[]);
-                        pass.draw(0..6, 0..1);
-                    }
-                }
+                draw_overlays(&mut pass, scene, overlays.len());
             }
         }
         if let Some(k) = glass_key {

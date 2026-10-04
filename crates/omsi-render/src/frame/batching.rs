@@ -135,13 +135,13 @@ pub(crate) fn surface_depth_coverage(
 ) -> bool {
     world_surface_phase(phase) && alpha == AlphaMode::Blend && !transmap && !no_z_check
 }
-pub(crate) fn depth_prepass_kind(kind: u8, material: &Material, presurface: bool) -> Option<u8> {
+pub(crate) fn depth_prepass_kind(kind: u8, material: &Material, resurface: bool) -> Option<u8> {
     if material.no_z_check {
         return None;
     }
     if kind < PIPE_BLEND {
         Some(kind)
-    } else if presurface && !material.no_z_write {
+    } else if resurface && !material.no_z_write {
         Some(PIPE_OPAQUE)
     } else if kind == PIPE_BLEND && material.transmap.is_some() && !material.no_z_write {
         Some(2)

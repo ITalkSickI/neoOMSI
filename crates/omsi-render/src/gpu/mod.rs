@@ -6,7 +6,6 @@ mod timers;
 mod surface;
 
 pub use renderer::*;
-pub(crate) use build::*;
 pub use gpu_env::*;
 pub(crate) use shader_src::*;
 pub(crate) use timers::*;

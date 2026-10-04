@@ -157,7 +157,7 @@ impl Renderer {
             let (bind_group, buf) = (m.bind_group, m.buf);
             let vertex_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("freed mesh"),
-                size: std::mem::size_of::<Vertex>() as u64,
+                size: size_of::<Vertex>() as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
