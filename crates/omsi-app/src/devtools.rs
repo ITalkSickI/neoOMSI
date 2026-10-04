@@ -125,7 +125,20 @@ pub(crate) struct TourRow {
     pub available: bool,
 }
 
+pub(crate) struct VehicleInfo {
+    pub actions: Vec<String>,
+    pub controls: Vec<(usize, String)>,
+}
+
+pub(crate) struct BeamMark {
+    pub pos: [f64; 3],
+    pub dir: [f32; 3],
+    pub cone: bool,
+}
+
 pub(crate) struct Extra {
+    pub beams: Vec<BeamMark>,
+    pub vehicle: Option<VehicleInfo>,
     pub map: String,
     pub clock: f64,
     pub paused: bool,
@@ -145,11 +158,17 @@ pub(crate) enum Action {
     CopyCode,
     OpenLan(u16),
     Connect(String),
+    Vehicle(String),
+    Cockpit(usize),
+    VehicleSaloonLights,
+    VehicleStartUp,
 }
 
 struct Show {
     graphics: bool,
     lights: bool,
+    vehicle: bool,
+    cockpit: bool,
     map: bool,
     tours: bool,
     server: bool,
@@ -174,6 +193,9 @@ pub(crate) struct DevTools {
     lan_port: i32,
     show_boxes: bool,
     box_radius: f32,
+    vehicle_filter: String,
+    cockpit_filter: String,
+    release: Vec<String>,
 }
 
 impl DevTools {
@@ -207,6 +229,8 @@ impl DevTools {
             show: Show {
                 graphics: false,
                 lights: false,
+                vehicle: false,
+                cockpit: false,
                 map: false,
                 tours: false,
                 server: false,
@@ -218,6 +242,9 @@ impl DevTools {
             connect_addr: String::new(),
             lan_port: 0,
             show_boxes: false,
+            vehicle_filter: String::new(),
+            cockpit_filter: String::new(),
+            release: Vec::new(),
             box_radius: 25.0,
         }
     }
@@ -345,6 +372,8 @@ impl DevTools {
             let lan_port = &mut self.lan_port;
             let show_boxes = &mut self.show_boxes;
             let box_radius = &mut self.box_radius;
+            let vehicle_filter = &mut self.vehicle_filter;
+            let cockpit_filter = &mut self.cockpit_filter;
             let ui = self.ctx.new_frame();
 
             if *show_boxes {
@@ -352,6 +381,11 @@ impl DevTools {
                     draw_boxes(ui, cam, (w, h), &extra.boxes, None);
                     draw_boxes(ui, cam, (w, h), &extra.blockers, Some([1.0, 0.1, 0.1, 1.0]));
                     draw_doors(ui, cam, (w, h), &extra.doors);
+                }
+            }
+            if crate::lights::settings().beam_marker {
+                if let Some(cam) = extra.cam.as_ref() {
+                    draw_beams(ui, cam, (w, h), &extra.beams);
                 }
             }
 
@@ -450,6 +484,24 @@ impl DevTools {
                         crate::lights::set_settings(crate::lights::LightSettings::DEFAULT);
                     }
                 }
+                if let Some(_m) = ui.begin_menu("Vehicle") {
+                    if ui
+                        .menu_item_config("Cockpit Buttons")
+                        .selected(show.cockpit)
+                        .enabled(extra.vehicle.is_some())
+                        .build()
+                    {
+                        show.cockpit = !show.cockpit;
+                    }
+                    if ui
+                        .menu_item_config("Actions")
+                        .selected(show.vehicle)
+                        .enabled(extra.vehicle.is_some())
+                        .build()
+                    {
+                        show.vehicle = !show.vehicle;
+                    }
+                }
                 if let Some(_m) = ui.begin_menu("Walk") {
                     if ui
                         .menu_item_config("Walk Details")
@@ -483,6 +535,56 @@ impl DevTools {
                     .position([12.0, 32.0], Condition::FirstUseEver)
                     .build(|| {
                         ui.checkbox("Force High Beam", &mut s.force_high_beam);
+                        ui.checkbox("Show Beam Markers", &mut s.beam_marker);
+                        ui.separator();
+                        ui.text_colored([1.0, 0.9, 0.1, 1.0], "Fog Cone start (yellow), m");
+                        ui.slider("Forward##cone", -20.0, 20.0, &mut s.cone_offset);
+                        ui.slider("Right##cone", -5.0, 5.0, &mut s.cone_side);
+                        ui.slider("Height##cone", -5.0, 5.0, &mut s.cone_height);
+                        ui.input_float("Forward exact##cone", &mut s.cone_offset)
+                            .step(0.05)
+                            .step_fast(0.5)
+                            .display_format("%.3f")
+                            .build();
+                        ui.input_float("Right exact##cone", &mut s.cone_side)
+                            .step(0.05)
+                            .step_fast(0.5)
+                            .display_format("%.3f")
+                            .build();
+                        ui.input_float("Height exact##cone", &mut s.cone_height)
+                            .step(0.05)
+                            .step_fast(0.5)
+                            .display_format("%.3f")
+                            .build();
+                        ui.separator();
+                        ui.text_colored([0.1, 0.9, 1.0, 1.0], "Headlight start (cyan), m");
+                        ui.slider("Forward##lamp", -20.0, 20.0, &mut s.lamp_offset);
+                        ui.slider("Right##lamp", -5.0, 5.0, &mut s.lamp_side);
+                        ui.slider("Height##lamp", -5.0, 5.0, &mut s.lamp_height);
+                        ui.input_float("Forward exact##lamp", &mut s.lamp_offset)
+                            .step(0.05)
+                            .step_fast(0.5)
+                            .display_format("%.3f")
+                            .build();
+                        ui.input_float("Right exact##lamp", &mut s.lamp_side)
+                            .step(0.05)
+                            .step_fast(0.5)
+                            .display_format("%.3f")
+                            .build();
+                        ui.input_float("Height exact##lamp", &mut s.lamp_height)
+                            .step(0.05)
+                            .step_fast(0.5)
+                            .display_format("%.3f")
+                            .build();
+                        ui.slider("Yaw (deg, left +)##lamp", -45.0, 45.0, &mut s.lamp_yaw);
+                        ui.slider("Pitch (deg, up +)##lamp", -45.0, 45.0, &mut s.lamp_pitch);
+                        ui.slider("Lamp Distance x##lamp", 0.0, 3.0, &mut s.lamp_spread);
+                        ui.slider("Range x##lamp", 0.1, 4.0, &mut s.lamp_range);
+                        ui.slider("Core x##lamp", 0.1, 10.0, &mut s.lamp_core);
+                        ui.slider("Inner Angle +deg##lamp", -60.0, 60.0, &mut s.lamp_inner_add);
+                        ui.slider("Outer Angle +deg##lamp", -60.0, 60.0, &mut s.lamp_outer_add);
+                        ui.color_edit3("Color Tint##lamp", &mut s.lamp_color);
+                        ui.separator();
                         ui.separator();
                         ui.slider("Headlight", 0.0, 100.0, &mut s.headlight);
                         ui.slider("Vanilla Headlight", 0.0, 2.0, &mut s.vanilla);
@@ -501,6 +603,71 @@ impl DevTools {
                         }
                     });
                 crate::lights::set_settings(s);
+            }
+
+            if show.cockpit {
+                ui.window("Cockpit Buttons")
+                    .opened(&mut show.cockpit)
+                    .size([360.0, 480.0], Condition::FirstUseEver)
+                    .position([12.0, 32.0], Condition::FirstUseEver)
+                    .build(|| {
+                        let Some(v) = extra.vehicle.as_ref() else {
+                            ui.text("No vehicle driven");
+                            return;
+                        };
+                        ui.input_text("Filter##cockpit", cockpit_filter).build();
+                        ui.separator();
+                        let f = cockpit_filter.to_ascii_lowercase();
+                        ui.child_window("##cockpit_buttons").build(|| {
+                            for (i, ev) in v
+                                .controls
+                                .iter()
+                                .filter(|(_, e)| f.is_empty() || e.to_ascii_lowercase().contains(&f))
+                            {
+                                if ui.button(format!("{ev}##c{i}")) {
+                                    actions.push(Action::Cockpit(*i));
+                                }
+                            }
+                        });
+                    });
+            }
+
+            if show.vehicle {
+                ui.window("Actions")
+                    .opened(&mut show.vehicle)
+                    .size([360.0, 480.0], Condition::FirstUseEver)
+                    .position([12.0, 32.0], Condition::FirstUseEver)
+                    .build(|| {
+                        let Some(v) = extra.vehicle.as_ref() else {
+                            ui.text("No vehicle driven");
+                            return;
+                        };
+                        if ui.button("Start Up") {
+                            actions.push(Action::VehicleStartUp);
+                        }
+                        ui.same_line();
+                        if ui.button("Saloon Lights") {
+                            actions.push(Action::VehicleSaloonLights);
+                        }
+                        if ui.button("Indicator Left") {
+                            actions.push(Action::Vehicle("blinker_left_toggle".into()));
+                        }
+                        ui.same_line();
+                        if ui.button("Indicator Right") {
+                            actions.push(Action::Vehicle("blinker_right_toggle".into()));
+                        }
+                        ui.separator();
+                        ui.input_text("Filter##actions", vehicle_filter).build();
+                        ui.separator();
+                        let f = vehicle_filter.to_ascii_lowercase();
+                        ui.child_window("##vehicle_actions").build(|| {
+                            for a in v.actions.iter().filter(|a| f.is_empty() || a.to_ascii_lowercase().contains(&f)) {
+                                if ui.button(a) {
+                                    actions.push(Action::Vehicle(a.clone()));
+                                }
+                            }
+                        });
+                    });
             }
 
             if show.graphics {
@@ -1244,7 +1411,28 @@ impl crate::App {
             .join("Situations")
             .join("quicksave.osn")
             .exists();
+        let mut beams: Vec<BeamMark> = Vec::new();
+        if crate::lights::settings().beam_marker {
+            if let (Some(scene), Some(cam)) = (self.scene.as_ref(), self.camera.as_ref()) {
+                for c in scene.coronas.iter().filter(|c| c.beam) {
+                    beams.push(BeamMark { pos: [c.position.x, c.position.y, c.position.z], dir: c.direction.to_array(), cone: true });
+                }
+                for l in scene.lights.iter().filter(|l| l.beam != 0.0 && l.direction.length_squared() > 0.1) {
+                    beams.push(BeamMark { pos: [l.position.x, l.position.y, l.position.z], dir: l.direction.to_array(), cone: false });
+                }
+                let at = cam.position;
+                beams.sort_by(|a, b| {
+                    let da = (glam::DVec3::from(a.pos) - at).length_squared();
+                    let db = (glam::DVec3::from(b.pos) - at).length_squared();
+                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                beams.truncate(24);
+            }
+        }
+        let vehicle = self.player.as_ref().map(|p| VehicleInfo { actions: p.bound_actions(), controls: p.control_list() });
         Extra {
+            beams,
+            vehicle,
             map: self.args.map.clone(),
             clock: self.clock.time,
             paused: self.paused,
@@ -1260,10 +1448,16 @@ impl crate::App {
     }
 
     pub(crate) fn dev_actions(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let actions = match self.devtools.as_mut() {
-            Some(d) => d.take_actions(),
+        let (actions, released) = match self.devtools.as_mut() {
+            Some(d) => (d.take_actions(), std::mem::take(&mut d.release)),
             None => return,
         };
+        if let Some(p) = self.player.as_mut() {
+            for name in &released {
+                p.action(name, false);
+            }
+        }
+        let mut pressed: Vec<String> = Vec::new();
         for a in actions {
             match a {
                 Action::QuickSave => self.quick_save(),
@@ -1274,6 +1468,27 @@ impl crate::App {
                     }
                 }
                 Action::CopyCode => self.copy_server_code(),
+                Action::Vehicle(name) => {
+                    if let Some(p) = self.player.as_mut() {
+                        p.action(&name, true);
+                        pressed.push(name);
+                    }
+                }
+                Action::Cockpit(i) => {
+                    if let Some(p) = self.player.as_mut() {
+                        p.press_control(i);
+                    }
+                }
+                Action::VehicleSaloonLights => {
+                    if let Some(p) = self.player.as_mut() {
+                        p.toggle_saloon_lights();
+                    }
+                }
+                Action::VehicleStartUp => {
+                    if let Some(p) = self.player.as_mut() {
+                        p.start_up();
+                    }
+                }
                 Action::OpenLan(port) => {
                     if self.lan.is_some() {
                         self.service_msg = Some(("Already in a LAN session".into(), 3.0));
@@ -1323,6 +1538,29 @@ impl crate::App {
                 }
             }
         }
+        if let Some(d) = self.devtools.as_mut() {
+            d.release.extend(pressed);
+        }
+    }
+}
+
+fn draw_beams(ui: &imgui::Ui, cam: &omsi_render::Camera, size: (u32, u32), beams: &[BeamMark]) {
+    let vp = cam.view_proj(size.0 as f32 / size.1.max(1) as f32, cam.position);
+    let list = ui.get_background_draw_list();
+    for b in beams {
+        // (yellow: the fog cone's start, cyan: the headlight's start; the line is 2 m of its axis)
+        let col = if b.cone { [1.0, 0.9, 0.1, 1.0] } else { [0.1, 0.9, 1.0, 1.0] };
+        let p = glam::DVec3::from(b.pos);
+        let d = glam::Vec3::from(b.dir).normalize_or_zero().as_dvec3();
+        let Some(pa) = project(&vp, cam.position, p, size) else {
+            continue;
+        };
+        if let Some(pb) = project(&vp, cam.position, p + d * 2.0, size) {
+            list.add_line(pa, pb, col).thickness(2.0).build();
+        }
+        list.add_circle(pa, 6.0, col).thickness(2.0).build();
+        list.add_line([pa[0] - 9.0, pa[1]], [pa[0] + 9.0, pa[1]], col).build();
+        list.add_line([pa[0], pa[1] - 9.0], [pa[0], pa[1] + 9.0], col).build();
     }
 }
 

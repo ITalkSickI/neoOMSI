@@ -17,6 +17,28 @@ pub(crate) struct LightSettings {
     pub high_beam_range: f32,
     pub high_beam_spread: f32,
     pub force_high_beam: bool,
+    /// Fog cone start of vehicles (the yellow marker), metres: along its direction
+    /// (negative: back), to the right, up.
+    pub cone_offset: f32,
+    pub cone_side: f32,
+    pub cone_height: f32,
+    /// Headlight (the actual light, the cyan marker) start, metres, same axes.
+    pub lamp_offset: f32,
+    pub lamp_side: f32,
+    pub lamp_height: f32,
+    /// Headlight aim, degrees: turned left (positive) / up (positive) from the authored axis.
+    pub lamp_yaw: f32,
+    pub lamp_pitch: f32,
+    /// Headlight range (x authored range), core (x), left/right lamp distance (x), cone
+    /// angles (added, degrees) and colour tint.
+    pub lamp_range: f32,
+    pub lamp_core: f32,
+    pub lamp_spread: f32,
+    pub lamp_inner_add: f32,
+    pub lamp_outer_add: f32,
+    pub lamp_color: [f32; 3],
+    /// Show where the beams start (ImGui markers).
+    pub beam_marker: bool,
     pub weather_boost: f32,
     pub weather_night: f32,
     pub corona: f32,
@@ -31,6 +53,21 @@ impl LightSettings {
         high_beam_range: 1.0,
         high_beam_spread: 1.0,
         force_high_beam: false,
+        cone_offset: 0.0,
+        cone_side: 0.0,
+        cone_height: 0.0,
+        lamp_offset: -0.492,
+        lamp_side: 0.0,
+        lamp_height: -0.246,
+        lamp_yaw: 0.0,
+        lamp_pitch: 0.0,
+        lamp_range: 0.468,
+        lamp_core: 1.277,
+        lamp_spread: 0.951,
+        lamp_inner_add: 0.0,
+        lamp_outer_add: 6.885,
+        lamp_color: [1.0, 1.0, 1.0],
+        beam_marker: false,
         weather_boost: 0.8,
         weather_night: 0.6,
         corona: 1.0,
@@ -45,6 +82,31 @@ pub(crate) fn settings() -> LightSettings {
 
 pub(crate) fn set_settings(s: LightSettings) {
     *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = s;
+}
+
+/// How far a start is moved: along `dir`, to its right, and up (world Z).
+fn shift(dir: Vec3, forward: f32, side: f32, up: f32) -> DVec3 {
+    let d = dir.normalize_or_zero();
+    let right = d.cross(Vec3::Z).normalize_or_zero();
+    (d * forward + right * side + Vec3::Z * up).as_dvec3()
+}
+
+/// The fog cone's shift.
+pub(crate) fn cone_shift(dir: Vec3, cfg: &LightSettings) -> DVec3 {
+    shift(dir, cfg.cone_offset, cfg.cone_side, cfg.cone_height)
+}
+
+/// The headlight axis `d` turned by the aim settings.
+fn lamp_aim(d: Vec3, cfg: &LightSettings) -> Vec3 {
+    let d = d.normalize_or_zero();
+    let yawed = glam::Quat::from_rotation_z(cfg.lamp_yaw.to_radians()) * d;
+    let right = yawed.cross(Vec3::Z).normalize_or_zero();
+    (glam::Quat::from_axis_angle(right, cfg.lamp_pitch.to_radians()) * yawed).normalize_or_zero()
+}
+
+/// The headlight's shift.
+pub(crate) fn lamp_shift(dir: Vec3, cfg: &LightSettings) -> DVec3 {
+    shift(dir, cfg.lamp_offset, cfg.lamp_side, cfg.lamp_height)
 }
 
 fn weather_darkness() -> f32 {
@@ -218,7 +280,11 @@ pub fn vehicle_lights(
                 let d = body
                     .transform_vector3(Vec3::new(vals[3], vals[4], vals[5]))
                     .normalize_or_zero();
-                let color = [vals[6] / 255.0, vals[7] / 255.0, vals[8] / 255.0];
+                let color = [
+                    vals[6] / 255.0 * cfg.lamp_color[0],
+                    vals[7] / 255.0 * cfg.lamp_color[1],
+                    vals[8] / 255.0 * cfg.lamp_color[2],
+                ];
                 let mut apex = Vec3::new(vals[0], vals[1], vals[2]);
                 let dl = Vec3::new(vals[3], vals[4], vals[5]).normalize_or_zero();
                 let nose = lamps.iter().map(|l| l[1]).reduce(f32::max);
@@ -245,16 +311,18 @@ pub fn vehicle_lights(
                 let right = body.transform_vector3(Vec3::X).normalize_or_zero();
                 let apex = body.transform_point3(apex);
                 let (inner, outer) = (
-                    vals.get(10).copied().unwrap_or(30.0),
-                    vals.get(11).copied().unwrap_or(70.0),
+                    vals.get(10).copied().unwrap_or(30.0) + cfg.lamp_inner_add,
+                    vals.get(11).copied().unwrap_or(70.0) + cfg.lamp_outer_add,
                 );
                 let half = |deg: f32| (deg.clamp(1.0, 179.0) * 0.5).to_radians().cos();
                 let cone = [half(inner.min(outer)), half(outer)];
                 let sides: &[f32] = if spread > 0.1 { &[-1.0, 1.0] } else { &[0.0] };
                 for side in sides {
-                    let at = v.position + (apex + right * spread * side).as_dvec3();
+                    let at = v.position
+                        + (apex + right * spread * cfg.lamp_spread * side).as_dvec3()
+                        + lamp_shift(d, &cfg);
                     let high_beam = cfg.force_high_beam || v.var("lights_fern").is_some_and(|x| x > 0.5);
-                    let radius = headlight_radius(vals[9]) * if high_beam { cfg.high_beam_range } else { 1.0 };
+                    let radius = headlight_radius(vals[9]) * cfg.lamp_range.max(0.05) * if high_beam { cfg.high_beam_range } else { 1.0 };
                     let cone = if high_beam {
                         let k = cfg.high_beam_spread.max(0.1);
                         [1.0 - (1.0 - cone[0]) * k, 1.0 - (1.0 - cone[1]) * k]
@@ -265,7 +333,7 @@ pub fn vehicle_lights(
                         position: at,
                         radius,
                         color,
-                        direction: d,
+                        direction: lamp_aim(d, &cfg),
                         cone,
                         ..Default::default()
                     };
@@ -278,7 +346,7 @@ pub fn vehicle_lights(
                         intensity: cfg.headlight / sides.len() as f32
                             * (1.0 + bad * cfg.weather_boost)
                             * if high_beam { cfg.high_beam } else { 1.0 },
-                        core: headlight_core(radius),
+                        core: headlight_core(radius) * cfg.lamp_core.max(0.01),
                         beam: if high_beam { -1.0 } else { cfg.low_beam_gain },
                         mode: LightMode::Enhanced,
                         ..lamp
@@ -1093,6 +1161,7 @@ pub fn collect(
         veh_occ.clear();
     }
     let mut mesh_tests = 8usize;
+    let beam_cfg = settings();
     for (vi, v) in vehicles.iter().enumerate() {
         // (a vehicle out of sight: no lamps, no ray tests, no smoke)
         if (v.position - camera_pos).length() > visible_range {
@@ -1131,6 +1200,9 @@ pub fn collect(
             if !c.beam && !c.halo {
                 c.size = c.size.min(0.6);
                 c.brightness = c.brightness.min(1.0);
+            }
+            if c.beam {
+                c.position += cone_shift(c.direction, &beam_cfg);
             }
             true
         });
