@@ -8,25 +8,25 @@ struct RgbaRef<'a> {
 
 pub struct GpuTexture {
     #[allow(dead_code)]
-    pub(super) texture: wgpu::Texture,
-    pub(super) view: wgpu::TextureView,
-    pub(super) size: (u32, u32),
+    pub(crate) texture: wgpu::Texture,
+    pub(crate) view: wgpu::TextureView,
+    pub(crate) size: (u32, u32),
     /// GPU storage across all mip levels, or 0 for a freed-slot placeholder.
-    pub(super) bytes: u64,
+    pub(crate) bytes: u64,
     /// Changes on replacement to invalidate material bind-group cache keys.
-    pub(super) generation: u64,
+    pub(crate) generation: u64,
 }
 
 static TEXTURE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-pub(super) fn next_gen() -> u64 {
+pub(crate) fn next_gen() -> u64 {
     TEXTURE_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl GpuTexture {
     /// A slot that shows `view` (for example, the picture behind rain on glass) while
     /// `texture` remains a stand-in for texture metadata.
-    pub(super) fn showing(
+    pub(crate) fn showing(
         texture: wgpu::Texture,
         view: wgpu::TextureView,
         size: (u32, u32),
@@ -40,7 +40,7 @@ impl GpuTexture {
         }
     }
 
-    pub(super) fn new(texture: wgpu::Texture, size: (u32, u32), bytes: u64) -> GpuTexture {
+    pub(crate) fn new(texture: wgpu::Texture, size: (u32, u32), bytes: u64) -> GpuTexture {
         let view = texture.create_view(&Default::default());
         GpuTexture {
             texture,
@@ -52,7 +52,7 @@ impl GpuTexture {
     }
 }
 
-pub(super) fn texture_bytes(format: wgpu::TextureFormat, w: u32, h: u32, levels: u32) -> u64 {
+pub(crate) fn texture_bytes(format: wgpu::TextureFormat, w: u32, h: u32, levels: u32) -> u64 {
     let (bw, bh) = format.block_dimensions();
     let block = format.block_copy_size(None).unwrap_or(4) as u64;
     (0..levels)
@@ -611,7 +611,7 @@ pub fn prepare_texture(
     )))
 }
 
-pub(super) fn upload_texture(
+pub(crate) fn upload_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     img: &omsi_texture::Image,

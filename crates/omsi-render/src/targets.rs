@@ -1,43 +1,43 @@
 use super::{DEPTH_FORMAT, MASK_FORMAT, Renderer, puddles};
 
 /// Enhanced-path colour targets and the bind groups used by its post-processing passes.
-pub(super) struct HdrTargets {
-    pub(super) msaa_view: Option<wgpu::TextureView>,
-    pub(super) view: wgpu::TextureView,
+pub(crate) struct HdrTargets {
+    pub(crate) msaa_view: Option<wgpu::TextureView>,
+    pub(crate) view: wgpu::TextureView,
     /// The screen mask (`MASK_FORMAT`), multisampled and resolved like the picture.
-    pub(super) mask_msaa: Option<wgpu::TextureView>,
-    pub(super) mask: wgpu::TextureView,
+    pub(crate) mask_msaa: Option<wgpu::TextureView>,
+    pub(crate) mask: wgpu::TextureView,
     /// Downsampled glow levels and their upsampled sums.
-    pub(super) down: Vec<wgpu::TextureView>,
-    pub(super) up: Vec<wgpu::TextureView>,
-    pub(super) ldr: wgpu::TextureView,
+    pub(crate) down: Vec<wgpu::TextureView>,
+    pub(crate) up: Vec<wgpu::TextureView>,
+    pub(crate) ldr: wgpu::TextureView,
     /// `down[i]` reads the scene (`i == 0`) or `down[i - 1]`; `up[i]` combines `up[i + 1]`
     /// (or the last `down` level) with `down[i]`.
-    pub(super) down_bg: Vec<wgpu::BindGroup>,
-    pub(super) up_bg: Vec<wgpu::BindGroup>,
-    pub(super) meter_bg: wgpu::BindGroup,
+    pub(crate) down_bg: Vec<wgpu::BindGroup>,
+    pub(crate) up_bg: Vec<wgpu::BindGroup>,
+    pub(crate) meter_bg: wgpu::BindGroup,
     /// Tone-mapping bind groups for each adapted exposure texture.
-    pub(super) tonemap_bg: [wgpu::BindGroup; 2],
-    pub(super) fxaa_bg: wgpu::BindGroup,
+    pub(crate) tonemap_bg: [wgpu::BindGroup; 2],
+    pub(crate) fxaa_bg: wgpu::BindGroup,
     /// Allocated only when wet roads need scene reflections in the main view.
-    pub(super) puddles: Option<puddles::Targets>,
+    pub(crate) puddles: Option<puddles::Targets>,
 }
 
 /// Textures and bind groups for SSAO at one target size.
-pub(super) struct AoTargets {
+pub(crate) struct AoTargets {
     size: (u32, u32),
-    pub(super) depth_view: wgpu::TextureView,
-    pub(super) ao_view: wgpu::TextureView,
-    pub(super) blur_view: wgpu::TextureView,
-    pub(super) ssao_bg: wgpu::BindGroup,
-    pub(super) blur_bg: wgpu::BindGroup,
+    pub(crate) depth_view: wgpu::TextureView,
+    pub(crate) ao_view: wgpu::TextureView,
+    pub(crate) blur_view: wgpu::TextureView,
+    pub(crate) ssao_bg: wgpu::BindGroup,
+    pub(crate) blur_bg: wgpu::BindGroup,
 }
 
 const GLOW_LEVELS: usize = 6;
 
 impl Renderer {
     /// Rebuild the SSAO targets when the render size changes.
-    pub(super) fn ensure_ao(&mut self, w: u32, h: u32) -> bool {
+    pub(crate) fn ensure_ao(&mut self, w: u32, h: u32) -> bool {
         if self.ao.as_ref().map(|a| a.size == (w, h)).unwrap_or(false) {
             return false;
         }
@@ -124,7 +124,7 @@ impl Renderer {
 
     /// Keep target caches bounded during resize bursts: discard sizes unused for 250 ms and
     /// retain at most ten.
-    pub(super) fn evict_targets(&mut self) {
+    pub(crate) fn evict_targets(&mut self) {
         const STALE: std::time::Duration = std::time::Duration::from_millis(250);
         const KEEP: usize = 10;
         let now = std::time::Instant::now();
@@ -144,7 +144,7 @@ impl Renderer {
     }
 
     /// Cached multisampled colour and depth views for this size.
-    pub(super) fn msaa_targets(
+    pub(crate) fn msaa_targets(
         &mut self,
         w: u32,
         h: u32,
@@ -188,7 +188,7 @@ impl Renderer {
     }
 
     /// Allocate the enhanced-path targets for this size; return whether they were rebuilt.
-    pub(super) fn hdr_targets(&mut self, w: u32, h: u32) -> bool {
+    pub(crate) fn hdr_targets(&mut self, w: u32, h: u32) -> bool {
         self.target_use.insert((w, h), std::time::Instant::now());
         if self.hdr_targets.contains_key(&(w, h)) {
             return false;
