@@ -9661,7 +9661,9 @@ fn sync_interior_lamps(
                 .or_else(|| var(&il.variable))
                 .unwrap_or(0.0)
                 >= 0.5;
-            let at = rotation.transform_vector3(glam::Vec3::from(il.pos));
+            let ic = crate::lights::interior_cfg(li);
+            let on = on && !ic.off;
+            let at = rotation.transform_vector3(glam::Vec3::from(il.pos) + glam::Vec3::from(ic.shift));
             renderer.set_interior_light(
                 scene,
                 first + k as u32,
@@ -9671,9 +9673,13 @@ fn sync_interior_lamps(
                     // colour / 255, Range 100 m, attenuation 1 / (d² / range²) - full
                     // light at `range` metres, stronger closer in, a quarter at twice
                     radius: 100.0,
-                    core: il.range.max(0.01),
-                    color: [il.color[0] / 255.0, il.color[1] / 255.0, il.color[2] / 255.0],
-                    intensity: if on { 1.0 } else { 0.0 },
+                    core: (il.range * ic.range).max(0.01),
+                    color: [
+                        il.color[0] / 255.0 * ic.color[0],
+                        il.color[1] / 255.0 * ic.color[1],
+                        il.color[2] / 255.0 * ic.color[2],
+                    ],
+                    intensity: if on { ic.gain } else { 0.0 },
                     ..Default::default()
                 },
             );

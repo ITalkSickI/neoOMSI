@@ -162,7 +162,6 @@ impl DevTools {
             let connect_addr = &mut self.connect_addr;
             let lan_port = &mut self.lan_port;
             let show_boxes = &mut self.show_boxes;
-            let box_radius = &mut self.box_radius;
             let vehicle_filter = &mut self.vehicle_filter;
             let cockpit_filter = &mut self.cockpit_filter;
             let editor = &mut self.editor;
@@ -182,12 +181,18 @@ impl DevTools {
                 }
             }
 
-            menu::draw(ui, show, actions, extra, editor, names, &mut mode, show_boxes);
+            menu::draw(ui, show, actions, extra, editor, names, &mut mode);
 
             lights_ui::lights_window(ui, &mut show.lights);
             if editor.open {
                 let mut s = crate::lights::settings();
-                vehicle_editor::window(ui, editor, extra, |ui| lights_ui::vehicle_panel(ui, &mut s, extra, actions));
+                vehicle_editor::window(
+                    ui,
+                    editor,
+                    extra,
+                    |ui| lights_ui::vehicle_panel(ui, &mut s),
+                    |ui| lights_ui::interior_panel(ui, extra, actions),
+                );
                 crate::lights::set_settings(s);
             }
             vehicle_ui::cockpit(ui, &mut show.cockpit, extra, cockpit_filter, actions);
@@ -198,7 +203,7 @@ impl DevTools {
             net::server(ui, &mut show.server, extra, actions);
             net::connect(ui, &mut show.connect, connect_addr, actions);
             net::lan(ui, &mut show.lan, lan_port, actions);
-            walk::window(ui, &mut show.walk, extra, show_boxes, box_radius, &mut mode);
+            walk::window(ui, &mut show.walk, extra);
         }
         if mode != self.mode {
             self.mode = mode;

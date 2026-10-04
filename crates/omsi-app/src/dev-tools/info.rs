@@ -14,7 +14,12 @@ pub(super) fn graphics(ui: &imgui::Ui, open: &mut bool, snap: &Snapshot, history
         .size([400.0, 420.0], Condition::FirstUseEver)
         .position([12.0, 32.0], Condition::FirstUseEver)
         .build(|| {
-            ui.text(format!("GPU: {}", snap.adapter));
+            let api = snap
+                .adapter
+                .rsplit_once('(')
+                .map(|(_, b)| b.trim_end_matches(')').trim())
+                .unwrap_or("Unknown");
+            ui.text(format!("API: {api}"));
             ui.text(format!("Format: {:?}", snap.format));
             ui.text(format!("Window: {} x {}", snap.surface.0, snap.surface.1));
             ui.text(format!("{:.0} FPS, {:.2} ms", snap.fps, snap.dt_ms));

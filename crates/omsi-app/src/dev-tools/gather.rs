@@ -136,7 +136,20 @@ impl crate::App {
                 beams.truncate(24);
             }
         }
-        let vehicle = self.player.as_ref().map(|p| VehicleInfo { actions: p.bound_actions(), controls: p.control_list() });
+        let vehicle = self.player.as_ref().map(|p| VehicleInfo {
+            actions: p.bound_actions(),
+            controls: p.control_list(),
+            interior: p
+                .vehicle
+                .ty
+                .model
+                .interior_lights
+                .iter()
+                .map(|l| InteriorInfo { variable: l.variable.clone(), pos: l.pos, color: l.color, range: l.range })
+                .collect(),
+            walk_points: walk_paths(&p.vehicle.ty.def).0,
+            walk_links: walk_paths(&p.vehicle.ty.def).1,
+        });
         let pose = self.player.as_ref().map(|p| {
             let v = &p.vehicle;
             ([v.position.x, v.position.y, v.position.z], v.body_rotation())
@@ -254,4 +267,23 @@ impl crate::App {
             d.release.extend(pressed);
         }
     }
+}
+
+fn walk_paths(def: &omsi_vehicle::Vehicle) -> (Vec<[f32; 3]>, Vec<(i32, i32, bool)>) {
+    type Cache = Option<(std::path::PathBuf, Vec<[f32; 3]>, Vec<(i32, i32, bool)>)>;
+    static CACHE: std::sync::Mutex<Cache> = std::sync::Mutex::new(None);
+    let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((p, pts, links)) = c.as_ref() {
+        if *p == def.path {
+            return (pts.clone(), links.clone());
+        }
+    }
+    let (pts, links) = def
+        .paths
+        .as_ref()
+        .and_then(|rel| omsi_vehicle::VehiclePaths::load(&omsi_cfg::resolve_path(def.dir(), rel)).ok())
+        .map(|vp| (vp.points.iter().map(|q| q.pos).collect::<Vec<[f32; 3]>>(), vp.links))
+        .unwrap_or_default();
+    *c = Some((def.path.clone(), pts.clone(), links.clone()));
+    (pts, links)
 }

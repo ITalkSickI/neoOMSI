@@ -30,18 +30,46 @@ pub(super) fn reset_global(s: &mut crate::lights::LightSettings) {
     s.corona = d.corona;
 }
 
-/// The Vehicle Editor's Lights tab: interior (saloon) lights, headlights and beams.
-pub(super) fn vehicle_panel(
-    ui: &imgui::Ui,
-    s: &mut crate::lights::LightSettings,
-    extra: &Extra,
-    actions: &mut Vec<Action>,
-) {
-    if ui.collapsing_header("Interior Lights", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-        if ui.button("Toggle Saloon Lights") && extra.vehicle.is_some() {
-            actions.push(Action::VehicleSaloonLights);
-        }
+pub(super) fn interior_panel(ui: &imgui::Ui, extra: &Extra, actions: &mut Vec<Action>) {
+    let Some(v) = extra.vehicle.as_ref() else {
+        ui.text_disabled("No vehicle driven");
+        return;
+    };
+    if ui.button("Toggle Saloon Lights") {
+        actions.push(Action::VehicleSaloonLights);
     }
+    ui.same_line();
+    if ui.button("Reset Sources") {
+        crate::lights::reset_interior_cfg();
+    }
+    ui.text_disabled(format!("{} sources", v.interior.len()));
+    ui.separator();
+    for (i, src) in v.interior.iter().enumerate() {
+        let mut c = crate::lights::interior_cfg(i);
+        let label = format!("#{i} {}##il{i}", src.variable);
+        if ui.collapsing_header(label, imgui::TreeNodeFlags::empty()) {
+            ui.text_disabled(format!(
+                "pos {:.2} {:.2} {:.2}  range {:.2}  color {:.0} {:.0} {:.0}",
+                src.pos[0], src.pos[1], src.pos[2], src.range, src.color[0], src.color[1], src.color[2]
+            ));
+            let mut on = !c.off;
+            ui.checkbox(format!("Enabled##il{i}"), &mut on);
+            c.off = !on;
+            ui.slider(format!("Intensity x##il{i}"), 0.0, 4.0, &mut c.gain);
+            ui.slider(format!("Range x##il{i}"), 0.1, 4.0, &mut c.range);
+            ui.slider(format!("Right (m)##il{i}"), -3.0, 3.0, &mut c.shift[0]);
+            ui.slider(format!("Forward (m)##il{i}"), -3.0, 3.0, &mut c.shift[1]);
+            ui.slider(format!("Height (m)##il{i}"), -3.0, 3.0, &mut c.shift[2]);
+            ui.color_edit3(format!("Tint##il{i}"), &mut c.color);
+            if ui.button(format!("Reset##il{i}")) {
+                c = crate::lights::InteriorCfg::DEFAULT;
+            }
+        }
+        crate::lights::set_interior_cfg(i, c);
+    }
+}
+
+pub(super) fn vehicle_panel(ui: &imgui::Ui, s: &mut crate::lights::LightSettings) {
     if ui.collapsing_header("Headlights", imgui::TreeNodeFlags::DEFAULT_OPEN) {
         ui.checkbox("Force High Beam", &mut s.force_high_beam);
         ui.checkbox("Show Beam Markers", &mut s.beam_marker);

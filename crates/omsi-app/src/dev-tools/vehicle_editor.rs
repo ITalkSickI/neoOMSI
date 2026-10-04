@@ -1,7 +1,3 @@
-//! Vehicle Editor (devtools): a window with a Lights tab (interior lights and the
-//! vehicle's headlights/beams) and a Paths tab (the Path Editor: waypoint paths in the vehicle's
-//! own frame, x right, y forward, z up, drawn on the vehicle and exported as text).
-
 use crate::devtools::Extra;
 use glam::{DVec3, Mat4, Vec3};
 
@@ -17,6 +13,8 @@ pub(crate) struct VehicleEditor {
     pub sel_path: usize,
     pub sel_point: usize,
     pub draw: bool,
+    pub show_walk: bool,
+    pub show_interior: bool,
     pub status: String,
 }
 
@@ -24,15 +22,16 @@ impl VehicleEditor {
     pub(crate) fn new() -> Self {
         VehicleEditor {
             open: false,
-            paths: Vec::new(),
+            paths: vec![EditPath { name: "path1".into(), closed: false, points: Vec::new() }],
             sel_path: 0,
             sel_point: 0,
             draw: true,
+            show_walk: true,
+            show_interior: true,
             status: String::new(),
         }
     }
 
-    /// The Path Editor's text: one `[path]` block per path, points in metres.
     fn export_text(&self) -> String {
         let mut s = String::new();
         for p in &self.paths {
@@ -55,12 +54,12 @@ impl VehicleEditor {
     }
 }
 
-/// The editor's window; `tabs` runs the Lights tab's body.
 pub(crate) fn window(
     ui: &imgui::Ui,
     ed: &mut VehicleEditor,
     extra: &Extra,
     lights: impl FnOnce(&imgui::Ui),
+    interior: impl FnOnce(&imgui::Ui),
 ) {
     let mut open = ed.open;
     ui.window("Vehicle Editor")
@@ -75,16 +74,27 @@ pub(crate) fn window(
                 if let Some(_t) = ui.tab_item("Lights") {
                     lights(ui);
                 }
+                if let Some(_t) = ui.tab_item("Interior Lights") {
+                    ui.checkbox("Show sources in world", &mut ed.show_interior);
+                    interior(ui);
+                }
                 if let Some(_t) = ui.tab_item("Paths") {
-                    paths_tab(ui, ed);
+                    paths_tab(ui, ed, extra);
                 }
             }
         });
     ed.open = open;
 }
 
-fn paths_tab(ui: &imgui::Ui, ed: &mut VehicleEditor) {
-    ui.checkbox("Draw in world", &mut ed.draw);
+fn paths_tab(ui: &imgui::Ui, ed: &mut VehicleEditor, extra: &Extra) {
+    ui.checkbox("Draw my paths in world", &mut ed.draw);
+    match extra.vehicle.as_ref() {
+        Some(v) => {
+            ui.checkbox("Draw vehicle passenger paths (green)", &mut ed.show_walk);
+            ui.text_disabled(format!("Vehicle paths: {} points, {} links", v.walk_points.len(), v.walk_links.len()));
+        }
+        None => ui.text_disabled("Paths are drawn on a driven vehicle"),
+    }
     if ui.button("New Path") {
         let n = ed.paths.len() + 1;
         ed.paths.push(EditPath { name: format!("path{n}"), closed: false, points: Vec::new() });
@@ -113,6 +123,7 @@ fn paths_tab(ui: &imgui::Ui, ed: &mut VehicleEditor) {
         }
     }
     let Some(path) = ed.paths.get_mut(ed.sel_path) else {
+        ui.text_disabled("No path yet: press New Path");
         return;
     };
     ui.separator();
@@ -174,9 +185,8 @@ fn paths_tab(ui: &imgui::Ui, ed: &mut VehicleEditor) {
     ui.slider("Up##pt", -3.0, 5.0, &mut q[2]);
 }
 
-/// The paths drawn on the vehicle.
 pub(crate) fn draw_world(ui: &imgui::Ui, ed: &VehicleEditor, extra: &Extra, size: (u32, u32)) {
-    if !ed.open || !ed.draw {
+    if !ed.open {
         return;
     }
     let (Some(cam), Some((pos, rot))) = (extra.cam.as_ref(), extra.pose) else {
@@ -185,6 +195,43 @@ pub(crate) fn draw_world(ui: &imgui::Ui, ed: &VehicleEditor, extra: &Extra, size
     let vp = cam.view_proj(size.0 as f32 / size.1.max(1) as f32, cam.position);
     let list = ui.get_background_draw_list();
     let world = |q: [f32; 3]| -> DVec3 { DVec3::from(pos) + rot.transform_point3(Vec3::from(q)).as_dvec3() };
+    if let Some(v) = extra.vehicle.as_ref() {
+        if ed.show_walk {
+            let green = [0.2, 1.0, 0.4, 1.0];
+            let pts: Vec<Option<[f32; 2]>> =
+                v.walk_points.iter().map(|q| crate::devtools::project(&vp, cam.position, world(*q), size)).collect();
+            for (a, b, one_way) in &v.walk_links {
+                let (Some(Some(pa)), Some(Some(pb))) = (pts.get(*a as usize), pts.get(*b as usize)) else {
+                    continue;
+                };
+                let col = if *one_way { [1.0, 0.6, 0.2, 1.0] } else { green };
+                list.add_line(*pa, *pb, col).thickness(2.0).build();
+            }
+            for (i, pt) in pts.iter().enumerate() {
+                if let Some(a) = pt {
+                    list.add_circle(*a, 4.0, green).filled(true).build();
+                    list.add_text([a[0] + 5.0, a[1] - 5.0], green, format!("{i}"));
+                }
+            }
+        }
+        if ed.show_interior {
+            for (i, src) in v.interior.iter().enumerate() {
+                let c = crate::lights::interior_cfg(i);
+                let q = [src.pos[0] + c.shift[0], src.pos[1] + c.shift[1], src.pos[2] + c.shift[2]];
+                let Some(a) = crate::devtools::project(&vp, cam.position, world(q), size) else {
+                    continue;
+                };
+                let m = src.color[0].max(src.color[1]).max(src.color[2]).max(1.0);
+                let col = [src.color[0] / m, src.color[1] / m, src.color[2] / m, if c.off { 0.35 } else { 1.0 }];
+                list.add_circle(a, 7.0, col).filled(true).build();
+                list.add_circle(a, 9.0, [1.0, 1.0, 1.0, col[3]]).thickness(1.5).build();
+                list.add_text([a[0] + 10.0, a[1] - 6.0], [1.0, 1.0, 1.0, col[3]], format!("#{i}"));
+            }
+        }
+    }
+    if !ed.draw {
+        return;
+    }
     for (pi, p) in ed.paths.iter().enumerate() {
         let on = pi == ed.sel_path;
         let col = if on { [1.0, 0.8, 0.1, 1.0] } else { [0.6, 0.6, 0.6, 0.8] };

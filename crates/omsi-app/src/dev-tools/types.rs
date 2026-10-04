@@ -68,6 +68,16 @@ pub(crate) struct TourRow {
 pub(crate) struct VehicleInfo {
     pub actions: Vec<String>,
     pub controls: Vec<(usize, String)>,
+    pub interior: Vec<InteriorInfo>,
+    pub walk_points: Vec<[f32; 3]>,
+    pub walk_links: Vec<(i32, i32, bool)>,
+}
+
+pub(crate) struct InteriorInfo {
+    pub variable: String,
+    pub pos: [f32; 3],
+    pub color: [f32; 3],
+    pub range: f32,
 }
 
 pub(crate) struct BeamMark {

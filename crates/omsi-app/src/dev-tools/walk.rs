@@ -5,11 +5,11 @@ use super::lights_ui;
 use imgui::Condition;
 use omsi_render::devtools as rdev;
 
-pub(super) fn window(ui: &imgui::Ui, open: &mut bool, extra: &Extra, show_boxes: &mut bool, box_radius: &mut f32, mode: &mut usize) {
+pub(super) fn window(ui: &imgui::Ui, open: &mut bool, extra: &Extra) {
     if !*open {
         return;
     }
-    ui.window("Walk Details")
+    ui.window("Player Details")
         .opened(open)
         .size([380.0, 280.0], Condition::FirstUseEver)
         .build(|| {
@@ -32,14 +32,6 @@ pub(super) fn window(ui: &imgui::Ui, open: &mut bool, extra: &Extra, show_boxes:
                 None => ui.text("Not walking."),
             }
             ui.separator();
-            ui.checkbox("Show hitboxes", &mut *show_boxes);
-            ui.slider("Radius (m)", 5.0, 80.0, &mut *box_radius);
-            if *mode == 1 {
-                ui.text("Mesh: wireframe on");
-            } else if ui.button("Show mesh (wireframe)") {
-                *mode = 1;
-            }
-            ui.text(format!("Boxes shown: {}", extra.boxes.len()));
             ui.separator();
             ui.text(format!("Blocking boxes: {} (red)", extra.blockers.len()));
             for o in extra.blockers.iter().take(6) {

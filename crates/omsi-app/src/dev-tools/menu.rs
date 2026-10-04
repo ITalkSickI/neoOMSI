@@ -14,7 +14,6 @@ pub(super) fn draw(
     editor: &mut super::vehicle_editor::VehicleEditor,
     names: &[String],
     mode_ref: &mut usize,
-    show_boxes: &mut bool,
 ) {
     let mut mode = *mode_ref;
     if let Some(_bar) = ui.begin_main_menu_bar() {
@@ -137,27 +136,13 @@ pub(super) fn draw(
                 show.vehicle = !show.vehicle;
             }
         }
-        if let Some(_m) = ui.begin_menu("Walk") {
+        if let Some(_m) = ui.begin_menu("Player") {
             if ui
-                .menu_item_config("Walk Details")
+                .menu_item_config("Player Details")
                 .selected(show.walk)
                 .build()
             {
                 show.walk = !show.walk;
-            }
-            if ui
-                .menu_item_config("Show Hitboxes")
-                .selected(*show_boxes)
-                .build()
-            {
-                *show_boxes = !*show_boxes;
-            }
-            if ui
-                .menu_item_config("Show Mesh (Wireframe)")
-                .selected(mode == 1)
-                .build()
-            {
-                mode = if mode == 1 { 0 } else { 1 };
             }
         }
     }

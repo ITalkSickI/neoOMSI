@@ -8,7 +8,6 @@ const HEADLIGHT_INTENSITY: f32 = 22.0;
 const VANILLA_HEADLIGHT_INTENSITY: f32 = 0.2;
 const HIGH_BEAM_GAIN: f32 = 0.5;
 
-/// Per-beam tweaks for vehicle headlights (applied on top of the global lamp settings).
 #[derive(Clone, Copy)]
 pub(crate) struct BeamCfg {
     pub on: bool,
@@ -118,6 +117,37 @@ impl LightSettings {
     };
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct InteriorCfg {
+    pub off: bool,
+    pub gain: f32,
+    pub range: f32,
+    pub color: [f32; 3],
+    pub shift: [f32; 3],
+}
+
+impl InteriorCfg {
+    pub(crate) const DEFAULT: Self = Self { off: false, gain: 1.0, range: 1.0, color: [1.0, 1.0, 1.0], shift: [0.0; 3] };
+}
+
+static INTERIOR: std::sync::Mutex<Vec<InteriorCfg>> = std::sync::Mutex::new(Vec::new());
+
+pub(crate) fn interior_cfg(i: usize) -> InteriorCfg {
+    INTERIOR.lock().unwrap_or_else(|e| e.into_inner()).get(i).copied().unwrap_or(InteriorCfg::DEFAULT)
+}
+
+pub(crate) fn set_interior_cfg(i: usize, c: InteriorCfg) {
+    let mut v = INTERIOR.lock().unwrap_or_else(|e| e.into_inner());
+    if v.len() <= i {
+        v.resize(i + 1, InteriorCfg::DEFAULT);
+    }
+    v[i] = c;
+}
+
+pub(crate) fn reset_interior_cfg() {
+    INTERIOR.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
 static SETTINGS: std::sync::Mutex<LightSettings> = std::sync::Mutex::new(LightSettings::DEFAULT);
 
 pub(crate) fn settings() -> LightSettings {
@@ -128,19 +158,16 @@ pub(crate) fn set_settings(s: LightSettings) {
     *SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = s;
 }
 
-/// How far a start is moved: along `dir`, to its right, and up (world Z).
 fn shift(dir: Vec3, forward: f32, side: f32, up: f32) -> DVec3 {
     let d = dir.normalize_or_zero();
     let right = d.cross(Vec3::Z).normalize_or_zero();
     (d * forward + right * side + Vec3::Z * up).as_dvec3()
 }
 
-/// The fog cone's shift.
 pub(crate) fn cone_shift(dir: Vec3, cfg: &LightSettings) -> DVec3 {
     shift(dir, cfg.cone_offset, cfg.cone_side, cfg.cone_height)
 }
 
-/// The headlight axis `d` turned by the aim settings.
 fn lamp_aim(d: Vec3, cfg: &LightSettings, bc: &BeamCfg) -> Vec3 {
     let d = d.normalize_or_zero();
     let yawed = glam::Quat::from_rotation_z((cfg.lamp_yaw + bc.yaw).to_radians()) * d;
@@ -148,7 +175,6 @@ fn lamp_aim(d: Vec3, cfg: &LightSettings, bc: &BeamCfg) -> Vec3 {
     (glam::Quat::from_axis_angle(right, (cfg.lamp_pitch + bc.pitch).to_radians()) * yawed).normalize_or_zero()
 }
 
-/// The headlight's shift.
 pub(crate) fn lamp_shift(dir: Vec3, cfg: &LightSettings) -> DVec3 {
     shift(dir, cfg.lamp_offset, cfg.lamp_side, cfg.lamp_height)
 }
@@ -158,14 +184,10 @@ fn weather_darkness() -> f32 {
     (1.0 - vis / 3000.0).clamp(0.0, 1.0)
 }
 
-/// `[spotlight]` range is content-authored.  In particular, full beams commonly use a
-/// substantially longer range than dipped beams, so it must not be capped to the latter.
 fn headlight_radius(range: f32) -> f32 {
     range.max(6.0)
 }
 
-/// Keep the existing one-metre core for a typical 40 m dipped beam, while making a longer
-/// content-authored full beam equally useful at the same fraction of its range.
 fn headlight_core(range: f32) -> f32 {
     headlight_radius(range) / 30.0
 }
