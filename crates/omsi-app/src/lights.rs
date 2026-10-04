@@ -61,7 +61,7 @@ pub fn apply_weather(
     l.sky_color *= 1.0 - 0.22 * rain;
     l.fog_color *= 1.0 - 0.15 * rain;
     if rain > 0.0 {
-        l.fog_density = l.fog_density.max(2.3 / (2500.0 - 1800.0 * rain));
+        l.fog_density = l.fog_density.max(2.3 / (5000.0 - 3500.0 * rain));
     }
     l.overcast = overcast;
     l.rain = rain;
@@ -84,6 +84,7 @@ pub fn vehicle_lights(
     coronas: &mut Vec<Corona>,
     lights: &mut Vec<PointLight>,
     night: f32,
+    spill: bool,
 ) {
     let ty = &v.ty;
     let value_of = |name: &str| -> f32 {
@@ -201,11 +202,11 @@ pub fn vehicle_lights(
             }
         }
     }
-    if night > 0.05 {
+    if spill && night > 0.05 {
         let mut sections: Vec<(&omsi_model::Model, Option<[f32; 6]>, glam::Mat4, DVec3)> =
-            vec![(&ty.model, ty.def.bounding_box, body, v.position)];
+            vec![(&ty.model, body_box(ty), body, v.position)];
         for t in &v.trailers {
-            sections.push((&t.ty.model, t.ty.def.bounding_box, t.body_rotation(), t.position));
+            sections.push((&t.ty.model, body_box(&t.ty), t.body_rotation(), t.position));
         }
         let tilt = INTERIOR_SPILL_TILT.to_radians();
         let cone = [INTERIOR_SPILL_INNER.to_radians().cos(), INTERIOR_SPILL_OUTER.to_radians().cos()];
@@ -228,7 +229,7 @@ pub fn vehicle_lights(
             let color = color / count as f32 / 255.0;
             let color = (color * (1.0 - INTERIOR_SPILL_WHITE) + Vec3::splat(color.max_element()) * INTERIOR_SPILL_WHITE).to_array();
             let (half_w, half_l, cx, cy) = match bb {
-                Some(b) => ((b[0] * 0.5).min(1.5) - INTERIOR_SPILL_INSET, b[1] * 0.5 - INTERIOR_SPILL_INSET, b[3], b[4]),
+                Some(b) => (b[0] * 0.5 + INTERIOR_SPILL_OUTSET, b[1] * 0.5 + INTERIOR_SPILL_OUTSET, b[3], b[4]),
                 None => (1.25 - INTERIOR_SPILL_INSET, 4.0, 0.0, c.y),
             };
             let strength = (count.min(INTERIOR_SPILL_MAX) as f32 / INTERIOR_SPILL_MAX as f32).max(0.25) * night.clamp(0.0, 1.0);
@@ -259,9 +260,15 @@ pub fn vehicle_lights(
     }
 }
 
+// (the spill lights sit just outside the body's box: inside it they counted as "in the skin" and the body neither held nor shaded their light, so it went through the bodywork)
+// (a vehicle farther than this from the camera gets no window light: up to ten lights with
+// occluders each, for a glow a few pixels wide - the cost on a weak graphics card)
+const SPILL_RANGE: f64 = 30.0;
+const SPILL_VEHICLES: usize = 3;
+const INTERIOR_SPILL_OUTSET: f32 = 0.25;
 const INTERIOR_SPILL_SIDE: f32 = 0.45;
 const INTERIOR_SPILL_END: f32 = 0.3;
-const INTERIOR_SPILL_ALONG: usize = 4;
+const INTERIOR_SPILL_ALONG: usize = 2;
 const INTERIOR_SPILL_RADIUS: f32 = 9.0;
 const INTERIOR_SPILL_CORE: f32 = 1.2;
 const INTERIOR_SPILL_HEIGHT: f32 = 1.8;
@@ -272,13 +279,13 @@ const INTERIOR_SPILL_TILT: f32 = 40.0;
 const INTERIOR_SPILL_INNER: f32 = 30.0;
 const INTERIOR_SPILL_OUTER: f32 = 80.0;
 
-const MAP_LIGHT_RANGE: f64 = 600.0;
-const CORONA_RANGE: f64 = 1500.0;
+const MAP_LIGHT_RANGE: f64 = 300.0;
+const CORONA_RANGE: f64 = 900.0;
 const NEAR_MARGIN: f64 = 100.0;
 const OCC_HALF: f64 = 1.0;
 const OCC_HEIGHT: f64 = 2.5;
-const OCC_LIGHT_RANGE: f64 = 400.0;
-const OCC_CORONA_RANGE: f64 = 600.0;
+const OCC_LIGHT_RANGE: f64 = 150.0;
+const OCC_CORONA_RANGE: f64 = 300.0;
 const OCC_RECHECK: f64 = 3.0;
 
 const ENCL_REACH: f64 = 12.0;
@@ -351,7 +358,7 @@ fn enclosure(coll: &omsi_sim::collision::CollisionWorld, p: DVec3) -> Option<f32
     (walls >= ENCL_MIN_WALLS).then_some(extent as f32)
 }
 
-const SHADOW_RANGE: f64 = 150.0;
+const SHADOW_RANGE: f64 = 80.0;
 const SHADOW_REACH: f64 = 40.0;
 const SHADOW_MAX: usize = 48;
 
@@ -412,9 +419,9 @@ fn assign_occluders(
     scene.occluders.clear();
     let mut bodies: Vec<(omsi_sim::collision::Obb, omsi_render::Occluder)> = Vec::new();
     for v in vehicles.iter().filter(|v| (v.position - camera_pos).length() < SHADOW_RANGE + 60.0) {
-        let mut sections = vec![(v.ty.def.bounding_box, v.body_rotation(), v.position)];
+        let mut sections = vec![(body_box(&v.ty), v.body_rotation(), v.position)];
         for t in &v.trailers {
-            sections.push((t.ty.def.bounding_box, t.body_rotation(), t.position));
+            sections.push((body_box(&t.ty), t.body_rotation(), t.position));
         }
         for (bb, xf, origin) in sections {
             let Some(bb) = bb else { continue };
@@ -446,16 +453,20 @@ fn assign_occluders(
         if (l.position - camera_pos).length() > SHADOW_RANGE || l.radius <= 0.0 {
             continue;
         }
+        // (a moving vehicle's window light would make a new key every frame at half a metre:
+        // it takes 2 m cells and a reach that much longer)
+        let spill = l.radius == INTERIOR_SPILL_RADIUS;
+        let (grid, extra) = if spill { (0.5, 2.0) } else { (2.0, 0.0) };
         let key = (
-            (l.position.x * 2.0).round() as i64,
-            (l.position.y * 2.0).round() as i64,
-            (l.position.z * 2.0).round() as i64,
+            (l.position.x * grid).round() as i64,
+            (l.position.y * grid).round() as i64,
+            (l.position.z * grid).round() as i64,
             l.radius.to_bits(),
         );
         let occ = cache
             .map
             .entry(key)
-            .or_insert_with(|| gather_occluders(coll, seen, l.position, l.radius));
+            .or_insert_with(|| if spill { Vec::new() } else { gather_occluders(coll, seen, l.position, l.radius + extra) });
         let first = scene.occluders.len() as u32;
         scene.occluders.extend_from_slice(occ);
         for (o, oc) in &bodies {
@@ -491,18 +502,33 @@ fn assign_occluders(
     scene.lights = lights;
 }
 
+/// The box of a vehicle body `[width, length, height, cx, cy, cz]`: its `[boundingbox]`,
+/// else the box of its model. Without one a vehicle had no body for light to be stopped by.
+fn body_box(ty: &omsi_sim::VehicleType) -> Option<[f32; 6]> {
+    ty.def.bounding_box.or_else(|| {
+        ty.model_box().map(|(lo, hi)| {
+            let (size, mid) = (hi - lo, (hi + lo) * 0.5);
+            [size.x, size.y, size.z, mid.x, mid.y, mid.z]
+        })
+    })
+}
+
 const BODY_INNER: f32 = 0.25;
 const BODY_SKIN: f32 = 0.15;
 
-fn body_hides(v: &VehicleInstance, camera_pos: DVec3, c: DVec3) -> bool {
-    let mut sections: Vec<(Option<[f32; 6]>, glam::Mat4, DVec3)> =
-        vec![(v.ty.def.bounding_box, v.body_rotation(), v.position)];
+/// A vehicle's bodies for `body_hides`: box, inverse of the body's turn, origin (made once
+/// per vehicle and frame, not per corona).
+fn body_sections(v: &VehicleInstance) -> Vec<(Option<[f32; 6]>, glam::Mat4, DVec3)> {
+    let mut sections = vec![(body_box(&v.ty), v.body_rotation().inverse(), v.position)];
     for t in &v.trailers {
-        sections.push((t.ty.def.bounding_box, t.body_rotation(), t.position));
+        sections.push((body_box(&t.ty), t.body_rotation().inverse(), t.position));
     }
-    for (bb, xf, origin) in sections {
+    sections
+}
+
+fn body_hides(sections: &[(Option<[f32; 6]>, glam::Mat4, DVec3)], camera_pos: DVec3, c: DVec3) -> bool {
+    for &(bb, inv, origin) in sections {
         let Some(b) = bb else { continue };
-        let inv = xf.inverse();
         let e = inv.transform_point3((camera_pos - origin).as_vec3());
         let p = inv.transform_point3((c - origin).as_vec3());
         let h = Vec3::new(b[0], b[1], b[2]) * 0.5;
@@ -552,15 +578,15 @@ fn blocked_by_meshes(
 ) -> bool {
     let d = p - eye;
     let len = d.length();
-    if len < 3.0 || len > 150.0 {
+    if len < 3.0 || len > 80.0 {
         return false;
     }
     let dir = d / len;
     let end = p - dir * 0.4;
-    let steps = (len / 5.0).ceil() as usize;
+    let steps = (len / 7.0).ceil() as usize;
     for k in 0..=steps {
-        let q = eye + dir * (k as f64 * 5.0).min(len);
-        let probe = omsi_sim::collision::Obb::point(q, 3.0);
+        let q = eye + dir * (k as f64 * 7.0).min(len);
+        let probe = omsi_sim::collision::Obb::point(q, 4.0);
         let mut parts = seen.obstacles_near(&probe);
         parts.extend(coll.obstacles_near(&probe));
         for o in parts {
@@ -615,6 +641,8 @@ pub fn collect(
     scene.lights.clear();
     scene.coronas.clear();
     scene.smoke.clear();
+    // nothing is lit, glowing or smoking beyond what can be seen (fog included)
+    let visible_range = visible_range();
     omsi_sim::particles::set_eye(camera_pos);
     let night = daylight.night;
     let coll = world.collision.lock().clone();
@@ -698,20 +726,20 @@ pub fn collect(
             near.lights
                 .iter()
                 .zip(&near.light_vis)
-                .filter(|(l, vis)| **vis && (l.position - camera_pos).length() < MAP_LIGHT_RANGE)
+                .filter(|(l, vis)| **vis && (l.position - camera_pos).length() < MAP_LIGHT_RANGE.min(visible_range))
                 .map(|(l, _)| *l),
         );
         scene.coronas.extend(
             near.coronas
                 .iter()
                 .zip(&near.corona_vis)
-                .filter(|(c, vis)| **vis && (c.position - camera_pos).length() <= CORONA_RANGE)
+                .filter(|(c, vis)| **vis && (c.position - camera_pos).length() <= visible_range)
                 .map(|(c, _)| *c),
         );
     }
     for lamp in world.light_objects.lock().iter() {
         let dist = (lamp.pos - camera_pos).length();
-        if dist > 1500.0 {
+        if dist > visible_range {
             continue;
         }
         if dist < OCC_CORONA_RANGE && !sees(&coll, camera_pos, lamp.pos) {
@@ -728,7 +756,7 @@ pub fn collect(
     }
     for list in world.particle_objects.lock().values() {
         for po in list {
-            if (po.pos - camera_pos).length() < 1500.0 {
+            if (po.pos - camera_pos).length() < visible_range {
                 particle_sprites(&po.set, &mut scene.smoke, &mut scene.coronas);
             }
         }
@@ -738,18 +766,39 @@ pub fn collect(
             log::info!("smoke: {} particles from objects, first at ({:.1}, {:.1}, {:.1}) size {:.2} alpha {:.2}", scene.smoke.len(), p.position.x, p.position.y, p.position.z, p.size, p.alpha);
         }
     }
-    for v in vehicles {
-        let first_corona = scene.coronas.len();
-        vehicle_lights(v, &mut scene.coronas, &mut scene.lights, night);
-        let mut k = first_corona;
-        let seen_world = world.light_occluders.lock().clone();
-        scene.coronas.retain_mut(|c| {
-            let mine = k >= first_corona;
-            k += 1;
-            if !mine {
-                return true;
+    // window light only for the few vehicles nearest the camera (each is up to six lights
+    // the shaders test every pixel); OMSI_NO_SPILL=1 switches it off altogether
+    let spill_ok: Vec<bool> = {
+        static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let off = *OFF.get_or_init(|| omsi_cfg::env::var_os("OMSI_NO_SPILL").is_some());
+        let mut order: Vec<(f64, usize)> = vehicles
+            .iter()
+            .enumerate()
+            .map(|(i, v)| ((v.position - camera_pos).length(), i))
+            .filter(|(d, _)| *d < SPILL_RANGE)
+            .collect();
+        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut ok = vec![false; vehicles.len()];
+        if !off {
+            for (_, i) in order.into_iter().take(SPILL_VEHICLES) {
+                ok[i] = true;
             }
-            if body_hides(v, camera_pos, c.position) || blocked_by_meshes(&coll, &seen_world, camera_pos, c.position) {
+        }
+        ok
+    };
+    for (vi, v) in vehicles.iter().enumerate() {
+        let first_corona = scene.coronas.len();
+        vehicle_lights(v, &mut scene.coronas, &mut scene.lights, night, spill_ok[vi]);
+        let seen_world = world.light_occluders.lock().clone();
+        let sections = body_sections(v);
+        // (the mesh walk costs a probe every few metres: near vehicles test each lamp, far
+        // ones once for the whole vehicle)
+        let near_v = (v.position - camera_pos).length() < 40.0;
+        let far_hidden = !near_v && blocked_by_meshes(&coll, &seen_world, camera_pos, v.position);
+        // (only this vehicle's own coronas are tested, not every one of the scene so far)
+        let mut mine = scene.coronas.split_off(first_corona);
+        mine.retain_mut(|c| {
+            if body_hides(&sections, camera_pos, c.position) || far_hidden || (near_v && blocked_by_meshes(&coll, &seen_world, camera_pos, c.position)) {
                 return false;
             }
             if !c.beam && !c.halo {
@@ -758,6 +807,7 @@ pub fn collect(
             }
             true
         });
+        scene.coronas.extend(mine);
         particle_sprites(&v.particles, &mut scene.smoke, &mut scene.coronas);
         for t in &v.trailers {
             particle_sprites(&t.particles, &mut scene.smoke, &mut scene.coronas);
@@ -958,6 +1008,13 @@ fn cone_weather() -> (f32, f32) {
     let vis = f32::from_bits(CONE.load(std::sync::atomic::Ordering::Relaxed));
     let night = f32::from_bits(CONE_NIGHT.load(std::sync::atomic::Ordering::Relaxed));
     (if vis > 0.0 { vis } else { 1.0e6 }, night)
+}
+
+/// How far lights, coronas and particles are worth making: the loaded area, and no further
+/// than the weather's fog lets anything be seen (it swallows 99 % at twice the visibility).
+fn visible_range() -> f64 {
+    let (vis, _) = cone_weather();
+    CORONA_RANGE.min((vis as f64 * 2.0).max(60.0))
 }
 
 pub fn vehicle_velocity(v: &omsi_sim::VehicleInstance) -> glam::Vec3 {
