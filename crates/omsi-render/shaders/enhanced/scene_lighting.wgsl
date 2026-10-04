@@ -422,7 +422,8 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // ago, dark at night. Brightened like a display by the metering (up to 1.6 in the
         // dark) it showed a street far brighter than the one through the windscreen.
         let lift = select(enh.exposure.y, min(enh.exposure.y, 1.0), material.params.y < 0.95);
-        let c = (tk + 0.04 * smoothstep(vec3<f32>(0.0), vec3<f32>(0.08), tk)) * lift;
+        let screen_dim = select(1.0, 0.55, material.flags.x > 0.5);
+        let c = (tk + 0.04 * smoothstep(vec3<f32>(0.0), vec3<f32>(0.08), tk)) * lift * screen_dim;
         return vec4<f32>(c * aer.a + aer.rgb * pre, alpha);
     }
     let outside = weather_outside_n(in.world, safe_normal(in.normal), terrain, in.params2.w);
@@ -816,7 +817,9 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         } else {
             // lit windows and signs; a switched lamp or display holds up against daylight
             // as the self-illuminated materials do
-            emit = emit + nm * select(enh.exposure.z, max(enh.exposure.z * 2.0, 0.8), switched);
+            // (a switched one at a third: at full strength the buttons burnt out into the glow)
+            emit = emit + nm * select(enh.exposure.z, max(enh.exposure.z * 2.0, 0.8) * 0.3, switched);
+            if (switched) { emit = emit * 0.5; }
         }
     }
     if (material.params2.x > 0.5 && !terrain) {
@@ -843,7 +846,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         emit = emit + tex.rgb * enh.led.x * alpha * lm_gate * max(enh.exposure.z * 2.0, 0.8);
     } else if (material.emissive.w < -0.5) {
         // a display's text (see MaterialExtra::display)
-        emit = emit + tex.rgb * 0.35 * max(enh.exposure.z * 2.0, 0.8);
+        emit = emit + tex.rgb * 0.2 * max(enh.exposure.z * 2.0, 0.8);
     }
     rgb = rgb + emit;
     if (enh.debug.x > 0.5) {

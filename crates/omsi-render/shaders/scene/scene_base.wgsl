@@ -1880,17 +1880,15 @@ fn fs_main(in: FsIn) -> @location(0) vec4<f32> {
         if (material.extra.w > 1.5) {
             // a switched item (button, lamp): laid on with ADDSMOOTH (lit + glow x (1 - lit)) instead
             // of plainly added, which blew the already lit texture out to white by day
-            if (classic) {
-                let e = srgb_encode(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.0)));
-                let g = srgb_encode(clamp(nm.rgb, vec3<f32>(0.0), vec3<f32>(1.0))) * glow;
-                lit = srgb_decode(e + g * (vec3<f32>(1.0) - e));
-            } else {
-                let e = clamp(lit, vec3<f32>(0.0), vec3<f32>(1.0));
-                lit = e + nm.rgb * glow * (vec3<f32>(1.0) - e);
-            }
+            let e = clamp(lit, vec3<f32>(0.0), vec3<f32>(1.0));
+            let gl = nm.rgb * glow * 0.2;
+            lit = e + gl * (vec3<f32>(1.0) - e) * (vec3<f32>(1.0) - e);
         } else {
             lit = lit + nm.rgb * glow;
         }
+    }
+    if (material.extra.w > 1.5 && !screen_unlit) {
+        lit = lit * 0.7;
     }
     if (material.params2.y > 0.0 && !screen_unlit) {
         // [matl_envmap]: sphere map reflection, masked by the diffuse alpha like the original
