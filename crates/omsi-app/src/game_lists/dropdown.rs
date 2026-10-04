@@ -345,7 +345,7 @@ pub(super) fn select_options(key: &str) -> Vec<(&'static str, &'static str)> {
             ("1000", "Unlimited"),
         ],
         "view_distance" => vec![
-            ("auto", "Default (1200 m)"),
+            ("auto", "Default (900 m)"),
             ("600", "600 m - fastest"),
             ("900", "900 m"),
             ("1200", "1200 m"),
