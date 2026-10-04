@@ -1939,8 +1939,9 @@ fn fs_main(in: FsIn) -> @location(0) vec4<f32> {
         let vdir = normalize(in.world - camera.cam_pos.xyz);
         let facing = clamp(-dot(vdir, n), 0.0, 1.0);
         let fresnel = pow(1.0 - facing, 4.0);
-        lit = lit * mix(1.0, 0.55, wet);
-        let sheen = camera.sky_color.rgb * 0.5 + camera.sun_color.rgb * camera.sun_dir.w * 0.35;
+        let lamp_part = albedo * material.color.rgb * lamp_light;
+        lit = lit * mix(1.0, 0.55, wet) + lamp_part * (0.45 * wet);
+        let sheen = camera.sky_color.rgb * 0.5 + camera.sun_color.rgb * camera.sun_dir.w * 0.35 + lamp_light * (0.6 + 0.8 * fresnel);
         lit = mix(lit, sheen, clamp(fresnel * wet * 0.85, 0.0, 0.8));
     }
     // snow: the ground, the roads and every upward-facing surface whiten under it
