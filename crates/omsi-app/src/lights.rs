@@ -4,19 +4,40 @@ use omsi_render::{Corona, LightMode, Lighting, PointLight, Scene};
 
 use omsi_sim::{Daylight, VehicleInstance};
 
-const HEADLIGHT_INTENSITY: f32 = 45.0;
+const HEADLIGHT_INTENSITY: f32 = 22.0;
 const VANILLA_HEADLIGHT_INTENSITY: f32 = 0.2;
+const HIGH_BEAM_GAIN: f32 = 0.5;
 
 /// `[spotlight]` range is content-authored.  In particular, full beams commonly use a
 /// substantially longer range than dipped beams, so it must not be capped to the latter.
 fn headlight_radius(range: f32) -> f32 {
-    range.max(10.0)
+    range.max(6.0)
 }
 
 /// Keep the existing one-metre core for a typical 40 m dipped beam, while making a longer
 /// content-authored full beam equally useful at the same fraction of its range.
 fn headlight_core(range: f32) -> f32 {
-    headlight_radius(range) / 40.0
+    headlight_radius(range) / 30.0
+}
+
+fn ai_spotlight(lamps: &[[f32; 3]]) -> Option<[f32; 12]> {
+    let nose = lamps.iter().map(|l| l[1]).reduce(f32::max)?;
+    let front: Vec<&[f32; 3]> = lamps.iter().filter(|l| nose - l[1] < 0.4).collect();
+    let n = front.len() as f32;
+    let z = front.iter().map(|l| l[2]).sum::<f32>() / n;
+    Some([0.0, nose, z, 0.0, 1.0, -0.05, 255.0, 245.0, 225.0, 40.0, 30.0, 70.0])
+}
+
+fn spot_face(lamp: Option<f32>, edge: Option<f32>, apex_y: f32, dir: f32) -> Option<f32> {
+    let fwd = |y: f32| y * dir;
+    let lamp = lamp.filter(|l| fwd(*l) > fwd(apex_y));
+    let face = match (lamp, edge) {
+        (Some(l), Some(e)) => fwd(l).min(fwd(e)),
+        (Some(l), None) => fwd(l),
+        (None, Some(e)) => fwd(e).min(fwd(apex_y) + 1.5),
+        (None, None) => return None,
+    };
+    Some(face * dir).filter(|f| fwd(*f) > fwd(apex_y))
 }
 
 pub fn lighting_from(d: &Daylight, fog_range: f32) -> Lighting {
@@ -133,42 +154,38 @@ pub fn vehicle_lights(
     let selected = forced.or_else(|| v.var("Spot_Select")).filter(|s| *s >= 0.0 || !ai_on);
     if let Some(sel) = selected.or(ai_on.then_some(0.0)) {
         if sel >= 0.0 {
-            if let Some(sp) = ty.model.spotlights.get(sel as usize) {
-                let vals = sp.values;
+            let lamps: Vec<[f32; 3]> = ty
+                .model
+                .meshes
+                .iter()
+                .flat_map(|m| m.light_enh.iter().map(|l| l.pos).chain(m.light_enh_2.iter().map(|l| l.pos)))
+                .collect();
+            let spot = ty
+                .model
+                .spotlights
+                .get(sel as usize)
+                .or_else(|| ai_on.then(|| ty.model.spotlights.first()).flatten())
+                .map(|sp| sp.values)
+                .or_else(|| ai_on.then(|| ai_spotlight(&lamps)).flatten());
+            if let Some(vals) = spot {
                 let d = body
                     .transform_vector3(Vec3::new(vals[3], vals[4], vals[5]))
                     .normalize_or_zero();
                 let color = [vals[6] / 255.0, vals[7] / 255.0, vals[8] / 255.0];
                 let mut apex = Vec3::new(vals[0], vals[1], vals[2]);
                 let dl = Vec3::new(vals[3], vals[4], vals[5]).normalize_or_zero();
-                let lamps: Vec<[f32; 3]> = ty
-                    .model
-                    .meshes
-                    .iter()
-                    .flat_map(|m| m.light_enh.iter().map(|l| l.pos).chain(m.light_enh_2.iter().map(|l| l.pos)))
-                    .collect();
                 let nose = lamps.iter().map(|l| l[1]).reduce(f32::max);
                 let tail = lamps.iter().map(|l| l[1]).reduce(f32::min);
                 let bb = ty.def.bounding_box.map(|bb| (bb[4] + bb[1] * 0.5, bb[4] - bb[1] * 0.5));
-                if dl.y > 0.3 {
-                    let face = match (nose.filter(|n| *n > apex.y), bb) {
-                        (Some(n), Some((front, _))) => Some(n.min(front)),
-                        (Some(n), None) => Some(n),
-                        (None, Some((front, _))) => Some(front.min(apex.y + 1.5)),
-                        (None, None) => None,
+                let dir = if dl.y > 0.3 { 1.0 } else if dl.y < -0.3 { -1.0 } else { 0.0 };
+                if dir != 0.0 {
+                    let (lamp, edge) = if dir > 0.0 {
+                        (nose, bb.map(|b| b.0))
+                    } else {
+                        (tail, bb.map(|b| b.1))
                     };
-                    if let Some(face) = face.filter(|f| *f > apex.y) {
-                        apex.y = face + 0.05;
-                    }
-                } else if dl.y < -0.3 {
-                    let face = match (tail.filter(|t| *t < apex.y), bb) {
-                        (Some(t), Some((_, rear))) => Some(t.max(rear)),
-                        (Some(t), None) => Some(t),
-                        (None, Some((_, rear))) => Some(rear.max(apex.y - 1.5)),
-                        (None, None) => None,
-                    };
-                    if let Some(face) = face.filter(|f| *f < apex.y) {
-                        apex.y = face - 0.05;
+                    if let Some(face) = spot_face(lamp, edge, apex.y, dir) {
+                        apex.y = face + dir * 0.05;
                     }
                 }
                 let half_width = ty.def.bounding_box.map_or(1.25, |bb| (bb[0] * 0.5).min(1.25));
@@ -189,27 +206,27 @@ pub fn vehicle_lights(
                 let sides: &[f32] = if spread > 0.1 { &[-1.0, 1.0] } else { &[0.0] };
                 for side in sides {
                     let at = v.position + (apex + right * spread * side).as_dvec3();
-                    lights.push(PointLight {
+                    let lamp = PointLight {
                         position: at,
                         radius: headlight_radius(vals[9]),
                         color,
+                        direction: d,
+                        cone,
+                        ..Default::default()
+                    };
+                    lights.push(PointLight {
                         intensity: VANILLA_HEADLIGHT_INTENSITY / sides.len() as f32 * (0.3 + 0.7 * night),
-                        direction: d,
-                        cone,
                         mode: LightMode::Vanilla,
-                        ..Default::default()
+                        ..lamp
                     });
+                    let high_beam = v.var("lights_fern").is_some_and(|x| x > 0.5);
                     lights.push(PointLight {
-                        position: at,
-                        radius: headlight_radius(vals[9]),
-                        color,
-                        intensity: HEADLIGHT_INTENSITY / sides.len() as f32,
-                        direction: d,
-                        cone,
+                        intensity: HEADLIGHT_INTENSITY / sides.len() as f32
+                            * if high_beam { HIGH_BEAM_GAIN } else { 1.0 },
                         core: headlight_core(vals[9]),
-                        beam: if v.var("lights_fern").is_some_and(|x| x > 0.5) { 0.0 } else { 6.0 },
+                        beam: if high_beam { -1.0 } else { 3.5 },
                         mode: LightMode::Enhanced,
-                        ..Default::default()
+                        ..lamp
                     });
                 }
             }
@@ -387,7 +404,6 @@ fn enclosure(coll: &omsi_sim::collision::CollisionWorld, p: DVec3) -> Option<f32
     (walls >= ENCL_MIN_WALLS).then_some(extent as f32)
 }
 
-const NO_LIGHT_SHADOWS: bool = false;
 const SHADOW_RANGE: f64 = 50.0;
 const SHADOW_REACH: f64 = 25.0;
 const SHADOW_MAX: usize = 32;
@@ -506,13 +522,6 @@ fn assign_occluders(
     vehicles: &[&VehicleInstance],
 ) {
     scene.occluders.clear();
-    if NO_LIGHT_SHADOWS {
-        for l in scene.lights.iter_mut() {
-            l.occ_first = 0;
-            l.occ_count = 0;
-        }
-        return;
-    }
     let mut bodies: Vec<(omsi_sim::collision::Obb, omsi_render::Occluder)> = Vec::new();
     for v in vehicles.iter().filter(|v| (v.position - camera_pos).length() < SHADOW_RANGE + 60.0) {
         let mut sections = vec![(body_box(&v.ty), v.body_rotation(), v.position)];
