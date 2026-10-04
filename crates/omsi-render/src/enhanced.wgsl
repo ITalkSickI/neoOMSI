@@ -201,6 +201,11 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
         if (l.dir.w > -1.5) {
             let cd = dot(-ld, l.dir.xyz);
             e = e * smoothstep(l.dir.w, l.extra.x, cd);
+            if (l.extra.z < 0.0) {
+                let s = smoothstep(l.dir.w, l.extra.x, cd);
+                let hot = smoothstep(l.extra.x, 1.0, cd);
+                e = e * mix(0.35, 1.0, s * s) * (1.0 + 0.8 * hot);
+            }
             if (l.extra.z > 0.0) {
                 // a low beam: brightest just under its cut-off, where it reaches far down
                 // the road (the gain keeps the light on a flat road from falling off with
