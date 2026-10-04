@@ -1280,7 +1280,14 @@ mod tests {
             end,
             start.map(|p| p + Vec3::X * 0.2),
         );
-        assert!(points.iter().zip(&wet).any(|(p, w)| p.x < 0.2 && *w <= 0.004));
+        assert!(points
+            .iter()
+            .zip(&wet)
+            .any(|(p, w)| p.x > 0.22 && p.x < 0.38 && *w <= 0.004));
+        assert!(points
+            .iter()
+            .zip(&wet)
+            .all(|(p, w)| p.x >= 0.15 || *w == 1.0));
         assert!(wet.iter().all(|w| *w <= 2.0));
         let mut dry = vec![0.0; SIZE * SIZE];
         assert!(!wipe(&mut dry, &points, bounds, start, end));

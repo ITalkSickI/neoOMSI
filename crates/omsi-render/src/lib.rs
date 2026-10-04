@@ -10147,16 +10147,21 @@ mod tests {
             let mut layouter = naga::proc::Layouter::default();
             layouter.update(module.to_ctx()).expect("layout");
             for (ty_name, rust) in sizes {
-                if *ty_name == "Camera" && *name == "corona" {
+                if *ty_name == "Camera" && (*name == "corona" || *name == "sky") {
                     if let Some((h, _)) = module
                         .types
                         .iter()
                         .find(|(_, t)| t.name.as_deref() == Some(*ty_name))
                     {
+                        let prefix = if *name == "corona" {
+                            std::mem::offset_of!(CameraUniform, clouds)
+                        } else {
+                            std::mem::offset_of!(CameraUniform, spot_vp)
+                        };
                         assert_eq!(
                             layouter[h].size as usize,
-                            std::mem::offset_of!(CameraUniform, clouds),
-                            "corona: Camera prefix"
+                            prefix,
+                            "{name}: Camera prefix"
                         );
                     }
                     continue;

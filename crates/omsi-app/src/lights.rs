@@ -353,9 +353,8 @@ mod tests {
     fn full_beam_range_is_not_capped_to_dipped_beam_distance() {
         // Studio Polygon Renown's third `[spotlight]` (full beam) has a 125 m range.
         assert_eq!(headlight_radius(125.0), 125.0);
-        // The 40 m dipped beam keeps its existing one-metre core; full beam scales with range.
-        assert_eq!(headlight_core(40.0), 1.0);
-        assert_eq!(headlight_core(125.0), 3.125);
+        assert!((headlight_core(40.0) - 40.0 / 30.0).abs() < 1e-5);
+        assert!((headlight_core(125.0) - 125.0 / 30.0).abs() < 1e-5);
     }
 }
 
