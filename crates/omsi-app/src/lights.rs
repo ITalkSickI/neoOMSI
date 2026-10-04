@@ -8,8 +8,50 @@ const HEADLIGHT_INTENSITY: f32 = 22.0;
 const VANILLA_HEADLIGHT_INTENSITY: f32 = 0.2;
 const HIGH_BEAM_GAIN: f32 = 0.5;
 
+/// Per-beam tweaks for vehicle headlights (applied on top of the global lamp settings).
+#[derive(Clone, Copy)]
+pub(crate) struct BeamCfg {
+    pub on: bool,
+    /// Intensity multiplier.
+    pub gain: f32,
+    /// Range multiplier.
+    pub range: f32,
+    /// Core multiplier.
+    pub core: f32,
+    /// Cone angles added (degrees).
+    pub inner_add: f32,
+    pub outer_add: f32,
+    /// Aim added (degrees): left (positive) / up (positive).
+    pub yaw: f32,
+    pub pitch: f32,
+    /// Start shift added, metres: forward, right, up.
+    pub forward: f32,
+    pub side: f32,
+    pub height: f32,
+    pub color: [f32; 3],
+}
+
+impl BeamCfg {
+    pub(crate) const DEFAULT: Self = Self {
+        on: true,
+        gain: 1.0,
+        range: 1.0,
+        core: 1.0,
+        inner_add: 0.0,
+        outer_add: 0.0,
+        yaw: 0.0,
+        pitch: 0.0,
+        forward: 0.0,
+        side: 0.0,
+        height: 0.0,
+        color: [1.0, 1.0, 1.0],
+    };
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct LightSettings {
+    pub low: BeamCfg,
+    pub high: BeamCfg,
     pub headlight: f32,
     pub vanilla: f32,
     pub low_beam_gain: f32,
@@ -46,6 +88,8 @@ pub(crate) struct LightSettings {
 
 impl LightSettings {
     pub(crate) const DEFAULT: Self = Self {
+        low: BeamCfg::DEFAULT,
+        high: BeamCfg::DEFAULT,
         headlight: HEADLIGHT_INTENSITY,
         vanilla: VANILLA_HEADLIGHT_INTENSITY,
         low_beam_gain: 3.5,
@@ -56,7 +100,7 @@ impl LightSettings {
         cone_offset: 0.0,
         cone_side: 0.0,
         cone_height: 0.0,
-        lamp_offset: -0.492,
+        lamp_offset: 0.0,
         lamp_side: 0.0,
         lamp_height: -0.246,
         lamp_yaw: 0.0,
@@ -97,11 +141,11 @@ pub(crate) fn cone_shift(dir: Vec3, cfg: &LightSettings) -> DVec3 {
 }
 
 /// The headlight axis `d` turned by the aim settings.
-fn lamp_aim(d: Vec3, cfg: &LightSettings) -> Vec3 {
+fn lamp_aim(d: Vec3, cfg: &LightSettings, bc: &BeamCfg) -> Vec3 {
     let d = d.normalize_or_zero();
-    let yawed = glam::Quat::from_rotation_z(cfg.lamp_yaw.to_radians()) * d;
+    let yawed = glam::Quat::from_rotation_z((cfg.lamp_yaw + bc.yaw).to_radians()) * d;
     let right = yawed.cross(Vec3::Z).normalize_or_zero();
-    (glam::Quat::from_axis_angle(right, cfg.lamp_pitch.to_radians()) * yawed).normalize_or_zero()
+    (glam::Quat::from_axis_angle(right, (cfg.lamp_pitch + bc.pitch).to_radians()) * yawed).normalize_or_zero()
 }
 
 /// The headlight's shift.
@@ -280,10 +324,12 @@ pub fn vehicle_lights(
                 let d = body
                     .transform_vector3(Vec3::new(vals[3], vals[4], vals[5]))
                     .normalize_or_zero();
+                let high_beam = cfg.force_high_beam || v.var("lights_fern").is_some_and(|x| x > 0.5);
+                let bc = if high_beam { cfg.high } else { cfg.low };
                 let color = [
-                    vals[6] / 255.0 * cfg.lamp_color[0],
-                    vals[7] / 255.0 * cfg.lamp_color[1],
-                    vals[8] / 255.0 * cfg.lamp_color[2],
+                    vals[6] / 255.0 * cfg.lamp_color[0] * bc.color[0],
+                    vals[7] / 255.0 * cfg.lamp_color[1] * bc.color[1],
+                    vals[8] / 255.0 * cfg.lamp_color[2] * bc.color[2],
                 ];
                 let mut apex = Vec3::new(vals[0], vals[1], vals[2]);
                 let dl = Vec3::new(vals[3], vals[4], vals[5]).normalize_or_zero();
@@ -311,18 +357,21 @@ pub fn vehicle_lights(
                 let right = body.transform_vector3(Vec3::X).normalize_or_zero();
                 let apex = body.transform_point3(apex);
                 let (inner, outer) = (
-                    vals.get(10).copied().unwrap_or(30.0) + cfg.lamp_inner_add,
-                    vals.get(11).copied().unwrap_or(70.0) + cfg.lamp_outer_add,
+                    vals.get(10).copied().unwrap_or(30.0) + cfg.lamp_inner_add + bc.inner_add,
+                    vals.get(11).copied().unwrap_or(70.0) + cfg.lamp_outer_add + bc.outer_add,
                 );
                 let half = |deg: f32| (deg.clamp(1.0, 179.0) * 0.5).to_radians().cos();
                 let cone = [half(inner.min(outer)), half(outer)];
                 let sides: &[f32] = if spread > 0.1 { &[-1.0, 1.0] } else { &[0.0] };
                 for side in sides {
+                    if !bc.on {
+                        continue;
+                    }
                     let at = v.position
                         + (apex + right * spread * cfg.lamp_spread * side).as_dvec3()
-                        + lamp_shift(d, &cfg);
-                    let high_beam = cfg.force_high_beam || v.var("lights_fern").is_some_and(|x| x > 0.5);
-                    let radius = headlight_radius(vals[9]) * cfg.lamp_range.max(0.05) * if high_beam { cfg.high_beam_range } else { 1.0 };
+                        + lamp_shift(d, &cfg)
+                        + shift(d, bc.forward, bc.side, bc.height);
+                    let radius = headlight_radius(vals[9]) * cfg.lamp_range.max(0.05) * bc.range.max(0.05) * if high_beam { cfg.high_beam_range } else { 1.0 };
                     let cone = if high_beam {
                         let k = cfg.high_beam_spread.max(0.1);
                         [1.0 - (1.0 - cone[0]) * k, 1.0 - (1.0 - cone[1]) * k]
@@ -333,7 +382,7 @@ pub fn vehicle_lights(
                         position: at,
                         radius,
                         color,
-                        direction: lamp_aim(d, &cfg),
+                        direction: lamp_aim(d, &cfg, &bc),
                         cone,
                         ..Default::default()
                     };
@@ -345,8 +394,9 @@ pub fn vehicle_lights(
                     lights.push(PointLight {
                         intensity: cfg.headlight / sides.len() as f32
                             * (1.0 + bad * cfg.weather_boost)
-                            * if high_beam { cfg.high_beam } else { 1.0 },
-                        core: headlight_core(radius) * cfg.lamp_core.max(0.01),
+                            * if high_beam { cfg.high_beam } else { 1.0 }
+                            * bc.gain,
+                        core: headlight_core(radius) * cfg.lamp_core.max(0.01) * bc.core.max(0.01),
                         beam: if high_beam { -1.0 } else { cfg.low_beam_gain },
                         mode: LightMode::Enhanced,
                         ..lamp
