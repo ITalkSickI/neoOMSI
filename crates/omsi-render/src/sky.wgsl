@@ -187,8 +187,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     // fog swallows the horizon, and a thick fog (a few hundred metres of sight) the whole
     // sky: the blue does not show through ground fog
-    let horizon = clamp(1.0 - elev / 0.12, 0.0, 1.0) * clamp(camera.fog.w * 1500.0, 0.0, 1.0);
-    let whole = clamp(camera.fog.w * 150.0 - 0.15, 0.0, 1.0) * clamp(1.0 - elev / 1.2, 0.35, 1.0);
+    let fw = select(0.0, camera.fog.w, camera.fog.w > 5e-4);
+    let horizon = clamp(1.0 - elev / 0.12, 0.0, 1.0) * clamp(fw * 1500.0, 0.0, 1.0);
+    let whole = clamp(fw * 150.0 - 0.15, 0.0, 1.0) * clamp(1.0 - elev / 1.2, 0.35, 1.0);
     let f = max(horizon, whole);
     return vec4<f32>(mix(col, camera.fog.xyz, f), 1.0);
 }

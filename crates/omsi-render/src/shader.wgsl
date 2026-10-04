@@ -1853,7 +1853,8 @@ fn fs_main(in: FsIn) -> @location(0) vec4<f32> {
         lit = mix(lit, white, cover * (0.55 + 0.35 * tex.a));
     }
     let dist = distance(in.world, camera.cam_pos.xyz);
-    let f = 1.0 - exp(-fog_distance(in.world) * camera.fog.w);
+    // (no fog below a visibility of ~23 km: a clear day has none)
+    let f = select(0.0, 1.0 - exp(-fog_distance(in.world) * camera.fog.w), camera.fog.w > 5e-4);
     var rgb = mix(lit, camera.fog.xyz, clamp(f, 0.0, 1.0));
     if (camera.flags.z > 0.0) {
         // Never taken: flags.z (the old enhanced look's aerial perspective) is always 0
