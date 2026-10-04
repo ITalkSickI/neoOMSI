@@ -204,7 +204,7 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
             if (l.extra.z < 0.0) {
                 let s = smoothstep(l.dir.w, l.extra.x, cd);
                 let hot = smoothstep(l.extra.x, 1.0, cd);
-                e = e * mix(0.35, 1.0, s * s) * (1.0 + 0.8 * hot);
+                e = e * mix(0.3, 1.0, s * s) * (1.0 + 0.25 * hot);
             }
             if (l.extra.z > 0.0) {
                 // a low beam: brightest just under its cut-off, where it reaches far down
