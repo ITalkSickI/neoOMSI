@@ -737,7 +737,7 @@ impl Renderer {
             AlphaMode::Blend => 2.0,
         };
         // a mirror's glass shows a picture this renderer drew (`add_render_texture`): the
-        // enhanced shader must not brighten it as it does a display (see enhanced.wgsl)
+        // enhanced shader must not brighten it as it does a display (see shaders/enhanced/scene_lighting.wgsl)
         let mirror = unlit
             && texture
                 .and_then(|t| scene.textures.get(t))

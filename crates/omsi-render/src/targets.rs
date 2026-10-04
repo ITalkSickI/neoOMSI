@@ -76,7 +76,7 @@ impl Renderer {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 // R stores occlusion; G stores view depth (m) for depth-aware upsampling
-                // (see `ao_at` in shader.wgsl).
+                // (see `ao_at` in shaders/scene/scene_base.wgsl).
                 format: wgpu::TextureFormat::Rg16Float,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::TEXTURE_BINDING,

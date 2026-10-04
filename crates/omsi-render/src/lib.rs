@@ -2427,7 +2427,7 @@ impl Renderer {
         log::info!("renderer: compiling the overlays shaders");
         let overlay_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("overlay"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("overlay.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/ui/overlay.wgsl").into()),
         });
         let overlay_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("overlay"),
@@ -2485,7 +2485,7 @@ impl Renderer {
         log::info!("renderer: compiling the SSAO shaders");
         let ssao_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ssao"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("ssao.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/post/ssao.wgsl").into()),
         });
         let ao_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ssao"),
@@ -2640,7 +2640,7 @@ impl Renderer {
         log::info!("renderer: compiling the mip maps shaders");
         let mip_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mip"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("mip.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/post/mip.wgsl").into()),
         });
         let mip_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("mip"),
@@ -2707,7 +2707,7 @@ impl Renderer {
         log::info!("renderer: compiling the post passes shaders");
         let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("post"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("post.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/post/post.wgsl").into()),
         });
         let float_tex = |binding: u32| wgpu::BindGroupLayoutEntry {
             binding,
@@ -3240,7 +3240,7 @@ impl Renderer {
         log::info!("renderer: compiling the VR interface shaders");
         let xr_ui_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("OpenXR spatial UI"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("xr_ui.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/ui/xr_ui.wgsl").into()),
         });
         let xr_ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("OpenXR spatial UI"),
@@ -3275,7 +3275,7 @@ impl Renderer {
         log::info!("renderer: compiling the upscaler shaders");
         let upscale_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("upscale"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("upscale.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/post/upscale.wgsl").into()),
         });
         let upscale_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("upscale"),
@@ -8261,10 +8261,10 @@ fn sky_input_differs(a: &atmosphere::SkyInput, b: &atmosphere::SkyInput) -> bool
 
 fn scene_shader_source(gl: bool) -> String {
     let src = [
-        include_str!("shader.wgsl"),
-        include_str!("enhanced_common.wgsl"),
-        include_str!("puddle_common.wgsl"),
-        include_str!("enhanced.wgsl"),
+        include_str!("../shaders/scene/scene_base.wgsl"),
+        include_str!("../shaders/enhanced/common_lighting.wgsl"),
+        include_str!("../shaders/puddles/puddle_common.wgsl"),
+        include_str!("../shaders/enhanced/scene_lighting.wgsl"),
     ]
         .join("\n");
     if !gl {
@@ -8382,17 +8382,17 @@ fn cloud_noise_textures(
 
 fn sky_shader_source() -> String {
     [
-        include_str!("sky.wgsl"),
-        include_str!("enhanced_common.wgsl"),
-        include_str!("sky_enhanced.wgsl"),
+        include_str!("../shaders/sky/sky_base.wgsl"),
+        include_str!("../shaders/enhanced/common_lighting.wgsl"),
+        include_str!("../shaders/enhanced/sky_lighting.wgsl"),
     ]
         .join("\n")
 }
 
 fn corona_shader_source() -> String {
     [
-        include_str!("corona.wgsl"),
-        include_str!("enhanced_common.wgsl"),
+        include_str!("../shaders/sky/corona.wgsl"),
+        include_str!("../shaders/enhanced/common_lighting.wgsl"),
     ]
         .join("\n")
 }
@@ -10086,12 +10086,12 @@ mod tests {
             ("scene", scene_shader_source(false)),
             ("sky", sky_shader_source()),
             ("corona", corona_shader_source()),
-            ("post", include_str!("post.wgsl").to_string()),
-            ("ssao", include_str!("ssao.wgsl").to_string()),
+            ("post", include_str!("../shaders/post/post.wgsl").to_string()),
+            ("ssao", include_str!("../shaders/post/ssao.wgsl").to_string()),
             ("puddles", puddles::shader_source()),
-            ("upscale", include_str!("upscale.wgsl").to_string()),
-            ("mip", include_str!("mip.wgsl").to_string()),
-            ("xr_ui", include_str!("xr_ui.wgsl").to_string()),
+            ("upscale", include_str!("../shaders/post/upscale.wgsl").to_string()),
+            ("mip", include_str!("../shaders/post/mip.wgsl").to_string()),
+            ("xr_ui", include_str!("../shaders/ui/xr_ui.wgsl").to_string()),
         ];
         let sizes: &[(&str, usize)] = &[
             ("Enhanced", std::mem::size_of::<EnhancedUniform>()),
