@@ -614,6 +614,31 @@ impl App {
                 q.sync_transforms(r, scene, false);
             }
         }
+
+        if self.player.is_none() {
+            if let Some(a) = self.audio.as_ref() {
+                a.follow_device();
+            }
+            if let (Some(a), Some(cam)) = (self.audio.as_ref(), self.camera.as_ref()) {
+                let (reverb_time, reverb_mix) = self
+                    .world
+                    .as_ref()
+                    .map(|w| w.reverb_at(cam.position))
+                    .unwrap_or((0.0, 0.0));
+                a.set_listener(omsi_audio::Listener {
+                    position: cam.position.as_vec3(),
+                    forward: cam.forward(),
+                    right: cam.right(),
+                    master: if self.paused {
+                        0.0
+                    } else {
+                        self.settings.volume.clamp(0.0, 1.0)
+                    },
+                    reverb_time,
+                    reverb_mix,
+                });
+            }
+        }
         self.update_placed_sounds();
         if let Some(a) = self.audio.as_ref() {
             match self.player.as_ref() {
