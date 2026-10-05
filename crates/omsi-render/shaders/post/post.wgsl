@@ -206,6 +206,22 @@ fn night_vision(c: vec3<f32>, strength: f32, pre: f32) -> vec3<f32> {
     return mix(c, night, rods * strength);
 }
 
+// More colour instead of grey
+fn vividness(c: vec3<f32>) -> vec3<f32> {
+    let sat_all = 1.5;
+    let vibrance = 1.2;
+    let l = luma(c);
+    let mx = max(c.r, max(c.g, c.b));
+    let mn = min(c.r, min(c.g, c.b));
+    let s = select(0.0, (mx - mn) / mx, mx > 1e-5);
+    let k = sat_all * (1.0 + vibrance * (1.0 - s) * (1.0 - s));
+    // (dark pixels keep their colour as they are: the night's tint is the night vision's)
+    let w = smoothstep(0.004, 0.06, l);
+    let out = vec3<f32>(l) + (c - vec3<f32>(l)) * mix(1.0, k, w);
+    // (a little contrast too: flat mid tones read as grey)
+    return max(pow(max(out, vec3<f32>(0.0)) / 0.18, vec3<f32>(1.07)) * 0.18, vec3<f32>(0.0));
+}
+
 fn to_srgb(c: vec3<f32>) -> vec3<f32> {
     let lo = c * 12.92;
     let hi = 1.055 * pow(max(c, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - 0.055;
@@ -228,7 +244,7 @@ fn graded(in: VsOut) -> vec3<f32> {
     if (p.c.y > 0.0) {
         c = night_vision(c, p.c.y, p.c.z);
     }
-    c = pbr_neutral(c * pow(2.0, ev));
+    c = vividness(pbr_neutral(c * pow(2.0, ev)));
     var e = to_srgb(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)));
     // triangular dither of one code value: no bands in the sky's gradient
     let px = in.clip.xy;
