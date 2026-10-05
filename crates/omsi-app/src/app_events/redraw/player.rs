@@ -67,7 +67,20 @@ impl App {
             || self.list_kind.is_some()
             || self.navigator.as_ref().is_some_and(|n| n.map_open())
             || !matches!(self.view.as_str(), "driver" | "outside" | "pax");
+        if self.cursor != self.cursor_idle_pos
+            || self.cursor_kind != 0
+            || needs_mouse
+            || vr_on
+            || self.cursor_hidden.is_some()
+        {
+            self.cursor_idle = 0.0;
+        } else {
+            self.cursor_idle += dt;
+        }
+        self.cursor_idle_pos = self.cursor;
+        let idle_hide = self.cursor_idle >= 10.0;
         let hide = self.screenshot_mode.is_some()
+            || idle_hide
             || ((moved || actions.iter().any(|a| a.1)) && !needs_mouse && !vr_on);
         if self.vr_nav_edit.is_none()
             && hide != self.cursor_hidden.is_some()

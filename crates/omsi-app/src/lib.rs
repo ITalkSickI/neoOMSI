@@ -503,6 +503,8 @@ pub(crate) fn make_app(
         steer_cursor: None,
         center_cursor: false,
         cursor_hidden: None,
+        cursor_idle: 0.0,
+        cursor_idle_pos: (0.0, 0.0),
         last_ctl_steer: None,
         mouse_pedals: (0.0, 0.0),
         mouse_kmh: 0.0,

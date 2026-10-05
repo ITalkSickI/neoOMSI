@@ -118,6 +118,8 @@ pub(crate) struct App {
     pub(crate) steer_cursor: Option<(f32, f32)>,
     pub(crate) center_cursor: bool,
     pub(crate) cursor_hidden: Option<(f32, f32)>,
+    pub(crate) cursor_idle: f32,
+    pub(crate) cursor_idle_pos: (f32, f32),
     pub(crate) last_ctl_steer: Option<f32>,
     pub(crate) mouse_pedals: (f32, f32),
     pub(crate) mouse_kmh: f32,
