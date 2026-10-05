@@ -510,6 +510,27 @@ pub fn set_led_glow(v: f32) {
     LED_GLOW.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
 
+static HTML_GLOW: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+static HTML_GLOW_DEBUG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// Brightness of HTML / script screens (their own glow and the light they throw), 1 = as is.
+pub fn set_html_glow(v: f32) {
+    HTML_GLOW.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn html_glow() -> f32 {
+    f32::from_bits(HTML_GLOW.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// The dev menu's extra factor on the HTML glow (for debugging).
+pub fn set_html_glow_debug(v: f32) {
+    HTML_GLOW_DEBUG.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn html_glow_debug() -> f32 {
+    f32::from_bits(HTML_GLOW_DEBUG.load(std::sync::atomic::Ordering::Relaxed))
+}
+
 const LED_RANGE: f64 = 40.0;
 const LED_PANELS: usize = 8;
 const LED_RADIUS: f32 = 6.0;
@@ -1419,7 +1440,7 @@ pub fn collect(
             let (radius, intensity) = if led {
                 (LED_RADIUS, LED_INTENSITY * glow * gate * (0.2 + 0.8 * n))
             } else {
-                (SCREEN_RADIUS, SCREEN_INTENSITY * gate * n)
+                (SCREEN_RADIUS, SCREEN_INTENSITY * gate * n * html_glow())
             };
             scene.lights.push(PointLight {
                 position: c + out * LED_OUTSET,

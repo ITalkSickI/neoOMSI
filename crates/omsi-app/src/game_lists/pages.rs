@@ -437,6 +437,13 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         slider_row(
             app,
+            "html_glow",
+            "HTML & script screen glow",
+            "How bright HTML and script screens glow (and how much light they throw)",
+            &|v| format!("{v:.2}"),
+        ),
+        slider_row(
+            app,
             "led_mips",
             "LED mask mipmaps",
             "Keep the mip chain of the LED masks (smoother from a distance).",

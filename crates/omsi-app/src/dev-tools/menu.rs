@@ -90,6 +90,20 @@ pub(super) fn draw(
             if ui.menu_item("Reset Render Mode") {
                 mode = 0;
             }
+            if let Some(_h) = ui.begin_menu("HTML & Scripting textures") {
+                let mut g = crate::lights::html_glow_debug();
+                ui.set_next_item_width(220.0);
+                if ui
+                    .slider_config("Glow (x settings)", 0.0, 4.0)
+                    .display_format("%.2f")
+                    .build(&mut g)
+                {
+                    crate::lights::set_html_glow_debug(g);
+                }
+                if ui.menu_item("Reset Glow") {
+                    crate::lights::set_html_glow_debug(1.0);
+                }
+            }
             ui.separator();
             if ui
                 .menu_item_config("Graphics Window")

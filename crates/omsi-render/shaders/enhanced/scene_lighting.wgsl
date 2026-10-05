@@ -837,7 +837,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // a screen showing an HTML page (see MaterialExtra::html): its picture is its own
         // light, so it glows by itself - at least a little when `Led glow` is off - and the
         // glow takes it into its source like an LED panel's dots
-        emit = emit + tex.rgb * (0.35 + 0.25 * enh.led.x) * max(enh.exposure.z * 2.0, 0.8);
+        emit = emit + tex.rgb * (0.35 + 0.25 * enh.led.x) * enh.led.z * max(enh.exposure.z * 2.0, 0.8);
     } else if (material.emissive.w < -1.5) {
         // an LED panel (see MaterialExtra::led): the lit dots - the alpha the `\S:n` script
         // texture carries, in the colour of the panel's own texture - are the panel's own

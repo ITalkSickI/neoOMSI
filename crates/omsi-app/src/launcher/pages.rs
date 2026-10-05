@@ -1115,6 +1115,16 @@ fn graphics_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
             s["led_glow"] = json!(led.round() as i64);
             *dirty = 0.3;
         }
+        let mut atmo = get(s, "atmosphere_brightness").as_f64().unwrap_or(1.0) as f32;
+        if ui.slider("s-atmo", c.row(), &mut atmo, 0.0, 2.0, 0.05, "Atmosphere brightness", &|v| format!("{v:.2}")) {
+            s["atmosphere_brightness"] = json!((atmo / 0.05).round() * 0.05);
+            *dirty = 0.3;
+        }
+        let mut hg = get(s, "html_glow").as_f64().unwrap_or(1.0) as f32;
+        if ui.slider("s-html-glow", c.row(), &mut hg, 0.0, 4.0, 0.05, "HTML & script screen glow", &|v| format!("{v:.2}")) {
+            s["html_glow"] = json!((hg / 0.05).round() * 0.05);
+            *dirty = 0.3;
+        }
         let mut mip = get(s, "led_mips").as_f64().unwrap_or(1.3) as f32;
         if ui.slider(
             "s-led-mip",

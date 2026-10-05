@@ -16,8 +16,15 @@ pub(super) fn lights_window(ui: &imgui::Ui, open: &mut bool) {
             ui.slider("Weather Night", 0.0, 1.0, &mut s.weather_night);
             ui.slider("Corona / Cone", 0.0, 4.0, &mut s.corona);
             ui.separator();
+            ui.text("HTML & Scripting textures");
+            let mut g = crate::lights::html_glow_debug();
+            if ui.slider("HTML Glow x", 0.0, 4.0, &mut g) {
+                crate::lights::set_html_glow_debug(g);
+            }
+            ui.separator();
             if ui.button("Reset") {
                 reset_global(&mut s);
+                crate::lights::set_html_glow_debug(1.0);
             }
         });
     crate::lights::set_settings(s);

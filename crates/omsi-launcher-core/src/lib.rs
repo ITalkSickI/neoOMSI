@@ -2461,6 +2461,8 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
         ("head_tracking", json!(false)),
         ("led_glow", json!(6)),
         ("led_mips", json!(1.3)),
+        ("atmosphere_brightness", json!(1.0)),
+        ("html_glow", json!(1.0)),
         ("ui_scale", json!(1.0)),
         ("ui_scale_window", json!(true)),
         ("notes", json!(true)),
@@ -2677,6 +2679,16 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
                         .filter(|x| x.is_finite())
                         .map(|x| x.clamp(0.0, 4.0))
                         .unwrap_or(1.3)
+                )
+            }
+            "atmosphere_brightness" | "html_glow" => {
+                v[&k] = json!(
+                    val.trim()
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|x| x.is_finite())
+                        .map(|x| x.clamp(0.0, if k == "html_glow" { 4.0 } else { 2.0 }))
+                        .unwrap_or(1.0)
                 )
             }
             "led_glow" => v[&k] = json!(val.parse::<i64>().map(|x| x.clamp(0, 15)).unwrap_or(6)),
@@ -2909,7 +2921,7 @@ pub fn save_settings(v: &Value) -> Result<()> {
 
 /// The settings a graphics profile holds: what the Graphics tab shows, except the machine's
 /// own (fullscreen, graphics API).
-pub const GRAPHICS_PROFILE_KEYS: [&str; 21] = [
+pub const GRAPHICS_PROFILE_KEYS: [&str; 23] = [
     "graphics",
     "msaa",
     "render_scale",
@@ -2921,6 +2933,8 @@ pub const GRAPHICS_PROFILE_KEYS: [&str; 21] = [
     "detail_textures",
     "led_glow",
     "led_mips",
+    "atmosphere_brightness",
+    "html_glow",
     "reflections",
     "clouds",
     "vsync",
@@ -3235,6 +3249,11 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         )
     ));
     text.push_str(&format!("look_sens={}\nsteer_look_angle={}\nsteer_look_response={}\ntime_sync={}\nmetar_sync={}\nmetar_station={}\n", f("look_sens", 1.0).clamp(0.1, 2.0), f("steer_look_angle", 30.0).clamp(0.0, 60.0), f("steer_look_response", 0.25).clamp(0.05, 1.0), b("time_sync", false), b("metar_sync", false), v.get("metar_station").and_then(|x| x.as_str()).unwrap_or("").chars().filter(|c| c.is_ascii_alphabetic()).take(4).collect::<String>().to_ascii_uppercase()));
+    text.push_str(&format!(
+        "atmosphere_brightness={}\nhtml_glow={}\n",
+        f("atmosphere_brightness", 1.0).clamp(0.0, 2.0),
+        f("html_glow", 1.0).clamp(0.0, 4.0)
+    ));
     text.push_str(&format!(
         "pax_prefer_seats={}\n",
         b("pax_prefer_seats", false)
