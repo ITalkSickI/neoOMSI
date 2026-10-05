@@ -41,12 +41,12 @@ function Header({ path, wide }: { path: string; wide: boolean }) {
         >
           <img className="size-8 sm:hidden" src={mark} alt="neoOMSI" />
           <img
-            className="logo-dark hidden h-4 w-auto sm:block"
+            className="logo-dark hidden h-5 w-auto sm:block"
             src={wordmark}
             alt="neoOMSI"
           />
           <img
-            className="logo-light hidden h-4 w-auto sm:block"
+            className="logo-light hidden h-5 w-auto sm:block"
             src={wordmarkLight}
             alt="neoOMSI"
           />
