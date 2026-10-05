@@ -98,6 +98,28 @@ impl ApplicationHandler for App {
             if self.game_menu.is_some() {
                 return;
             }
+            if self.raycast_active() {
+                if self.dragging {
+                    let scale = self
+                        .window
+                        .as_ref()
+                        .map(|w| w.scale_factor() as f32)
+                        .unwrap_or(1.0)
+                        .max(0.1);
+                    self.drag_delta.0 += delta.0 as f32 / scale;
+                    self.drag_delta.1 += delta.1 as f32 / scale;
+                } else if self.view == "outside" {
+                    self.sync_view_look();
+                    let (y, p) =
+                        chase_orbit_step(self.look.0, self.look.1, delta.0 as f32, delta.1 as f32);
+                    self.look.0 = y;
+                    self.look.1 = p;
+                } else {
+                    let k = 0.15 * self.settings.look_sens;
+                    self.look_by(delta.0 as f32 * k, delta.1 as f32 * k);
+                }
+                return;
+            }
             if self.mouse_look {
                 if !self.cursor_looks() {
                     if self.view == "outside" {

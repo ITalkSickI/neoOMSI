@@ -11,6 +11,39 @@ impl App {
         // aboard tremble at speed (a quarter of a metre behind the seat, every frame).
         let __t = Instant::now();
         self.drag_frame();
+        // raycast camera: the free cursor going idle gives the view back to the mouse
+        if self.free_look && (self.cursor_hidden.is_some() || !self.settings.free_look) {
+            self.free_look = false;
+        }
+        let ray = self.raycast_active();
+        if ray != self.raycast_applied {
+            self.raycast_applied = ray;
+            self.cursor_hidden = None;
+            self.cursor_idle = 0.0;
+            if let (Some(win), Some(s)) = (self.window.as_ref(), self.surface.as_ref()) {
+                let centre = (s.config.width as f32 * 0.5, s.config.height as f32 * 0.5);
+                use winit::window::CursorGrabMode;
+                if ray {
+                    if win.set_cursor_grab(CursorGrabMode::Locked).is_err() {
+                        let _ = win.set_cursor_grab(CursorGrabMode::Confined);
+                    }
+                    win.set_cursor_visible(false);
+                } else {
+                    let _ = win.set_cursor_grab(CursorGrabMode::None);
+                    win.set_cursor_visible(true);
+                    let _ = win.set_cursor_position(winit::dpi::PhysicalPosition::new(
+                        centre.0 as f64,
+                        centre.1 as f64,
+                    ));
+                }
+                self.cursor = centre;
+            }
+        }
+        if ray {
+            if let Some(s) = self.surface.as_ref() {
+                self.cursor = (s.config.width as f32 * 0.5, s.config.height as f32 * 0.5);
+            }
+        }
         if self.world.is_some() {
             if let Some(n) = self.args.tutorial.take() {
                 self.tutorial =
@@ -67,7 +100,9 @@ impl App {
             || self.list_kind.is_some()
             || self.navigator.as_ref().is_some_and(|n| n.map_open())
             || !matches!(self.view.as_str(), "driver" | "outside" | "pax");
-        if self.cursor != self.cursor_idle_pos
+        // the cursor goes after 10 s without moving or showing as a pointer, in the game only
+        if ray
+            || self.cursor != self.cursor_idle_pos
             || self.cursor_kind != 0
             || needs_mouse
             || vr_on
@@ -83,6 +118,7 @@ impl App {
             || idle_hide
             || ((moved || actions.iter().any(|a| a.1)) && !needs_mouse && !vr_on);
         if self.vr_nav_edit.is_none()
+            && !ray
             && hide != self.cursor_hidden.is_some()
             && (hide || needs_mouse)
         {

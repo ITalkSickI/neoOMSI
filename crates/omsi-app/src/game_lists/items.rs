@@ -166,12 +166,12 @@ pub(super) fn hof_label(p: &std::path::Path) -> String {
         .filter(|n| !n.trim().is_empty())
     {
         Some(n)
-            if !file
-                .to_ascii_lowercase()
-                .starts_with(&n.trim().to_ascii_lowercase()) =>
-        {
-            format!("{}  ({file})", n.trim())
-        }
+        if !file
+            .to_ascii_lowercase()
+            .starts_with(&n.trim().to_ascii_lowercase()) =>
+            {
+                format!("{}  ({file})", n.trim())
+            }
         _ => file,
     }
 }
@@ -187,6 +187,9 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
             }
             if matches!(kind, ListKind::Options(t) if *t == KEYS_TAB) {
                 return key_rows(app);
+            }
+            if matches!(kind, ListKind::Options(t) if *t == LOOK_TAB) {
+                return look_options_page(app).1;
             }
             let Some((mut pages, tab)) = pages_of(app, kind) else {
                 return out;
@@ -208,8 +211,8 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
                     .filter(|l| {
                         l.user_allowed
                             && l.tours
-                                .iter()
-                                .any(|t| tour_listed(sch, &l.name, t, app.clock.time))
+                            .iter()
+                            .any(|t| tour_listed(sch, &l.name, t, app.clock.time))
                     })
                     .collect();
                 lines.sort_by(|a, b| natural(&a.name, &b.name));
@@ -575,14 +578,14 @@ pub(crate) fn menu_extras(
                 Some(Preview {
                     title: format!("{} {}", tr("Line"), line.name),
                     meta: format!(
-                            "{} {}",
-                            line.tours
-                                .iter()
-                                .filter(|t| schedule
-                                    .is_some_and(|s| tour_listed(s, &line.name, t, now)))
-                                .count(),
-                            tr("tours")
-                        ),
+                        "{} {}",
+                        line.tours
+                            .iter()
+                            .filter(|t| schedule
+                                .is_some_and(|s| tour_listed(s, &line.name, t, now)))
+                            .count(),
+                        tr("tours")
+                    ),
                     rows,
                     chosen: None,
                     button: None,

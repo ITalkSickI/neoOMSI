@@ -2414,6 +2414,8 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
         ("driverview_smooth", json!(true)),
         ("hands_in_cab", json!(false)),
         ("alt_view", json!(true)),
+        ("free_look", json!(false)),
+        ("crosshair", json!(true)),
     ] {
         v[k] = d;
     }
@@ -2582,7 +2584,9 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
             | "head_movement"
             | "driverview_smooth"
             | "hands_in_cab"
-            | "alt_view" => v[&k] = json!(b(val)),
+            | "alt_view"
+            | "free_look"
+            | "crosshair" => v[&k] = json!(b(val)),
             "maintenance" | "ai_unsched_factor" | "ai_max_scheduled" => {
                 v[&k] = json!(
                     val.trim_end_matches('%')
@@ -3200,6 +3204,11 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("mouse_steering", false),
         b("mouse_right_off", false),
         b("blinker_cancel", true),
+    );
+    let text = format!(
+        "{text}free_look={}\ncrosshair={}\n",
+        b("free_look", false),
+        b("crosshair", true)
     );
     let vr_scale = v
         .get("vr_scale")

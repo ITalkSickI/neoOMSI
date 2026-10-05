@@ -135,6 +135,8 @@ pub struct Frame<'a> {
     pub cursor: (f32, f32),
     /// An OpenXR headset is drawing this frame.
     pub vr: bool,
+    /// Free look is on: a ring in the middle of the screen marks what operates.
+    pub crosshair: bool,
     /// The name of what the cursor points at (a switch, a part), shown next to it.
     pub tooltip: Option<String>,
     /// The chat, when a LAN session runs and the chat is not switched off.

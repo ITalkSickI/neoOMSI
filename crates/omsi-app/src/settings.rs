@@ -96,6 +96,11 @@ pub struct Settings {
     /// laptop's touchpad has no middle button to look round with, and right-drag looking
     /// is what neoOMSI always did.
     pub alt_view: bool,
+    /// The view turns with the mouse and the middle of the screen operates things;
+    /// Left Alt (or 10 s idle) switches to the free cursor and back.
+    pub free_look: bool,
+    /// Free look: the dot ring in the middle of the screen.
+    pub crosshair: bool,
     /// The 3D picture drawn at this fraction of the window's size and scaled up (0.5..1),
     /// 0 = automatic (full size unless the window has more pixels than a 2560x1080 screen,
     /// as a Retina window does). The HUD is always drawn at full size.
@@ -398,6 +403,8 @@ impl Settings {
             driverview_smooth: true,
             hands_in_cab: false,
             alt_view: true,
+            free_look: false,
+            crosshair: true,
             time_speed: 1.0,
             time_sync: false,
             metar_sync: false,
@@ -711,6 +718,8 @@ impl Settings {
                 "driverview_smooth" => s.driverview_smooth = b(v),
                 "hands_in_cab" => s.hands_in_cab = b(v),
                 "alt_view" => s.alt_view = b(v),
+                "free_look" => s.free_look = b(v),
+                "crosshair" => s.crosshair = b(v),
                 "time_speed" => {
                     s.time_speed = v
                         .trim_start_matches(['x', 'X'])

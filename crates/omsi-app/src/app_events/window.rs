@@ -50,8 +50,8 @@ impl App {
             && event.text.as_deref() == Some("/")
             && event.physical_key != PhysicalKey::Code(KeyCode::NumpadDivide)
             && self.game_keys.iter().any(|b| {
-                b.action.eq_ignore_ascii_case("chat_open") && b.scan_code == 53 && b.chord() == 0
-            })
+            b.action.eq_ignore_ascii_case("chat_open") && b.scan_code == 53 && b.chord() == 0
+        })
             && self.lan.is_some()
             && !lan::chat_open(&self.remotes)
         {
@@ -146,6 +146,9 @@ impl App {
 
     pub(super) fn on_cursor_moved(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
         if self.vr_nav_edit.is_some() {
+            return;
+        }
+        if self.raycast_active() {
             return;
         }
         if let Some((x, y)) = self.cursor_hidden {

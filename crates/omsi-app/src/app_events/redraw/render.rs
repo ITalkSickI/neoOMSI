@@ -22,6 +22,10 @@ impl App {
         let vr_nav_display = self.vr_nav_display();
         let vr_active = self.vr_active();
         let screenshot_mode = self.screenshot_mode.is_some();
+        let crosshair = !screenshot_mode
+            && self.settings.crosshair
+            && !matches!(self.view.as_str(), "pax" | "outside")
+            && self.raycast_active();
         let screenshot_help = self.screenshot_mode.as_mut().and_then(|mode| {
             mode.help_left = (mode.help_left - dt).max(0.0);
             (mode.help_left > 0.0)
@@ -85,102 +89,102 @@ impl App {
             let notes = lines;
             if !screenshot_mode {
                 if let (Some(nav), Some(p), Some(s)) = (
-                self.navigator.as_mut(),
-                self.player.as_ref(),
-                self.surface.as_ref(),
+                    self.navigator.as_mut(),
+                    self.player.as_ref(),
+                    self.surface.as_ref(),
                 ) {
-                let old_enabled = nav.enabled;
-                let old_opacity = nav.opacity;
-                nav.cockpit_display = vr_active;
-                if vr_active {
-                    nav.enabled = vr_nav_display.is_some_and(|d| d.placement.enabled);
-                    nav.opacity = vr_nav_display.map(|d| d.placement.opacity).unwrap_or(0.95);
-                }
-                if let Some(w) = self.world.as_ref() {
-                    nav.start_map(w.clone());
-                }
-                if let (Some(places), Some(d)) = (nav.places(), self.duty.as_mut()) {
-                    if !self.duty_places {
-                        self.duty_places = true;
-                        d.learn_places(places);
+                    let old_enabled = nav.enabled;
+                    let old_opacity = nav.opacity;
+                    nav.cockpit_display = vr_active;
+                    if vr_active {
+                        nav.enabled = vr_nav_display.is_some_and(|d| d.placement.enabled);
+                        nav.opacity = vr_nav_display.map(|d| d.placement.opacity).unwrap_or(0.95);
                     }
-                }
-                let (line, terminus, stops, trip) = navigator::duty_parts(self.duty.as_ref());
-                match (
-                    trip,
-                    self.schedule.as_ref(),
-                    self.traffic.as_ref(),
-                    self.world.as_ref(),
-                ) {
-                    (Some((key, name)), Some(sch), _, _) if nav.map_net().is_some() => {
-                        if nav.wants_route(&key, 0) {
-                            let lanes = sch.trip_route_in(nav.map_net().unwrap(), &name);
-                            let g = nav.global_version + (1 << 40);
-                            nav.set_route(&key, lanes, true, g);
-                        }
-                    }
-                    (Some((key, name)), Some(sch), Some(t), Some(w)) => {
-                        if nav.wants_route(&key, t.lanes_generation) {
-                            let (lanes, complete) = sch.trip_route(w, t, &name);
-                            nav.set_route(&key, lanes, complete, t.lanes_generation);
-                        }
-                    }
-                    _ => nav.clear_route(),
-                }
-                let (outside_temp, inside_temp) = vehicle_temperatures(p);
-                let (at, heading) = match self.on_foot.as_ref() {
-                    Some(f) => (f.pos, f.heading),
-                    None => (p.vehicle.position, p.vehicle.heading),
-                };
-                let frame = navigator::NavFrame {
-                    traffic: self.traffic.as_ref(),
-                    bus: at,
-                    heading,
-                    speed_kmh: p.vehicle.physics.velocity_kmh(),
-                    outside_temp,
-                    inside_temp,
-                    line,
-                    terminus,
-                    stops,
-                    delay: self.duty.as_ref().map(|_| p.vehicle.host.tt_delay as f64),
-                    passengers: self.humans.as_ref().map(|h| h.riding()),
-                    stop_requested: navigator::stop_requested(&p.vehicle),
-                    time: self.clock.time,
-                    weekday: self.clock.weekday(),
-                    language: &self.settings.language,
-                    units: &self.settings.units,
-                    screen: if vr_active {
-                        (1440.0, 1440.0)
-                    } else {
-                        (s.config.width as f32, s.config.height as f32)
-                    },
-                    ui_scale: if vr_active {
-                        1.0
-                    } else {
-                        self.settings.ui_scale
-                    },
-                    follow_window: if vr_active {
-                        true
-                    } else {
-                        self.settings.ui_scale_window
-                    },
-                    dt,
-                };
-                let __tn = Instant::now();
-                nav.frame(r, scene, &frame);
-                nav.enabled = old_enabled;
-                nav.opacity = old_opacity;
-                *self.profile.entry("hud.navigator").or_default() += __tn.elapsed().as_secs_f64();
-                if nav.arrows {
                     if let Some(w) = self.world.as_ref() {
-                        let spots =
-                            nav.arrow_spots(self.traffic.as_ref().map(|t| &t.net), 350.0, &|id| {
-                                w.object_positions.lock().get(&id).map(|p| (p.0, p.1[0]))
-                            });
-                        self.route_arrows.tick(dt, w, r, scene, &spots);
+                        nav.start_map(w.clone());
+                    }
+                    if let (Some(places), Some(d)) = (nav.places(), self.duty.as_mut()) {
+                        if !self.duty_places {
+                            self.duty_places = true;
+                            d.learn_places(places);
+                        }
+                    }
+                    let (line, terminus, stops, trip) = navigator::duty_parts(self.duty.as_ref());
+                    match (
+                        trip,
+                        self.schedule.as_ref(),
+                        self.traffic.as_ref(),
+                        self.world.as_ref(),
+                    ) {
+                        (Some((key, name)), Some(sch), _, _) if nav.map_net().is_some() => {
+                            if nav.wants_route(&key, 0) {
+                                let lanes = sch.trip_route_in(nav.map_net().unwrap(), &name);
+                                let g = nav.global_version + (1 << 40);
+                                nav.set_route(&key, lanes, true, g);
+                            }
+                        }
+                        (Some((key, name)), Some(sch), Some(t), Some(w)) => {
+                            if nav.wants_route(&key, t.lanes_generation) {
+                                let (lanes, complete) = sch.trip_route(w, t, &name);
+                                nav.set_route(&key, lanes, complete, t.lanes_generation);
+                            }
+                        }
+                        _ => nav.clear_route(),
+                    }
+                    let (outside_temp, inside_temp) = vehicle_temperatures(p);
+                    let (at, heading) = match self.on_foot.as_ref() {
+                        Some(f) => (f.pos, f.heading),
+                        None => (p.vehicle.position, p.vehicle.heading),
+                    };
+                    let frame = navigator::NavFrame {
+                        traffic: self.traffic.as_ref(),
+                        bus: at,
+                        heading,
+                        speed_kmh: p.vehicle.physics.velocity_kmh(),
+                        outside_temp,
+                        inside_temp,
+                        line,
+                        terminus,
+                        stops,
+                        delay: self.duty.as_ref().map(|_| p.vehicle.host.tt_delay as f64),
+                        passengers: self.humans.as_ref().map(|h| h.riding()),
+                        stop_requested: navigator::stop_requested(&p.vehicle),
+                        time: self.clock.time,
+                        weekday: self.clock.weekday(),
+                        language: &self.settings.language,
+                        units: &self.settings.units,
+                        screen: if vr_active {
+                            (1440.0, 1440.0)
+                        } else {
+                            (s.config.width as f32, s.config.height as f32)
+                        },
+                        ui_scale: if vr_active {
+                            1.0
+                        } else {
+                            self.settings.ui_scale
+                        },
+                        follow_window: if vr_active {
+                            true
+                        } else {
+                            self.settings.ui_scale_window
+                        },
+                        dt,
+                    };
+                    let __tn = Instant::now();
+                    nav.frame(r, scene, &frame);
+                    nav.enabled = old_enabled;
+                    nav.opacity = old_opacity;
+                    *self.profile.entry("hud.navigator").or_default() += __tn.elapsed().as_secs_f64();
+                    if nav.arrows {
+                        if let Some(w) = self.world.as_ref() {
+                            let spots =
+                                nav.arrow_spots(self.traffic.as_ref().map(|t| &t.net), 350.0, &|id| {
+                                    w.object_positions.lock().get(&id).map(|p| (p.0, p.1[0]))
+                                });
+                            self.route_arrows.tick(dt, w, r, scene, &spots);
+                        }
                     }
                 }
-            }
             }
             if let (Some(ui), Some(s)) = (self.ui.as_mut(), self.surface.as_ref()) {
                 let scale = self
@@ -270,6 +274,7 @@ impl App {
                             false
                         }
                     },
+                    crosshair,
                     tooltip: if screenshot_mode {
                         None
                     } else {
@@ -296,8 +301,8 @@ impl App {
                     menu_disabled,
                     menu_kind,
                     report: report_view.as_ref(),
-                    touch: !screenshot_mode && crate::platform::touch_controls(),
-                    build: crate::startup::BUILD,
+                    touch: !screenshot_mode && platform::touch_controls(),
+                    build: BUILD,
                     report_status: &self.report_status,
                     menu_head,
                     menu_preview,
@@ -413,13 +418,13 @@ impl App {
             .unwrap_or_default();
         lighting.animation_time = Some(self.clock.run_time as f32);
         lighting.led_glow = self.settings.led_glow as f32 * 0.25;
-        crate::lights::set_led_glow(lighting.led_glow);
+        lights::set_led_glow(lighting.led_glow);
         lighting.led_mips = self.settings.led_mips;
         lighting.atmosphere_brightness = self.settings.atmosphere_brightness;
-        lighting.html_glow = crate::lights::screen_fx(0);
-        lighting.html_light = crate::lights::screen_fx(1);
-        lighting.script_glow = crate::lights::screen_fx(2);
-        lighting.script_light = crate::lights::screen_fx(3);
+        lighting.html_glow = lights::screen_fx(0);
+        lighting.html_light = lights::screen_fx(1);
+        lighting.script_glow = lights::screen_fx(2);
+        lighting.script_light = lights::screen_fx(3);
         let mut finish = false;
         let mut reconfigure = false;
         let shot = self.shot.take();

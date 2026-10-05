@@ -46,9 +46,36 @@ pub(super) fn slider_row(
 
 pub(crate) const MAP_TAB: usize = 99;
 pub(crate) const KEYS_TAB: usize = 98;
+pub(crate) const LOOK_TAB: usize = 97;
 
 pub(crate) fn is_sub_tab(t: usize) -> bool {
-    t == MAP_TAB || t == KEYS_TAB
+    t == MAP_TAB || t == KEYS_TAB || t == LOOK_TAB
+}
+pub(super) fn look_options_page(app: &App) -> Page {
+    let rows: Vec<(String, String)> = vec![
+        switch_row(
+            app,
+            "free_look",
+            "Free look",
+            "Mouse turns the view, the screen centre operates things; Left Alt shows the cursor",
+        ),
+        switch_row(
+            app,
+            "crosshair",
+            "Crosshair",
+            "Shows a small ring in the middle of the screen (not in the F2 and F3 views)",
+        ),
+        switch_row(
+            app,
+            "tooltips",
+            "Names of buttons",
+            "Shows the name of what the cursor or the screen centre points at",
+        ),
+    ]
+        .into_iter()
+        .flatten()
+        .collect();
+    ("Free look", rows)
 }
 pub(super) fn map_options_page(app: &App) -> Page {
     let file = settings_file();
@@ -304,6 +331,7 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "Right mouse button turns the view",
             "Shift+right zooms; off: right zooms as in OMSI, the wheel button turns",
         ),
+        toggle_now(app, "free_look").map(|on| (row("Free look", 'm', if on { "on" } else { "off" }, "Here you can configure the free look, the crosshair and the button names", None), "lookopts".to_string())),
         switch_row(
             app,
             "steer_look",

@@ -447,6 +447,8 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "texture_compression" => s.texture_compression,
         "driver" => s.driver,
         "alt_view" => s.alt_view,
+        "free_look" => s.free_look,
+        "crosshair" => s.crosshair,
         "vr" => s.vr,
         "vr_desktop_mirror" => s.vr_desktop_mirror,
         "doppler" => s.doppler,
@@ -723,6 +725,15 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
         "alt_view" => {
             app.settings.alt_view = on;
             Some(("alt_view", bit))
+        }
+        "free_look" => {
+            app.settings.free_look = on;
+            app.free_look = false;
+            Some(("free_look", bit))
+        }
+        "crosshair" => {
+            app.settings.crosshair = on;
+            Some(("crosshair", bit))
         }
         "vr" => {
             app.settings.vr = on;

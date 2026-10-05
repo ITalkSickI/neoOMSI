@@ -46,6 +46,13 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                     let m = if let Move::To(_) = mv { Move::Next } else { mv };
                     option_do(app, "navigator", "", m);
                 }
+                "lookopts" => {
+                    if step {
+                        return Some(ListKind::Options(LOOK_TAB));
+                    }
+                    let m = if let Move::To(_) = mv { Move::Next } else { mv };
+                    option_do(app, "free_look", "", m);
+                }
                 "keysearch" => {}
                 "keybind" if matches!(mv, Move::Dec | Move::Inc) => {
                     let mut it = arg.splitn(3, ' ');

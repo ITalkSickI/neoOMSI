@@ -118,7 +118,12 @@ pub(crate) struct App {
     pub(crate) steer_cursor: Option<(f32, f32)>,
     pub(crate) center_cursor: bool,
     pub(crate) cursor_hidden: Option<(f32, f32)>,
+    /// Seconds the cursor has been still and not shown as a pointer (hidden after 10).
     pub(crate) cursor_idle: f32,
+    /// Raycast camera: the free cursor is on (Left Alt) until it idles.
+    pub(crate) free_look: bool,
+    /// Raycast camera: the window is set up for it (cursor grabbed and hidden).
+    pub(crate) raycast_applied: bool,
     pub(crate) cursor_idle_pos: (f32, f32),
     pub(crate) last_ctl_steer: Option<f32>,
     pub(crate) mouse_pedals: (f32, f32),

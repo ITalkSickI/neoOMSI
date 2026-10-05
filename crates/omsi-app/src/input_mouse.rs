@@ -188,6 +188,26 @@ impl App {
             || (self.view == "free" && !self.ego))
     }
 
+    /// The raycast camera is steering: the mouse turns the view, the middle of the
+    /// screen is the cursor.
+    pub(crate) fn raycast_active(&self) -> bool {
+        self.settings.free_look
+            && !self.free_look
+            && self.player.is_some()
+            && matches!(self.view.as_str(), "driver" | "pax" | "outside" | "foot")
+            && self.game_menu.is_none()
+            && self.chooser.is_none()
+            && self.list_kind.is_none()
+            && self.menu.is_none()
+            && !self.mouse_drive
+            && self.screenshot_mode.is_none()
+            && self.vr_nav_edit.is_none()
+            && !self.touch.enabled
+            && !self.vr_active()
+            && self.window_focused
+            && !self.navigator.as_ref().is_some_and(|n| n.map_open())
+    }
+
     pub(crate) fn cursor_looks(&self) -> bool {
         self.mouse_look
             && self.game_menu.is_none()

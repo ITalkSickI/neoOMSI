@@ -3,7 +3,7 @@
 use super::*;
 
 impl TextCache {
-    /// A small white circle, centred on the point that receives the click.
+    
     pub(super) fn vr_pointer(&mut self, r: &Renderer, scene: &mut Scene) -> TextureId {
         let key = ("\u{0}vr_pointer_dot".to_string(), 0, [0, 0, 0, 0]);
         if let Some(label) = self.labels.get_mut(&key) {
@@ -47,8 +47,50 @@ impl TextCache {
         tex
     }
 
-    /// A plate of one colour: 0 the chat's dark translucent input box, 1 the loading
-    /// screen's bar track, 2 its fill, 3 .. 7 as said below.
+    pub(super) fn crosshair(&mut self, r: &Renderer, scene: &mut Scene) -> TextureId {
+        let key = ("\u{0}crosshair_dot".to_string(), 0, [0, 0, 0, 0]);
+        if let Some(label) = self.labels.get_mut(&key) {
+            label.used = self.frame;
+            return label.tex;
+        }
+        const N: usize = 32;
+        let mut rgba = vec![0u8; N * N * 4];
+        for y in 0..N {
+            for x in 0..N {
+                let dx = x as f32 + 0.5 - N as f32 * 0.5;
+                let dy = y as f32 + 0.5 - N as f32 * 0.5;
+                let d = (dx * dx + dy * dy).sqrt();
+                let white = (7.0 - d).clamp(0.0, 1.0);
+                let dark = (9.5 - d).clamp(0.0, 1.0) * 0.55;
+                let alpha = white + dark * (1.0 - white);
+                if alpha > 0.0 {
+                    let i = (y * N + x) * 4;
+                    rgba[i] = (255.0 * white / alpha) as u8;
+                    rgba[i + 1] = rgba[i];
+                    rgba[i + 2] = rgba[i];
+                    rgba[i + 3] = (alpha * 255.0) as u8;
+                }
+            }
+        }
+        let image = omsi_texture::Image {
+            width: N as u32,
+            height: N as u32,
+            rgba,
+            has_alpha: true,
+        };
+        let tex = r.add_texture(scene, &image, false);
+        self.labels.insert(
+            key,
+            Label {
+                tex,
+                w: N as u32,
+                h: N as u32,
+                used: self.frame,
+            },
+        );
+        tex
+    }
+
     pub(super) fn plate(&mut self, r: &Renderer, scene: &mut Scene, kind: u8) -> TextureId {
         let mut rgba = match kind {
             1 => vec![255, 255, 255, 38],
@@ -93,7 +135,6 @@ impl TextCache {
         tex
     }
 
-    /// A plate of one RGBA colour, any size (stretched).
     pub(super) fn solid(&mut self, r: &Renderer, scene: &mut Scene, rgba: [u8; 4]) -> TextureId {
         let key = ("\u{0}solid".to_string(), 0, rgba);
         if let Some(l) = self.labels.get_mut(&key) {
@@ -119,8 +160,6 @@ impl TextCache {
         tex
     }
 
-    /// One anti-aliased quarter disc of `rad` pixels: the rounded corner `idx` (0 top left,
-    /// 1 top right, 2 bottom left, 3 bottom right) of a rounded plate.
     pub(super) fn corner(
         &mut self,
         r: &Renderer,
@@ -168,7 +207,6 @@ impl TextCache {
         tex
     }
 
-    /// A texture made once for `key` (kept while it is used, like a text).
     pub(super) fn cached(
         &mut self,
         r: &Renderer,
@@ -200,7 +238,6 @@ impl TextCache {
         tex
     }
 
-    /// A whole rounded plate of `w` x `h` pixels in one texture, anti-aliased.
     pub(super) fn rrect(
         &mut self,
         r: &Renderer,
@@ -240,8 +277,6 @@ impl TextCache {
         })
     }
 
-    /// A soft shadow under the rounded rectangle `rect`: it fades out over `spread` pixels
-    /// and lies `dy` lower.
     pub(super) fn shadow(
         &mut self,
         r: &Renderer,
@@ -304,9 +339,6 @@ impl TextCache {
         ));
     }
 
-    /// A rectangle with rounded corners of `radius` pixels in `rgba`, on whole pixels so
-    /// that translucent colours show no seams: one texture for a plate of some size, else
-    /// (a thin bar, a thumb that grows and shrinks) three bands and four corner discs.
     pub(super) fn rounded(
         &mut self,
         r: &Renderer,

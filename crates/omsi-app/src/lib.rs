@@ -504,6 +504,8 @@ pub(crate) fn make_app(
         center_cursor: false,
         cursor_hidden: None,
         cursor_idle: 0.0,
+        free_look: false,
+        raycast_applied: false,
         cursor_idle_pos: (0.0, 0.0),
         last_ctl_steer: None,
         mouse_pedals: (0.0, 0.0),

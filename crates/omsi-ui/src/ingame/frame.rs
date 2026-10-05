@@ -3,8 +3,7 @@
 use super::*;
 
 impl Ui {
-    /// The scene the interface draws into was replaced: every texture it made (labels,
-    /// plates, images) belonged to the old one and is made again on demand.
+
     pub fn scene_replaced(&mut self) {
         self.text.labels.clear();
         self.images.clear();
@@ -54,7 +53,6 @@ impl Ui {
         })
     }
 
-    /// Draw the frame's interface: its overlays go after the HUD's in `scene.overlays`.
     pub fn draw(&mut self, r: &Renderer, scene: &mut Scene, f: &Frame, dt: f32) {
         let s = f.scale.max(0.5) * f.ui_scale;
         self.text.backdrop = f.opacity;
@@ -445,6 +443,11 @@ impl Ui {
             scene.overlays.push((pointer, [0.0, 0.0, 7.0 * s, 7.0 * s]));
         } else {
             self.vr_cursor_overlay = None;
+            if f.crosshair {
+                let pointer = self.text.crosshair(r, scene);
+                let (cx, cy, d) = (f.width * 0.5, f.height * 0.5, 3.5 * s);
+                scene.overlays.push((pointer, [cx - d, cy - d, cx + d, cy + d]));
+            }
         }
         self.text.end_frame(r, scene);
     }

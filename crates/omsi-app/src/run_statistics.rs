@@ -585,6 +585,7 @@ mod preview {
                 height: height as f32,
                 cursor: (-100.0, -100.0),
                 vr: false,
+                crosshair: false,
                 tooltip: None,
                 chat: None,
                 notes: &[],
