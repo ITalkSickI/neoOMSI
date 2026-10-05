@@ -46,6 +46,7 @@ pub(crate) struct PostUniform {
     pub(crate) a: [f32; 4],
     pub(crate) b: [f32; 4],
     pub(crate) c: [f32; 4],
+    pub(crate) d: [f32; 4],
 }
 
 #[repr(C)]

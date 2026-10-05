@@ -216,6 +216,7 @@ pub struct Settings {
     pub reflections: bool,
     /// How bright an LED panel's dots burn (`Lighting::led_glow`): 0 (off) .. 15, 16 levels.
     pub led_glow: u8,
+    pub nightmap_glow: u8,
     /// How bright the night is (`Lighting::atmosphere_brightness`): 0 (pitch black) .. 2, 1 = as is.
     pub atmosphere_brightness: f32,
     /// Brightness of HTML / script screens (glow and light): 0 .. 4, 1 = as is.
@@ -418,6 +419,7 @@ impl Settings {
             red_steer_spd: false,
             reflections: true,
             led_glow: 6,
+            nightmap_glow: 6,
             atmosphere_brightness: 1.0,
             led_mips: 1.3,
             mouse_sens: 1.0,
@@ -756,6 +758,13 @@ impl Settings {
                         .map(|x| x.clamp(0, 15) as u8)
                         .unwrap_or(s.led_glow)
                 }
+                "nightmap_glow" => {
+                    s.nightmap_glow = v
+                        .trim()
+                        .parse::<i32>()
+                        .map(|x| x.clamp(0, 15) as u8)
+                        .unwrap_or(s.nightmap_glow)
+                }
                 "atmosphere_brightness" => {
                     s.atmosphere_brightness = v
                         .trim()
@@ -1009,6 +1018,7 @@ impl Settings {
             self.driver as u8,
             self.driverview_smooth as u8
         );
+        text.push_str(&format!("nightmap_glow={}\n", self.nightmap_glow));
         text.push_str(&format!(
             "vr_head_smoothing_ms={}\nvr_mirror_rate={}\nvr_desktop_mirror={}\nled_glow={}\nled_mips={}\nui_scale={}\nui_scale_window={}\nnotes={}\n",
             self.vr_head_smoothing_ms, self.vr_mirror_rate, self.vr_desktop_mirror as u8, self.led_glow, self.led_mips, self.ui_scale, self.ui_scale_window as u8, self.notes as u8,

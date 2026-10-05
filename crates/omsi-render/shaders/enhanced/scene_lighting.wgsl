@@ -307,6 +307,8 @@ fn fs_enhanced(in: FsIn) -> EnhancedOut {
     // an LED panel's dots stay in the glow's source (`post.wgsl`), the other screens'
     // letters stay out of it
     let led = select(0.0, step(0.5, c.a), material.emissive.w < -1.5);
+    let night_lit = material.extra.w > 0.5 && material.extra.x < 0.5 && !screen && material.emissive.w > -0.5
+        && (material.extra.w > 1.5 || camera.sun_color.w > 0.05) && c.a > 0.5;
     var out: EnhancedOut;
     out.color = c;
     // The sub-0.5 range of g carries water's occluded sky weight; LED detection uses
@@ -314,7 +316,8 @@ fn fs_enhanced(in: FsIn) -> EnhancedOut {
     // A vehicle's shadow is light blocked from the road, not a new dry surface. Its
     // colour still blends normally, but it must preserve the road's reflection mask.
     let coverage = select(select(c.a, 1.0, screen), 0.0, in.params2.w > 1.5);
-    out.mask = vec4<f32>(select(0.0, 1.0, screen), max(led, puddle_weight.y * 0.49), puddle_weight.x, coverage);
+    let night_g = select(0.0, 0.75, night_lit);
+    out.mask = vec4<f32>(select(0.0, 1.0, screen), max(max(led, night_g), puddle_weight.y * 0.49), puddle_weight.x, coverage);
     return out;
 }
 

@@ -18,6 +18,7 @@ struct PostParams {
     // pre-exposure (for absolute luminance), w how much an LED panel's dots count for in
     // the glow's source (0 = not at all, `Led glow`)
     c: vec4<f32>,
+    d: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> p: PostParams;
 @group(0) @binding(1) var t_src: texture_2d<f32>;
@@ -68,9 +69,11 @@ fn src_unmasked(uv: vec2<f32>, texel: vec2<f32>, x: f32, y: f32) -> vec3<f32> {
     let m = textureSampleLevel(t_base, s_lin, at, 0.0);
     let c = clean(textureSampleLevel(t_src, s_lin, at, 0.0).rgb);
     let screen = step(0.5, m.r);
-    let led = step(0.5, m.g);
+    let led = step(0.9, m.g);
+    let night = step(0.6, m.g) * (1.0 - led);
     let led_glow = min(c * (led * p.c.w), vec3<f32>(10.0));
-    return c * (1.0 - screen) + led_glow * screen;
+    let night_glow = min(c * (night * p.d.x), vec3<f32>(10.0));
+    return (c * (1.0 - screen) + led_glow * screen) * (1.0 - night) + night_glow;
 }
 
 // --- the glow: 13-tap downsampling (the first level with Karis' average, so that a single

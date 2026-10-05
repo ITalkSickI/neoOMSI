@@ -469,6 +469,13 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         slider_row(
             app,
+            "nightmap_glow",
+            "Night map glow",
+            "How strongly lit buttons, lamps and windows glow at night",
+            &|v| format!("{}/15", v as i64),
+        ),
+        slider_row(
+            app,
             "atmosphere_brightness",
             "Atmosphere brightness",
             "How much light the night has",

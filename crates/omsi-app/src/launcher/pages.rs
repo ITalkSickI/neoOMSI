@@ -1115,6 +1115,26 @@ fn graphics_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
             s["led_glow"] = json!(led.round() as i64);
             *dirty = 0.3;
         }
+        let mut nm = get(s, "nightmap_glow").as_i64().unwrap_or(6) as f32;
+        if ui.slider(
+            "s-nightmap",
+            c.row(),
+            &mut nm,
+            0.0,
+            15.0,
+            1.0,
+            "Night map glow",
+            &|v| {
+                if v < 0.5 {
+                    "Off".to_string()
+                } else {
+                    format!("{}", v as i64)
+                }
+            },
+        ) {
+            s["nightmap_glow"] = json!(nm.round() as i64);
+            *dirty = 0.3;
+        }
         let mut atmo = get(s, "atmosphere_brightness").as_f64().unwrap_or(1.0) as f32;
         if ui.slider(
             "s-atmo",

@@ -1967,6 +1967,7 @@ impl Renderer {
                     self.exposure.map(f32::exp).unwrap_or(1.0),
                     lighting.led_glow * 10.0,
                 ],
+                d: [lighting.nightmap_glow * 4.0, 0.0, 0.0, 0.0],
             };
             self.queue
                 .write_buffer(&self.post_buf, 0, bytemuck::bytes_of(&pu));

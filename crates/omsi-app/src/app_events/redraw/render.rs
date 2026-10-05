@@ -424,6 +424,7 @@ impl App {
         lighting.animation_time = Some(self.clock.run_time as f32);
         lighting.led_glow = self.settings.led_glow as f32 * 0.25;
         lights::set_led_glow(lighting.led_glow);
+        lighting.nightmap_glow = self.settings.nightmap_glow as f32 * 0.25;
         lighting.led_mips = self.settings.led_mips;
         lighting.atmosphere_brightness = self.settings.atmosphere_brightness;
         lighting.html_glow = lights::screen_fx(0);

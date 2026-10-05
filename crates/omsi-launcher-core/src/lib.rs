@@ -2462,6 +2462,7 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
         ("seat_z", json!(0.0)),
         ("head_tracking", json!(false)),
         ("led_glow", json!(6)),
+        ("nightmap_glow", json!(6)),
         ("led_mips", json!(1.3)),
         ("atmosphere_brightness", json!(1.0)),
         ("ui_scale", json!(1.0)),
@@ -2694,6 +2695,9 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
                 )
             }
             "led_glow" => v[&k] = json!(val.parse::<i64>().map(|x| x.clamp(0, 15)).unwrap_or(6)),
+            "nightmap_glow" => {
+                v[&k] = json!(val.parse::<i64>().map(|x| x.clamp(0, 15)).unwrap_or(6))
+            }
             "look_sens" => {
                 v[&k] = json!(
                     val.parse::<f64>()
@@ -2923,7 +2927,7 @@ pub fn save_settings(v: &Value) -> Result<()> {
 
 /// The settings a graphics profile holds: what the Graphics tab shows, except the machine's
 /// own (fullscreen, graphics API).
-pub const GRAPHICS_PROFILE_KEYS: [&str; 22] = [
+pub const GRAPHICS_PROFILE_KEYS: [&str; 23] = [
     "graphics",
     "msaa",
     "render_scale",
@@ -2934,6 +2938,7 @@ pub const GRAPHICS_PROFILE_KEYS: [&str; 22] = [
     "shadow_casters",
     "detail_textures",
     "led_glow",
+    "nightmap_glow",
     "led_mips",
     "atmosphere_brightness",
     "reflections",
@@ -3204,9 +3209,10 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("blinker_cancel", true),
     );
     let text = format!(
-        "{text}free_look={}\ncrosshair={}\n",
+        "{text}free_look={}\ncrosshair={}\nnightmap_glow={}\n",
         b("free_look", false),
-        b("crosshair", true)
+        b("crosshair", true),
+        n("nightmap_glow", 6).clamp(0, 15)
     );
     let vr_scale = v
         .get("vr_scale")
