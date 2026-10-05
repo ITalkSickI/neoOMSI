@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>neoOMSI moved</title>
+  <meta name="robots" content="noindex,follow">
+  <meta http-equiv="refresh" content="0;url=https://neoomsi.com/">
+  <link rel="canonical" href="https://neoomsi.com/">
+  <script>
+    (() => {
+      const docs = {
+        USER_GUIDE: '/docs/user-guide/',
+        COMPATIBILITY: '/docs/compatibility/',
+        SERVER: '/docs/server/',
+        BUILDING: '/docs/building/',
+        DEVELOPMENT: '/docs/development/',
+        ISSUE_TRIAGE: '/docs/issue-triage/',
+        RELEASING: '/docs/releasing/',
+        VERSIONING: '/docs/releasing/'
+      };
+
+      const legacyPath = location.pathname.replace(/^\/neoOMSI\/?/, '');
+      const legacyHash = location.hash.startsWith('#/') ? location.hash.slice(2) : '';
+      const route = legacyHash || legacyPath;
+
+      let path = '/';
+      const doc = route.match(/^docs\/([A-Z_]+)(?:\.md)?(?:#.*)?$/);
+
+      if (doc && docs[doc[1]]) {
+        path = docs[doc[1]];
+      } else if (/^download\/?$/.test(route)) {
+        path = '/download/';
+      } else if (/^releases\/?$/.test(route)) {
+        path = '/releases/';
+      } else if (/^faq\/?$/.test(route)) {
+        path = '/faq/';
+      } else if (/^openomsi\/?$/.test(route)) {
+        path = '/openomsi/';
+      } else {
+        const issue = route.match(/^issues\/(\d+)\/?$/);
+        if (issue) path = `/issues/${issue[1]}`;
+      }
+
+      const target = new URL(path, 'https://neoomsi.com/');
+      target.search = location.search;
+      location.replace(target.toString());
+    })();
+  </script>
+</head>
+<body>
+  <p>neoOMSI has moved to <a href="https://neoomsi.com/">neoomsi.com</a>.</p>
+</body>
+</html>
