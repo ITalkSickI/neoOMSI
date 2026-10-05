@@ -208,18 +208,18 @@ fn night_vision(c: vec3<f32>, strength: f32, pre: f32) -> vec3<f32> {
 
 // More colour instead of grey
 fn vividness(c: vec3<f32>) -> vec3<f32> {
-    let sat_all = 1.5;
-    let vibrance = 1.2;
+    let sat_all = 1.28;
+    let vibrance = 0.9;
     let l = luma(c);
     let mx = max(c.r, max(c.g, c.b));
     let mn = min(c.r, min(c.g, c.b));
     let s = select(0.0, (mx - mn) / mx, mx > 1e-5);
-    let k = sat_all * (1.0 + vibrance * (1.0 - s) * (1.0 - s));
+    let k = mix(sat_all * (1.0 + vibrance * (1.0 - s) * (1.0 - s)), 1.0, smoothstep(0.45, 0.9, s) * 0.8);
     // (dark pixels keep their colour as they are: the night's tint is the night vision's)
     let w = smoothstep(0.004, 0.06, l);
     let out = vec3<f32>(l) + (c - vec3<f32>(l)) * mix(1.0, k, w);
     // (a little contrast too: flat mid tones read as grey)
-    return max(pow(max(out, vec3<f32>(0.0)) / 0.18, vec3<f32>(1.07)) * 0.18, vec3<f32>(0.0));
+    return max(pow(max(out, vec3<f32>(0.0)) / 0.18, vec3<f32>(1.035)) * 0.18, vec3<f32>(0.0));
 }
 
 fn to_srgb(c: vec3<f32>) -> vec3<f32> {
