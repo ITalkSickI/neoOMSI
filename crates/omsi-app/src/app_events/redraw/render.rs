@@ -402,8 +402,10 @@ impl App {
         crate::lights::set_led_glow(lighting.led_glow);
         lighting.led_mips = self.settings.led_mips;
         lighting.atmosphere_brightness = self.settings.atmosphere_brightness;
-        lighting.html_glow = self.settings.html_glow * crate::lights::html_glow_debug();
-        crate::lights::set_html_glow(lighting.html_glow);
+        lighting.html_glow = crate::lights::screen_fx(0);
+        lighting.html_light = crate::lights::screen_fx(1);
+        lighting.script_glow = crate::lights::screen_fx(2);
+        lighting.script_light = crate::lights::screen_fx(3);
         let mut finish = false;
         let mut reconfigure = false;
         let shot = self.shot.take();

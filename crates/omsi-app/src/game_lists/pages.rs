@@ -91,9 +91,9 @@ pub(super) fn map_options_page(app: &App) -> Page {
             "Takes effect when the game starts the next time",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     ("Map", rows)
 }
 
@@ -147,9 +147,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         pick("ai_max_scheduled", "Timetable vehicles", later),
         pick("ai_max_parked", "Parked cars", later),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let driving: Vec<(String, String)> = vec![
         switch_row(app, "auto_clutch", "Automatic clutch", "Automatically operate the clutch for you"),
         switch_row(app, "auto_shift", "Automated manual gearbox", "Shift a manual gearbox's gears for you by the engine speed"),
@@ -256,9 +256,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "For wheels without a saved direction",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let mut camera: Vec<(String, String)> = vec![
         slider_row(
             app,
@@ -367,9 +367,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             &cm,
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     camera.push(button(
         "Reset the seat position",
         "Reset",
@@ -437,22 +437,15 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         slider_row(
             app,
-            "html_glow",
-            "HTML & script screen glow",
-            "How bright HTML and script screens glow (and how much light they throw)",
-            &|v| format!("{v:.2}"),
-        ),
-        slider_row(
-            app,
             "led_mips",
             "LED mask mipmaps",
             "Keep the mip chain of the LED masks (smoother from a distance).",
             &|v| format!("{v:.2}"),
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let display: Vec<(String, String)> = vec![
         switch_row(
             app,
@@ -469,9 +462,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "Show the frames per second in the top right corner",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let sound: Vec<(String, String)> = vec![
         slider_row(
             app,
@@ -502,9 +495,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         pick("pax_voices", "Passenger voices", "What passengers say"),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let interface: Vec<(String, String)> = vec![
         pick("language", "Language", "The language of the game's interface"),
         pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
@@ -555,8 +548,8 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
                     None
                 },
             ]
-            .into_iter()
-            .flatten(),
+                .into_iter()
+                .flatten(),
         );
     }
     if app.vr_active() && app.player.is_some() {

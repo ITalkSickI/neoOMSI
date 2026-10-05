@@ -69,21 +69,6 @@ pub(super) fn graphics(ui: &imgui::Ui, open: &mut bool, snap: &Snapshot, history
                 "Instances {}, Lights {} (interior {}), Coronas {}",
                 snap.instances, snap.lights, snap.interior_lights, snap.coronas
             ));
-            ui.separator();
-            ui.text("HTML & Scripting textures");
-            let mut g = crate::lights::html_glow_debug();
-            if ui
-                .slider_config("Glow (x settings)", 0.0, 4.0)
-                .display_format("%.2f")
-                .build(&mut g)
-            {
-                crate::lights::set_html_glow_debug(g);
-            }
-            ui.same_line();
-            if ui.small_button("Reset##htmlglow") {
-                crate::lights::set_html_glow_debug(1.0);
-            }
-            ui.text(format!("Effective glow: {:.2}", crate::lights::html_glow()));
         });
 }
 

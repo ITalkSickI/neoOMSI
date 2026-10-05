@@ -195,7 +195,7 @@ impl Renderer {
                 0.0,
             ],
             eye: eye_off.extend(0.0).to_array(),
-            led: [lighting.led_glow, lighting.led_mips, lighting.html_glow, 0.0],
+            led: [lighting.led_glow, lighting.led_mips, lighting.html_glow, lighting.script_glow],
         };
         self.queue
             .write_buffer(&self.enh_buf, 0, bytemuck::bytes_of(&u));

@@ -510,25 +510,34 @@ pub fn set_led_glow(v: f32) {
     LED_GLOW.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
 
-static HTML_GLOW: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
-static HTML_GLOW_DEBUG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+// Brightness of HTML / script screens, set here in the code only (1 = as is):
+// glow = how bright the picture itself shines, light = how much light the screen throws.
+pub const HTML_GLOW: f32 = 1.0;
+pub const HTML_LIGHT: f32 = 1.0;
+pub const SCRIPT_GLOW: f32 = 1.0;
+pub const SCRIPT_LIGHT: f32 = 1.0;
 
-/// Brightness of HTML / script screens (their own glow and the light they throw), 1 = as is.
-pub fn set_html_glow(v: f32) {
-    HTML_GLOW.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+// (the live values: start at the constants above, the dev menu's Light Settings change them)
+static SCREEN_FX: [std::sync::atomic::AtomicU32; 4] = [
+    std::sync::atomic::AtomicU32::new(HTML_GLOW.to_bits()),
+    std::sync::atomic::AtomicU32::new(HTML_LIGHT.to_bits()),
+    std::sync::atomic::AtomicU32::new(SCRIPT_GLOW.to_bits()),
+    std::sync::atomic::AtomicU32::new(SCRIPT_LIGHT.to_bits()),
+];
+
+/// 0 html glow, 1 html light, 2 script glow, 3 script light.
+pub fn screen_fx(i: usize) -> f32 {
+    f32::from_bits(SCREEN_FX[i.min(3)].load(std::sync::atomic::Ordering::Relaxed))
 }
 
-pub fn html_glow() -> f32 {
-    f32::from_bits(HTML_GLOW.load(std::sync::atomic::Ordering::Relaxed))
+pub fn set_screen_fx(i: usize, v: f32) {
+    SCREEN_FX[i.min(3)].store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
 
-/// The dev menu's extra factor on the HTML glow (for debugging).
-pub fn set_html_glow_debug(v: f32) {
-    HTML_GLOW_DEBUG.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
-}
-
-pub fn html_glow_debug() -> f32 {
-    f32::from_bits(HTML_GLOW_DEBUG.load(std::sync::atomic::Ordering::Relaxed))
+pub fn reset_screen_fx() {
+    for (i, v) in [HTML_GLOW, HTML_LIGHT, SCRIPT_GLOW, SCRIPT_LIGHT].into_iter().enumerate() {
+        set_screen_fx(i, v);
+    }
 }
 
 const LED_RANGE: f64 = 40.0;
@@ -1375,7 +1384,14 @@ pub fn collect(
                                 // (the light takes the colour of the picture)
                                 seen(mat.and_then(|m| m.texture)).map(|(c, _, rgb)| (c, rgb)).unwrap_or((0.0, SCREEN_COLOR))
                             };
-                            (gate * (shown * if led { 8.0 } else { 3.0 }).clamp(0.0, 1.0), colour, k)
+                            let fx = if led {
+                                1.0
+                            } else if mat.is_some_and(|m| m.is_html()) {
+                                screen_fx(1)
+                            } else {
+                                screen_fx(3)
+                            };
+                            (gate * (shown * if led { 8.0 } else { 3.0 }).clamp(0.0, 1.0) * fx, colour, k)
                         })
                         .fold((0.0f32, SCREEN_COLOR, usize::MAX), |a, b| if b.0 > a.0 { b } else { a })
                 };
@@ -1440,7 +1456,7 @@ pub fn collect(
             let (radius, intensity) = if led {
                 (LED_RADIUS, LED_INTENSITY * glow * gate * (0.2 + 0.8 * n))
             } else {
-                (SCREEN_RADIUS, SCREEN_INTENSITY * gate * n * html_glow())
+                (SCREEN_RADIUS, SCREEN_INTENSITY * gate * n)
             };
             scene.lights.push(PointLight {
                 position: c + out * LED_OUTSET,

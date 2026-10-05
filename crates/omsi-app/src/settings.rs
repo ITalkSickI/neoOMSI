@@ -214,7 +214,6 @@ pub struct Settings {
     /// How bright the night is (`Lighting::atmosphere_brightness`): 0 (pitch black) .. 2, 1 = as is.
     pub atmosphere_brightness: f32,
     /// Brightness of HTML / script screens (glow and light): 0 .. 4, 1 = as is.
-    pub html_glow: f32,
     /// How much of the mip chain an LED panel is held at (`Lighting::led_mips`): its own
     /// picture and its `\S:n` mask are sampled at the level their screen footprint asks
     /// for, never coarser than this. 0 point-samples them (the sharpest dots, and the
@@ -413,7 +412,6 @@ impl Settings {
             reflections: true,
             led_glow: 6,
             atmosphere_brightness: 1.0,
-            html_glow: 1.0,
             led_mips: 1.3,
             mouse_sens: 1.0,
             stick_sens: 0.25,
@@ -679,7 +677,7 @@ impl Settings {
                         "eco" | "economy" => "eco",
                         _ => "full",
                     }
-                    .into()
+                        .into()
                 }
                 "texture_memory" | "texmemlimit" => {
                     s.texture_memory = v
@@ -757,15 +755,6 @@ impl Settings {
                         .filter(|x| x.is_finite())
                         .map(|x| x.clamp(0.0, 2.0))
                         .unwrap_or(s.atmosphere_brightness)
-                }
-                "html_glow" => {
-                    s.html_glow = v
-                        .trim()
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|x| x.is_finite())
-                        .map(|x| x.clamp(0.0, 4.0))
-                        .unwrap_or(s.html_glow)
                 }
                 "led_mips" => {
                     s.led_mips = v
@@ -935,7 +924,7 @@ impl Settings {
             } else {
                 "vanilla_plus"
             }
-            .to_string()
+                .to_string()
         });
         s.enhanced = s.graphics == "enhanced";
         if s.classic() {
@@ -1016,8 +1005,8 @@ impl Settings {
             self.vr_head_smoothing_ms, self.vr_mirror_rate, self.vr_desktop_mirror as u8, self.led_glow, self.led_mips, self.ui_scale, self.ui_scale_window as u8, self.notes as u8,
         ));
         text.push_str(&format!(
-            "atmosphere_brightness={}\nhtml_glow={}\n",
-            self.atmosphere_brightness, self.html_glow
+            "atmosphere_brightness={}\n",
+            self.atmosphere_brightness
         ));
         text.push_str(&format!("steer_look={}\nsteer_look_angle={}\nsteer_look_response={}\nlook_sens={}\nblinker_cancel={}\n", self.steer_look as u8, self.steer_look_angle, self.steer_look_response, self.look_sens, self.blinker_cancel as u8));
         text.push_str(&format!(

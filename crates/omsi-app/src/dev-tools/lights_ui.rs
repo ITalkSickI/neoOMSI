@@ -9,7 +9,7 @@ pub(super) fn lights_window(ui: &imgui::Ui, open: &mut bool) {
     let mut s = crate::lights::settings();
     ui.window("Light Settings")
         .opened(open)
-        .size([400.0, 220.0], Condition::FirstUseEver)
+        .size([400.0, 300.0], Condition::FirstUseEver)
         .position([12.0, 32.0], Condition::FirstUseEver)
         .build(|| {
             ui.slider("Weather Boost", 0.0, 4.0, &mut s.weather_boost);
@@ -17,14 +17,16 @@ pub(super) fn lights_window(ui: &imgui::Ui, open: &mut bool) {
             ui.slider("Corona / Cone", 0.0, 4.0, &mut s.corona);
             ui.separator();
             ui.text("HTML & Scripting textures");
-            let mut g = crate::lights::html_glow_debug();
-            if ui.slider("HTML Glow x", 0.0, 4.0, &mut g) {
-                crate::lights::set_html_glow_debug(g);
+            for (i, n) in ["HTML Texture Glow", "HTML Texture Light", "Script Texture Glow", "Script Texture Light"].iter().enumerate() {
+                let mut g = crate::lights::screen_fx(i);
+                if ui.slider(format!("{n}##fx{i}"), 0.0, 4.0, &mut g) {
+                    crate::lights::set_screen_fx(i, g);
+                }
             }
             ui.separator();
             if ui.button("Reset") {
                 reset_global(&mut s);
-                crate::lights::set_html_glow_debug(1.0);
+                crate::lights::reset_screen_fx();
             }
         });
     crate::lights::set_settings(s);

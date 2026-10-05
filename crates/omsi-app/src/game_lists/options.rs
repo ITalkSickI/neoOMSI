@@ -25,7 +25,6 @@ pub(super) fn steps_of(verb: &str) -> Option<Vec<f32>> {
         "volume" => VOLUME.to_vec(),
         "led_glow" => (0..16).map(|v| v as f32).collect(),
         "led_mips" => (0..=80).map(|v| v as f32 * 0.05).collect(),
-        "html_glow" => (0..=80).map(|v| v as f32 * 0.05).collect(),
         "atmosphere_brightness" => (0..=40).map(|v| v as f32 * 0.05).collect(),
         "ui_scale" => (10..=40).map(|v| v as f32 * 0.05).collect(),
         "ui_opacity" => (4..=20).map(|v| v as f32 * 0.05).collect(),
@@ -160,7 +159,6 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "led_glow" => s.led_glow as f32,
         "led_mips" => s.led_mips,
         "atmosphere_brightness" => s.atmosphere_brightness,
-        "html_glow" => s.html_glow,
         "pedal_t" => s.pedal_throttle,
         "pedal_b" => s.pedal_brake,
         "mouse_sens" => s.mouse_sens,
@@ -231,10 +229,6 @@ pub(super) fn option_set(
         "led_glow" => {
             app.settings.led_glow = v.round() as _;
             Some(("led_glow", app.settings.led_glow.to_string()))
-        }
-        "html_glow" => {
-            app.settings.html_glow = v.clamp(0.0, 4.0);
-            Some(("html_glow", app.settings.html_glow.to_string()))
         }
         "atmosphere_brightness" => {
             app.settings.atmosphere_brightness = v.clamp(0.0, 2.0);

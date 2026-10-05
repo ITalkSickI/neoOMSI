@@ -344,8 +344,8 @@ fn mount_archives(content: &Path) {
         .filter(|p| {
             p.is_file()
                 && p.extension()
-                    .map(|e| e.eq_ignore_ascii_case("zip"))
-                    .unwrap_or(false)
+                .map(|e| e.eq_ignore_ascii_case("zip"))
+                .unwrap_or(false)
         })
         .collect();
     zips.sort();
@@ -573,13 +573,13 @@ fn inbox_entries(content: &Path) -> Vec<PathBuf> {
                 || name.eq_ignore_ascii_case(install::UNINSTALLED)
                 || name.eq_ignore_ascii_case("README.txt"))
                 && (p.is_dir()
-                    || p.extension()
-                        .map(|x| {
-                            ["zip", "7z", "rar"]
-                                .iter()
-                                .any(|ext| x.eq_ignore_ascii_case(ext))
-                        })
-                        .unwrap_or(false))
+                || p.extension()
+                .map(|x| {
+                    ["zip", "7z", "rar"]
+                        .iter()
+                        .any(|ext| x.eq_ignore_ascii_case(ext))
+                })
+                .unwrap_or(false))
         })
         .collect();
     v.sort();
@@ -1909,10 +1909,10 @@ pub fn ibis_info(bus: &str, hof_name: &str, line: &str) -> Result<IbisInfo> {
     for t in &hof.info_trips {
         let matches = t.line.trim().eq_ignore_ascii_case(line.trim())
             || (!line_digits.is_empty()
-                && t.code
-                    .trim_start_matches('0')
-                    .starts_with(line_digits.trim_start_matches('0'))
-                && t.code.len() >= line_digits.len());
+            && t.code
+            .trim_start_matches('0')
+            .starts_with(line_digits.trim_start_matches('0'))
+            && t.code.len() >= line_digits.len());
         if !matches {
             continue;
         }
@@ -2462,7 +2462,6 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
         ("led_glow", json!(6)),
         ("led_mips", json!(1.3)),
         ("atmosphere_brightness", json!(1.0)),
-        ("html_glow", json!(1.0)),
         ("ui_scale", json!(1.0)),
         ("ui_scale_window", json!(true)),
         ("notes", json!(true)),
@@ -2681,13 +2680,13 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
                         .unwrap_or(1.3)
                 )
             }
-            "atmosphere_brightness" | "html_glow" => {
+            "atmosphere_brightness" => {
                 v[&k] = json!(
                     val.trim()
                         .parse::<f64>()
                         .ok()
                         .filter(|x| x.is_finite())
-                        .map(|x| x.clamp(0.0, if k == "html_glow" { 4.0 } else { 2.0 }))
+                        .map(|x| x.clamp(0.0, 2.0))
                         .unwrap_or(1.0)
                 )
             }
@@ -2921,7 +2920,7 @@ pub fn save_settings(v: &Value) -> Result<()> {
 
 /// The settings a graphics profile holds: what the Graphics tab shows, except the machine's
 /// own (fullscreen, graphics API).
-pub const GRAPHICS_PROFILE_KEYS: [&str; 23] = [
+pub const GRAPHICS_PROFILE_KEYS: [&str; 22] = [
     "graphics",
     "msaa",
     "render_scale",
@@ -2934,7 +2933,6 @@ pub const GRAPHICS_PROFILE_KEYS: [&str; 23] = [
     "led_glow",
     "led_mips",
     "atmosphere_brightness",
-    "html_glow",
     "reflections",
     "clouds",
     "vsync",
@@ -3250,9 +3248,8 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
     ));
     text.push_str(&format!("look_sens={}\nsteer_look_angle={}\nsteer_look_response={}\ntime_sync={}\nmetar_sync={}\nmetar_station={}\n", f("look_sens", 1.0).clamp(0.1, 2.0), f("steer_look_angle", 30.0).clamp(0.0, 60.0), f("steer_look_response", 0.25).clamp(0.05, 1.0), b("time_sync", false), b("metar_sync", false), v.get("metar_station").and_then(|x| x.as_str()).unwrap_or("").chars().filter(|c| c.is_ascii_alphabetic()).take(4).collect::<String>().to_ascii_uppercase()));
     text.push_str(&format!(
-        "atmosphere_brightness={}\nhtml_glow={}\n",
-        f("atmosphere_brightness", 1.0).clamp(0.0, 2.0),
-        f("html_glow", 1.0).clamp(0.0, 4.0)
+        "atmosphere_brightness={}\n",
+        f("atmosphere_brightness", 1.0).clamp(0.0, 2.0)
     ));
     text.push_str(&format!(
         "pax_prefer_seats={}\n",
@@ -3481,12 +3478,12 @@ mod save_slot_tests {
             dir.join("Slot 1.osn"),
             utf16("\r\n[name]\r\nSlot 1: SD202, 09:00\r\n[description]\r\nx\r\n"),
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(
             dir.join("Slot 2.osn"),
             utf16("[name]\r\nSlot 2: NG272, 10:30\r\n"),
         )
-        .unwrap();
+            .unwrap();
         std::fs::write(dir.join("notes.txt"), "not a situation").unwrap();
         let mut names: Vec<String> = save_slots(&dir).into_iter().map(|s| s.name).collect();
         names.sort();
@@ -3956,7 +3953,7 @@ mod tests {
             &model,
             "[mesh]\r\n..\\..\\..\\Sceneryobjects\\X\\a.o3d\r\n..\\..\\..\\Other\\b.o3d\r\n",
         )
-        .unwrap();
+            .unwrap();
         let packs = super::missing_packs_of(&model);
         omsi_cfg::remove_content_root(&root);
         let _ = std::fs::remove_dir_all(&root);
@@ -4113,7 +4110,7 @@ mod tests {
                 ..d
             },
         )
-        .unwrap();
+            .unwrap();
         assert!(!alone.iter().any(|x| x == "--whole-tour"));
     }
 
@@ -4122,7 +4119,7 @@ mod tests {
         let old: Duty = serde_json::from_str(
             r#"{"map":"maps/x/global.cfg","bus":"Vehicles/x.bus","time":"09:00"}"#,
         )
-        .unwrap();
+            .unwrap();
         assert_eq!(old.plate, None);
         let typed: Duty = serde_json::from_str(r#"{"map":"maps/x/global.cfg","bus":"Vehicles/x.bus","time":"09:00","plate":"B-AB 1234"}"#).unwrap();
         assert_eq!(typed.plate.as_deref(), Some("B-AB 1234"));
@@ -4134,7 +4131,7 @@ mod tests {
         let d: Duty = serde_json::from_str(
             r#"{"map":"maps/x/global.cfg","bus":"Vehicles/x.bus","time":"09:00","number":"4711"}"#,
         )
-        .unwrap();
+            .unwrap();
         let a = duty_args_from_root(Path::new("C:/OMSI 2"), &d).unwrap();
         assert!(
             a.windows(2).any(|w| w[0] == "--number" && w[1] == "4711"),

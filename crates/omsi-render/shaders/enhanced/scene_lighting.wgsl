@@ -851,7 +851,10 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         emit = emit + tex.rgb * enh.led.x * alpha * lm_gate * max(enh.exposure.z * 2.0, 0.8);
     } else if (material.emissive.w < -0.5) {
         // a display's text (see MaterialExtra::display)
-        emit = emit + tex.rgb * 0.2 * max(enh.exposure.z * 2.0, 0.8);
+        emit = emit + tex.rgb * 0.2 * enh.led.w * max(enh.exposure.z * 2.0, 0.8);
+    } else if (material.flags.x > 0.5 && material.emissive.w > -0.5 && material.emissive.w < 0.5) {
+        // any other script screen: no glow of its own at 1, extra glow above it
+        emit = emit + tex.rgb * 0.2 * max(enh.led.w - 1.0, 0.0) * max(enh.exposure.z * 2.0, 0.8);
     }
     rgb = rgb + emit;
     if (enh.debug.x > 0.5) {
