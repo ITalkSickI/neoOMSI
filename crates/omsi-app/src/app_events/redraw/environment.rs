@@ -152,17 +152,35 @@ impl App {
                     &buses,
                 );
                 *self.profile.entry("lights.rain").or_default() += __tr.elapsed().as_secs_f64();
-                if kind == 1 {
-                    if let Some(p) = self.player.as_ref() {
-                        let wheels = puddles::wheel_contacts(&p.vehicle);
-                        let speed = p.vehicle.physics.velocity_kmh().abs() / 3.6;
-                        let wetness = self.wetness;
-                        scene
-                            .smoke
-                            .extend(self.splashes.update(dt, &wheels, speed, &|x, y| {
-                                puddles::puddle_coverage(x, y, w.wet_road_at(x, y, wetness))
-                            }));
+                if kind == 1 || self.wetness > 0.1 {
+                    let mut wheels = self
+                        .player
+                        .as_ref()
+                        .map(|p| puddles::wheel_contacts(&p.vehicle))
+                        .unwrap_or_default();
+                    let mut speed = self
+                        .player
+                        .as_ref()
+                        .map(|p| p.vehicle.physics.velocity_kmh().abs() / 3.6)
+                        .unwrap_or(0.0);
+                    // on foot: the walker's own feet splash too
+                    if let Some(f) = self.on_foot.as_ref() {
+                        if f.inside.is_none() && f.seat.is_none() {
+                            wheels.push(f.pos);
+                            speed = speed.max(f.vel.length() as f32);
+                        }
                     }
+                    let wetness = self.wetness;
+                    self.splashes.update(&wheels, speed, &|x, y| {
+                        let wet = w.wet_road_at(x, y, wetness);
+                        if wet > 0.0 {
+                            // a wet road always throws water; a puddle throws most
+                            puddles::puddle_coverage(x, y, wet).max(wet * 0.6)
+                        } else {
+                            // off the road, or its surface not loaded yet: wet ground
+                            wetness * 0.35
+                        }
+                    });
                 }
                 // Passenger dialogue is not ambience: it must remain audible when the
                 // ambience subsystem is unavailable or has been disabled.

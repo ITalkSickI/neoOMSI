@@ -1,13 +1,9 @@
-//! Puddle splashes: what a wheel throws up crossing standing water. The puddle itself - the
+//! Puddle detection for wheels crossing standing water. The puddle itself - the
 //! glass-flat, reflective patches on a wet `[moisture]` road, with the raindrop ripples
 //! crossing it - is `enhanced.wgsl`'s; this file only works out *where* one sits (the same
-//! low-frequency mask, evaluated here so a wheel can be asked whether it stands in one) and
-//! spawns the spray as the renderer's smoke particles: soft, lit by the scene, blended - a
-//! mist of water that widens and thins out. (Drawn as corona sprites before, the spray was
-//! rings of glowing light flying off the wheels.)
+//! low-frequency mask, evaluated here so a wheel can be asked whether it stands in one).
 
 use glam::{DVec3, Vec3};
-use omsi_render::SmokeParticle;
 
 const PUDDLE_SPREAD: f32 = 0.45;
 
@@ -67,122 +63,37 @@ pub fn wheel_contacts(v: &omsi_sim::VehicleInstance) -> Vec<DVec3> {
         .collect()
 }
 
-struct Drop {
-    pos: DVec3,
-    vel: Vec3,
-    age: f32,
-    life: f32,
-}
-
-/// At most this many splash droplets alive at once (a bus idling on a flooded stop should
-/// not slowly fill the frame budget).
-const MAX_DROPS: usize = 300;
-
+/// Counts the wheels standing in water (for `OMSI_DEBUG_RAIN`). The water itself is
+/// displaced in the puddle shader (`puddle_wake`), so nothing is spawned here.
+#[derive(Default)]
 pub struct Splashes {
-    drops: Vec<Drop>,
-    /// Fractional droplets owed to each wheel (index matches last frame's `wheel_contacts`),
-    /// so the spray is continuous while a wheel stays in the puddle rather than one pop.
-    debt: Vec<f32>,
-    rng: u64,
-    /// Wheels standing in a puddle right now, and how many droplets are alive, for
-    /// `OMSI_DEBUG_RAIN`.
+    /// Wheels standing in water right now.
     pub wheels_in_puddle: u32,
 }
 
 impl Splashes {
     pub fn new() -> Splashes {
-        Splashes {
-            drops: Vec::new(),
-            debt: Vec::new(),
-            rng: 0xD00D_F00D_1234_5678,
-            wheels_in_puddle: 0,
-        }
-    }
-
-    fn rand(&mut self) -> f32 {
-        self.rng ^= self.rng << 13;
-        self.rng ^= self.rng >> 7;
-        self.rng ^= self.rng << 17;
-        (self.rng >> 40) as f32 / (1u64 << 24) as f32
+        Splashes::default()
     }
 
     /// One frame: `wheels` are this frame's ground contact points, `speed` the vehicle's own
-    /// (m/s), `coverage_at` the puddle mask at a world (x, y) - see [`puddle_coverage`]. The
-    /// live droplets come back as coronas for the caller to push onto `scene.coronas`,
-    /// exactly as `rain::Rain::tick` pushes rain - a plain `Vec` so the spawning and ageing
-    /// above stay testable without a real, GPU-backed `Scene`.
-    pub fn update(
-        &mut self,
-        dt: f32,
-        wheels: &[DVec3],
-        speed: f32,
-        coverage_at: &dyn Fn(f64, f64) -> f32,
-    ) -> Vec<SmokeParticle> {
-        if self.debt.len() != wheels.len() {
-            self.debt = vec![0.0; wheels.len()];
-        }
-        self.wheels_in_puddle = 0;
-        for (i, pos) in wheels.iter().enumerate() {
-            let cov = coverage_at(pos.x, pos.y);
-            if cov <= 0.05 || speed < 0.6 {
-                self.debt[i] = 0.0;
-                continue;
-            }
-            self.wheels_in_puddle += 1;
-            // a continuous spray while the wheel stays in the puddle, thicker the faster the
-            // bus goes and the deeper the puddle's own mask reads
-            let rate = (4.0 + 18.0 * (speed / 12.0).min(1.0)) * cov;
-            self.debt[i] += rate * dt;
-            while self.debt[i] >= 1.0 && self.drops.len() < MAX_DROPS {
-                self.debt[i] -= 1.0;
-                let a = self.rand() * std::f32::consts::TAU;
-                let r = self.rand() * 0.22;
-                // a low sheet of spray thrown out to the side, not a fountain
-                let up = 0.5 + self.rand() * 0.8 + (speed * 0.03).min(0.8);
-                let out = 0.4 + self.rand() * 0.9 + (speed * 0.04).min(0.8);
-                let life = 0.5 + self.rand() * 0.4;
-                self.drops.push(Drop {
-                    pos: *pos + DVec3::new((a.cos() * r) as f64, (a.sin() * r) as f64, 0.04),
-                    vel: Vec3::new(a.cos() * out, a.sin() * out, up),
-                    age: 0.0,
-                    life,
-                });
-            }
-        }
-        let mut out = Vec::with_capacity(self.drops.len());
-        let mut i = 0;
-        while i < self.drops.len() {
-            let d = &mut self.drops[i];
-            d.age += dt;
-            if d.age >= d.life || d.pos.z < -50.0 {
-                self.drops.swap_remove(i);
-                continue;
-            }
-            // the mist slows in the air and sinks, widening as it thins
-            d.vel *= (1.0 - 2.5 * dt).max(0.0);
-            d.vel.z -= 3.0 * dt;
-            d.pos += d.vel.as_dvec3() * dt as f64;
-            let t = (d.age / d.life).clamp(0.0, 1.0);
-            let fade = (1.0 - t) * (t * 6.0).min(1.0);
-            out.push(SmokeParticle {
-                position: d.pos,
-                size: 0.06 + 0.3 * t,
-                color: [0.86, 0.89, 0.92],
-                alpha: 0.3 * fade,
-            });
-            i += 1;
-        }
-        if omsi_cfg::env::var_os("OMSI_DEBUG_RAIN").is_some()
-            && (self.wheels_in_puddle > 0 || !self.drops.is_empty())
-        {
+    /// (m/s), `coverage_at` how much water lies at a world (x, y) (0..1).
+    pub fn update(&mut self, wheels: &[DVec3], speed: f32, coverage_at: &dyn Fn(f64, f64) -> f32) {
+        self.wheels_in_puddle = if speed < 0.4 {
+            0
+        } else {
+            wheels
+                .iter()
+                .filter(|w| coverage_at(w.x, w.y) > 0.02)
+                .count() as u32
+        };
+        if omsi_cfg::env::var_os("OMSI_DEBUG_RAIN").is_some() && self.wheels_in_puddle > 0 {
             log::info!(
-                "splashes: {} of {} wheels in a puddle, {} droplets",
+                "puddles: {} of {} wheels in water",
                 self.wheels_in_puddle,
-                wheels.len(),
-                self.drops.len()
+                wheels.len()
             );
         }
-        out
     }
 }
 
@@ -240,26 +151,5 @@ mod tests {
             half_coverage * 100.0,
             full_coverage * 100.0
         );
-    }
-
-    #[test]
-    fn a_fast_wheel_in_a_puddle_sprays_continuously() {
-        let mut s = Splashes::new();
-        let wheels = [DVec3::new(0.0, 0.0, 33.0)];
-        let mut seen_drops = false;
-        for _ in 0..30 {
-            if !s.update(1.0 / 30.0, &wheels, 8.0, &|_, _| 1.0).is_empty() {
-                seen_drops = true;
-            }
-        }
-        assert_eq!(s.wheels_in_puddle, 1);
-        assert!(
-            seen_drops,
-            "a wheel sitting in a full puddle at speed should have sprayed something"
-        );
-        // standing still or off the puddle stops the spray without leaving debt behind
-        s.update(1.0 / 30.0, &wheels, 0.0, &|_, _| 1.0);
-        assert_eq!(s.wheels_in_puddle, 0);
-        assert_eq!(s.debt[0], 0.0);
     }
 }

@@ -548,7 +548,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // `foo_orm`: see omsi_texture::pbr): the normal map bends the normal, the packed map
     // gives the occlusion, roughness and metalness in place of the guesses above
     var pbr_ao = 1.0;
-    if (material.pbr.x > 0.5 && !terrain) {
+    if (material.pbr.x > 0.5) {
         var tn = textureSample(t_pbr_normal, s_diffuse, duv).xyz * 2.0 - vec3<f32>(1.0);
         // (an OpenGL-style map, green up: `_gl` in its name)
         if (material.pbr.x > 1.5) {
@@ -556,7 +556,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         }
         n = perturb_normal(n, in.world, duv, tn);
     }
-    if (material.pbr.y + material.pbr.z + material.pbr.w > 0.5 && !terrain) {
+    if (material.pbr.y + material.pbr.z + material.pbr.w > 0.5) {
         let orm = textureSample(t_pbr_orm, s_diffuse, duv).rgb;
         if (material.pbr.y > 0.5) {
             pbr_ao = orm.r;
@@ -609,7 +609,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
             albedo = albedo * (1.0 - 0.68 * puddle) / mix(1.0, detail_factor, puddle * 0.8);
             rough = clamp(mix(rough, 0.03, puddle) - ripple.z * 0.12, 0.02, 1.0);
             f0 = mix(f0, vec3<f32>(enh.debug.y), puddle);
-            n = normalize(mix(n, geo_n, puddle) + vec3<f32>(ripple.xy, 0.0));
+            n = normalize(mix(n, geo_n, puddle) + vec3<f32>(ripple.xy + puddle_wake(in.world) * puddle, 0.0));
         }
     } else if (wet_any > 0.0 && !terrain) {
         rough = mix(rough, rough * 0.6, wet_any);
@@ -773,7 +773,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // what the SSAO darkens, it also keeps reflections out of
     let spec_occ = clamp(pow(nv + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
     // (a PBR set's roughness or metalness map says how it reflects: the probe, as for an envmap)
-    let pbr_reflects = (material.pbr.z > 0.5 || material.pbr.w > 0.5) && !terrain;
+    let pbr_reflects = material.pbr.z > 0.5 || material.pbr.w > 0.5;
     // (a wet road mirrors the sky probe as well; and what reflects nothing keeps the light
     // the Fresnel term took off its ambient above - at a grazing angle that term is near 1,
     // and the far road and ground went dark with no reflection in its place, #374)
@@ -913,6 +913,36 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // above, a mirror of the sky towards the horizon
     let a_out = select(alpha, clamp(alpha + (1.0 - alpha) * fr.g, alpha, 1.0), is_water);
     return vec4<f32>(rgb * aer.a + aer.rgb * pre, a_out);
+}
+
+// Water pushed aside by the player's vehicle: a smooth bow wave ahead and beside the
+// footprint, running outwards and trailing off in wide, soft swells. No particles; the
+// surface itself tilts. Speed comes from camera.wind (the vehicle's velocity).
+fn puddle_wake(world: vec3<f32>) -> vec2<f32> {
+    if (camera.inside_c.w < 0.5) { return vec2<f32>(0.0); }
+    let vel = camera.wind.xy;
+    let speed = length(vel);
+    let s = smoothstep(0.4, 5.0, speed);
+    if (s <= 0.0) { return vec2<f32>(0.0); }
+    let d = world - camera.inside_a.xyz;
+    let sh = camera.inside_a.w;
+    let ch = camera.inside_b.x;
+    let lx = d.x * ch - d.y * sh - camera.inside_c.x;
+    let ly = d.x * sh + d.y * ch - camera.inside_c.y;
+    let h = camera.inside_b.yzw;
+    let q = vec2<f32>(abs(lx), abs(ly)) - h.xy;
+    let e = length(max(q, vec2<f32>(0.0)));
+    if (e > 4.0) { return vec2<f32>(0.0); }
+    // outward direction in local space, then back to world
+    var o = vec2<f32>(sign(lx), sign(ly)) * max(q, vec2<f32>(0.0));
+    if (dot(o, o) < 1e-6) { o = vec2<f32>(lx, ly); }
+    o = normalize(o + vec2<f32>(1e-5, 0.0));
+    let ow = vec2<f32>(o.x * ch + o.y * sh, -o.x * sh + o.y * ch);
+    // the water piles up on the side the vehicle moves towards
+    let ahead = 0.55 + 0.45 * clamp(dot(ow, vel / max(speed, 1e-3)), -1.0, 1.0);
+    let swell = 0.5 + 0.5 * cos(e * 3.2 - camera.post.y * 2.0 * speed * 0.35);
+    let falloff = exp(-e * 0.9) * (0.6 + 0.4 * swell);
+    return ow * falloff * ahead * s * 0.16;
 }
 
 // Small waves on the water at map point `p` (m) and time `t` (s): the slope of four wave

@@ -14,6 +14,7 @@ pub fn weather_wind(weather: &omsi_content::weather::Weather) -> Vec3 {
 
 pub struct Rain {
     particles: Vec<Vec3>,
+    var: Vec<f32>,
     kind: i32,
     rate: f32,
     rng: u64,
@@ -41,6 +42,7 @@ impl Rain {
     pub fn new() -> Rain {
         Rain {
             particles: Vec::new(),
+            var: Vec::new(),
             kind: 0,
             rate: 0.0,
             rng: 0xABCDEF12345,
@@ -62,7 +64,7 @@ impl Rain {
         let n = if kind == 0 || self.rate == 0.0 {
             0
         } else {
-            (400.0 + 2600.0 * self.rate) as usize
+            (300.0 + 2100.0 * self.rate) as usize
         };
         while self.particles.len() < n {
             let p = Vec3::new(
@@ -71,8 +73,11 @@ impl Rain {
                 self.rand() * 20.0,
             );
             self.particles.push(p);
+            let v = 0.7 + self.rand() * 0.6;
+            self.var.push(v);
         }
         self.particles.truncate(n);
+        self.var.truncate(n);
     }
 
     fn advance(&mut self, dt: f32, camera: DVec3, wind: Vec3) -> Vec3 {
@@ -82,9 +87,13 @@ impl Rain {
             .camera
             .replace(camera)
             .map_or(Vec3::ZERO, |old| (camera - old).as_vec3());
-        let velocity = wind - Vec3::Z * if self.kind == 2 { 1.5 } else { 9.0 };
-        for p in &mut self.particles {
-            *p += velocity * dt - movement;
+        let fall = if self.kind == 2 { 1.5 } else { 9.0 };
+        let velocity = wind - Vec3::Z * fall;
+        for (i, p) in self.particles.iter_mut().enumerate() {
+            let v = self.var.get(i).copied().unwrap_or(1.0);
+            // snow drifts more with its own factor, rain falls faster or slower
+            let own = wind - Vec3::Z * fall * v;
+            *p += own * dt - movement;
             p.x = (p.x + HALF_WIDTH).rem_euclid(HALF_WIDTH * 2.0) - HALF_WIDTH;
             p.y = (p.y + HALF_WIDTH).rem_euclid(HALF_WIDTH * 2.0) - HALF_WIDTH;
             p.z = (p.z + 2.0).rem_euclid(22.0) - 2.0;
@@ -133,10 +142,27 @@ impl Rain {
         let (size, color, brightness) = if self.kind == 2 {
             (0.06, [1.0, 1.0, 1.0], 0.9)
         } else {
-            (0.05, [0.75, 0.8, 0.9], 0.35)
+            (0.035, [0.72, 0.77, 0.86], 0.22)
+        };
+        let smooth = |a: f32, b: f32, x: f32| {
+            let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
         };
         let mut excluded = 0usize;
-        for p in &self.particles {
+        for (i, p) in self.particles.iter().enumerate() {
+            // fade towards the edges of the box and at its top and bottom, so that no
+            // wall of drops, no wrap-around and no pop-in is seen
+            let edge = p.x.abs().max(p.y.abs()) / HALF_WIDTH;
+            let fade = (1.0 - smooth(0.55, 1.0, edge))
+                * smooth(-2.0, -0.2, p.z)
+                * (1.0 - smooth(15.0, 20.0, p.z));
+            let v = self.var.get(i).copied().unwrap_or(1.0);
+            // far drops are fainter: depth reads, the rain is no flat curtain
+            let depth = 1.0 - 0.5 * smooth(2.0, HALF_WIDTH, p.truncate().length());
+            let b = brightness * fade * depth * (0.5 + 0.5 * v);
+            if b < 0.01 {
+                continue;
+            }
             let w = camera + p.as_dvec3();
             if in_bus(w) {
                 excluded += 1;
@@ -144,9 +170,9 @@ impl Rain {
             }
             scene.coronas.push(Corona {
                 position: w,
-                size,
+                size: size * v,
                 color,
-                brightness,
+                brightness: b,
                 direction: if self.kind == 2 { Vec3::ZERO } else { streak },
                 cone_cos: if self.kind == 2 { -1.0 } else { -2.0 },
                 ..Default::default()
@@ -270,7 +296,7 @@ mod tests {
     fn dry_weather_has_no_particles_and_heavy_rain_keeps_the_budget() {
         let mut rain = Rain::new();
         rain.set(1, 1.0);
-        assert_eq!(rain.particles.len(), 3000);
+        assert_eq!(rain.particles.len(), 2400);
         rain.set(1, 0.0);
         assert!(rain.particles.is_empty());
         rain.set(2, 1.0);

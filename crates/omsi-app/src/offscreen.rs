@@ -2941,19 +2941,14 @@ pub(crate) fn run_offscreen(
                 let wheels = puddles::wheel_contacts(&p.vehicle);
                 let speed = p.vehicle.physics.velocity_kmh().abs() / 3.6;
                 let mut sp = puddles::Splashes::new();
-                for _ in 0..30 {
-                    scene
-                        .smoke
-                        .extend(sp.update(1.0 / 30.0, &wheels, speed, &|x, y| {
-                            puddles::puddle_coverage(x, y, world.wet_road_at(x, y, wetness))
-                        }));
-                }
+                sp.update(&wheels, speed, &|x, y| {
+                    puddles::puddle_coverage(x, y, world.wet_road_at(x, y, wetness))
+                });
                 log::info!(
-                    "splashes: {} wheels, {:.1} km/h, {} in a puddle, {} coronas",
+                    "puddles: {} wheels, {:.1} km/h, {} in a puddle",
                     wheels.len(),
                     speed * 3.6,
-                    sp.wheels_in_puddle,
-                    scene.coronas.len()
+                    sp.wheels_in_puddle
                 );
             }
         }
