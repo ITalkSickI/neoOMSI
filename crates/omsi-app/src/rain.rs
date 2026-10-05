@@ -275,6 +275,7 @@ mod tests {
         let mut rain = Rain::new();
         rain.set(1, 1.0);
         rain.particles = vec![Vec3::new(0.0, 0.0, 10.0)];
+        rain.var = vec![1.0];
         rain.camera = Some(DVec3::ZERO);
         let camera = DVec3::new(0.0, 2.0, 0.0);
         let direction = rain.advance(0.1, camera, Vec3::X * 3.0);

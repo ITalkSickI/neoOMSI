@@ -496,7 +496,6 @@ mod tests {
 
 #[cfg(test)]
 mod preview {
-    use super::*;
     use crate::schedule::{PlannedStop, PlannedTrip, StopDir};
     use omsi_render::Renderer;
     use omsi_ui::ingame::{Frame, MenuKind, Ui};

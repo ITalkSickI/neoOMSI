@@ -5443,6 +5443,7 @@ mod settings_tests {
             "s-casters",
             "set-detail_textures",
             "s-led",
+            "s-nightmap",
             "s-atmo",
             "s-led-mip",
             "set-shadow_blobs",

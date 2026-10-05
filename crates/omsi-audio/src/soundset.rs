@@ -40,9 +40,15 @@ pub struct SoundSet {
     /// sound set, this vehicle's own and every other vehicle's alike (see
     /// [`SoundSet::set_muffled`] and [`SoundSet::lowpass_of`]).
     muffled: bool,
+    /// Smoothed 0..1 follow-ups of `inside` and `muffled`: the bodywork does not switch,
+    /// the sound is faded between the two sides over a fraction of a second.
     inside_blend: f32,
     muffled_blend: f32,
+    /// The vehicle's hull as a box in its own space (centre, half size): where the
+    /// listener stands against it - not a flag or a timer - decides how much bodywork lies
+    /// between the listener and the sounds (see [`SoundSet::inside_factor`]).
     hull: Option<([f32; 3], [f32; 3])>,
+    /// What the leading vehicle's hull gave this frame, for the coupled parts.
     hull_h: f32,
     hull_override: Option<f32>,
     blend_at: Option<std::time::Instant>,
@@ -149,6 +155,8 @@ impl SoundSet {
         }
     }
 
+    /// Move the inside / muffled blends towards their targets (about 0.45 s for the whole
+    /// way) and return them eased.
     fn advance_blend(&mut self) -> (f32, f32) {
         let now = std::time::Instant::now();
         let dt = self
@@ -277,6 +285,10 @@ impl SoundSet {
         (if self.inside { 2 } else { 1 }) | (if self.ai { 4 } else { 0 })
     }
 
+    /// The volume of an entry for a listener on either side of the bodywork: the entry's
+    /// `[viewpoint]` says where its recording was made (inside the cabin / outside), not where
+    /// it may be heard - it is never cut for the other side, see [`SoundSet::cross_side`].
+    /// Only the AI bit still decides (an entry for AI vehicles only).
     fn volume_side(
         def: &SoundEntry,
         var: &dyn Fn(&str) -> Option<f32>,
@@ -288,6 +300,7 @@ impl SoundSet {
         Self::volume(def, var, view, active, facing)
     }
 
+    /// A cutoff `t` of the way from `a` to `b` (0 = no filter, treated as wide open).
     #[cfg(test)]
     fn lp_between(a: f32, b: f32, t: f32) -> f32 {
         if a <= 0.0 && b <= 0.0 {
@@ -299,6 +312,11 @@ impl SoundSet {
         if c >= 0.95 * open { 0.0 } else { c }
     }
 
+    /// Where an entry sits in the world, with its reach and how much it pans. Every sound is
+    /// placed: a non-`[3d]` entry sits at the vehicle's origin. The listener in the cab
+    /// (`inside` 1) hears it as before - centred and at full level (a huge range, no pan);
+    /// stepping out, it moves out of the cab with them: range and pan fade in, and the
+    /// sound comes from the bus and fades with distance.
     fn place(
         pos: Option<[f32; 3]>,
         range: f32,
@@ -325,7 +343,8 @@ impl SoundSet {
         }
     }
 
-    #[cfg(test)]
+    /// The lower of two low-pass cutoffs, 0 meaning none.
+    #[allow(dead_code)]
     fn merge_lowpass(a: f32, b: f32) -> f32 {
         match (a > 0.0, b > 0.0) {
             (true, true) => a.min(b),
@@ -941,6 +960,12 @@ mod tests {
             ai: false,
             listener_vehicle: true,
             muffled: false,
+            inside_blend: 0.0,
+            muffled_blend: 0.0,
+            hull: None,
+            hull_h: 0.0,
+            hull_override: None,
+            blend_at: None,
             parts: Vec::new(),
         };
         assert_eq!(set.curve_triggers(), vec!["ev_doorhitclose_0".to_string()]);
