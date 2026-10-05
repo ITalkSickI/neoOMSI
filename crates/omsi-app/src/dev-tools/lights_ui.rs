@@ -23,12 +23,39 @@ pub(super) fn lights_window(ui: &imgui::Ui, open: &mut bool) {
                 "Script Texture Glow",
                 "Script Texture Light",
             ]
-            .iter()
-            .enumerate()
+                .iter()
+                .enumerate()
             {
                 let mut g = crate::lights::screen_fx(i);
                 if ui.slider(format!("{n}##fx{i}"), 0.0, 4.0, &mut g) {
                     crate::lights::set_screen_fx(i, g);
+                }
+            }
+            ui.separator();
+            if ui.collapsing_header("Lamp Light (Street Lamps)", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                let m = &mut s.lamp_light;
+                ui.checkbox("Lamps throw light##ll", &mut m.on);
+                ui.slider("Intensity x##ll", 0.0, 4.0, &mut m.gain);
+                ui.slider("Reach (m)##ll", 1.0, 60.0, &mut m.range);
+                ui.slider("Core (m)##ll", 0.1, 10.0, &mut m.core);
+                ui.slider("Max lamps##ll", 0, 128, &mut m.max);
+                if ui.button("Reset Lamp Light##ll") {
+                    *m = crate::lights::LampLightCfg::DEFAULT;
+                }
+            }
+            if ui.collapsing_header("Spot Shape (optional, for those lamps)", imgui::TreeNodeFlags::empty()) {
+                let m = &mut s.map_spot;
+                ui.checkbox("Spot Mode##ms", &mut m.on);
+                ui.slider("Intensity x##ms", 0.0, 4.0, &mut m.gain);
+                ui.slider("Range x##ms", 0.1, 4.0, &mut m.range);
+                ui.slider("Core x##ms", 0.1, 4.0, &mut m.core);
+                ui.slider("Inner Angle (deg)##ms", 1.0, 179.0, &mut m.inner);
+                ui.slider("Outer Angle (deg)##ms", 1.0, 179.0, &mut m.outer);
+                ui.slider("Tilt (deg, 0 = down)##ms", -90.0, 90.0, &mut m.tilt);
+                ui.slider("Turn (deg)##ms", -180.0, 180.0, &mut m.yaw);
+                ui.slider("Height (m)##ms", -3.0, 3.0, &mut m.height);
+                if ui.button("Reset Spot##ms") {
+                    *m = crate::lights::MapSpotCfg::DEFAULT;
                 }
             }
             ui.separator();
@@ -45,6 +72,8 @@ pub(super) fn reset_global(s: &mut crate::lights::LightSettings) {
     s.weather_boost = d.weather_boost;
     s.weather_night = d.weather_night;
     s.corona = d.corona;
+    s.map_spot = d.map_spot;
+    s.lamp_light = d.lamp_light;
 }
 
 pub(super) fn interior_panel(ui: &imgui::Ui, extra: &Extra, actions: &mut Vec<Action>) {
@@ -121,8 +150,16 @@ pub(super) fn vehicle_panel(ui: &imgui::Ui, s: &mut crate::lights::LightSettings
     ui.separator();
     if ui.button("Reset Vehicle Lights") {
         let d = crate::lights::LightSettings::DEFAULT;
-        let (wb, wn, co) = (s.weather_boost, s.weather_night, s.corona);
+        let (wb, wn, co, ms, ll) = (
+            s.weather_boost,
+            s.weather_night,
+            s.corona,
+            s.map_spot,
+            s.lamp_light,
+        );
         *s = d;
+        s.map_spot = ms;
+        s.lamp_light = ll;
         s.weather_boost = wb;
         s.weather_night = wn;
         s.corona = co;

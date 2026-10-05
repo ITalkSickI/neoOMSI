@@ -60,6 +60,8 @@ pub fn collect(
     omsi_sim::particles::set_eye(camera_pos);
     let night = daylight.night;
     let coll = world.collision.lock().clone();
+    let map_spot = settings().map_spot;
+    let lamp_cfg = settings().lamp_light;
     {
         let mut guard = NEAR_LIGHTS.lock().unwrap_or_else(|e| e.into_inner());
         let near = guard.get_or_insert_with(NearLights::default);
@@ -196,8 +198,47 @@ pub fn collect(
                 .filter(|(l, vis)| {
                     **vis && (l.position - camera_pos).length() < MAP_LIGHT_RANGE.min(visible_range)
                 })
-                .map(|(l, _)| *l),
+                .map(|(l, _)| apply_map_spot(*l, &map_spot)),
         );
+        if lamp_cfg.on && lamp_cfg.gain > 0.0 {
+            let mut lamps: Vec<(f64, &Corona)> = near
+                .coronas
+                .iter()
+                .zip(&near.corona_vis)
+                .filter(|(c, vis)| {
+                    **vis && !c.beam && !c.halo && c.flags & 8 == 0 && c.brightness > 0.0
+                })
+                .map(|(c, _)| ((c.position - camera_pos).length(), c))
+                .filter(|(d, _)| *d < MAP_LIGHT_RANGE.min(visible_range))
+                .collect();
+            lamps.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut seen_pos: std::collections::HashSet<[i64; 3]> = Default::default();
+            let dark = 0.3 + 0.7 * night.clamp(0.0, 1.0);
+            for (_, c) in lamps.into_iter().take(lamp_cfg.max.max(0) as usize * 2) {
+                let key = [
+                    (c.position.x * 10.0).round() as i64,
+                    (c.position.y * 10.0).round() as i64,
+                    (c.position.z * 10.0).round() as i64,
+                ];
+                if !seen_pos.insert(key) {
+                    continue;
+                }
+                if seen_pos.len() > lamp_cfg.max.max(0) as usize {
+                    break;
+                }
+                let radius = lamp_cfg.range.max(0.5);
+                let l = PointLight {
+                    position: c.position,
+                    radius,
+                    color: c.color,
+                    intensity: c.brightness.min(2.0) * lamp_cfg.gain * dark,
+                    core: lamp_cfg.core.min(radius),
+                    mode: LightMode::Both,
+                    ..Default::default()
+                };
+                scene.lights.push(apply_map_spot(l, &map_spot));
+            }
+        }
         scene.coronas.extend(
             near.coronas
                 .iter()

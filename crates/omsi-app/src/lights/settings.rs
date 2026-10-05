@@ -45,7 +45,73 @@ impl BeamCfg {
 }
 
 #[derive(Clone, Copy)]
+pub(crate) struct MapSpotCfg {
+    pub on: bool,
+    pub gain: f32,
+    pub range: f32,
+    pub core: f32,
+    pub inner: f32,
+    pub outer: f32,
+    pub tilt: f32,
+    pub yaw: f32,
+    pub height: f32,
+}
+
+impl MapSpotCfg {
+    pub(crate) const DEFAULT: Self = Self {
+        on: true,
+        gain: 1.0,
+        range: 1.0,
+        core: 1.0,
+        inner: 60.0,
+        outer: 110.0,
+        tilt: 0.0,
+        yaw: 0.0,
+        height: 0.0,
+    };
+}
+
+pub(super) fn apply_map_spot(mut l: PointLight, c: &MapSpotCfg) -> PointLight {
+    if !c.on {
+        return l;
+    }
+    let half = |deg: f32| (deg.clamp(1.0, 179.0) * 0.5).to_radians().cos();
+    let down = Vec3::new(0.0, 0.0, -1.0);
+    l.direction = (glam::Quat::from_rotation_z(c.yaw.to_radians())
+        * glam::Quat::from_rotation_x(c.tilt.to_radians())
+        * down)
+        .normalize_or_zero();
+    l.cone = [half(c.inner.min(c.outer)), half(c.outer)];
+    l.radius *= c.range.max(0.05);
+    l.core = (l.core * c.core.max(0.01)).min(l.radius);
+    l.intensity *= c.gain;
+    l.position += DVec3::Z * c.height as f64;
+    l
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct LampLightCfg {
+    pub on: bool,
+    pub gain: f32,
+    pub range: f32,
+    pub core: f32,
+    pub max: i32,
+}
+
+impl LampLightCfg {
+    pub(crate) const DEFAULT: Self = Self {
+        on: true,
+        gain: 1.0,
+        range: 14.0,
+        core: 1.5,
+        max: 48,
+    };
+}
+
+#[derive(Clone, Copy)]
 pub(crate) struct LightSettings {
+    pub lamp_light: LampLightCfg,
+    pub map_spot: MapSpotCfg,
     pub low: BeamCfg,
     pub high: BeamCfg,
     pub headlight: f32,
@@ -84,6 +150,8 @@ pub(crate) struct LightSettings {
 
 impl LightSettings {
     pub(crate) const DEFAULT: Self = Self {
+        lamp_light: LampLightCfg::DEFAULT,
+        map_spot: MapSpotCfg::DEFAULT,
         low: BeamCfg::DEFAULT,
         high: BeamCfg::DEFAULT,
         headlight: HEADLIGHT_INTENSITY,
