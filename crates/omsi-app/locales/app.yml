@@ -1257,8 +1257,6 @@ _version: 2
   de: "Pünktlich nach Fahrplan"
 "Open on GitHub":
   de: "Auf GitHub öffnen"
-"OpenGL":
-  de: "OpenGL"
 "Options...":
   de: "Optionen..."
 "PageDown":
@@ -1427,8 +1425,8 @@ _version: 2
   de: "Ab dem nächsten Start rendert das Spiel mit DirectX 12 (Zurückstellen unter Einstellungen → Grafik-API)."
 "The gearbox is in N: press D (Shift+D when W A S D drive), or click it. Buses like the Citaro take D only with the brake held":
   de: "Das Getriebe steht auf N: D drücken (Shift+D, wenn W A S D fährt) oder anklicken. Busse wie der Citaro nehmen D nur bei getretener Bremse"
-"The graphics driver stopped the game. Updating the graphics driver usually helps; Settings → Graphics API can switch to OpenGL.":
-  de: "Der Grafiktreiber hat das Spiel gestoppt. Ein Update des Grafiktreibers hilft meist; unter Einstellungen → Grafik-API kann auf OpenGL umgestellt werden."
+"The graphics driver stopped the game. Updating the graphics driver usually helps.":
+  de: "Der Grafiktreiber hat das Spiel gestoppt. Ein Update des Grafiktreibers hilft meist."
 "The graphics driver stopped the game. Updating the graphics driver usually helps; you can also let the game draw with DirectX 12 instead of Vulkan (the button below, or Settings → Graphics API).":
   de: "Der Grafiktreiber hat das Spiel gestoppt. Ein Update des Grafiktreibers hilft meist; du kannst das Spiel auch mit DirectX 12 statt Vulkan rendern lassen (die Schaltfläche unten oder Einstellungen → Grafik-API)."
 "The host put your bus back on its wheels":

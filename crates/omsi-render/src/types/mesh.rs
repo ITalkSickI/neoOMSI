@@ -108,7 +108,6 @@ pub(crate) fn make_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshD
 pub struct PreparedMesh(pub(crate) GpuMesh);
 
 pub fn prepare_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshData) -> PreparedMesh {
-    let _turn = gl_worker_turn();
     PreparedMesh(make_mesh(device, queue, data))
 }
 

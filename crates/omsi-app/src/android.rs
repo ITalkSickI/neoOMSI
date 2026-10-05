@@ -346,50 +346,10 @@ impl Shell {
             return;
         };
         // the first drive after a run that closed in the middle of one (a graphics driver
-        // that took the process down) starts with safer graphics, and on OpenGL when that
-        // run drew with Vulkan: a phone whose Vulkan driver fails on the game still plays
+        // that took the process down) starts with safer graphics
         if !SAFER_TRIED.swap(true, Ordering::Relaxed) && previous_run_crash().is_some() {
-            let prev = std::fs::read_to_string(omsi_launcher_lib::data_dir().join("game-prev.log"))
-                .unwrap_or_default();
-            let vulkan = prev
-                .lines()
-                .any(|l| l.contains("renderer: ") && l.contains("(Vulkan)"))
-                || prev
-                    .lines()
-                    .any(|l| l.contains("graphics: ") && l.to_ascii_uppercase().contains("VULKAN"));
             std::env::set_var("OMSI_SAFE_GPU", "1");
-            // It went down while the graphics driver compiled the shaders (the last it said
-            // was a stage of that): the phone's Vulkan driver cannot take them, and will not
-            // next time either (the Maleoon and several Mali drivers after the cloud noise,
-            // #229, #278). OpenGL from now on, in the settings - Settings → Graphics API
-            // takes it back.
-            let last = prev
-                .lines()
-                .rev()
-                .find(|l| !l.trim().is_empty())
-                .unwrap_or("");
-            let compiling = last.contains("renderer: compiling")
-                || last.contains("cloud noise made")
-                || last.contains("opening graphics device")
-                || last.contains("compiling renderer pipelines");
-            if vulkan && compiling {
-                if let Ok(mut v) = omsi_launcher_lib::get_settings() {
-                    v["graphics_api"] = serde_json::json!("gl");
-                    match omsi_launcher_lib::save_settings(&v) {
-                        Ok(()) => log::warn!(
-                            "the graphics driver went down compiling the shaders on Vulkan: OpenGL from now on (Settings → Graphics API)"
-                        ),
-                        Err(e) => log::warn!("settings not saved: {e:#}"),
-                    }
-                }
-            }
-            if vulkan && std::env::var_os("OMSI_BACKEND").is_none() {
-                std::env::set_var("OMSI_BACKEND", "gl");
-            }
-            log::warn!(
-                "the last run closed in the middle of a drive: this one starts with safer graphics{}",
-                if vulkan { " on OpenGL" } else { "" }
-            );
+            log::warn!("the last run closed in the middle of a drive: this one starts with safer graphics");
         }
         log::info!("starting the game: {}", line.join(" "));
         let argv: Vec<String> = std::iter::once("neoomsi".to_string()).chain(line).collect();

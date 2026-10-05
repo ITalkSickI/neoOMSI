@@ -705,8 +705,6 @@ impl Launcher {
             Some("vulkan")
         } else if name.contains("(Vulkan)") && cfg!(windows) {
             Some("dx12")
-        } else if name.contains("(Vulkan)") {
-            Some("gl")
         } else {
             None
         };

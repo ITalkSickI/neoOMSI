@@ -1206,22 +1206,6 @@ fn graphics_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
                 ("auto", "Automatic"),
                 ("vulkan", "Vulkan"),
                 ("dx12", "DirectX 12"),
-                ("gl", "OpenGL"),
-            ],
-        );
-    } else if !cfg!(target_os = "macos") {
-        sel_setting(
-            ui,
-            s,
-            dirty,
-            "s-api",
-            c.row(),
-            "Graphics API",
-            "graphics_api",
-            &[
-                ("auto", "Automatic"),
-                ("vulkan", "Vulkan"),
-                ("gl", "OpenGL"),
             ],
         );
     }

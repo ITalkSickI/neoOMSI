@@ -215,9 +215,8 @@ pub(crate) fn graphics_instance() -> wgpu::Instance {
 
 /// The graphics interfaces in the order they are tried: Metal on a Mac; on Windows DirectX
 /// 12 first (the Windows drivers' best-kept path: on Vulkan they reset the device -
-/// "the graphics device was lost" - far more often), then Vulkan, then OpenGL for a card
-/// without either (a GeForce GT 530); elsewhere Vulkan, then OpenGL. Settings → Graphics API
-/// (`graphics_api`) or OMSI_BACKEND=vulkan|dx12|gl puts one first: a driver whose Vulkan
+/// "the graphics device was lost" - far more often), then Vulkan; elsewhere Vulkan.
+/// Settings → Graphics API (`graphics_api`) or OMSI_BACKEND=vulkan|dx12 puts one first: a driver whose Vulkan
 /// misbehaves is got round.
 pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
     if cfg!(target_os = "macos") {
@@ -232,18 +231,13 @@ pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
             .unwrap_or(settings.graphics_api)
     };
     let all: Vec<wgpu::Backends> = if cfg!(windows) {
-        vec![
-            wgpu::Backends::DX12,
-            wgpu::Backends::VULKAN,
-            wgpu::Backends::GL,
-        ]
+        vec![wgpu::Backends::DX12, wgpu::Backends::VULKAN]
     } else {
-        vec![wgpu::Backends::VULKAN, wgpu::Backends::GL]
+        vec![wgpu::Backends::VULKAN]
     };
     let first = match wanted.trim().to_ascii_lowercase().as_str() {
         "vulkan" => Some(wgpu::Backends::VULKAN),
         "dx12" | "directx" | "d3d12" if cfg!(windows) => Some(wgpu::Backends::DX12),
-        "gl" | "opengl" | "gles" => Some(wgpu::Backends::GL),
         _ => None,
     };
     // (the one asked for first, the others after it: a machine without it still starts)
@@ -265,7 +259,7 @@ fn backend_instance(b: wgpu::Backends) -> wgpu::Instance {
 /// be opened (an old driver, the switchable graphics), or whose opening took wgpu down: the
 /// game and the launcher ended before their window showed anything. Now each adapter that
 /// can show the window is tried in turn - the card, then the processor's graphics - on
-/// Vulkan, DirectX 12 and OpenGL, and only when none opens is the game given up, saying so.
+/// Vulkan and DirectX 12, and only when none opens is the game given up, saying so.
 pub(crate) fn window_renderer(
     instance: &mut wgpu::Instance,
     window: &std::sync::Arc<winit::window::Window>,

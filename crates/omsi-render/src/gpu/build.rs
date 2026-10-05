@@ -166,7 +166,7 @@ impl Renderer {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: surface, force_fallback_adapter: false, ..Default::default() })
             .await
-            .map_err(|e| anyhow!("no graphics adapter that can draw the game was found (Metal, Vulkan, DirectX 12 or OpenGL 3.3 or later); updating the graphics driver often helps: {e}"))?;
+            .map_err(|e| anyhow!("no graphics adapter that can draw the game was found (Metal, Vulkan or DirectX 12); updating the graphics driver often helps: {e}"))?;
         Self::new_on(adapter, surface, format, options).await
     }
 
@@ -250,17 +250,12 @@ impl Renderer {
         } else {
             options
         };
-        GL_BACKEND.store(
-            info.backend == wgpu::Backend::Gl,
-            std::sync::atomic::Ordering::Relaxed,
-        );
         let full = omsi_cfg::env::var_os("OMSI_FULL_GPU").is_some();
         let weak = !full
-            && (info.backend == wgpu::Backend::Gl
-                || cfg!(target_os = "android")
-                || (info.device_type == wgpu::DeviceType::IntegratedGpu
-                    && info.backend != wgpu::Backend::Metal)
-                || vram.is_some_and(|v| v <= 2560));
+            && (cfg!(target_os = "android")
+            || (info.device_type == wgpu::DeviceType::IntegratedGpu
+            && info.backend != wgpu::Backend::Metal)
+            || vram.is_some_and(|v| v <= 2560));
         let modest = !full && !weak && vram.is_some_and(|v| v <= 4200);
         let options = if weak {
             log::warn!(
@@ -558,7 +553,7 @@ impl Renderer {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("omsi"),
             source: wgpu::ShaderSource::Wgsl(
-                scene_shader_source(GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed)).into(),
+                scene_shader_source().into(),
             ),
         });
         let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1528,9 +1523,7 @@ impl Renderer {
             sky_pipeline: sky_pipeline_for(format, "fs_main"),
         };
         let leave_out_enhanced = options.no_enhanced
-            && (cfg!(target_os = "android")
-                || adapter_name.to_ascii_lowercase().contains("opengl")
-                || GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed));
+            && cfg!(target_os = "android");
         let hdr_pass = (!leave_out_enhanced).then(|| PassPipelines {
             pipelines: scene_pipelines(hdr_format, "fs_enhanced"),
             wire_pipelines: wire_for(hdr_format, "fs_enhanced"),
@@ -1754,9 +1747,8 @@ impl Renderer {
                 cache: None,
             })
         };
-        let gl = GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed);
-        let ssao_pipeline = (!gl).then(|| make_ao("fs_ssao"));
-        let blur_pipeline = (!gl).then(|| make_ao("fs_blur"));
+        let ssao_pipeline = Some(make_ao("fs_ssao"));
+        let blur_pipeline = Some(make_ao("fs_blur"));
         let prepass_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("prepass"),
             bind_group_layouts: &[Some(&camera_layout), Some(&material_layout)],
@@ -2526,7 +2518,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let gpu_timers = [GpuTimers::new(&device), GpuTimers::new(&device)];
-        let puddles = (!gl && !leave_out_enhanced)
+        let puddles = (!leave_out_enhanced)
             .then(|| puddles::Pipelines::new(&device, &shader, &camera_layout, &material_layout));
         Renderer {
             _device_poller: DevicePoller::start(&device),

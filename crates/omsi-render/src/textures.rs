@@ -1,4 +1,4 @@
-use super::{MaterialMaps, Renderer, Scene, TextureId, fit_texture, gl_worker_turn};
+use super::{MaterialMaps, Renderer, Scene, TextureId, fit_texture};
 
 struct RgbaRef<'a> {
     width: u32,
@@ -548,7 +548,6 @@ pub fn prepare_texture(
     if let Some(small) = fit_texture(data, device.limits().max_texture_dimension_2d) {
         return prepare_texture(device, queue, &small);
     }
-    let _turn = gl_worker_turn();
     use omsi_texture::PixelFormat;
     let format = match data.format {
         PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,

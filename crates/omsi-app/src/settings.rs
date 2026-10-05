@@ -230,8 +230,8 @@ pub struct Settings {
     pub mouse_sens: f32,
     pub stick_sens: f32,
     pub steer_center: bool,
-    /// The graphics interface: `auto` (Vulkan, else DirectX 12, else OpenGL), `vulkan`,
-    /// `dx12` or `gl` (see `startup::graphics_instance`).
+    /// The graphics interface: `auto` (DirectX 12, else Vulkan), `vulkan`
+    /// or `dx12` (see `startup::graphics_instance`).
     pub graphics_api: String,
     /// Default motor polarity for wheels without a saved per-device direction.
     pub ff_invert: bool,

@@ -4,7 +4,7 @@ use crate::*;
 fn shaders_validate_and_match_the_uniforms() {
     use wgpu::naga;
     let modules = [
-        ("scene", scene_shader_source(false)),
+        ("scene", scene_shader_source()),
         ("sky", sky_shader_source()),
         ("corona", corona_shader_source()),
         (
@@ -109,63 +109,6 @@ fn shaders_validate_and_match_the_uniforms() {
         }
     }
     assert_eq!(checked.len(), sizes.len(), "structs checked: {checked:?}");
-}
-
-#[test]
-fn the_scene_shader_translates_to_glsl() {
-    use wgpu::naga;
-    use wgpu::naga::back::glsl;
-    let src = scene_shader_source(true);
-    let module =
-        naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
-    let info = naga::valid::Validator::new(
-        naga::valid::ValidationFlags::all(),
-        naga::valid::Capabilities::all(),
-    )
-    .validate(&module)
-    .expect("validate");
-    let (module, info) = naga::back::pipeline_constants::process_overrides(
-        &module,
-        &info,
-        None,
-        &Default::default(),
-    )
-    .expect("overrides");
-    for version in [
-        glsl::Version::Embedded {
-            version: 310,
-            is_webgl: false,
-        },
-        glsl::Version::Desktop(430),
-    ] {
-        let options = glsl::Options {
-            version,
-            ..Default::default()
-        };
-        for entry in &module.entry_points {
-            let pipeline = glsl::PipelineOptions {
-                shader_stage: entry.stage,
-                entry_point: entry.name.clone(),
-                multiview: None,
-            };
-            let mut out = String::new();
-            glsl::Writer::new(
-                &mut out,
-                &module,
-                &info,
-                &options,
-                &pipeline,
-                Default::default(),
-            )
-            .and_then(|mut w| w.write())
-            .unwrap_or_else(|e| panic!("{version:?} {}: {e:?}", entry.name));
-            assert!(
-                !out.contains("invariant gl_FragCoord"),
-                "{version:?} {}",
-                entry.name
-            );
-        }
-    }
 }
 
 #[test]

@@ -2624,7 +2624,6 @@ pub fn settings_from_text(text: Option<&str>) -> Value {
                 v[&k] = json!(match val.to_ascii_lowercase().as_str() {
                     "vulkan" => "vulkan",
                     "dx12" => "dx12",
-                    "gl" => "gl",
                     _ => "auto",
                 })
             }
@@ -3166,7 +3165,6 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         {
             "vulkan" => "vulkan",
             "dx12" => "dx12",
-            "gl" => "gl",
             _ => "auto",
         },
         v.get("ctrl_off")

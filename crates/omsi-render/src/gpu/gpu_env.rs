@@ -2,41 +2,16 @@ use crate::*;
 
 pub static ADAPTER_TEXTURE_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-pub(crate) static GL_BACKEND: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-pub fn gl_backend() -> bool {
-    GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed)
-}
-
 pub fn wait_gpu(
     device: &wgpu::Device,
     submission: Option<wgpu::SubmissionIndex>,
 ) -> Result<(), wgpu::PollError> {
-    if !gl_backend() {
-        return device
-            .poll(wgpu::PollType::Wait {
-                submission_index: submission,
-                timeout: None,
-            })
-            .map(|_| ());
-    }
-    loop {
-        match device.poll(wgpu::PollType::Wait {
-            submission_index: submission.clone(),
-            timeout: Some(GL_WAIT_SLICE),
-        }) {
-            Err(wgpu::PollError::Timeout) => std::thread::yield_now(),
-            r => return r.map(|_| ()),
-        }
-    }
-}
-
-pub(crate) const GL_WAIT_SLICE: std::time::Duration = std::time::Duration::from_millis(20);
-
-pub(crate) fn gl_worker_turn() -> Option<std::sync::MutexGuard<'static, ()>> {
-    static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    gl_backend().then(|| TURN.lock().unwrap_or_else(|e| e.into_inner()))
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: submission,
+            timeout: None,
+        })
+        .map(|_| ())
 }
 
 pub(crate) fn dedicated_vram_mb(info: &wgpu::AdapterInfo) -> Option<u64> {
@@ -76,7 +51,7 @@ impl DevicePoller {
         let thread = std::thread::Builder::new()
             .name("omsi-gpu-poll".into())
             .spawn(move || {
-                let pause = std::time::Duration::from_millis(if gl_backend() { 5 } else { 1 });
+                let pause = std::time::Duration::from_millis(1);
                 while !flag.load(std::sync::atomic::Ordering::Relaxed) {
                     let _ = device.poll(wgpu::PollType::Poll);
                     std::thread::sleep(pause);
