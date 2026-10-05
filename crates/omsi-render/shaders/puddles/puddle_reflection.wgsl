@@ -127,7 +127,12 @@ fn fs_trace(in: PuddleVertex) -> @location(0) vec4<f32> {
     let world = world_pos(uv, depth);
     let distance = length(world - p.eye_time.xyz);
     if (distance > 100.0) { return vec4<f32>(0.0); }
-    let ripple = puddle_ripple(world.xy + p.origin_rain.xy, p.eye_time.w, p.origin_rain.z, 1.0);
+    var ripple = puddle_ripple(world.xy + p.origin_rain.xy, p.eye_time.w, p.origin_rain.z, 1.0);
+    if (p.vehicle_info.x > 0.5) {
+        let b = p.vehicle_parts[0];
+        let wake = puddle_wake((world - b.a.xyz).xy, b.a.w, b.b.x, b.c.xy, b.b.yz, p.vehicle_info.w, p.eye_time.w);
+        ripple = vec3<f32>(ripple.xy + wake, max(ripple.z, length(wake)));
+    }
     var surface_normal = p.vehicle_plane.xyz;
     if (!local_vehicle_plane(world)) { surface_normal = receiver_normal(px, uv, world, depth); }
     let normal = normalize(surface_normal + vec3<f32>(ripple.xy, 0.0));

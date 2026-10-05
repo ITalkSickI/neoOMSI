@@ -591,7 +591,15 @@ impl Renderer {
                     .unwrap_or(0.12),
             ],
             vehicle_plane: plane,
-            vehicle_info: [origins.len() as f32, w as f32, h as f32, 0.0],
+            vehicle_info: [
+                origins.len() as f32,
+                w as f32,
+                h as f32,
+                lighting.inside.map_or(0.0, |(_, hd, _)| {
+                    let r = (hd as f32).to_radians();
+                    lighting.glass_wind.x * r.sin() + lighting.glass_wind.y * r.cos()
+                }),
+            ],
             vehicle_parts: parts,
         };
         self.queue.write_buffer(

@@ -39,3 +39,20 @@ fn puddle_ripple(pattern_xy: vec2<f32>, time: f32, rain: f32, coverage: f32) -> 
     }
     return vec3<f32>(bump, strength);
 }
+
+fn puddle_wake(d: vec2<f32>, sh: f32, ch: f32, off: vec2<f32>, half: vec2<f32>, fwd: f32, time: f32) -> vec2<f32> {
+    let speed = abs(fwd);
+    let s = smoothstep(0.3, 4.0, speed);
+    if (s <= 0.0) { return vec2<f32>(0.0); }
+    let l = vec2<f32>(d.x * ch - d.y * sh, d.x * sh + d.y * ch) - off;
+    let q = abs(l) - half;
+    let e = length(max(q, vec2<f32>(0.0)));
+    if (e > 6.0) { return vec2<f32>(0.0); }
+    var o = sign(l) * max(q, vec2<f32>(0.0));
+    if (dot(o, o) < 1e-6) { o = l; }
+    o = normalize(o + vec2<f32>(0.0, 1e-5));
+    let front = 0.35 + 0.65 * clamp(o.y * sign(fwd), 0.0, 1.0);
+    let wave = cos(e * 4.0 - time * (2.0 + speed * 0.6));
+    let amp = exp(-e * 0.55) * (0.55 + 0.45 * wave) * front * s;
+    return vec2<f32>(o.x * ch + o.y * sh, -o.x * sh + o.y * ch) * amp * 0.45;
+}
