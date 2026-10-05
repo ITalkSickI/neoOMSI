@@ -5471,6 +5471,7 @@ mod settings_tests {
             "s-view",
             "s-maxobj",
             "s-minobj",
+            "s-mapdetail",
             "s-mirror",
             "s-mirror-refresh",
             "s-texmem",
