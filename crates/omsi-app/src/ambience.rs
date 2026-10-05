@@ -30,6 +30,7 @@ pub struct Ambience {
     /// `Sounds\rain_outside.wav`, the rain in the open.
     rain: Option<Arc<Clip>>,
     rain_voice: Option<VoiceId>,
+    rain_inside: f32,
     /// `Sounds\Passengers\`, the step samples read from it as the packs name them, and
     /// what the sound configuration there says about a step (volume, `[3d]` range).
     step_dir: PathBuf,
@@ -51,6 +52,7 @@ impl Ambience {
         let mut a = Ambience {
             rain: None,
             rain_voice: None,
+            rain_inside: 0.0,
             step_dir: PathBuf::new(),
             steps: hashbrown::HashMap::new(),
             step_volume: 1.0,
@@ -108,20 +110,28 @@ impl Ambience {
         if !engine.enabled {
             return;
         }
-        self.rain(engine, precip, inside);
+        let target = if inside { 1.0 } else { 0.0 };
+        let step = dt / 0.45;
+        self.rain_inside = if self.rain_inside < target {
+            (self.rain_inside + step).min(target)
+        } else {
+            (self.rain_inside - step).max(target)
+        };
+        let b = self.rain_inside * self.rain_inside * (3.0 - 2.0 * self.rain_inside);
+        self.rain(engine, precip, b);
         self.footsteps(engine, dt, street_cond, listener, inside, footfalls);
     }
 
     /// The rain in the street: it only rains audibly, snow is silent. Heard at a quarter
     /// through the bodywork, and muffled on top of that, so that a shower is still there -
     /// duller, not just quieter - when you sit down in the cab.
-    fn rain(&mut self, engine: &AudioEngine, precip: (i32, f32), inside: bool) {
+    fn rain(&mut self, engine: &AudioEngine, precip: (i32, f32), inside: f32) {
         let Some(clip) = self.rain.clone() else {
             return;
         };
         let (kind, rate) = precip;
         let gain = if kind == 1 {
-            (0.15 + 0.85 * rate.clamp(0.0, 1.0)) * if inside { 0.25 } else { 0.9 }
+            (0.15 + 0.85 * rate.clamp(0.0, 1.0)) * (0.9 + (0.25 - 0.9) * inside)
         } else {
             0.0
         };
@@ -132,8 +142,13 @@ impl Ambience {
             position: None,
             doppler: true,
             range: 1.0,
-            lowpass_hz: if inside { 400.0 } else { 0.0 },
+            lowpass_hz: if inside > 0.001 {
+                (20_000.0f32.ln() + (400.0f32.ln() - 20_000.0f32.ln()) * inside).exp()
+            } else {
+                0.0
+            },
             important: false,
+            pan: 1.0,
         };
         match (self.rain_voice, gain > 0.001) {
             (Some(id), true) => {
@@ -218,6 +233,7 @@ impl Ambience {
                 range: self.step_range,
                 lowpass_hz: lowpass,
                 important: false,
+                pan: 1.0,
             };
             engine.play(clip, params);
             played += 1;

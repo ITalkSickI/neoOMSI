@@ -40,6 +40,12 @@ pub struct SoundSet {
     /// sound set, this vehicle's own and every other vehicle's alike (see
     /// [`SoundSet::set_muffled`] and [`SoundSet::lowpass_of`]).
     muffled: bool,
+    inside_blend: f32,
+    muffled_blend: f32,
+    hull: Option<([f32; 3], [f32; 3])>,
+    hull_h: f32,
+    hull_override: Option<f32>,
+    blend_at: Option<std::time::Instant>,
     /// The sound sets of the coupled parts (with the part's index among the vehicle's
     /// trailers): the rear section of an articulated bus has a `[sound]` of its own - on a
     /// pusher like the MB C2 G that is where the engine is - and plays it on the triggers
@@ -133,8 +139,66 @@ impl SoundSet {
             ai: false,
             listener_vehicle: false,
             muffled: false,
+            inside_blend: 0.0,
+            muffled_blend: 0.0,
+            hull: None,
+            hull_h: 0.0,
+            hull_override: None,
+            blend_at: None,
             parts: Vec::new(),
         }
+    }
+
+    fn advance_blend(&mut self) -> (f32, f32) {
+        let now = std::time::Instant::now();
+        let dt = self
+            .blend_at
+            .map_or(1.0, |t| now.saturating_duration_since(t).as_secs_f32())
+            .min(0.1);
+        self.blend_at = Some(now);
+        let step = dt / 0.45;
+        let toward = |cur: f32, target: bool| {
+            let t = if target { 1.0 } else { 0.0 };
+            if cur < t {
+                (cur + step).min(t)
+            } else {
+                (cur - step).max(t)
+            }
+        };
+        self.inside_blend = toward(self.inside_blend, self.inside);
+        self.muffled_blend = toward(self.muffled_blend, self.muffled);
+        let ease = |b: f32| b * b * (3.0 - 2.0 * b);
+        (ease(self.inside_blend), ease(self.muffled_blend))
+    }
+
+    /// The hull of the vehicle from its `[boundingbox]` (width, length, height, centre).
+    pub fn set_hull(&mut self, bb: Option<[f32; 6]>) {
+        self.hull = bb.map(|b| {
+            (
+                [b[3], b[4], b[5]],
+                [b[0] * 0.5 + 0.05, b[1] * 0.5 + 0.05, b[2] * 0.5 + 0.05],
+            )
+        });
+    }
+
+    /// How much the listener is inside the bodywork, 0..1, from where they stand: across
+    /// the hull's wall it runs over half a metre, so walking through the door the sound changes
+    /// with every step - and stands still when they do. Without a hull, the eased flag.
+    fn inside_factor(&mut self, eased: f32, object_to_world: &Mat4, listener: Vec3) -> f32 {
+        let h = if let Some(h) = self.hull_override {
+            h
+        } else if let Some((c, half)) = self.hull {
+            let l = object_to_world.inverse().transform_point3(listener) - Vec3::from_array(c);
+            let d = (l.x.abs() - half[0])
+                .max(l.y.abs() - half[1])
+                .max(l.z.abs() - half[2]);
+            let t = ((0.25 - d) / 0.5).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        } else {
+            eased
+        };
+        self.hull_h = h;
+        h
     }
 
     /// Where the listener is, for the `[viewpoint]` of an entry: `true` while the camera is
@@ -173,6 +237,8 @@ impl SoundSet {
     pub fn add_part(&mut self, index: usize, mut part: SoundSet) {
         part.inside = self.inside;
         part.muffled = self.muffled;
+        part.inside_blend = self.inside_blend;
+        part.muffled_blend = self.muffled_blend;
         part.exterior = self.exterior;
         part.ai = self.ai;
         part.listener_vehicle = self.listener_vehicle;
@@ -191,7 +257,12 @@ impl SoundSet {
     ) {
         for (i, p) in &mut self.parts {
             match part_to_world(*i) {
-                Some(xf) => p.update(engine, var, &xf, triggers),
+                Some(xf) => {
+                    if p.hull.is_none() {
+                        p.hull_override = Some(self.hull_h);
+                    }
+                    p.update(engine, var, &xf, triggers)
+                }
                 None => p.stop_all(engine),
             }
         }
@@ -206,6 +277,64 @@ impl SoundSet {
         (if self.inside { 2 } else { 1 }) | (if self.ai { 4 } else { 0 })
     }
 
+    fn volume_side(
+        def: &SoundEntry,
+        var: &dyn Fn(&str) -> Option<f32>,
+        ai: bool,
+        active: f32,
+        facing: f32,
+    ) -> Option<f32> {
+        let view = (def.viewpoint & 3) | if ai { 4 } else { 0 };
+        Self::volume(def, var, view, active, facing)
+    }
+
+    #[cfg(test)]
+    fn lp_between(a: f32, b: f32, t: f32) -> f32 {
+        if a <= 0.0 && b <= 0.0 {
+            return 0.0;
+        }
+        let open = 20_000.0f32;
+        let (a, b) = (if a > 0.0 { a } else { open }, if b > 0.0 { b } else { open });
+        let c = (a.ln() + (b.ln() - a.ln()) * t).exp();
+        if c >= 0.95 * open { 0.0 } else { c }
+    }
+
+    fn place(
+        pos: Option<[f32; 3]>,
+        range: f32,
+        exterior: bool,
+        object_to_world: &Mat4,
+    ) -> (Option<Vec3>, f32, f32) {
+        match pos {
+            Some(p) => (
+                Some(object_to_world.transform_point3(Vec3::from_array(p))),
+                if range > 0.0 {
+                    range
+                } else if exterior {
+                    40.0
+                } else {
+                    5.0
+                },
+                1.0,
+            ),
+            None => (
+                Some(object_to_world.transform_point3(Vec3::ZERO)),
+                if range > 0.0 { range.max(40.0) } else { 40.0 },
+                1.0,
+            ),
+        }
+    }
+
+    #[cfg(test)]
+    fn merge_lowpass(a: f32, b: f32) -> f32 {
+        match (a > 0.0, b > 0.0) {
+            (true, true) => a.min(b),
+            (true, false) => a,
+            (false, true) => b,
+            _ => 0.0,
+        }
+    }
+
     /// How muffled an entry should sound, once the listener sits in *some* cabin (`muffled`):
     /// a foreign vehicle's sound set (`exterior`, an AI bus or another player's) is muffled
     /// then - its sounds are on the far side of the player's own bodywork and glass. The
@@ -213,13 +342,15 @@ impl SoundSet {
     /// and leaves the rest to the scripts' volume curves (`Snd_OutsideVol` and the like). We
     /// muffled every entry of it not tagged as a cabin sound alone - a blinker relay tagged
     /// for inside and out was cut to a quarter below 450 Hz, heard only with a door open.
-    fn lowpass_of(muffled: bool, exterior: bool) -> f32 {
-        if muffled && exterior {
+    #[cfg(test)]
+    fn lowpass_of(muffled: f32, exterior: bool) -> f32 {
+        if muffled > 0.0 && exterior {
             // doors or the driver's window open let the outside in unfiltered
-            match outside_open() {
+            let shut = match outside_open() {
                 Some(o) => 450.0 * (1.0 + 30.0 * o.clamp(0.0, 0.5)),
                 None => 450.0,
-            }
+            };
+            Self::lp_between(0.0, shut, muffled)
         } else {
             0.0
         }
@@ -229,12 +360,14 @@ impl SoundSet {
     /// `Snd_OutsideVol` (0 with everything shut, up to 0.5 with doors or the driver's window
     /// open: "when doors are open, you can hear outside sounds louder"); a shut bus keeps a
     /// quarter, an open one all of it. Without the variable the level stays as it was.
-    fn outside_gain(muffled: bool, exterior: bool) -> f32 {
-        if muffled && exterior {
-            match outside_open() {
+    #[cfg(test)]
+    fn outside_gain(muffled: f32, exterior: bool) -> f32 {
+        if muffled > 0.0 && exterior {
+            let shut = match outside_open() {
                 Some(o) => (0.25 + 1.5 * o.clamp(0.0, 0.5)).min(1.0),
                 None => 1.0,
-            }
+            };
+            1.0 + (shut - 1.0) * muffled
         } else {
             1.0
         }
@@ -269,8 +402,10 @@ impl SoundSet {
             warn_missing_once(trigger, &path);
             return;
         };
-        let view = self.view_mask();
-        let (muffled, exterior, master) = (self.muffled, self.exterior, self.master);
+        let ai = self.ai;
+        let (eased, _) = self.advance_blend();
+        self.inside_factor(eased, object_to_world, engine.listener_position());
+        let (exterior, master) = (self.exterior, self.master);
         for s in self.sounds.iter_mut() {
             if !s
                 .def
@@ -281,22 +416,21 @@ impl SoundSet {
                 continue;
             }
             s.active_since = Some(std::time::Instant::now());
-            let Some(vol) = Self::volume(&s.def, var, view, 0.0, 1.0) else {
+            let Some(vol) = Self::volume_side(&s.def, var, ai, 0.0, 1.0) else {
                 continue;
             };
-            let position = s
-                .def
-                .pos
-                .map(|p| object_to_world.transform_point3(Vec3::from_array(p)));
+            let (position, reach, pan) =
+                Self::place(s.def.pos, s.def.range, exterior, object_to_world);
             let params = VoiceParams {
-                gain: vol * master * Self::outside_gain(muffled, exterior),
+                gain: vol * master,
                 pitch: 1.0,
                 looping: false,
                 position,
                 doppler: !self.listener_vehicle,
-                range: if s.def.range > 0.0 { s.def.range } else { 5.0 },
-                lowpass_hz: Self::lowpass_of(muffled, exterior),
+                range: reach,
+                lowpass_hz: 0.0,
                 important: s.def.important,
+                pan,
             };
             if let Some(id) = s.voice.take() {
                 engine.stop(id);
@@ -325,6 +459,7 @@ impl SoundSet {
             range: 5.0,
             lowpass_hz: 0.0,
             important: false,
+            pan: 1.0,
         };
         engine.play(clip, params);
     }
@@ -477,26 +612,13 @@ impl SoundSet {
         if !engine.enabled {
             return;
         }
-        let (muffled, exterior, master, doppler) = (
-            self.muffled,
-            self.exterior,
-            self.master,
-            !self.listener_vehicle,
-        );
-        let view = self.view_mask();
-        let world_pos = |p: Option<[f32; 3]>| {
-            p.map(|p| object_to_world.transform_point3(Vec3::from_array(p)))
-                .or_else(|| exterior.then(|| object_to_world.transform_point3(Vec3::ZERO)))
-        };
-        let range_of = |r: f32| {
-            if r > 0.0 {
-                r
-            } else if exterior {
-                40.0
-            } else {
-                5.0
-            }
-        };
+        let (eased, _) = self.advance_blend();
+        let inside = self.inside_factor(eased, object_to_world, engine.listener_position());
+        if self.hull.is_some() && self.hull_override.is_none() {
+            engine.set_cabin(inside);
+        }
+        let (exterior, master, doppler) = (self.exterior, self.master, !self.listener_vehicle);
+        let ai = self.ai;
         for s in self.sounds.iter_mut() {
             // How the exe plays an entry (`TSound` update, 2.2.032):
             // * with a `[trigger]`: once each time the trigger fires, from the start, never
@@ -541,29 +663,32 @@ impl SoundSet {
             };
             let fired = fired_by.is_some();
             let mut vol = match fired_by {
-                Some(t) => Self::volume(
+                Some(t) => Self::volume_side(
                     &s.def,
                     &|n| at_fire(t, n).or_else(|| var(n)),
-                    view,
+                    ai,
                     active,
                     facing,
                 ),
-                None => Self::volume(&s.def, var, view, active, facing),
+                None => Self::volume_side(&s.def, var, ai, active, facing),
             };
             if triggered {
                 vol = Self::peak_hold(&mut s.peak, vol, fired);
             }
             let (pitch, fast_enough) = Self::pitch_of(&s.def, var, &clip);
             let audible = vol.map(|v| v > 0.001).unwrap_or(false) && fast_enough;
+            let (position, reach, pan) =
+                Self::place(s.def.pos, s.def.range, exterior, object_to_world);
             let params = |looping: bool| VoiceParams {
-                gain: vol.unwrap_or(0.0) * master * Self::outside_gain(muffled, exterior),
+                gain: vol.unwrap_or(0.0) * master,
                 pitch: pitch.max(0.001),
                 looping,
-                position: world_pos(s.def.pos),
+                position,
                 doppler,
-                range: range_of(s.def.range),
-                lowpass_hz: Self::lowpass_of(muffled, exterior),
+                range: reach,
+                lowpass_hz: 0.0,
                 important: s.def.important,
+                pan,
             };
             if !triggered && !s.def.no_loop {
                 let params = params(true);
@@ -646,8 +771,8 @@ impl SoundSet {
             } else if s.def.viewpoint != 0
                 && s.def.viewpoint & view == 0
                 && !(view == 2
-                    && s.def.viewpoint & 2 == 0
-                    && outside_open().is_some_and(|o| o > 0.01))
+                && s.def.viewpoint & 2 == 0
+                && outside_open().is_some_and(|o| o > 0.01))
             {
                 why = format!("viewpoint {} (listener {view})", s.def.viewpoint);
             } else if let Some(c) = s
@@ -712,26 +837,26 @@ mod tests {
     fn open_doors_let_the_outside_in() {
         set_outside_open(None);
         assert_eq!(
-            SoundSet::outside_gain(true, true),
+            SoundSet::outside_gain(1.0, true),
             1.0,
             "no variable: as before"
         );
         set_outside_open(Some(0.0));
-        assert_eq!(SoundSet::outside_gain(true, true), 0.25, "shut: a quarter");
+        assert_eq!(SoundSet::outside_gain(1.0, true), 0.25, "shut: a quarter");
         assert_eq!(
-            SoundSet::outside_gain(true, false),
+            SoundSet::outside_gain(1.0, false),
             1.0,
             "the own bus's sounds are its own"
         );
-        assert_eq!(SoundSet::lowpass_of(true, false), 0.0);
-        assert_eq!(SoundSet::outside_gain(false, true), 1.0, "standing outside");
+        assert_eq!(SoundSet::lowpass_of(1.0, false), 0.0);
+        assert_eq!(SoundSet::outside_gain(0.0, true), 1.0, "standing outside");
         set_outside_open(Some(0.5));
         assert_eq!(
-            SoundSet::outside_gain(true, true),
+            SoundSet::outside_gain(1.0, true),
             1.0,
             "doors open: all of it"
         );
-        assert!(SoundSet::lowpass_of(true, true) > 5000.0);
+        assert!(SoundSet::lowpass_of(1.0, true) > 5000.0);
         // (in the same test: the variable is one for all) the own bus's outside-only
         // entry, `[viewpoint] 5`, heard from the cab at `Snd_OutsideVol` (TSound update
         // 0x750340), not at all with everything shut

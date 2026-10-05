@@ -43,6 +43,7 @@ pub struct VoiceParams {
     /// OMSI's `[important]`: keep this sound ahead of ordinary voices when the
     /// mixer limit is reached.
     pub important: bool,
+    pub pan: f32,
 }
 
 impl Default for VoiceParams {
@@ -56,6 +57,7 @@ impl Default for VoiceParams {
             range: 5.0,
             lowpass_hz: 0.0,
             important: false,
+            pan: 1.0,
         }
     }
 }
@@ -72,6 +74,7 @@ struct Voice {
     cur_gain: f32,
     /// One-pole low-pass filter state, left/right.
     lp: [f32; 2],
+    cur_lp: f32,
     /// The Doppler shift: the distance to the listener when the position last came, when,
     /// and the (smoothed) pitch factor it gives.
     doppler: (f32, Option<std::time::Instant>, f32),
@@ -117,6 +120,8 @@ struct Shared {
     reverb: Mutex<Reverb>,
     /// The master limiter's gain now (1 = none).
     limiter: Mutex<f32>,
+    cabin: Mutex<(f32, std::time::Instant)>,
+    cabin_s: Mutex<f32>,
     /// The output device's rate and channels: those of the device played on now (the stream
     /// is opened again on another device when the system's output changes).
     sample_rate: AtomicU32,
@@ -188,14 +193,27 @@ impl Shared {
                 spatial_gain = distance_gain(v.params.range, dist);
                 let side = d.normalize_or_zero().dot(listener.right);
                 let pan = side.clamp(-1.0, 1.0);
-                left = ((1.0 - pan) * 0.5).sqrt() * 1.2;
-                right = ((1.0 + pan) * 0.5).sqrt() * 1.2;
+                let amount = v.params.pan.clamp(0.0, 1.0);
+                left = 1.0 + (((1.0 - pan) * 0.5).sqrt() * 1.2 - 1.0) * amount;
+                right = 1.0 + (((1.0 + pan) * 0.5).sqrt() * 1.2 - 1.0) * amount;
             }
             let target_gain = (v.params.gain * spatial_gain * listener.master).max(0.0);
+            let lp_target = if v.params.lowpass_hz > 0.0 {
+                v.params.lowpass_hz.min(OPEN_HZ)
+            } else {
+                OPEN_HZ
+            };
+            if v.cur_lp <= 0.0 {
+                v.cur_lp = lp_target;
+            } else {
+                let k = 1.0 - (-(frames as f32) / dev_rate as f32 / 0.12).exp();
+                v.cur_lp = (v.cur_lp.ln() + (lp_target.ln() - v.cur_lp.ln()) * k).exp();
+            }
+            let lp_on = v.cur_lp < OPEN_HZ * 0.95;
+            let lp_hz = v.cur_lp;
             if let Some(sb) = v.stream.clone() {
-                let lp_alpha = if v.params.lowpass_hz > 0.0 {
-                    1.0 - (-2.0 * std::f32::consts::PI * v.params.lowpass_hz / dev_rate as f32)
-                        .exp()
+                let lp_alpha = if lp_on {
+                    1.0 - (-2.0 * std::f32::consts::PI * lp_hz / dev_rate as f32).exp()
                 } else {
                     1.0
                 };
@@ -206,15 +224,17 @@ impl Shared {
                 }
                 let step = buf.rate as f64 / dev_rate;
                 for f in 0..frames {
-                    v.cur_gain += (target_gain - v.cur_gain) * 0.005;
+                    v.cur_gain += (target_gain - v.cur_gain) * 0.0025;
                     // silence while the buffer fills (at the start, after a stall)
                     let Some((a, b)) = buf.pair() else { break };
                     let t = v.pos as f32;
                     let (mut l, mut r) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
-                    if v.params.lowpass_hz > 0.0 {
+                    if lp_on {
                         v.lp[0] += (l - v.lp[0]) * lp_alpha;
                         v.lp[1] += (r - v.lp[1]) * lp_alpha;
                         (l, r) = (v.lp[0], v.lp[1]);
+                    } else {
+                        v.lp = [l, r];
                     }
                     let g = v.cur_gain;
                     out[f * ch] += l * g * left;
@@ -239,8 +259,8 @@ impl Shared {
             let step = (v.params.pitch * v.doppler.2).max(0.01) as f64 * clip.sample_rate as f64
                 / dev_rate;
             // one-pole low-pass: alpha such that the filter's -3dB point sits at `lowpass_hz`
-            let lp_alpha = if v.params.lowpass_hz > 0.0 {
-                1.0 - (-2.0 * std::f32::consts::PI * v.params.lowpass_hz / dev_rate as f32).exp()
+            let lp_alpha = if lp_on {
+                1.0 - (-2.0 * std::f32::consts::PI * lp_hz / dev_rate as f32).exp()
             } else {
                 1.0
             };
@@ -277,11 +297,12 @@ impl Shared {
                     let m = sample(0);
                     (m, m)
                 };
-                let (l, r) = if v.params.lowpass_hz > 0.0 {
+                let (l, r) = if lp_on {
                     v.lp[0] += (l - v.lp[0]) * lp_alpha;
                     v.lp[1] += (r - v.lp[1]) * lp_alpha;
                     (v.lp[0], v.lp[1])
                 } else {
+                    v.lp = [l, r];
                     (l, r)
                 };
                 let g = v.cur_gain;
@@ -294,14 +315,23 @@ impl Shared {
         }
         voices.retain(|v| !v.finished);
         drop(voices);
-        if listener.reverb_mix > 0.001 && listener.reverb_time > 0.05 {
-            self.reverb.lock().process(
-                out,
-                ch,
-                rate,
-                listener.reverb_time.min(3.0),
-                listener.reverb_mix.min(1.0),
-            );
+        let cab = {
+            let (v, at) = *self.cabin.lock();
+            let target = if at.elapsed().as_secs_f32() < 0.25 { v } else { 0.0 };
+            let mut sm = self.cabin_s.lock();
+            *sm += (target - *sm) * (1.0 - (-(frames as f32) / rate as f32 / 0.15).exp());
+            *sm
+        };
+        let (rt, mix) = if cab > 0.01 {
+            (
+                listener.reverb_time.max(0.4),
+                listener.reverb_mix.max(0.22 * cab),
+            )
+        } else {
+            (listener.reverb_time, listener.reverb_mix)
+        };
+        if mix > 0.001 && rt > 0.05 {
+            self.reverb.lock().process(out, ch, rate, rt.min(3.0), mix.min(1.0));
         }
         // The master limiter: a busy street sums past full scale, and cut off hard there the
         // sound crackled and squeaked. Loud moments are turned down (at once) and back up
@@ -345,9 +375,11 @@ fn apply_params(v: &mut Voice, params: VoiceParams, now: std::time::Instant, lis
         if let Some(at) = at {
             let dt = now.saturating_duration_since(at).as_secs_f32();
             if (0.004..0.5).contains(&dt) {
-                let radial = ((dist - last) / dt).clamp(-60.0, 60.0);
-                let target = 343.0 / (343.0 + radial);
-                f += (target - f) * (dt / 0.25).min(1.0);
+                let raw = (dist - last) / dt;
+                if raw.abs() < 80.0 {
+                    let target = 343.0 / (343.0 + raw);
+                    f += (target - f) * (dt / 0.25).min(1.0);
+                }
             }
         }
         v.doppler = (dist, Some(now), f);
@@ -356,6 +388,8 @@ fn apply_params(v: &mut Voice, params: VoiceParams, now: std::time::Instant, lis
     }
     v.params = params;
 }
+
+const OPEN_HZ: f32 = 20_000.0;
 
 /// At most this many clip voices are mixed at once (OMSI's `[sound_maxcount]` default).
 pub const MAX_VOICES: usize = 200;
@@ -464,6 +498,8 @@ impl AudioEngine {
             listener: Mutex::new(Listener::default()),
             reverb: Mutex::new(Reverb::default()),
             limiter: Mutex::new(1.0),
+            cabin: Mutex::new((0.0, std::time::Instant::now())),
+            cabin_s: Mutex::new(0.0),
             sample_rate: AtomicU32::new(48_000),
             channels: AtomicUsize::new(2),
             muted: muted(),
@@ -605,9 +641,9 @@ impl AudioEngine {
         self.clips.lock().retain(|_, (clip, used)| {
             let idle = used.elapsed() >= unused
                 && clip
-                    .as_ref()
-                    .map(|c| Arc::strong_count(c) == 1)
-                    .unwrap_or(false);
+                .as_ref()
+                .map(|c| Arc::strong_count(c) == 1)
+                .unwrap_or(false);
             if idle {
                 freed += clip.as_ref().map(|c| c.samples.len() * 2).unwrap_or(0);
             }
@@ -686,6 +722,7 @@ impl AudioEngine {
             finished: false,
             cur_gain: 0.0,
             lp: [0.0, 0.0],
+            cur_lp: 0.0,
             doppler: (0.0, None, 1.0),
         });
         id
@@ -712,6 +749,7 @@ impl AudioEngine {
             finished: false,
             cur_gain: 0.0,
             lp: [0.0, 0.0],
+            cur_lp: 0.0,
             doppler: (0.0, None, 1.0),
         });
         id
@@ -769,6 +807,13 @@ impl AudioEngine {
         self.shared.listener.lock().position
     }
 
+    pub fn set_cabin(&self, h: f32) {
+        let mut c = self.shared.cabin.lock();
+        let h = h.clamp(0.0, 1.0);
+        c.0 = if c.1.elapsed().as_secs_f32() > 0.05 { h } else { c.0.max(h) };
+        c.1 = std::time::Instant::now();
+    }
+
     pub fn set_listener(&self, l: Listener) {
         *self.shared.listener.lock() = l;
     }
@@ -789,6 +834,8 @@ mod tests {
             listener: Mutex::new(Listener::default()),
             reverb: Mutex::new(Reverb::default()),
             limiter: Mutex::new(1.0),
+            cabin: Mutex::new((0.0, std::time::Instant::now())),
+            cabin_s: Mutex::new(0.0),
             sample_rate: AtomicU32::new(48_000),
             channels: AtomicUsize::new(1),
             muted: false,
@@ -809,11 +856,13 @@ mod tests {
                 range: 10.0,
                 lowpass_hz: 0.0,
                 important: false,
+                pan: 1.0,
             },
             pos: 0.0,
             finished: false,
             cur_gain: gain,
             lp: [0.0; 2],
+            cur_lp: 0.0,
             doppler: (0.0, None, 1.0),
         }
     }

@@ -346,17 +346,13 @@ impl App {
         }
         let mut next = self.placed.remove(k);
         if let Some(a) = self.audio.as_ref() {
-            if let Some(mut s) = next.sounds.take() {
-                s.stop_all(a);
+            if next.sounds.is_none() {
+                next.load_sounds(a);
             }
-            next.load_sounds(a);
         }
         next.vehicle.host.auto_clutch = if self.settings.auto_clutch { 1.0 } else { 0.0 };
         if let Some(now) = self.player.take() {
-            let mut now = now;
-            if let (Some(a), Some(mut ss)) = (self.audio.as_ref(), now.sounds.take()) {
-                ss.stop_all(a);
-            }
+            let now = now;
             if let Some(h) = self.humans.as_mut() {
                 h.player_bus_swapped(now.uid, next.uid, &mut next.vehicle);
             }

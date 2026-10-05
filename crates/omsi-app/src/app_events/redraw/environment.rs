@@ -205,6 +205,7 @@ impl App {
                                     range: 8.0,
                                     lowpass_hz: 0.0,
                                     important: false,
+                                    pan: 1.0,
                                 },
                             );
                         }
