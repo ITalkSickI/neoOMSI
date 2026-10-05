@@ -261,8 +261,7 @@ pub(super) fn assign_occluders(
         l.occ_count = 0;
         let spill = l.radius == INTERIOR_SPILL_RADIUS;
         let spot = !spill && l.direction.length_squared() > 0.5;
-        let lamp_glow = l.core == SRC_CORE && l.direction.length_squared() < 1e-6;
-        if l.radius <= 0.0 || l.is_screen() || lamp_glow {
+        if l.radius <= 0.0 || l.is_screen() {
             continue;
         }
         if spot {
