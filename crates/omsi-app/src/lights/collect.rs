@@ -399,12 +399,6 @@ pub fn collect(
         let far_hidden = !near_v && entry.0;
         // (only this vehicle's own coronas are tested, not every one of the scene so far)
         let mut mine = scene.coronas.split_off(first_corona);
-        corona_lights(
-            &mine,
-            0.3 + 0.7 * night.clamp(0.0, 1.0),
-            SRC_MAX_VEHICLE,
-            &mut scene.lights,
-        );
         entry.1.resize(mine.len(), false);
         let mut ci = 0usize;
         mine.retain_mut(|c| {
@@ -429,6 +423,12 @@ pub fn collect(
             }
             true
         });
+        corona_lights(
+            &mine,
+            0.3 + 0.7 * night.clamp(0.0, 1.0),
+            SRC_MAX_VEHICLE,
+            &mut scene.lights,
+        );
         scene.coronas.extend(mine);
         particle_sprites(&v.particles, &mut scene.smoke, &mut scene.coronas);
         for t in &v.trailers {
