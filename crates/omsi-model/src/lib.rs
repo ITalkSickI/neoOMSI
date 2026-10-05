@@ -1297,6 +1297,27 @@ pub fn load_texchanges(base: &Path, files: &[String]) -> Vec<TexChangeMaster> {
 mod tests {
 
     #[test]
+    fn spotlight_2_and_interiorlight_parse() {
+        let model = super::Model::parse(&omsi_cfg::CfgFile::from_str(
+            "lights.cfg",
+            "[spotlight_2]\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\nhead_var\n1\n[spotlight_2]\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\nother\n0\n[interiorlight]\nint_var\n5.5\n1\n0.5\n0.25\n0.1\n0.2\n0.3\n",
+        ));
+        assert_eq!(model.spotlights_2.len(), 2);
+        assert_eq!(model.spotlights_2[0].values[0], 1.0);
+        assert_eq!(model.spotlights_2[0].values[11], 12.0);
+        assert_eq!(model.spotlights_2[0].variable, "head_var");
+        assert!(model.spotlights_2[0].no_mirror);
+        assert_eq!(model.spotlights_2[1].variable, "other");
+        assert!(!model.spotlights_2[1].no_mirror);
+        assert_eq!(model.interior_lights.len(), 1);
+        let il = &model.interior_lights[0];
+        assert_eq!(il.variable, "int_var");
+        assert_eq!(il.range, 5.5);
+        assert_eq!(il.color, [1.0, 0.5, 0.25]);
+        assert_eq!(il.pos, [0.1, 0.2, 0.3]);
+    }
+
+    #[test]
     fn terrain_hole_meshes_are_independent_of_render_meshes() {
         let mut model = super::Model::parse(&omsi_cfg::CfgFile::from_str(
             "cutters.cfg",
