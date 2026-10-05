@@ -266,6 +266,7 @@ pub fn collect(
     }
     let epoch = lamp_vis.2;
     let mut rays = LAMP_RAYS_PER_FRAME;
+    let mut obj_lamps: Vec<Corona> = Vec::new();
     for lamp in world.light_objects.lock().iter() {
         let dist = (lamp.pos - camera_pos).length();
         if dist > visible_range {
@@ -290,6 +291,7 @@ pub fn collect(
                 continue;
             }
         }
+        let first_obj = scene.coronas.len();
         for ((c, _), lit) in lamp.coronas.iter().zip(&lamp.lit) {
             if *lit <= 0.0 {
                 continue;
@@ -298,7 +300,22 @@ pub fn collect(
             corona.brightness *= lit.min(1.0);
             scene.coronas.push(corona);
         }
+        if dist < SRC_RANGE {
+            obj_lamps.extend_from_slice(&scene.coronas[first_obj..]);
+        }
     }
+    obj_lamps.sort_by(|a, b| {
+        (a.position - camera_pos)
+            .length_squared()
+            .total_cmp(&(b.position - camera_pos).length_squared())
+    });
+    obj_lamps.truncate(SRC_MAX_OBJECTS * 3);
+    corona_lights(
+        &obj_lamps,
+        0.3 + 0.7 * night.clamp(0.0, 1.0),
+        SRC_MAX_OBJECTS,
+        &mut scene.lights,
+    );
     let t_lamp_loop = std::time::Instant::now();
     for list in world.particle_objects.lock().values() {
         for po in list {
@@ -382,6 +399,12 @@ pub fn collect(
         let far_hidden = !near_v && entry.0;
         // (only this vehicle's own coronas are tested, not every one of the scene so far)
         let mut mine = scene.coronas.split_off(first_corona);
+        corona_lights(
+            &mine,
+            0.3 + 0.7 * night.clamp(0.0, 1.0),
+            SRC_MAX_VEHICLE,
+            &mut scene.lights,
+        );
         entry.1.resize(mine.len(), false);
         let mut ci = 0usize;
         mine.retain_mut(|c| {

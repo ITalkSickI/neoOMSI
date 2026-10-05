@@ -36,3 +36,11 @@ pub(super) const ENCL_REACH: f64 = 12.0;
 pub(super) const ENCL_UP: f64 = 10.0;
 pub(super) const ENCL_MIN_WALLS: usize = 4;
 pub(super) const ENCL_MIN_RADIUS: f32 = 3.0;
+
+pub(super) const SRC_RADIUS: f32 = 4.5;
+pub(super) const SRC_CORE: f32 = 0.4;
+pub(super) const SRC_GAIN: f32 = 0.9;
+pub(super) const SRC_MAX_VEHICLE: usize = 8;
+pub(super) const SRC_MAX_OBJECTS: usize = 24;
+pub(super) const SRC_RANGE: f64 = 150.0;
+pub(super) const SRC_OUTSET: f32 = 0.15;
