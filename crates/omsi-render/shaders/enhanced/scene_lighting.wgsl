@@ -254,6 +254,9 @@ fn lamp_light(p: vec3<f32>, n: vec3<f32>, v: vec3<f32>, sf: Surface, thin: bool)
 // most of the sky, and the dashboard lies right under the windscreen.
 const CAB_AMBIENT: f32 = 1.15;
 
+// Keep the shader puddle mask in sync with omsi-app's wheel-splash mask.
+const PUDDLE_SPREAD: f32 = 0.45;
+
 /// The mip level a pixel's footprint asks for, in levels of the texture whose size is
 /// `texels` (the usual `log2` of the larger derivative, held at 0 and up). An LED panel is
 /// sampled with this, held at `enh.led.y` (`Lighting::led_mips`): 0 point-samples it, which
@@ -514,10 +517,8 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // the pane instead of leaving a flat pale surface at normal incidence.
         rough = 0.04;
         // the pane's [matl_envmap] factor says how much it mirrors (its alpha is its
-        // transparency, never a mask): from glass's own 4 % up to 12 % for a factor of 1
-        // (0.4 on the Scania's panes). Up to 26 % as before, every window of every bus
-        // was a mirror - far more than the original's panes reflect (issue #176).
-        f0 = vec3<f32>(clamp(0.04 + 0.08 * min(material.params2.y, 1.0), 0.04, 0.12));
+        // transparency, never a mask): 4 % to 8 % for a factor of 1.
+        f0 = vec3<f32>(clamp(0.04 + 0.02 * min(material.params2.y, 1.0), 0.04, 0.06));
     } else if (reflective_env) {
         // Paint reflects its few per cent through a smooth clear coat; much more than a few
         // per cent is polished metal - but only where the model says so with a mask of its
@@ -590,11 +591,9 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // half of the wheel splashes in `puddles.rs`.
         let pattern_xy = world_pattern_xy(in.world);
         let pn = vnoise_f(pattern_xy, 0.22, vec2<f32>(17.3, -9.1)) * 0.65 + vnoise_f(pattern_xy, 0.9, vec2<f32>(-4.0, 8.0)) * 0.35;
-        // OMSI's own rule: the puddle map is alpha-tested against
-        // 255 * (1 - wetness), so the pools spread from the lowest spots as the road soaks
-        // and a road that is wet through is one sheet of water (the old threshold never
-        // passed three quarters of the carriageway, leaving dry islands in a downpour).
-        let puddle_t = 1.0 - wet_road * 1.15;
+        // Keep standing water in low spots as the road soaks; the wet sheen above remains
+        // across the whole carriageway while patches of water cover only part of it.
+        let puddle_t = 1.0 - wet_road * PUDDLE_SPREAD;
         puddle = smoothstep(puddle_t - 0.06, puddle_t + 0.06, pn) * smoothstep(0.75, 0.95, n.z);
         if (puddle > 0.001) {
             // A drop is a few millimetres across and its ring dies away within a hand's
@@ -669,7 +668,8 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
             let a = max(rough * rough, 0.012);
             let h = normalize(s + v);
             let spec = d_ggx(max(dot(n, h), 0.0), a) * v_smith(nv, nl, a) * f_schlick(f0, dot(v, h));
-            direct = e_sun * nl * (sf.albedo / PI * (vec3<f32>(1.0) - f_schlick(f0, nl)) + spec);
+            // Window highlights are weaker than polished paint.
+            direct = e_sun * nl * (sf.albedo / PI * (vec3<f32>(1.0) - f_schlick(f0, nl)) + spec * select(1.0, 0.12, glass));
         }
     }
     // --- sky and ground
@@ -690,7 +690,9 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     let fr = f_schlick(f0, nv);
     // inside the player's vehicle the light comes in through the windows and off the
     // cabin's own walls: less of it, and neither as blue nor as directional as the sky's
-    let in_cab = 1.0 - outside;
+    // AI cabin meshes need indirect cabin light too.
+    let cabin_mesh = in.params.y > 1.5;
+    let in_cab = max(1.0 - outside, select(0.0, 1.0, cabin_mesh));
     // The cab's light is one even ambient already (cab_e below); the screen-space occlusion
     // on top of it went black in the hollow under the windscreen - the steering wheel and
     // the dashboard stood dark beside a brightly lit cash desk. Inside the cab it is taken
@@ -775,15 +777,15 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // (a wet road mirrors the sky probe as well; and what reflects nothing keeps the light
     // the Fresnel term took off its ambient above - at a grazing angle that term is near 1,
     // and the far road and ground went dark with no reflection in its place, #374)
-    let reflects = reflective_env || glass || pbr_reflects || is_water || wet_road > 0.0;
+    // Only declared envmaps receive a sky reflection.
+    let reflects = reflective_env || pbr_reflects || is_water || wet_road > 0.0;
     var reflection = select(vec3<f32>(0.0), env * env_brdf(f0, rough, nv) * spec_occ * select(1.0, wet_road, !(reflective_env || glass || pbr_reflects || is_water)), reflects);
     if (!reflects) {
         ambient = e_amb * sf.albedo / PI;
     }
     if (glass) {
-        // Transparent bus panes need a readable outside reflection from the driver's
-        // viewpoint; opaque paint must never receive this boost.
-        reflection = reflection * 0.75 * (1.0 - 0.85 * own_pane);
+        // Keep glass reflections subtle.
+        reflection = reflection * 0.20 * (1.0 - 0.85 * own_pane);
     }
     // --- the lamps, the cabin light and what glows by itself
     // ([nomaplighting] objects are not lit by the map's lamps; light-mapped roads are, with
@@ -892,9 +894,9 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         let cover = smoothstep(0.0, 0.05, alpha);
         let refl_rgb = reflection * pre * cover;
         let rl = dot(refl_rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
-        // (a pane passes most light: a reflection making it up to 60 % opaque laid a grey
-        // veil over the destination display behind the windscreen and the saloon)
-        let a2 = clamp(alpha + (1.0 - alpha) * clamp(rl * 0.25 + fr.g, 0.0, 0.25) * (1.0 - 0.85 * own_pane) * cover, alpha, 1.0);
+        // Reflection adds opacity only when an envmap is declared.
+        let reflected_opacity = select(0.0, clamp(rl * 0.15 + fr.g, 0.0, 0.15), reflective_env);
+        let a2 = clamp(alpha + (1.0 - alpha) * reflected_opacity * (1.0 - 0.85 * own_pane) * cover, alpha, 1.0);
         let c = (rgb * alpha + refl_rgb) / max(a2, 1e-3);
         return vec4<f32>(c * aer.a + aer.rgb * pre, a2);
     }

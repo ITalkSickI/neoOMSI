@@ -89,6 +89,8 @@ pub struct Instance {
     pub slot_uv: Vec<[f32; 2]>,
     pub interior: f32,
     pub interior_lamps: u32,
+    /// Enclosed cabin mesh, independent of switched interior lamps.
+    pub cabin: bool,
     pub(crate) base: u32,
     pub(crate) bounds: InstanceBounds,
     pub surface: bool,

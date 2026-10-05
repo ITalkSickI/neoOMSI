@@ -11674,7 +11674,8 @@ impl World {
         // (the Sprinter's, the Mercus's, the Urbino 15's saloon showed through half their
         // panels drawn so while `[matl_noZcheck]` still took their inner glass out of the
         // depth test; OMSI_NO_MODEL_ORDER=1 draws opaque parts first again)
-        if ordered && omsi_cfg::env::var_os("OMSI_NO_MODEL_ORDER").is_none() {
+        // AI uses opaque-then-blended rendering; player vehicles retain model order.
+        if ordered && key.is_none() && omsi_cfg::env::var_os("OMSI_NO_MODEL_ORDER").is_none() {
             log::debug!("{}: drawn in model order (a blended slot writes depth before an opaque one)", vt.def.path.display());
             for &i in &instances {
                 if scene.instances.get(i).is_some_and(|x| !x.blob) {
