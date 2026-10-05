@@ -195,11 +195,13 @@ pub fn vehicle_lights(
             let mut count = 0usize;
             let mut sum = Vec3::ZERO;
             let mut color = Vec3::ZERO;
+            let mut lamp_y: Vec<f32> = Vec::new();
             for il in &model.interior_lights {
                 if value_of(&il.variable) >= 0.5 {
                     count += 1;
                     sum += Vec3::from(il.pos);
                     color += Vec3::from(il.color);
+                    lamp_y.push(il.pos[1]);
                 }
             }
             if count == 0 {
@@ -235,15 +237,23 @@ pub fn vehicle_lights(
                     INTERIOR_SPILL_END,
                 ),
             ];
-            for k in 0..INTERIOR_SPILL_ALONG {
-                let y = cy
-                    + half_l * 0.75 * (2.0 * (k as f32 + 0.5) / INTERIOR_SPILL_ALONG as f32 - 1.0);
-                faces.push((Vec3::new(cx + half_w, y, c.z), Vec3::X, INTERIOR_SPILL_SIDE));
-                faces.push((
-                    Vec3::new(cx - half_w, y, c.z),
-                    -Vec3::X,
-                    INTERIOR_SPILL_SIDE,
-                ));
+            let (y_lo, y_hi) = lamp_y
+                .iter()
+                .fold((f32::MAX, f32::MIN), |a, y| (a.0.min(*y), a.1.max(*y)));
+            let bins = (count / 2).clamp(1, INTERIOR_SPILL_ALONG);
+            let span = (y_hi - y_lo).max(1e-3);
+            let mut acc = vec![(0.0f32, 0usize); bins];
+            for y in &lamp_y {
+                let k = (((y - y_lo) / span * bins as f32) as usize).min(bins - 1);
+                acc[k].0 += y;
+                acc[k].1 += 1;
+            }
+            let used = acc.iter().filter(|a| a.1 > 0).count().max(1);
+            let side_gain = INTERIOR_SPILL_SIDE * 2.0 / used.max(2) as f32;
+            for (sum_y, n) in acc.into_iter().filter(|a| a.1 > 0) {
+                let y = sum_y / n as f32;
+                faces.push((Vec3::new(cx + half_w, y, c.z), Vec3::X, side_gain));
+                faces.push((Vec3::new(cx - half_w, y, c.z), -Vec3::X, side_gain));
             }
             for (at, out, gain) in faces {
                 let dir = (out * tilt.cos() - Vec3::Z * tilt.sin()).normalize();

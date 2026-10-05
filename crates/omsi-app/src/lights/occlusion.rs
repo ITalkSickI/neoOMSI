@@ -70,13 +70,15 @@ pub(super) const SHADOW_RANGE: f64 = 50.0;
 pub(super) const SHADOW_REACH: f64 = 25.0;
 pub(super) const SHADOW_MAX: usize = 32;
 pub(super) const SHADOW_LIGHTS: usize = 16;
+pub(super) const POINT_TRI_MAX: usize = 10;
+pub(super) const POINT_TRI_MIN_AREA: f64 = 0.4;
 pub(super) const SHADOW_SPOTS: usize = 8;
 pub(super) const SPOT_SHADOW_RANGE: f64 = 60.0;
 pub(super) const SPOT_REACH: f64 = 40.0;
 pub(super) const SPOT_MAX: usize = 32;
 pub(super) const SPOT_MIN_AREA: f64 = 0.01;
 pub(super) const SPOT_MARGIN: f64 = 2.0;
-pub(super) const GATHERS_PER_FRAME: usize = 6;
+pub(super) const GATHERS_PER_FRAME: usize = 4;
 
 pub(super) type OccKey = (i64, i64, i64, u32, i32);
 
@@ -162,7 +164,7 @@ pub(super) fn gather_occluders(
         .collect();
     parts.sort_by(|a, b| a.0.total_cmp(&b.0));
     parts.truncate(SHADOW_MAX);
-    parts
+    let mut out: Vec<omsi_render::Occluder> = parts
         .into_iter()
         .map(|(_, o)| omsi_render::Occluder {
             center: o.center,
@@ -172,7 +174,37 @@ pub(super) fn gather_occluders(
             heading: o.heading,
             tri: None,
         })
-        .collect()
+        .collect();
+
+    let mut tris: Vec<(f64, [DVec3; 3])> = seen
+        .triangles_near(&probe)
+        .into_iter()
+        .filter_map(|t| {
+            let area = 0.5 * (t[1] - t[0]).cross(t[2] - t[0]).length();
+            if area < POINT_TRI_MIN_AREA {
+                return None;
+            }
+            let c = (t[0] + t[1] + t[2]) / 3.0;
+            let reach_t = t.iter().map(|v| (*v - c).length()).fold(0.0, f64::max);
+            let len = (c - pos).length();
+
+            if len - reach_t > reach + 1.0 || len < reach_t + 0.2 {
+                return None;
+            }
+            Some((area / (len * len + 1.0), t))
+        })
+        .collect();
+    tris.sort_by(|a, b| b.0.total_cmp(&a.0));
+    tris.truncate(POINT_TRI_MAX);
+    out.extend(tris.into_iter().map(|(_, t)| omsi_render::Occluder {
+        center: glam::DVec2::ZERO,
+        half: glam::Vec2::ZERO,
+        z0: 0.0,
+        z1: 0.0,
+        heading: 0.0,
+        tri: Some(t),
+    }));
+    out
 }
 
 pub(super) fn assign_occluders(
@@ -229,7 +261,8 @@ pub(super) fn assign_occluders(
         l.occ_count = 0;
         let spill = l.radius == INTERIOR_SPILL_RADIUS;
         let spot = !spill && l.direction.length_squared() > 0.5;
-        if l.radius <= 0.0 || l.is_screen() {
+        let lamp_glow = l.core == SRC_CORE && l.direction.length_squared() < 1e-6;
+        if l.radius <= 0.0 || l.is_screen() || lamp_glow {
             continue;
         }
         if spot {
