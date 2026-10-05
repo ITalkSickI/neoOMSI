@@ -28,7 +28,7 @@ pub(crate) fn buffer_init(
 }
 
 pub(crate) fn make_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshData) -> GpuMesh {
-    let verts: Vec<Vertex> = data
+    let vertices: Vec<Vertex> = data
         .positions
         .iter()
         .zip(&data.normals)
@@ -43,7 +43,7 @@ pub(crate) fn make_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshD
         device,
         queue,
         None,
-        bytemuck::cast_slice(&verts),
+        bytemuck::cast_slice(&vertices),
         wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
     );
     let index_buf = buffer_init(
@@ -63,6 +63,32 @@ pub(crate) fn make_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshD
         hi = Vec3::ZERO;
     }
     let center = (lo + hi) * 0.5;
+    // (only content meshes can carry a screen; generated geometry - terrain, splines - is
+    // rebuilt all the time and skips this walk)
+    let slot_faces: Vec<(Vec3, Vec3)> = if !data.one_sided {
+        Vec::new()
+    } else {
+        let mut acc: Vec<(Vec3, Vec3, u32)> = Vec::new();
+        for &(first, count, slot) in &data.ranges {
+            let slot = slot as usize;
+            if acc.len() <= slot {
+                acc.resize(slot + 1, (Vec3::ZERO, Vec3::ZERO, 0));
+            }
+            let end = ((first + count) as usize).min(data.indices.len());
+            for &i in data.indices.get(first as usize..end).unwrap_or(&[]) {
+                let i = i as usize;
+                if let (Some(p), Some(n)) = (data.positions.get(i), data.normals.get(i)) {
+                    acc[slot].0 += *n;
+                    acc[slot].1 += *p;
+                    acc[slot].2 += 1;
+                }
+            }
+        }
+        acc
+            .into_iter()
+            .map(|(n, p, c)| (n.normalize_or_zero(), if c > 0 { p / c as f32 } else { Vec3::ZERO }))
+            .collect()
+    };
     GpuMesh {
         vertex_buf,
         index_buf,
@@ -71,6 +97,7 @@ pub(crate) fn make_mesh(device: &wgpu::Device, queue: &wgpu::Queue, data: &MeshD
         bounds_radius: (hi - center).length(),
         one_sided: data.one_sided,
         source: None,
+        slot_faces,
     }
 }
 
@@ -97,7 +124,7 @@ impl Renderer {
         normals: &[Vec3],
         uvs: &[glam::Vec2],
     ) {
-        let verts: Vec<Vertex> = positions
+        let vertices: Vec<Vertex> = positions
             .iter()
             .zip(normals)
             .zip(uvs)
@@ -107,7 +134,7 @@ impl Renderer {
                 uv: uv.to_array(),
             })
             .collect();
-        let bytes: &[u8] = bytemuck::cast_slice(&verts);
+        let bytes: &[u8] = bytemuck::cast_slice(&vertices);
         let m = &mut scene.meshes[id];
         if (m.vertex_buf.size() as usize) < bytes.len() {
             return;

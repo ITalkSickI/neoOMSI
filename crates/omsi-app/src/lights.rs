@@ -1,6 +1,6 @@
 use crate::scene::{LightSwitch, World};
 use glam::{DVec3, Vec3};
-use omsi_render::{Corona, LightMode, Lighting, PointLight, Scene};
+use omsi_render::{Corona, LightMode, Lighting, PointLight, Scene, SCREEN_CONE};
 
 use omsi_sim::{Daylight, VehicleInstance};
 
@@ -516,8 +516,8 @@ const LED_RADIUS: f32 = 6.0;
 const LED_INTENSITY: f32 = 0.5;
 const LED_OUTSET: f64 = 0.3;
 const LED_COLOR: [f32; 3] = [1.0, 0.62, 0.12];
-const SCREEN_RADIUS: f32 = 3.5;
-const SCREEN_INTENSITY: f32 = 0.22;
+const SCREEN_RADIUS: f32 = 2.5;
+const SCREEN_INTENSITY: f32 = 0.08;
 const SCREEN_COLOR: [f32; 3] = [0.82, 0.9, 1.0];
 const INTERIOR_SPILL_OUTSET: f32 = 0.25;
 const INTERIOR_SPILL_SIDE: f32 = 0.45;
@@ -771,7 +771,7 @@ fn assign_occluders(
         l.occ_count = 0;
         let spill = l.radius == INTERIOR_SPILL_RADIUS;
         let spot = !spill && l.direction.length_squared() > 0.5;
-        if l.radius <= 0.0 {
+        if l.radius <= 0.0 || l.is_screen() {
             continue;
         }
         if spot {
@@ -1324,11 +1324,14 @@ pub fn collect(
     }
     {
         let glow = f32::from_bits(LED_GLOW.load(std::sync::atomic::Ordering::Relaxed));
-        let mut panels: Vec<(f64, DVec3, f32, bool)> = scene
+        // (a switch to measure what the screens' light costs)
+        let no_screen_light = omsi_cfg::env::var_os("OMSI_NO_SCREEN_LIGHT").is_some();
+        let mut panels: Vec<(f64, DVec3, f32, bool, [f32; 3], Vec3)> = scene
             .instances
             .iter()
-            .filter(|i| i.visible)
+            .filter(|i| i.visible && !no_screen_light)
             .filter_map(|i| {
+                // (gate, colour, slot) of the brightest matching screen slot of the instance
                 let gate = |led: bool| {
                     i.materials
                         .iter()
@@ -1338,68 +1341,94 @@ pub fn collect(
                         })
                         .map(|(k, m)| {
                             let gate = i.slot_light.get(k).copied().unwrap_or(1.0).clamp(0.0, 1.0);
-                            let seen = |t: Option<usize>, alpha: bool| {
+                            let seen = |t: Option<usize>| {
                                 t.and_then(|t| scene.tex_luma.lock().ok().and_then(|l| l.get(&t).copied()))
-                                    .map(|(c, a)| if alpha { a } else { c })
                             };
                             // a screen throws only the light it shows: a black or switched-off
                             // script / HTML picture throws none; an LED panel (its dots are the
                             // alpha of its `\S:n` script texture) only as many dots as are lit
-                            let shown = scene
-                                .materials
-                                .get(*m)
-                                .and_then(|m| if led { seen(m.transmap.map(|t| t.0), true) } else { seen(m.texture, false) })
-                                .unwrap_or(0.0);
-                            gate * (shown * if led { 8.0 } else { 3.0 }).clamp(0.0, 1.0)
+                            let mat = scene.materials.get(*m);
+                            let (shown, colour) = if led {
+                                (seen(mat.and_then(|m| m.transmap.map(|t| t.0))).map(|(_, a, _)| a).unwrap_or(0.0), LED_COLOR)
+                            } else {
+                                // (the light takes the colour of the picture)
+                                seen(mat.and_then(|m| m.texture)).map(|(c, _, rgb)| (c, rgb)).unwrap_or((0.0, SCREEN_COLOR))
+                            };
+                            (gate * (shown * if led { 8.0 } else { 3.0 }).clamp(0.0, 1.0), colour, k)
                         })
-                        .fold(0.0f32, f32::max)
+                        .fold((0.0f32, SCREEN_COLOR, usize::MAX), |a, b| if b.0 > a.0 { b } else { a })
                 };
-                let (led, g) = if glow > 0.0 && gate(true) > 0.01 {
-                    (true, gate(true))
-                } else if gate(false) > 0.01 {
-                    (false, gate(false))
+                let led_gate = if glow > 0.0 { gate(true) } else { (0.0, SCREEN_COLOR, usize::MAX) };
+                let (led, (g, colour, slot)) = if led_gate.0 > 0.01 {
+                    (true, led_gate)
                 } else {
-                    return None;
+                    let screen_gate = gate(false);
+                    if screen_gate.0 > 0.01 {
+                        (false, screen_gate)
+                    } else {
+                        return None;
+                    }
                 };
-                let c = i.world_centre();
-                Some(((c - camera_pos).length(), c, g, led))
+                // a screen shines to the side it renders to: its slot's facing direction
+                let face = scene
+                    .meshes
+                    .get(i.mesh)
+                    .and_then(|m| m.slot_faces.get(slot))
+                    .filter(|f| f.0 != Vec3::ZERO);
+                let (c, dir) = match face {
+                    Some((n, centre)) => {
+                        let d = i.transform.transform_vector3(*n).normalize_or_zero();
+                        (i.origin + i.transform.transform_point3(*centre).as_dvec3(), d)
+                    }
+                    None => (i.world_centre(), Vec3::ZERO),
+                };
+                Some(((c - camera_pos).length(), c, g, led, colour, dir))
             })
-            .filter(|(d, _, _, _)| *d < LED_RANGE)
+            .filter(|(d, _, _, _, _, _)| *d < LED_RANGE)
             .collect();
         panels.sort_by(|a, b| a.0.total_cmp(&b.0));
-        for (_, c, gate, led) in panels.into_iter().take(LED_PANELS) {
-            let out = vehicles
-                .iter()
-                .min_by(|a, b| (a.position - c).length().total_cmp(&(b.position - c).length()))
-                .filter(|v| (v.position - c).length() < 20.0)
-                .map(|v| {
-                    let b = v.ty.def.bounding_box.unwrap_or([2.5, 12.0, 3.0, 0.0, 0.0, 0.0]);
-                    let h = v.heading.to_radians();
-                    let (fwd, right) = (DVec3::new(h.sin(), h.cos(), 0.0), DVec3::new(h.cos(), -h.sin(), 0.0));
-                    let d = c - v.position;
-                    let lx = d.dot(right) - b[3] as f64;
-                    let ly = d.dot(fwd) - b[4] as f64;
-                    let (ex, ey) = (lx.abs() - (b[0] as f64 * 0.5 - 0.5), ly.abs() - (b[1] as f64 * 0.5 - 0.5));
-                    if ex <= 0.0 && ey <= 0.0 {
-                        DVec3::ZERO
-                    } else if ex > ey {
-                        right * lx.signum()
-                    } else {
-                        fwd * ly.signum()
-                    }
-                })
-                .unwrap_or(DVec3::ZERO);
-            let n = night.clamp(0.0, 1.0);
-            let (radius, color, intensity) = if led {
-                (LED_RADIUS, LED_COLOR, LED_INTENSITY * glow * gate * (0.2 + 0.8 * n))
+        for (_, c, gate, led, colour, dir) in panels.into_iter().take(LED_PANELS) {
+            let directional = dir != Vec3::ZERO;
+            // (without a known facing: the old all-round lamp, pushed out of the vehicle)
+            let out = if directional {
+                dir.as_dvec3()
             } else {
-                (SCREEN_RADIUS, SCREEN_COLOR, SCREEN_INTENSITY * gate * n)
+                vehicles
+                    .iter()
+                    .min_by(|a, b| (a.position - c).length().total_cmp(&(b.position - c).length()))
+                    .filter(|v| (v.position - c).length() < 20.0)
+                    .map(|v| {
+                        let b = v.ty.def.bounding_box.unwrap_or([2.5, 12.0, 3.0, 0.0, 0.0, 0.0]);
+                        let h = v.heading.to_radians();
+                        let (fwd, right) = (DVec3::new(h.sin(), h.cos(), 0.0), DVec3::new(h.cos(), -h.sin(), 0.0));
+                        let d = c - v.position;
+                        let lx = d.dot(right) - b[3] as f64;
+                        let ly = d.dot(fwd) - b[4] as f64;
+                        let (ex, ey) = (lx.abs() - (b[0] as f64 * 0.5 - 0.5), ly.abs() - (b[1] as f64 * 0.5 - 0.5));
+                        if ex <= 0.0 && ey <= 0.0 {
+                            DVec3::ZERO
+                        } else if ex > ey {
+                            right * lx.signum()
+                        } else {
+                            fwd * ly.signum()
+                        }
+                    })
+                    .unwrap_or(DVec3::ZERO)
+            };
+            let n = night.clamp(0.0, 1.0);
+            let (radius, intensity) = if led {
+                (LED_RADIUS, LED_INTENSITY * glow * gate * (0.2 + 0.8 * n))
+            } else {
+                (SCREEN_RADIUS, SCREEN_INTENSITY * gate * n)
             };
             scene.lights.push(PointLight {
                 position: c + out * LED_OUTSET,
                 radius,
-                color,
+                color: colour,
                 intensity,
+                direction: if directional { dir } else { Vec3::ZERO },
+                // (a lamp of a flat panel: full in front, fading to the panel's plane)
+                cone: if directional { SCREEN_CONE } else { [1.0, 0.0] },
                 mode: LightMode::Enhanced,
                 ..Default::default()
             });

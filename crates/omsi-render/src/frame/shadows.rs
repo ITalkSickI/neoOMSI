@@ -61,7 +61,7 @@ impl Renderer {
         let mut st = self.spot_state.borrow_mut();
         let mut cands: Vec<(f32, usize, SpotPose)> = Vec::new();
         for (i, l) in scene.lights.iter().enumerate() {
-            if !drawn_by(l, enhanced) {
+            if !drawn_by(l, enhanced) || l.is_screen() {
                 continue;
             }
             let d = (l.position - cam).length();

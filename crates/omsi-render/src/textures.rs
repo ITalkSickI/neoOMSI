@@ -308,18 +308,35 @@ impl Renderer {
 
     /// Replace the pixels of a texture (same size as when created, no mipmaps regenerated).
     pub fn update_texture(&self, scene: &Scene, id: TextureId, img: &omsi_texture::Image) {
-        // what the screen shows, for the light it throws (`lights.rs`)
+        // what the screen shows, for the light it throws (`lights.rs`): a few samples, and
+        // only every 4th upload of a texture - the light follows the picture slowly, while
+        // the strided reads of a big texture are cache misses
         {
-            let n = (img.rgba.len() / 4).max(1);
-            let step = (n / 4096).max(1);
-            let (mut sum, mut asum, mut cnt) = (0.0f32, 0.0f32, 0u32);
-            for px in img.rgba.chunks_exact(4).step_by(step) {
-                sum += px[3] as f32 / 255.0 * px[0].max(px[1]).max(px[2]) as f32 / 255.0;
-                asum += px[3] as f32 / 255.0;
-                cnt += 1;
-            }
-            if let Ok(mut m) = scene.tex_luma.lock() {
-                m.insert(id, (sum / cnt.max(1) as f32, asum / cnt.max(1) as f32));
+            static UPLOADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let tick = UPLOADS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let known = scene.tex_luma.lock().map(|m| m.contains_key(&id)).unwrap_or(true);
+            if !known || (tick + id) % 4 == 0 {
+                let n = (img.rgba.len() / 4).max(1);
+                let step = (n / 1024).max(1);
+                let (mut sum, mut asum, mut cnt) = (0.0f32, 0.0f32, 0u32);
+                let mut rgb = [0.0f32; 3];
+                for px in img.rgba.chunks_exact(4).step_by(step) {
+                    let a = px[3] as f32 * (1.0 / 255.0);
+                    let b = px[0].max(px[1]).max(px[2]) as f32 * (1.0 / 255.0);
+                    let w = a * b;
+                    sum += w;
+                    asum += a;
+                    cnt += 1;
+                    // (black adds nothing: the colour is the lit pixels' own)
+                    rgb[0] += w * px[0] as f32;
+                    rgb[1] += w * px[1] as f32;
+                    rgb[2] += w * px[2] as f32;
+                }
+                let peak = rgb[0].max(rgb[1]).max(rgb[2]);
+                let colour = if peak > 1e-6 { [rgb[0] / peak, rgb[1] / peak, rgb[2] / peak] } else { [0.0; 3] };
+                if let Ok(mut m) = scene.tex_luma.lock() {
+                    m.insert(id, (sum / cnt.max(1) as f32, asum / cnt.max(1) as f32, colour));
+                }
             }
         }
         let t = &scene.textures[id].texture;

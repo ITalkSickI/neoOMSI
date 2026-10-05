@@ -120,7 +120,12 @@ impl Material {
     }
 
     pub fn is_led(&self) -> bool {
-        self.uniform.emissive[3] < -1.5
+        self.uniform.emissive[3] < -1.5 && self.uniform.emissive[3] > -2.5
+    }
+
+    /// A screen showing an HTML page (`[htmltexture]`): it glows by itself like an LED panel.
+    pub fn is_html(&self) -> bool {
+        self.uniform.emissive[3] < -2.5
     }
 
     pub fn transmap_declared(&self) -> bool {
@@ -166,6 +171,9 @@ pub struct MaterialExtra {
     /// (Only a panel whose `[matl_lightmap]` is white all over: a flipdot carries the same
     /// mask, but its light map is a picture of the lamps over it, and it does not glow.)
     pub led: bool,
+    /// A screen that shows an HTML page (`[htmltexture]`): the picture is its own light, which
+    /// the enhanced picture lets glow and bloom like an LED panel's dots.
+    pub html: bool,
     /// The film of water on a window (`[alphascale] Rain_Window_…`): drawn as drops that sit,
     /// gather and run down the glass instead of the texture sliding down as a whole.
     pub rain_film: bool,
@@ -757,6 +765,8 @@ impl Renderer {
                     1.0
                 } else if extra.led {
                     -2.0
+                } else if extra.html {
+                    -3.0
                 } else if extra.display {
                     -1.0
                 } else {

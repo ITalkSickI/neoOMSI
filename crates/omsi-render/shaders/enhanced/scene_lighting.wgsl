@@ -352,7 +352,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // setting does not bite, the plain (anisotropic) sample of the hardware is the better
     // one and stays.
     let pic_lod = led_lod(duv, vec2<f32>(textureDimensions(t_diffuse)));
-    let led_pic = material.emissive.w < -1.5 && enh.led.y < pic_lod;
+    let led_pic = material.emissive.w < -1.5 && material.emissive.w > -2.5 && enh.led.y < pic_lod;
     var tex = diffuse_border(textureSample(t_diffuse, s_diffuse, duv), duv);
     if (led_pic) {
         tex = diffuse_border(textureSampleLevel(t_diffuse, s_diffuse, duv, enh.led.y), duv);
@@ -370,7 +370,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // (an LED panel's `\S:n` mask is taken the same way: the dots stay dots when the
         // panel is small, without the full-resolution shimmer)
         var tm = sample_transmap(buv);
-        if (material.emissive.w < -1.5 && enh.led.y < msk_lod) {
+        if (material.emissive.w < -1.5 && material.emissive.w > -2.5 && enh.led.y < msk_lod) {
             tm = textureSampleLevel(t_trans, s_diffuse, buv, enh.led.y);
         }
         tm = diffuse_border(tm, in.uv - in.params.zw);
@@ -833,7 +833,12 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         let left = (vec3<f32>(1.0) - clamp(cabin_light, vec3<f32>(0.0), vec3<f32>(1.0))) * (0.12 + 0.88 * night);
         emit = emit + tex.rgb * lm * left * clamp(in.params2.x, 0.0, 1.0) * max(enh.exposure.z * 2.0, 0.6);
     }
-    if (material.emissive.w < -1.5) {
+    if (material.emissive.w < -2.5) {
+        // a screen showing an HTML page (see MaterialExtra::html): its picture is its own
+        // light, so it glows by itself - at least a little when `Led glow` is off - and the
+        // glow takes it into its source like an LED panel's dots
+        emit = emit + tex.rgb * (0.35 + 0.25 * enh.led.x) * max(enh.exposure.z * 2.0, 0.8);
+    } else if (material.emissive.w < -1.5) {
         // an LED panel (see MaterialExtra::led): the lit dots - the alpha the `\S:n` script
         // texture carries, in the colour of the panel's own texture - are the panel's own
         // light, drawn as bright as the settings ask for (`Led glow`, 16 levels, 0 = off).

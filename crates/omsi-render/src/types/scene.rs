@@ -12,6 +12,9 @@ pub struct GpuMesh {
     pub bounds_radius: f32,
     pub one_sided: bool,
     pub source: Option<String>,
+    /// Per material slot: (mean facing direction, centroid) of its triangles in mesh space;
+    /// a zero direction when the slot has no triangles.
+    pub slot_faces: Vec<(Vec3, Vec3)>,
 }
 
 pub(crate) type GlassKey = (bool, u32, u32);
@@ -117,9 +120,10 @@ impl Instance {
 pub struct Scene {
     pub meshes: Vec<GpuMesh>,
     pub textures: Vec<GpuTexture>,
-    /// Mean (light, alpha) (alpha x brightest channel, alpha; 0..1) of a texture the last time it was
-    /// uploaded by `update_texture`: what a script or HTML screen actually shows.
-    pub tex_luma: std::sync::Mutex<std::collections::HashMap<TextureId, (f32, f32)>>,
+    /// Mean (light, alpha, colour) of a texture the last time it was uploaded by
+    /// `update_texture`: what a script or HTML screen actually shows. light = alpha x brightest
+    /// channel, alpha 0..1; colour = the lit pixels' mean hue, its brightest channel 1.
+    pub tex_luma: std::sync::Mutex<std::collections::HashMap<TextureId, (f32, f32, [f32; 3])>>,
     pub(crate) glass_slot: Option<TextureId>,
     pub(crate) glass_key: Option<GlassKey>,
     pub materials: Vec<Material>,

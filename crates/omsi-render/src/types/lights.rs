@@ -25,6 +25,18 @@ pub struct PointLight {
     pub occ_count: u32,
 }
 
+/// The cone of a screen's light (cos of the inner and outer half angle).
+pub const SCREEN_CONE: [f32; 2] = [0.85, 0.0];
+
+impl PointLight {
+    /// A screen's own light (script / HTML display, LED panel): small, shines to one side
+    /// and casts no shadow of its own - it is not worth a shadow map or an occluder walk
+    /// that would start over each metre the bus moves.
+    pub fn is_screen(&self) -> bool {
+        self.mode == LightMode::Enhanced && self.cone == SCREEN_CONE && self.direction.length_squared() > 1e-6
+    }
+}
+
 impl Default for PointLight {
     fn default() -> Self {
         Self {

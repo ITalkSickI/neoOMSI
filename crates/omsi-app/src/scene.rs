@@ -7111,7 +7111,7 @@ impl World {
                                                 None,
                                                 None,
                                                 [0.0; 3],
-                                                MaterialExtra { screen: true, ..Default::default() },
+                                                MaterialExtra { screen: true, html: true, ..Default::default() },
                                             );
                                             let mat = gpu.material(renderer, scene, mat);
                                             tg.textures.push(tex);
@@ -9927,6 +9927,7 @@ fn material_extra(
         display: false,
         screen: false,
         led: false,
+        html: false,
         no_map_lights: false,
         tree: false,
         moisture: 0.0,
@@ -11995,6 +11996,8 @@ impl World {
                     // their dots but never glowed.
                     extra.screen = script_slot.is_some() || script_trans.is_some();
                     extra.led = script_trans.is_some() && !html_page(script_trans) && lm_white(&ov);
+                    // (an HTML page glows by itself, as an LED panel's dots do)
+                    extra.html = !extra.led && (html_page(script_slot) || html_page(script_trans));
                     if dirt_overlay {
                         extra.no_z_write = true;
                     }
@@ -12088,6 +12091,7 @@ impl World {
                         // (the item's `\S:n`, or the one it inherits from its base, keeps it
                         // an LED panel: see `MaterialExtra::led`)
                         it_extra.led = it_script_trans.is_some() && !html_page(it_script_trans) && if ov_item.iter().any(|o| o.lightmap.is_some()) { lm_white(ov_item) } else { lm_white(&ov) };
+                        it_extra.html = !it_extra.led && (html_page(script_item) || html_page(it_script_trans));
                         it_extra.no_z_write |= extra.no_z_write;
                         it_extra.no_z_check |= extra.no_z_check;
                         it_extra.glass |= extra.glass;
