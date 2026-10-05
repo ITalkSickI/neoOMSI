@@ -43,7 +43,6 @@ pub fn reset_screen_fx() {
     }
 }
 
-// TODO: Rename this to felix_light
 pub fn corona_light(c: &Corona, dark: f32) -> Option<PointLight> {
     if c.beam || c.halo || c.flags & 8 != 0 || c.brightness <= 0.01 {
         return None;
