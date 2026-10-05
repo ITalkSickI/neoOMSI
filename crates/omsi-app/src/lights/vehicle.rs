@@ -176,6 +176,10 @@ pub fn vehicle_lights(
             }
         }
     }
+    spotlights_2(&ty.model, body, v.position, &value_of, night, lights);
+    for t in &v.trailers {
+        spotlights_2(&t.ty.model, t.body_rotation(), t.position, &value_of, night, lights);
+    }
     if spill && night > 0.05 {
         let mut sections: Vec<(&omsi_model::Model, Option<[f32; 6]>, glam::Mat4, DVec3)> =
             vec![(&ty.model, body_box(ty), body, v.position)];

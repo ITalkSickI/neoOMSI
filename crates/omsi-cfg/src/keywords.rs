@@ -363,6 +363,7 @@ pub(crate) const LOWER_CASE: &[&str] = &[
     "spline_terrain_align_2",
     "splinehelper",
     "spotlight",
+    "spotlight_2",
     "stamper",
     "standarddepot",
     "startdate",

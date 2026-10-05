@@ -201,6 +201,13 @@ pub struct Spotlight {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+pub struct Spotlight2 {
+    pub values: [f32; 12],
+    pub variable: String,
+    pub no_mirror: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct InteriorLight {
     pub variable: String,
     pub range: f32,
@@ -448,6 +455,7 @@ pub struct Model {
     pub smokes: Vec<Smoke>,
     pub particle_emitters: Vec<ParticleEmitter>,
     pub spotlights: Vec<Spotlight>,
+    pub spotlights_2: Vec<Spotlight2>,
     pub interior_lights: Vec<InteriorLight>,
     /// `[light]` legacy lights (raw).
     pub lights: Vec<Vec<String>>,
@@ -896,6 +904,16 @@ impl Model {
             "spotlight" => self.spotlights.push(Spotlight {
                 values: r.f32s::<12>(),
             }),
+            "spotlight_2" => {
+                let values = r.f32s::<12>();
+                let variable = r.str().to_string();
+                let no_mirror = r.f32() > 0.5;
+                self.spotlights_2.push(Spotlight2 {
+                    values,
+                    variable,
+                    no_mirror,
+                });
+            }
             "interiorlight" => {
                 let variable = r.str().to_string();
                 let range = r.f32();
