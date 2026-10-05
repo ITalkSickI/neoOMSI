@@ -512,10 +512,10 @@ pub fn set_led_glow(v: f32) {
 
 // Brightness of HTML / script screens, set here in the code only (1 = as is):
 // glow = how bright the picture itself shines, light = how much light the screen throws.
-pub const HTML_GLOW: f32 = 1.0;
-pub const HTML_LIGHT: f32 = 1.0;
-pub const SCRIPT_GLOW: f32 = 1.0;
-pub const SCRIPT_LIGHT: f32 = 1.0;
+pub const HTML_GLOW: f32 = 4.0;
+pub const HTML_LIGHT: f32 = 4.0;
+pub const SCRIPT_GLOW: f32 = 4.0;
+pub const SCRIPT_LIGHT: f32 = 4.0;
 
 // (the live values: start at the constants above, the dev menu's Light Settings change them)
 static SCREEN_FX: [std::sync::atomic::AtomicU32; 4] = [
