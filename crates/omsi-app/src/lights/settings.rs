@@ -75,13 +75,15 @@ pub(super) fn apply_map_spot(mut l: PointLight, c: &MapSpotCfg) -> PointLight {
     if !c.on {
         return l;
     }
-    let half = |deg: f32| (deg.clamp(1.0, 179.0) * 0.5).to_radians().cos();
-    let down = Vec3::new(0.0, 0.0, -1.0);
-    l.direction = (glam::Quat::from_rotation_z(c.yaw.to_radians())
-        * glam::Quat::from_rotation_x(c.tilt.to_radians())
-        * down)
-        .normalize_or_zero();
-    l.cone = [half(c.inner.min(c.outer)), half(c.outer)];
+    if l.direction.length_squared() < 1e-6 {
+        let half = |deg: f32| (deg.clamp(1.0, 179.0) * 0.5).to_radians().cos();
+        let down = Vec3::new(0.0, 0.0, -1.0);
+        l.direction = (glam::Quat::from_rotation_z(c.yaw.to_radians())
+            * glam::Quat::from_rotation_x(c.tilt.to_radians())
+            * down)
+            .normalize_or_zero();
+        l.cone = [half(c.inner.min(c.outer)), half(c.outer)];
+    }
     l.radius *= c.range.max(0.05);
     l.core = (l.core * c.core.max(0.01)).min(l.radius);
     l.intensity *= c.gain;
