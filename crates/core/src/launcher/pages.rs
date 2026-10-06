@@ -2063,22 +2063,6 @@ fn gameplay_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
         "Collisions with people",
         "collision_pedestrians",
     );
-    toggle_setting(
-        ui,
-        s,
-        dirty,
-        c.row(),
-        "Start at the real time",
-        "use_real_time",
-    );
-    toggle_setting(
-        ui,
-        s,
-        dirty,
-        c.row(),
-        "Start on today's date",
-        "use_real_date",
-    );
     // the game's clock follows this device's (the host's in multiplayer); the time cannot be set
     toggle_setting(
         ui,
@@ -5465,8 +5449,6 @@ mod settings_tests {
             "set-collision_vehicles",
             "set-collision_objects",
             "set-collision_pedestrians",
-            "set-use_real_time",
-            "set-use_real_date",
             "set-time_sync",
             "set-metar_sync",
             "s-timespeed",

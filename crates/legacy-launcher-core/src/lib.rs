@@ -2396,9 +2396,6 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("metar_station", "gameplay", "metar_station", Station),
     ("auto_clutch", "gameplay", "auto_clutch", Bool),
     ("auto_ibis", "gameplay", "auto_ibis", Bool),
-    ("use_real_time", "gameplay", "use_real_time", Bool),
-    ("use_real_date", "gameplay", "use_real_date", Bool),
-    ("use_real_year", "gameplay", "use_real_year", Bool),
     ("steering_linear", "controls", "steering_linear", Bool),
     ("old_steering", "controls", "old_steering", Bool),
     ("red_steer_spd", "controls", "red_steer_spd", Bool),
@@ -2437,7 +2434,6 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("ff_enabled", "controller", "ff_enabled", Bool),
     ("ff_invert", "controller", "ff_invert", Bool),
     ("ctrl_assign", "controller", "assign", Text),
-    ("ctrl_off", "controller", "off", Text),
     ("fov", "camera", "fov", Float(0.0, 120.0)),
     ("camera_collision", "camera", "collision", Bool),
     ("driverview_smooth", "camera", "smooth", Bool),
@@ -2458,7 +2454,6 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("vr_head_smoothing_ms", "vr", "head-smoothing-ms", Float(0.0, 30.0)),
     ("vr_mirror_rate", "vr", "mirror-rate", Float(-1.0, 360.0)),
     ("vr_desktop_mirror", "vr", "desktop-mirror", Bool),
-    ("launcher_rest", "launcher", "rest", Bool),
     ("update_check", "launcher", "update_check", Bool),
     ("update_auto", "launcher", "update_auto", Bool),
 ];
@@ -3161,32 +3156,11 @@ fn duty_args_from_root(root: &Path, d: &Duty) -> Result<Vec<String>> {
         Some(e) => a.extend(["--entry".into(), e.to_string()]),
         None => {}
     }
-    // OMSI's [useActTime] / [useActDate] / [useActYear]: the machine's clock and calendar
-    // instead of the duty's (the year only on its own switch - a map's timetable is for
-    // its years)
-    let st = get_settings().unwrap_or_default();
-    let on = |k: &str| st.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
-    let now = local_now();
-    if let (true, Some((_, _, _, h, m))) = (on("use_real_time"), now) {
-        if let Some(i) = a.iter().position(|x| x == "--time") {
-            a[i + 1] = format!("{h:02}:{m:02}");
-        }
-    }
-    let mut date = d
+    let date = d
         .date
         .as_deref()
         .map(|x| x.trim().to_string())
         .filter(|x| !x.is_empty());
-    if let (true, Some((y, mo, dd, _, _))) = (on("use_real_date"), now) {
-        let year = if on("use_real_year") {
-            y
-        } else {
-            date.as_deref()
-                .and_then(|x| x.split('-').next()?.parse::<i32>().ok())
-                .unwrap_or(y)
-        };
-        date = Some(format!("{year:04}-{mo:02}-{dd:02}"));
-    }
     if let Some(dt) = date {
         a.extend(["--date".into(), dt]);
     }
@@ -3653,7 +3627,6 @@ mod tests {
         assert_eq!(v["ai_unsched_factor"], 100);
         assert_eq!(v["time_speed"], "1");
         assert_eq!(v["mirror_refresh"], "full");
-        assert_eq!(v["launcher_rest"], false);
         assert_eq!(v["pax_prefer_seats"], false);
         assert_eq!(v["ui_scale"], 1.0);
         assert_eq!(current_settings(), v);
@@ -3667,7 +3640,6 @@ mod tests {
             ("pax_prefer_seats", json!(true)),
             ("discord_status", json!(false)),
             ("discord_app_id", json!("123456")),
-            ("launcher_rest", json!(false)),
             ("update_auto", json!(true)),
             ("camera_collision", json!(false)),
             ("brake_hold", json!(false)),
@@ -3781,44 +3753,6 @@ mod tests {
         assert!(lines_on(&map, "someday").is_err());
     }
 
-}
-
-/// The machine's local date and time: (year, month, day, hour, minute).
-#[cfg(unix)]
-pub fn local_now() -> Option<(i32, i32, i32, i32, i32)> {
-    // SAFETY: time and localtime_r only write the struct handed to them
-    unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&t, &mut tm).is_null() {
-            return None;
-        }
-        Some((
-            tm.tm_year + 1900,
-            tm.tm_mon + 1,
-            tm.tm_mday,
-            tm.tm_hour,
-            tm.tm_min,
-        ))
-    }
-}
-
-#[cfg(windows)]
-pub fn local_now() -> Option<(i32, i32, i32, i32, i32)> {
-    // SAFETY: GetLocalTime only fills the struct handed to it
-    let t = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
-    Some((
-        t.wYear as i32,
-        t.wMonth as i32,
-        t.wDay as i32,
-        t.wHour as i32,
-        t.wMinute as i32,
-    ))
-}
-
-#[cfg(not(any(unix, windows)))]
-pub fn local_now() -> Option<(i32, i32, i32, i32, i32)> {
-    None
 }
 
 #[cfg(test)]

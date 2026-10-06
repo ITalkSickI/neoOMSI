@@ -62,7 +62,7 @@ pub enum Msg {
     Join(serde_json::Value),
     Server {
         address: String,
-        info: Result<::network::ws::ServerInfo, String>,
+        info: Result<network::ws::ServerInfo, String>,
     },
     /// A background job stopped on an error of its own (a panic): whatever it was loading
     /// is not coming.
@@ -80,18 +80,18 @@ pub struct ServerEntry {
 }
 
 /// A code host's status page (its gateway is the session's port + 10).
-fn host_status(code: &str) -> Result<::network::ws::ServerInfo, String> {
-    let c = ::network::SessionCode::decode(code)?;
+fn host_status(code: &str) -> Result<network::ws::ServerInfo, String> {
+    let c = network::SessionCode::decode(code)?;
     for a in c.addrs().into_iter().take(3) {
-        if let Ok(i) = ::network::ws::query(
+        if let Ok(i) = network::ws::query(
             &format!("http://{}:{}", a.ip(), a.port().saturating_add(10)),
             false,
         ) {
             return Ok(i);
         }
     }
-    match ::network::bridge::lookup_tunnel(c.session) {
-        Some(url) => ::network::ws::query(&url, false),
+    match network::bridge::lookup_tunnel(c.session) {
+        Some(url) => network::ws::query(&url, false),
         None => Err("the host did not answer".into()),
     }
 }
@@ -100,13 +100,13 @@ fn host_status(code: &str) -> Result<::network::ws::ServerInfo, String> {
 fn with_official(mut list: Vec<ServerEntry>) -> Vec<ServerEntry> {
     if !list
         .iter()
-        .any(|s| ::network::official::is_alias(&s.address))
+        .any(|s| network::official::is_alias(&s.address))
     {
         list.insert(
             0,
             ServerEntry {
-                name: ::network::official::NAME.into(),
-                address: ::network::official::ALIAS.into(),
+                name: network::official::NAME.into(),
+                address: network::official::ALIAS.into(),
             },
         );
     }
@@ -280,7 +280,7 @@ pub struct State {
     /// one the Drive page is joined to now (its address).
     pub servers: Vec<ServerEntry>,
     pub server_info:
-        std::collections::HashMap<String, (Instant, Result<::network::ws::ServerInfo, String>)>,
+        std::collections::HashMap<String, (Instant, Result<network::ws::ServerInfo, String>)>,
     pub server_asked: std::collections::HashMap<String, Instant>,
     pub joined_server: Option<String>,
     tx: Sender<Msg>,
@@ -536,7 +536,7 @@ impl State {
         let t = self.choice.lan_addr.clone();
         self.spawn(move || Msg::Join(core::check_join(&t)));
         // the host's status (its buses): at the code's addresses, else through its tunnel
-        if ::network::looks_like_code(&self.choice.lan_addr) {
+        if network::looks_like_code(&self.choice.lan_addr) {
             let code = self.choice.lan_addr.clone();
             self.spawn(move || Msg::Server {
                 info: host_status(&code),
@@ -588,7 +588,7 @@ impl State {
             .insert(address.to_string(), Instant::now());
         let a = address.to_string();
         self.spawn(move || Msg::Server {
-            info: ::network::ws::query(&a, true),
+            info: network::ws::query(&a, true),
             address: a,
         });
     }
@@ -621,7 +621,7 @@ impl State {
         self.choice.lan_mode = "join".into();
         // (a server added by its bare address is joined where it answered: its web gateway)
         let bare =
-            ::network::ws::ws_url(address).is_none() && !::network::official::is_alias(address);
+            network::ws::ws_url(address).is_none() && !network::official::is_alias(address);
         self.choice.lan_addr = if bare && !info.reached_at.is_empty() {
             info.reached_at.clone()
         } else {
@@ -689,7 +689,7 @@ impl State {
         if !self.save_pending_settings() {
             return;
         }
-        if !::legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
+        if !legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
             .is_empty()
         {
             self.set_status(
@@ -835,7 +835,7 @@ impl State {
         }
         let now = read_settings_file();
         if now.is_some() && now != self.settings_file {
-            let _ = ::config::load();
+            let _ = config::load();
             if let Ok(v) = core::get_settings() {
                 self.settings = v;
             }
@@ -866,50 +866,10 @@ impl State {
     }
 
     /// Work done each frame: results of background work, the regular poll, saving.
-    fn follow_clock(&mut self) {
-        let on = |k: &str| {
-            self.settings
-                .get(k)
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        };
-        let (time, date, year) = (
-            on("use_real_time"),
-            on("use_real_date"),
-            on("use_real_year"),
-        );
-        if !time && !date {
-            return;
-        }
-        let Some((y, mo, d, h, m)) = core::local_now() else {
-            return;
-        };
-        if time {
-            self.choice.time = h * 60 + m;
-        }
-        if date {
-            let y = if year {
-                y
-            } else {
-                self.choice
-                    .date
-                    .get(..4)
-                    .and_then(|x| x.parse().ok())
-                    .unwrap_or(y)
-            };
-            let today = format!("{y:04}-{mo:02}-{d:02}");
-            if self.choice.date != today {
-                self.choice.date = today;
-                self.load_lines();
-            }
-        }
-    }
-
     pub fn update(&mut self, dt: f32) {
         while let Ok(m) = self.rx.try_recv() {
             self.handle(m);
         }
-        self.follow_clock();
         self.poll_t -= dt;
         if self.poll_t <= 0.0 {
             self.poll_t = 2.5;
@@ -1070,7 +1030,7 @@ impl State {
                 self.loading_content = false;
                 self.content_first = false;
                 self.content_done();
-                if ::legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
+                if legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
                     .is_empty()
                 {
                     self.set_status(format!("{e}\nSet the OMSI 2 folder under Setup."), true);
@@ -1342,10 +1302,10 @@ impl State {
     /// 92), which the bus has, else its first.
     pub fn default_hof(&self) -> String {
         let on_date = self.map().and_then(|m| {
-            let dir = ::legacy_config::resolve_path(std::path::Path::new(&self.config.root), &m.file);
-            ::map::ailists::depot_hof_on(
+            let dir = legacy_config::resolve_path(std::path::Path::new(&self.config.root), &m.file);
+            map::ailists::depot_hof_on(
                 dir.parent()?,
-                ::map::ailists::date_code(&self.choice.date)?,
+                map::ailists::date_code(&self.choice.date)?,
             )
         });
         let want = on_date
@@ -1494,7 +1454,7 @@ pub fn short_map(m: &str) -> String {
 pub fn root_problem(root: &str) -> String {
     let root = root.trim();
     let p = std::path::Path::new(root);
-    let missing = ::legacy_config::missing_original_essentials(p);
+    let missing = legacy_config::missing_original_essentials(p);
     if root.is_empty() {
         "The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles in it) under Setup and press Save.".to_string()
     } else if !p.exists() {
@@ -1652,5 +1612,5 @@ mod crash_tests {
 }
 
 fn read_settings_file() -> Option<String> {
-    std::fs::read_to_string(::config::default_path()).ok()
+    std::fs::read_to_string(config::default_path()).ok()
 }
