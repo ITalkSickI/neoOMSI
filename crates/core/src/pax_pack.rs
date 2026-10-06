@@ -100,7 +100,7 @@ impl PaxPack {
 
 fn install(content: &Path, status: &Mutex<Status>) -> anyhow::Result<()> {
     // OMSI_PAX_PACK_URL: another archive (`file://` too), unchecked
-    let (url, size, sha256) = match omsi_cfg::env::var("OMSI_PAX_PACK_URL") {
+    let (url, size, sha256) = match legacy_config::env::var("OMSI_PAX_PACK_URL") {
         Ok(url) => (url, 0, None),
         Err(_) => crate::updater::release_file(TAG, FILE)
             .map_err(|e| anyhow::anyhow!("they are not available for download yet ({e})"))?,
