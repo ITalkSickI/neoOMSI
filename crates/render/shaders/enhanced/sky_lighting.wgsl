@@ -20,15 +20,18 @@
 // The sky cube keeps the result in a fixed world frame (lib.rs `SKY_CUBE_SIZE`): each
 // redraw starts the steps at another random point and is blended into what is there, so
 // the grain of a few dozen steps averages out over the frames.
+// The drift is kept as a fraction of this (m, a whole multiple of every period below), so that
+// its wrapping from 1 to 0 moves nothing.
+const CLOUD_DRIFT_UNIT: f32 = 70000.0;
 const CLOUD_BOTTOM: f32 = 1400.0;
 const CLOUD_TOP: f32 = 4200.0;
 const EARTH_R: f32 = 6371000.0;
-const CLOUD_STEPS: i32 = 64;
+const CLOUD_STEPS: i32 = 96;
 const CLOUD_SIGMA: f32 = 0.04;
-const CLOUD_SHAPE_PERIOD: f32 = 13000.0;
-const CLOUD_DETAIL_PERIOD: f32 = 420.0;
+const CLOUD_SHAPE_PERIOD: f32 = 14000.0;
+const CLOUD_DETAIL_PERIOD: f32 = 350.0;
 const CLOUD_DETAIL_STRENGTH: f32 = 0.3;
-const CLOUD_EDGE_SOFTNESS: f32 = 0.16;
+const CLOUD_EDGE_SOFTNESS: f32 = 0.3;
 const CLOUD_BOTTOM_SOFTNESS: f32 = 0.2;
 const CLOUD_MAX_DIST: f32 = 60000.0;
 const CLOUD_MS_GAIN: f32 = 4.0;
@@ -76,14 +79,14 @@ fn cloud_shell(d: vec3<f32>, h: f32) -> f32 {
 // of kilometres, its own cloud picture.
 fn cloud_coverage(p: vec2<f32>) -> f32 {
     let cover = camera.clouds.x;
-    let uv = p / CLOUD_FIELD_TILE + camera.clouds.yz * (2500.0 / CLOUD_FIELD_TILE);
-    let field = textureSampleLevel(t_clouds, s_repeat, uv * 0.35, 5.0).g;
-    return clamp(0.3 + cover * 0.55 + (field - 0.5) * 0.25, 0.0, 1.0);
+    let uv = p / CLOUD_FIELD_TILE + camera.clouds.yz * (CLOUD_DRIFT_UNIT / CLOUD_FIELD_TILE);
+    let field = textureSampleLevel(t_clouds, s_repeat, uv * 0.2, 5.0).g;
+    return clamp(0.15 + cover * 0.75 + (field - 0.5) * 0.2, 0.0, 1.0);
 }
 
 // The heap before its billows (h: 0 at the base, 1 at the top of the layer).
 fn cloud_base_shape(p: vec3<f32>, h: f32, lod: f32) -> f32 {
-    let drift = camera.clouds.yz * 2500.0;
+    let drift = camera.clouds.yz * CLOUD_DRIFT_UNIT;
     let s = textureSampleLevel(t_cloud_shape, s_cloud, (p.xy + drift) / CLOUD_SHAPE_PERIOD, lod);
     let lo = s.g - 1.0;
     // the heap narrows upwards (every heap: with the map's rounding alone, a heap where it
@@ -104,7 +107,7 @@ fn cloud_sigma(p: vec3<f32>, h: f32, coverage: f32, lod: f32, detail: bool) -> f
         return 0.0;
     }
     if (detail) {
-        let drift = camera.clouds.yz * 2500.0 * 1.3;
+        let drift = camera.clouds.yz * CLOUD_DRIFT_UNIT * 1.3;
         let q = vec3<f32>(p.xy + drift, p.z) / CLOUD_DETAIL_PERIOD;
         let dl = textureSampleLevel(t_cloud_detail, s_cloud, q, max(lod - 2.0, 0.0)).r;
         m = m - dl * smoothstep(1.0, 0.5, m) * CLOUD_DETAIL_STRENGTH;
@@ -114,87 +117,146 @@ fn cloud_sigma(p: vec3<f32>, h: f32, coverage: f32, lod: f32, detail: bool) -> f
     return m * CLOUD_SIGMA;
 }
 
-// The clouds towards d in front of `below` (the sky behind them): rgb the picture, a how
-// much the clouds cover.
-fn cloud_layer(d: vec3<f32>, below: vec3<f32>, pix: f32) -> vec4<f32> {
-    if (camera.clouds.x <= 0.001 || d.z <= -0.01 || camera.cam_pos.z + eye_off.z > CLOUD_BOTTOM) {
-        return vec4<f32>(below, 0.0);
+// ---- the layers (enh.layers[i]: x base, y top (m), z cover 0..1, w shape 0 flat stratus ..
+// 1 piled cumulus): up to three, low to high; what the weather makes of them is told by
+// the CPU (weather_setup.rs `cloud_layers_of`).
+
+fn layer_coverage(p: vec2<f32>, cover: f32, li: f32) -> f32 {
+    let uv = p / CLOUD_FIELD_TILE + camera.clouds.yz * (CLOUD_DRIFT_UNIT / CLOUD_FIELD_TILE) * (1.0 + li) + vec2<f32>(0.37, 0.61) * li;
+    let field = textureSampleLevel(t_clouds, s_repeat, uv * 0.2, 5.0).g;
+    // a flat deck is even, piled cloud gathers where the field is thick
+    return clamp(0.15 + cover * 0.75 + (field - 0.5) * 0.2, 0.0, 1.0);
+}
+
+fn layer_sigma(p: vec3<f32>, h: f32, coverage: f32, lod: f32, detail: bool, li: f32, shape: f32) -> f32 {
+    if (h <= 0.0 || h >= 1.0) {
+        return 0.0;
+    }
+    let off = vec2<f32>(5300.0, 2900.0) * li;
+    let drift = camera.clouds.yz * CLOUD_DRIFT_UNIT * (1.0 + li);
+    let s = textureSampleLevel(t_cloud_shape, s_cloud, (p.xy + drift + off) / CLOUD_SHAPE_PERIOD, lod);
+    let lo = s.g - 1.0;
+    let stack = h * h * (0.7 + s.b);
+    let n = mix(0.3 * stack, stack, shape) + pow(1.0 - h, 16.0);
+    var m = (s.r - n - lo) / (1.0 - lo);
+    m = m * (linearstep(0.0, 0.1, h) - linearstep(0.6, 1.0, h));
+    if (m + coverage - 1.0 <= 0.0) {
+        return 0.0;
+    }
+    if (detail) {
+        let q = vec3<f32>(p.xy + drift * 1.3 + off, p.z) / CLOUD_DETAIL_PERIOD;
+        let dl = textureSampleLevel(t_cloud_detail, s_cloud, q, max(lod - 2.0, 0.0)).r;
+        m = m - dl * smoothstep(1.0, 0.5, m) * CLOUD_DETAIL_STRENGTH * mix(0.5, 1.0, shape);
+    }
+    m = smoothstep(0.0, mix(0.45, CLOUD_EDGE_SOFTNESS, shape), m + coverage - 1.0);
+    m = m * min(h / CLOUD_BOTTOM_SOFTNESS, 1.0);
+    // the higher the layer, the thinner its cloud
+    return m * CLOUD_SIGMA / (1.0 + 0.5 * li * li);
+}
+
+struct LayerOut {
+    acc: vec3<f32>,
+    trans: f32,
+    hit: f32,
+    hit_w: f32,
+}
+
+fn cloud_march_layer(d: vec3<f32>, li: i32, steps: i32, closed: f32, pix: f32, sun: vec3<f32>, sky_top: vec3<f32>, ground: vec3<f32>) -> LayerOut {
+    var o = LayerOut(vec3<f32>(0.0), 1.0, 0.0, 0.0);
+    let lay = enh.layers[li];
+    let base = lay.x;
+    let top = lay.y;
+    let shape = lay.w;
+    let fl = f32(li);
+    if (lay.z <= 0.01 || top <= base || camera.cam_pos.z + eye_off.z > base) {
+        return o;
+    }
+    let t0 = cloud_shell(d, base);
+    if (t0 < 0.0 || t0 > CLOUD_MAX_DIST) {
+        return o;
     }
     let sd = normalize(camera.sun_dir.xyz);
-    // a closed cover (or a sky that rain or snow falls from) is the grey deck of the table
-    let closed = max(smoothstep(0.85, 1.0, camera.clouds.x), enh.weather.w);
-    let t0 = cloud_shell(d, CLOUD_BOTTOM);
-    if (t0 < 0.0 || t0 > CLOUD_MAX_DIST) {
-        return vec4<f32>(below, 0.0);
-    }
-    let t1 = min(cloud_shell(d, CLOUD_TOP), min(t0 + 12000.0, CLOUD_MAX_DIST + 6000.0));
-    let ds = (t1 - t0) / f32(CLOUD_STEPS);
-    // how many texels of the shape map a pixel spans where the ray meets the clouds
+    let t1 = min(cloud_shell(d, top), min(t0 + 12000.0, CLOUD_MAX_DIST + 6000.0));
+    let ds = (t1 - t0) / f32(steps);
     let lod = log2(max(t0 * pix * f32(textureDimensions(t_cloud_shape).x) / CLOUD_SHAPE_PERIOD, 1.0));
-    // (the sun before the clouds: how much of it the cover lets through, lights.w, is what
-    // this march works out itself)
-    let sun = enh.sun_disc.rgb * smoothstep(-0.08, 0.02, sd.z);
-    let sky_top = sh_irradiance(vec3<f32>(0.0, 0.0, 1.0)) / PI;
-    let ground = sh_irradiance(vec3<f32>(0.0, 0.0, -1.0)) / PI;
     let cos_sun = dot(d, sd);
-    let coverage = mix(cloud_coverage(cloud_ground(d, t0)), 1.0, closed);
-    var trans = 1.0;
-    var acc = vec3<f32>(0.0);
-    var hit = 0.0;
-    var hit_w = 0.0;
+    let k = select(0.0, closed, li == 0);
+    let coverage = mix(layer_coverage(cloud_ground(d, t0), lay.z, fl), 1.0, k);
+    let span = top - base;
     var t = t0 + ds * cloud_jitter;
-    for (var i = 0; i < CLOUD_STEPS; i = i + 1) {
+    for (var i = 0; i < steps; i = i + 1) {
         let p = vec3<f32>(cloud_ground(d, t), cloud_height(d, t));
-        let h = (p.z - CLOUD_BOTTOM) / (CLOUD_TOP - CLOUD_BOTTOM);
-        let sigma = cloud_sigma(p, h, coverage, lod, true);
+        let h = (p.z - base) / span;
+        let sigma = layer_sigma(p, h, coverage, lod, true, fl, shape);
         if (sigma > 1e-6) {
             // the sunlight reaching p through the cloud towards the sun
             var od = 0.0;
-            var ls = 40.0;
+            var ls = 40.0 * (1.0 + 0.5 * fl);
             var lt = ls * 0.5;
-            for (var k = 0; k < 6; k = k + 1) {
+            for (var j = 0; j < 6; j = j + 1) {
                 let q = p + sd * lt;
-                let hq = (q.z - CLOUD_BOTTOM) / (CLOUD_TOP - CLOUD_BOTTOM);
+                let hq = (q.z - base) / span;
                 if (hq >= 1.0) {
                     break;
                 }
-                od = od + cloud_sigma(q, hq, coverage, lod + 1.0, k < 2) * ls;
+                od = od + layer_sigma(q, hq, coverage, lod + 1.0, j < 2, fl, shape) * ls;
                 ls = ls * 1.7;
                 lt = lt + ls;
             }
-            // multiple scattering (Hillaire 2016): octaves of weaker extinction, weaker
-            // light and a flatter phase
             var direct = vec3<f32>(0.0);
             var a = 1.0;
             var b = 1.0;
             var c = 1.0;
-            for (var o = 0; o < 3; o = o + 1) {
+            for (var m = 0; m < 3; m = m + 1) {
                 let phase = mix(hg_phase(cos_sun, 0.8 * c), hg_phase(cos_sun, -0.2 * c), 0.5);
                 direct = direct + sun * a * phase * exp(-od * b);
                 a = a * 0.6;
                 b = b * 0.3;
                 c = c * 0.5;
             }
-            // (single scattering and three octaves hold only part of the light a cloud
-            // scatters on inside it; a cumulus's sunlit side is about as bright as white
-            // paper in the sun, E/π, which this factor brings it to)
             let amb = mix(ground * 0.45 + sky_top * 0.55, sky_top * 1.1, clamp(h * 1.4, 0.0, 1.0));
             let powder = mix(1.0, 1.0 - exp(-sigma * 600.0), 0.5);
-            let light = (direct * powder * CLOUD_MS_GAIN + amb * 1.6 * mix(0.55, 1.0, smoothstep(0.0, 0.55, h))) * (1.0 - 0.3 * closed);
-            // Frostbite: the light scattered over the step, dimmed by the cloud before it
+            let light = (direct * powder * CLOUD_MS_GAIN + amb * 1.6 * mix(0.55, 1.0, smoothstep(0.0, 0.55, h))) * (1.0 - 0.35 * k - 0.3 * enh.weather.z);
             let dt = exp(-sigma * ds);
-            acc = acc + trans * light * (1.0 - dt);
-            hit = hit + t * trans * (1.0 - dt);
-            hit_w = hit_w + trans * (1.0 - dt);
-            trans = trans * dt;
-            if (trans < 0.01) {
+            o.acc = o.acc + o.trans * light * (1.0 - dt);
+            o.hit = o.hit + t * o.trans * (1.0 - dt);
+            o.hit_w = o.hit_w + o.trans * (1.0 - dt);
+            o.trans = o.trans * dt;
+            if (o.trans < 0.01) {
                 break;
             }
         }
         t = t + ds;
     }
+    return o;
+}
+
+// The clouds towards d in front of `below` (the sky behind them): rgb the picture, a how
+// much the clouds cover. The layers are marched low to high and laid over each other.
+fn cloud_layer(d: vec3<f32>, below: vec3<f32>, pix: f32) -> vec4<f32> {
+    if (d.z <= -0.01 || (enh.layers[0].z + enh.layers[1].z + enh.layers[2].z) <= 0.01) {
+        return vec4<f32>(below, 0.0);
+    }
+    let sd = normalize(camera.sun_dir.xyz);
+    // a closed cover (or a sky that rain or snow falls from) is the grey deck of the table
+    let closed = max(smoothstep(0.85, 1.0, enh.layers[0].z), enh.weather.w);
+    let sun = enh.sun_disc.rgb * smoothstep(-0.08, 0.02, sd.z);
+    let sky_top = sh_irradiance(vec3<f32>(0.0, 0.0, 1.0)) / PI;
+    let ground = sh_irradiance(vec3<f32>(0.0, 0.0, -1.0)) / PI;
+    var trans = 1.0;
+    var acc = vec3<f32>(0.0);
+    var hit = 0.0;
+    var hit_w = 0.0;
+    for (var li = 0; li < 3; li = li + 1) {
+        let steps = select(select(16, 28, li == 1), 64, li == 0);
+        let o = cloud_march_layer(d, li, steps, closed, pix, sun, sky_top, ground);
+        acc = acc + trans * o.acc;
+        hit = hit + trans * o.hit;
+        hit_w = hit_w + trans * o.hit_w;
+        trans = trans * o.trans;
+    }
     // far clouds take on the colour of the air in front of them, and beyond 40 km fade out
-    let dist = select(t0, hit / max(hit_w, 1e-4), hit_w > 1e-4);
+    let dist = select(1000.0, hit / max(hit_w, 1e-4), hit_w > 1e-4);
     let aerial = 1.0 - exp(-dist / 22000.0);
     let fade = 1.0 - smoothstep(40000.0, CLOUD_MAX_DIST, dist);
     let horizon_fade = smoothstep(-0.01, 0.02, d.z);
@@ -202,6 +264,17 @@ fn cloud_layer(d: vec3<f32>, below: vec3<f32>, pix: f32) -> vec4<f32> {
     acc = mix(acc, below * (1.0 - trans), aerial) * fade * horizon_fade;
     var col = acc + (1.0 - a) * below;
     return vec4<f32>(col, a);
+}
+
+// Where the clouds' base is looked up from the sky cube's own eye: the lowest layer there is.
+fn cloud_ref_base() -> f32 {
+    if (enh.layers[0].z > 0.01) {
+        return enh.layers[0].x;
+    }
+    if (enh.layers[1].z > 0.01) {
+        return enh.layers[1].x;
+    }
+    return enh.layers[2].x;
 }
 
 // Sky radiance towards d without the sun's disc: the table, the clouds, the air.
@@ -229,8 +302,9 @@ fn fs_enhanced(in: VsOut) -> @location(0) vec4<f32> {
     // the cube is drawn from its own eye (lib.rs Probe::cube_eye): look the clouds' base up
     // from there, so the sky does not slide with a camera that moved since
     var ld = d;
-    let tb = cloud_shell(d, CLOUD_BOTTOM);
-    if (tb > 0.0 && camera.cam_pos.z < CLOUD_BOTTOM) {
+    let ref_base = cloud_ref_base();
+    let tb = cloud_shell(d, ref_base);
+    if (tb > 0.0 && camera.cam_pos.z < ref_base) {
         ld = normalize(d * min(tb, CLOUD_MAX_DIST) - enh.eye.xyz);
     }
     let cube = textureSampleLevel(t_sky_cube, s_lin, vec3<f32>(ld.x, ld.z, ld.y), 0.0);

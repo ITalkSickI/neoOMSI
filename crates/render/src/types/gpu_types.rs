@@ -64,6 +64,7 @@ pub(crate) struct EnhancedUniform {
     pub(crate) debug: [f32; 4],
     pub(crate) eye: [f32; 4],
     pub(crate) led: [f32; 4],
+    pub(crate) layers: [[f32; 4]; 3],
 }
 
 pub(crate) struct Probe {
@@ -84,6 +85,8 @@ pub(crate) struct Probe {
     pub(crate) cube_wait: u32,
     pub(crate) cube_eye: Option<DVec3>,
     pub(crate) cube_recapture: bool,
+    pub(crate) cloud_sig: [f32; 12],
+    pub(crate) cloud_age: u32,
 }
 
 pub(crate) const SKY_CUBE_SIZE: u32 = 1024;

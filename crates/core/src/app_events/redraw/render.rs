@@ -364,6 +364,7 @@ impl App {
             Some(w) => {
                 self.wetness = road_wetness(precip_of(w).1, dt as f64, self.wetness);
                 set_cloud_day(self.clock.year, self.clock.day_of_year);
+                set_cloud_time(self.clock.time);
                 weather_lighting(
                     &daylight,
                     w,

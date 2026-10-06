@@ -153,7 +153,7 @@ impl Renderer {
                 let far = match p.cube_eye {
                     Some(e) if p.cube_filled => {
                         let m = cam_w - e;
-                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.01
+                        (m.truncate().length() * 0.1 + m.z.abs()) / to_clouds > 0.003
                     }
                     _ => true,
                 };
@@ -165,6 +165,25 @@ impl Renderer {
             }
             None => Vec3::ZERO,
         };
+        // the weather changed the clouds: draw the sky cube again (not more often than once a
+        // second or so)
+        if let Some(p) = self.probe.as_mut() {
+            let mut sig = [0.0f32; 12];
+            for (i, l) in lighting.cloud_layers.iter().enumerate() {
+                sig[i * 4..i * 4 + 4].copy_from_slice(&[l[0] / 1000.0, l[1] / 1000.0, l[2], l[3]]);
+            }
+            p.cloud_age += 1;
+            let diff = sig
+                .iter()
+                .zip(p.cloud_sig.iter())
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+            if diff > 0.03 && p.cloud_age >= 60 {
+                p.cloud_sig = sig;
+                p.cloud_age = 0;
+                p.cube_recapture = p.cube_filled;
+            }
+        }
         let u = EnhancedUniform {
             exposure: [
                 pre,
@@ -207,6 +226,7 @@ impl Renderer {
                 lighting.html_glow,
                 lighting.script_glow,
             ],
+            layers: lighting.cloud_layers,
         };
         self.queue
             .write_buffer(&self.enh_buf, 0, bytemuck::bytes_of(&u));

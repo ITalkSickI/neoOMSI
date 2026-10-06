@@ -76,6 +76,9 @@ pub struct Lighting {
     pub sky_weights: [f32; 3],
     pub cloud_density: f32,
     pub cloud_offset: [f32; 2],
+    /// up to three cloud layers, low to high: base (m), top (m), cover 0..1, shape (0 flat
+    /// stratus .. 1 piled cumulus)
+    pub cloud_layers: [[f32; 4]; 3],
     pub shadows: bool,
     pub wetness: f32,
     pub snow: f32,
@@ -129,6 +132,7 @@ impl Default for Lighting {
             sky_weights: [1.0, 0.0, 0.0],
             cloud_density: 0.0,
             cloud_offset: [0.0; 2],
+            cloud_layers: [[0.0; 4]; 3],
             shadows: true,
             light_shadows: true,
             wetness: 0.0,
