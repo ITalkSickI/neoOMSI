@@ -249,6 +249,8 @@ pub struct State {
     pub keybindings_error: String,
     pub instances: Vec<core::Instance>,
     pub queued_launch: Option<core::Duty>,
+    pub pax_changed: Option<u64>,
+    pub restart_pending: bool,
     /// Start was pressed: the graphics device stays given up until the list of games has the
     /// game started (its process, once it is known), 15 s at most.
     pub launch_hold: Option<Instant>,
@@ -324,6 +326,8 @@ impl State {
             keybindings_error: String::new(),
             instances: Vec::new(),
             queued_launch: None,
+            pax_changed: None,
+            restart_pending: false,
             launch_hold: None,
             launched_pid: None,
             crash: None,
@@ -662,6 +666,25 @@ impl State {
         });
     }
 
+    pub fn games_with_old_passengers(&self) -> bool {
+        old_passengers(self.pax_changed, &self.instances)
+    }
+
+    pub fn restart_games(&mut self) {
+        let running: Vec<u32> = self
+            .instances
+            .iter()
+            .filter(|i| i.running)
+            .map(|i| i.pid)
+            .collect();
+        for pid in running {
+            if !self.stopping.contains(&pid) {
+                self.stop(pid);
+            }
+        }
+        self.restart_pending = true;
+    }
+
     pub fn stop(&mut self, pid: u32) {
         self.stopping.insert(pid);
         self.spawn(move || Msg::Stopped {
@@ -909,6 +932,14 @@ impl State {
             self.handle(m);
         }
         self.follow_clock();
+        if self.restart_pending
+            && self.stopping.is_empty()
+            && !self.instances.iter().any(|i| i.running)
+        {
+            self.restart_pending = false;
+            self.pax_changed = None;
+            self.launch();
+        }
         self.poll_t -= dt;
         if self.poll_t <= 0.0 {
             self.poll_t = 2.5;
@@ -1622,6 +1653,20 @@ mod launch_tests {
         // (Start pressed, the game not started yet)
         assert!(!super::game_listed(None, &[game(7, true)]));
     }
+
+    #[test]
+    fn only_a_game_started_before_the_passengers_changed_has_the_old_ones() {
+        let at = |pid, running, started| Instance {
+            started,
+            ..game(pid, running)
+        };
+        assert!(!super::old_passengers(None, &[at(1, true, 100)]));
+        assert!(super::old_passengers(Some(200), &[at(1, true, 100)]));
+        assert!(!super::old_passengers(
+            Some(200),
+            &[at(1, true, 250), at(2, false, 100)]
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -1648,6 +1693,10 @@ mod crash_tests {
         assert!(super::crash_of(&p).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
+}
+
+fn old_passengers(changed: Option<u64>, games: &[core::Instance]) -> bool {
+    changed.is_some_and(|t| games.iter().any(|i| i.running && i.started < t))
 }
 
 fn read_settings_file() -> Option<String> {

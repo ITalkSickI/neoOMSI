@@ -597,6 +597,11 @@ struct Outside {
     check_updates: bool,
     reset: bool,
     controls: Option<usize>,
+    pax_pack: crate::pax_pack::Status,
+    get_pax_pack: bool,
+    stale_pax: bool,
+    restarting: bool,
+    restart_games: bool,
 }
 
 thread_local! {
@@ -626,6 +631,9 @@ pub fn settings(l: &mut Launcher, area: Rect) {
         body.w,
         (body.bottom() - bar.bottom() - 18.0).max(0.0),
     );
+    let stale_pax = l.state.games_with_old_passengers();
+    let restarting = l.state.restart_pending;
+    let models_before = l.state.settings["pax_models"].clone();
     let s = &mut l.state.settings;
     let dirty = &mut l.state.settings_dirty;
     let mut out = Outside {
@@ -633,6 +641,11 @@ pub fn settings(l: &mut Launcher, area: Rect) {
         check_updates: false,
         reset: false,
         controls: None,
+        pax_pack: l.pax_pack.status(),
+        get_pax_pack: false,
+        stale_pax,
+        restarting,
+        restart_games: false,
     };
     // (two columns side by side; where they would be too narrow to read - a phone - one
     // under the other, each as high as it was the frame before)
@@ -670,6 +683,20 @@ pub fn settings(l: &mut Launcher, area: Rect) {
     });
     if out.check_updates {
         l.update.check();
+    }
+    if out.get_pax_pack {
+        l.pax_pack.start();
+    }
+    let installed = l.pax_pack.take_finished();
+    if installed {
+        s["pax_models"] = json!("realistic");
+        *dirty = 0.3;
+    }
+    if installed || s["pax_models"] != models_before {
+        l.state.pax_changed = Some(core::install::now_secs());
+    }
+    if out.restart_games {
+        l.state.restart_games();
     }
     if out.reset {
         l.pages.confirm_reset = true;
@@ -797,7 +824,7 @@ fn settings_tab(
         1 => driving_tab(ui, s, dirty, out, cols),
         2 => camera_tab(ui, s, dirty, out, cols),
         3 => sound_tab(ui, s, dirty, cols),
-        4 => gameplay_tab(ui, s, dirty, cols),
+        4 => gameplay_tab(ui, s, dirty, out, cols),
         _ => general_tab(ui, s, dirty, out, cols),
     }
 }
@@ -1890,6 +1917,87 @@ fn camera_tab(
     [left, c.used()]
 }
 
+fn pax_pack_row(ui: &mut Ui, c: &mut Col, out: &mut Outside) {
+    use crate::pax_pack::Status;
+    if out.restarting {
+        c.y += ui.paragraph(
+            "Restarting the game with the new passengers…",
+            Vec2::new(c.inner.x, c.y),
+            c.inner.w,
+            12.5,
+            Weight::Regular,
+            TEXT_DIM,
+        ) + 8.0;
+        return;
+    }
+    if out.stale_pax {
+        if ui.button(
+            "s-paxrestart",
+            c.row(),
+            "Restart the game now",
+            Some("restart_alt"),
+            ButtonKind::Normal,
+        ) {
+            out.restart_games = true;
+        }
+        c.y += ui.paragraph(
+            "The running game still has the passengers from before. Restarting ends the current drive and starts the session chosen here again.",
+            Vec2::new(c.inner.x, c.y),
+            c.inner.w,
+            12.5,
+            Weight::Regular,
+            TEXT_DIM,
+        ) + 8.0;
+        return;
+    }
+    let mb = |b: u64| b as f64 / 1e6;
+    let (note, color) = match &out.pax_pack {
+        Status::Installed => return,
+        Status::Missing | Status::Outdated | Status::Failed(_) => {
+            let label = if out.pax_pack == Status::Outdated {
+                "Update the realistic passengers"
+            } else {
+                "Download the realistic passengers"
+            };
+            if ui.button(
+                "s-paxpack",
+                c.row(),
+                label,
+                Some("download"),
+                ButtonKind::Normal,
+            ) {
+                out.get_pax_pack = true;
+            }
+            match &out.pax_pack {
+                Status::Failed(e) => (e.clone(), DANGER),
+                _ => (
+                    "People made from the Microsoft Rocketbox (MIT) and MakeHuman (CC0) figures, a few hundred MB."
+                        .to_string(),
+                    TEXT_DIM,
+                ),
+            }
+        }
+        Status::Downloading { done, total } if *total > 0 => (
+            format!(
+                "Downloading the realistic passengers: {:.0} of {:.0} MB",
+                mb(*done),
+                mb(*total)
+            ),
+            TEXT_DIM,
+        ),
+        Status::Downloading { .. } => ("Looking for the realistic passengers…".into(), TEXT_DIM),
+        Status::Installing => ("Installing the realistic passengers…".into(), TEXT_DIM),
+    };
+    c.y += ui.paragraph(
+        &note,
+        Vec2::new(c.inner.x, c.y),
+        c.inner.w,
+        12.5,
+        Weight::Regular,
+        color,
+    ) + 8.0;
+}
+
 /// How loud the bus, the traffic and the surroundings are, and what passengers say.
 fn sound_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
     let mut c = Col::new(ui, cols[0], "Volume");
@@ -1931,7 +2039,13 @@ fn sound_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) -> [f
 }
 
 /// How the world behaves: passengers, traffic, collisions, wear, the clock.
-fn gameplay_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
+fn gameplay_tab(
+    ui: &mut Ui,
+    s: &mut Value,
+    dirty: &mut f32,
+    out: &mut Outside,
+    cols: [Rect; 2],
+) -> [f32; 2] {
     let mut c = Col::new(ui, cols[0], "Passengers");
     sel_setting(
         ui,
@@ -1973,6 +2087,7 @@ fn gameplay_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
         "pax_models",
         &[("omsi", "OMSI 2"), ("realistic", "Realistic")],
     );
+    pax_pack_row(ui, &mut c, out);
     sel_setting(
         ui,
         s,
@@ -5566,6 +5681,7 @@ mod settings_tests {
             "set-exact_fare",
             "set-pax_prefer_seats",
             "s-paxmodels",
+            "s-paxpack",
             "s-paxmotion",
             "set-pax_ik",
             "s-pax",
@@ -5625,6 +5741,11 @@ mod settings_tests {
             check_updates: false,
             reset: false,
             controls: None,
+            pax_pack: crate::pax_pack::Status::Missing,
+            get_pax_pack: false,
+            stale_pax: false,
+            restarting: false,
+            restart_games: false,
         }
     }
 
@@ -5647,8 +5768,11 @@ mod settings_tests {
 
     /// Click the widget `name` on tab `tab`: the mouse goes down over it and comes up again.
     fn click(tab: usize, name: &str, s: &mut Value) -> Outside {
+        click_with(tab, name, s, outside())
+    }
+
+    fn click_with(tab: usize, name: &str, s: &mut Value, mut out: Outside) -> Outside {
         let mut ui = Ui::new();
-        let mut out = outside();
         frame(&mut ui, tab, s, &mut out);
         let r = *ui
             .drawn
@@ -5697,6 +5821,25 @@ mod settings_tests {
         let mut s = all_rows();
         assert_eq!(click(1, "s-go-keys", &mut s).controls, Some(0));
         assert_eq!(click(1, "s-go-pads", &mut s).controls, Some(1));
+    }
+
+    #[test]
+    fn the_passenger_pack_is_offered_and_a_game_with_the_old_ones_restarts() {
+        let mut s = all_rows();
+        assert!(click(4, "s-paxpack", &mut s).get_pax_pack);
+        let stale = Outside {
+            stale_pax: true,
+            ..outside()
+        };
+        assert!(click_with(4, "s-paxrestart", &mut s, stale).restart_games);
+        let mut ui = Ui::new();
+        let mut done = Outside {
+            pax_pack: crate::pax_pack::Status::Installed,
+            ..outside()
+        };
+        frame(&mut ui, 4, &mut s, &mut done);
+        assert!(!ui.drawn.contains_key(&id_of("s-paxpack")));
+        assert!(!ui.drawn.contains_key(&id_of("s-paxrestart")));
     }
 
     #[test]

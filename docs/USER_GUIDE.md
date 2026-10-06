@@ -117,7 +117,11 @@ Set `OMSI_NO_SURF=1` before starting neoOMSI to disable OMSI `.surf` height maps
 **Procedural passenger animation** independently selects the pose system; `pax_ik`
 and `--pax-ik` control it (`ik` remains a settings alias).
 
-To use realistic models, install `Packs/RealisticPax` in a content folder, then
-select **Passenger models → Realistic** and restart. Build and licensing details
-are in [RealisticPax](../tools/realistic-pax/README.md). Without the pack, installed
-OMSI passengers remain in use.
+For realistic models, press **Download the realistic passengers** under
+**Settings → Gameplay** in the launcher (a few hundred MB, once). The launcher installs
+them into the content folder's `Packs/RealisticPax` and selects **Passenger models →
+Realistic**; they appear from the next game start. A game that is running then shows
+the old passengers until it is restarted: the launcher offers **Restart the game now**,
+which ends the current drive and starts the chosen session again. Licensing details are in
+[RealisticPax](../tools/realistic-pax/README.md). Without the pack, installed OMSI
+passengers remain in use.

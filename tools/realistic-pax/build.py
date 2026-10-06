@@ -1,9 +1,11 @@
 """python build.py --omsi "<OMSI 2 folder>" [--out <pack folder>] [--blender <blender.exe>] [--size 1024] [--jobs N]
 [--only <slot .hum>] [--hums-only]
+python build.py --package [--out <pack folder>]
 """
 
 import argparse
 import concurrent.futures
+import hashlib
 import io
 import json
 import os
@@ -13,6 +15,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import zipfile
 
 from PIL import Image, ImageChops
 
@@ -98,34 +101,49 @@ def figure_meta(stock_text, source, weight, person):
     return meta
 
 
-def write_hum(stock_path, out_path, model, info, meta):
+def write_hum(stock_path, out_path, model, height, links, meta):
+    """A .hum of our own, so that the pack can be passed on: only the keywords the engine
+    reads, with the stock person's few numbers where the figure takes its place."""
     text = stock_path.read_bytes().decode("cp1252")
     lines = text.splitlines()
     found = dict((k, i) for i, k in blocks(text))
-    stock_links = [float(v) for v in values(lines, found["[links]"], 22)]
-    seat = float(values(lines, found["[seatheight]"], 1)[0]) if "[seatheight]" in found else 0.0
-    feet = values(lines, found["[humangeom]"], 1)[0] if "[humangeom]" in found else "0.04"
-    links = info["links"]
-    replace_values(lines, "[model]", [model])
-    replace_values(lines, "[humangeom]", [feet, f"{info['height']:.2f}"])
-    replace_values(lines, "[links]", [f"{v:.3f}" for v in links])
+
+    def stock(keyword, n):
+        return values(lines, found[keyword], n) if keyword in found else []
+
+    stock_links = [float(v) for v in stock("[links]", 22)] or [0.0] * 22
+    seat = float((stock("[seatheight]", 1) or ["0"])[0])
+    hum = {
+        "[model]": [model],
+        "[humangeom]": [(stock("[humangeom]", 1) or ["0.04"])[0], f"{height:.2f}"],
+        "[links]": [f"{v:.3f}" for v in links],
+        "[voice]": stock("[voice]", 1),
+        "[walk_param]": stock("[walk_param]", 5),
+        "[mass]": stock("[mass]", 1),
+        "[age]": stock("[age]", 1),
+    }
     if seat > 0.2:
-        # keep the stock hip-above-seat lift so the new body sits as deep as the old one did
-        replace_values(lines, "[seatheight]", [f"{links[2] - (stock_links[2] - seat):.2f}"])
+        # the stock hip-above-seat lift: the new body sits as deep as the old one did
+        hum["[seatheight]"] = [f"{links[2] - (stock_links[2] - seat):.2f}"]
     for keyword, new in meta:
-        replace_values(lines, keyword, new)
-    out_path.write_bytes(("\r\n".join(lines) + "\r\n").encode("cp1252"))
+        hum[keyword] = new
+    out = [line for k, v in hum.items() if v for line in [k, *v, ""]]
+    out_path.write_bytes(("\r\n".join(out) + "\r\n").encode("cp1252"))
 
 
 def rewrite_hum(stock_path, out_path, source, weight, person):
-    """Only the figure's metadata into a .hum built before: no Blender needed."""
-    lines = out_path.read_bytes().decode("cp1252").splitlines()
+    """A .hum built before written again from its body's numbers: no Blender needed."""
+    text = out_path.read_bytes().decode("cp1252")
+    lines = text.splitlines()
+    found = dict((k, i) for i, k in blocks(text))
+    model = values(lines, found["[model]"], 1)[0]
+    height = float(values(lines, found["[humangeom]"], 2)[1])
+    links = [float(v) for v in values(lines, found["[links]"], 22)]
     meta = figure_meta(stock_path.read_bytes().decode("cp1252"), source, weight, person)
-    if weight == 1.0 and any(line.strip().lower() == "[neo_weight]" for line in lines):
-        meta.append(("[neo_weight]", ["1"]))
-    for keyword, new in meta:
-        replace_values(lines, keyword, new)
-    out_path.write_bytes(("\r\n".join(lines) + "\r\n").encode("cp1252"))
+    if "[seatheight]" in found:
+        # (recomputed from the rounded links it could come out a centimetre off)
+        meta.append(("[seatheight]", values(lines, found["[seatheight]"], 1)))
+    write_hum(stock_path, out_path, model, height, links, meta)
     return f"{out_path.relative_to(out_path.parents[2])} <- {source}"
 
 
@@ -316,7 +334,7 @@ def build_figure(args, blender, stock, hum_out, source, weight, person=None):
         ctc = (f"{model_rel}\\variants", body)
     write_cfg(model_dir / f"{name}.cfg", [lv["file"] for lv in info["levels"]], textures, alpha, ctc)
     meta = figure_meta(stock.read_bytes().decode("cp1252"), source, weight, person)
-    write_hum(stock, hum_out, f"{model_rel}\\{name}.cfg", info, meta)
+    write_hum(stock, hum_out, f"{model_rel}\\{name}.cfg", info["height"], info["links"], meta)
     tris = " / ".join(str(lv["triangles"]) for lv in info["levels"])
     return f"{hum_out.relative_to(args.out)} <- {source}: {tris} triangles, {info['height']} m"
 
@@ -342,25 +360,41 @@ Realistic passengers for neoOMSI, built with tools/realistic-pax of the neoOMSI 
 - rocketbox/: the Microsoft Rocketbox avatars
   (https://github.com/microsoft/Microsoft-Rocketbox), MIT licence, see LICENSE-Rocketbox.md.
 - generated/: people made with MakeHuman's MPFB from CC0 assets, see LICENSE-MakeHuman.txt.
-- The .hum files are the OMSI 2 installation's own passenger files with the body, age and
-  voice changed: each <name>.hum replaces the stock passenger of the same name, the
-  <name>~<other>.hum files are drawn in its place now and then.
+- Each <name>.hum takes the place of the OMSI 2 passenger of the same name, the
+  <name>~<other>.hum files are drawn in its place now and then. They hold nothing of
+  OMSI 2's files but a few of their numbers (seat height, step, voice, age).
 
-Because the .hum files come from your OMSI 2 installation, the pack is for your own use:
-do not pass it on.
+The neoOMSI launcher downloads the pack (Settings -> Gameplay); pack.json is its version.
 """
+
+# what the launcher offers again when it is newer than the installed pack's (pax_pack.rs)
+PACK_VERSION = 1
 
 
 def write_pack_notes(out, generated):
-    shutil.copy(CACHE / "LICENSE.md", out / "LICENSE-Rocketbox.md")
+    if (CACHE / "LICENSE.md").exists() or not (out / "LICENSE-Rocketbox.md").exists():
+        shutil.copy(CACHE / "LICENSE.md", out / "LICENSE-Rocketbox.md")
     if generated:
         (out / "LICENSE-MakeHuman.txt").write_text(MAKEHUMAN_LICENSE)
     (out / "README.txt").write_text(PACK_README)
+    (out / "pack.json").write_text(json.dumps({"name": "RealisticPax", "version": PACK_VERSION}))
+
+
+def package(out):
+    """The release file the launcher downloads: the pack under a RealisticPax folder."""
+    zip_path = out.parent / f"RealisticPax-v{PACK_VERSION}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for f in sorted(out.rglob("*")):
+            if f.is_file():
+                z.write(f, pathlib.PurePosixPath("RealisticPax", *f.relative_to(out).parts))
+    digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+    print(f"{zip_path}: {zip_path.stat().st_size / 1e6:.0f} MB, sha256 {digest}")
+    print(f"upload it as a file of the release tagged realistic-pax-v{PACK_VERSION}")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--omsi", required=True, type=pathlib.Path)
+    ap.add_argument("--omsi", type=pathlib.Path)
     ap.add_argument("--out", type=pathlib.Path, default=HERE / "build" / "RealisticPax")
     ap.add_argument("--blender")
     ap.add_argument("--size", type=int, default=1024)
@@ -368,7 +402,14 @@ def main():
     ap.add_argument("--only", help="build just this slot (a .hum as named in pax.json)")
     ap.add_argument("--hums-only", action="store_true",
                     help="rewrite only the weights, ages and voices of a pack built before")
+    ap.add_argument("--package", action="store_true",
+                    help="zip the pack built before for the release the launcher downloads")
     args = ap.parse_args()
+    if args.package:
+        package(args.out)
+        return
+    if not args.omsi:
+        ap.error("--omsi is needed to build the pack")
     blender = None if args.hums_only else find_blender(args.blender)
     pax = json.loads((HERE / "pax.json").read_text())
 

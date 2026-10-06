@@ -149,6 +149,7 @@ pub struct Launcher {
     ime: bool,
     /// Updates from the GitHub releases (see `crate::updater`, `update.rs`).
     pub update: crate::updater::Updater,
+    pub pax_pack: crate::pax_pack::PaxPack,
     #[cfg(not(target_os = "android"))]
     discord: Option<crate::discord::Discord>,
     #[cfg(not(target_os = "android"))]
@@ -223,6 +224,7 @@ impl Launcher {
             page_max: 0.0,
             ime: false,
             update: Default::default(),
+            pax_pack: crate::pax_pack::PaxPack::new(crate::startup::content_dir()),
             #[cfg(not(target_os = "android"))]
             discord: None,
             #[cfg(not(target_os = "android"))]
