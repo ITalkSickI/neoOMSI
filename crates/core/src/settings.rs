@@ -141,29 +141,6 @@ pub fn pedal_curve(v: f32, strength: f32) -> f32 {
 
 impl Default for Settings {
     fn default() -> Self {
-        if crate::platform::MOBILE {
-            // a phone's graphics chip and battery: 2x MSAA (cheap on a tiled GPU), no
-            // ambient occlusion, a smaller shadow map and mirrors, a shorter view
-            return Self {
-                msaa: 2,
-                anisotropy: 4,
-                ssao: false,
-                shadow_size: 1024,
-                mirror_size: 128,
-                max_fps: 60,
-                max_obj_dist: 900.0,
-                pax_density: 0.7,
-                navigator_corner: "top-center".into(),
-                ..Self::desktop()
-            };
-        }
-        Self::desktop()
-    }
-}
-
-impl Settings {
-    /// The defaults of a computer.
-    fn desktop() -> Self {
         Self {
             msaa: 4,
             anisotropy: 8,
