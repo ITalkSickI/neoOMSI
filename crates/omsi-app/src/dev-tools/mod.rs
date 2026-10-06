@@ -14,6 +14,7 @@ mod util;
 mod vehicle_editor;
 mod vehicle_ui;
 mod walk;
+mod translation;
 
 use imgui::{BackendFlags, Condition, TextureId};
 use omsi_render::{Renderer, devtools as rdev};
@@ -35,6 +36,7 @@ struct Show {
     connect: bool,
     lan: bool,
     walk: bool,
+    translation: bool,
 }
 
 pub(crate) struct DevTools {
@@ -57,6 +59,7 @@ pub(crate) struct DevTools {
     cockpit_filter: String,
     release: Vec<String>,
     editor: vehicle_editor::VehicleEditor,
+    tr_tool: translation::TranslationTool,
 }
 
 impl DevTools {
@@ -98,6 +101,7 @@ impl DevTools {
                 connect: false,
                 lan: false,
                 walk: false,
+                translation: false,
             },
             actions: Vec::new(),
             connect_addr: String::new(),
@@ -107,6 +111,7 @@ impl DevTools {
             cockpit_filter: String::new(),
             release: Vec::new(),
             editor: vehicle_editor::VehicleEditor::new(),
+            tr_tool: translation::TranslationTool::new(),
             box_radius: 25.0,
         }
     }
@@ -165,6 +170,7 @@ impl DevTools {
             let vehicle_filter = &mut self.vehicle_filter;
             let cockpit_filter = &mut self.cockpit_filter;
             let editor = &mut self.editor;
+            let tr_tool = &mut self.tr_tool;
             let ui = self.ctx.new_frame();
 
             if *show_boxes {
@@ -205,6 +211,7 @@ impl DevTools {
             net::connect(ui, &mut show.connect, connect_addr, actions);
             net::lan(ui, &mut show.lan, lan_port, actions);
             walk::window(ui, &mut show.walk, extra);
+            translation::window(ui, &mut show.translation, tr_tool);
         }
         if mode != self.mode {
             self.mode = mode;

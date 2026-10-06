@@ -39,6 +39,27 @@ pub(super) fn draw(
             {
                 actions.push(Action::LoadQuickSave);
             }
+            ui.separator();
+            if ui
+                .menu_item_config("Translation Keys")
+                .selected(show.translation)
+                .build()
+            {
+                show.translation = !show.translation;
+            }
+            if let Some(_l) = ui.begin_menu("Language") {
+                let current = omsi_i18n::language();
+                let current = if current.is_empty() {
+                    "en".to_string()
+                } else {
+                    current
+                };
+                for code in omsi_i18n::languages() {
+                    if ui.menu_item_config(code).selected(current == code).build() {
+                        omsi_i18n::set_language(code);
+                    }
+                }
+            }
         }
         if let Some(_m) = ui.begin_menu("Net") {
             if ui
