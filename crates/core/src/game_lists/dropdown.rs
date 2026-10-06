@@ -66,7 +66,7 @@ pub(crate) fn dropdown_for(app: &App, row: usize, id: &str) -> Option<Dropdown> 
         }
         "metar_src" => {
             let mut v = vec![(tr("Automatic (nearest the map)"), "metar_src ".to_string())];
-            let own = &app.settings.metar_station;
+            let own = &::config::get_string("gameplay", "metar_station").unwrap_or_default();
             current = Some(0);
             for (i, (code, label)) in crate::weather_setup::metar_airports(&app.args.root)
                 .into_iter()
@@ -167,8 +167,8 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                 .take(4)
                 .collect::<String>()
                 .to_ascii_uppercase();
-            app.settings.metar_station = code.clone();
-            remember_setting("metar_station", &code);
+            ::config::set_setting("gameplay", "metar_station", code.clone());
+            let _ = ::config::save();
             app.metar_rx = None;
             app.metar_once = false;
             // With sync on, the new station is fetched at once. With it off this simply
@@ -205,6 +205,14 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                 if key == "drive_keys" {
                     ::config::set_setting("gameplay", "drive-keys", value);
                     let _ = ::config::save();
+                } else if key == "boarding" {
+                    ::config::set_setting("gameplay", "boarding", value);
+                    let _ = ::config::save();
+                } else if key == "maintenance" {
+                    if let Ok(v) = value.parse::<i64>() {
+                        ::config::set_setting("gameplay", "maintenance", v);
+                        let _ = ::config::save();
+                    }
                 } else if matches!(key, "vr_scale" | "vr_head_smoothing_ms" | "vr_mirror_rate") {
                     if let Some(v) = value.parse::<f64>().ok().filter(|v| v.is_finite()) {
                         ::config::set_setting("vr", &key[3..].replace('_', "-"), v);
@@ -501,6 +509,12 @@ pub(super) fn select_state(
     let options = select_options(key);
     let cur = if key == "drive_keys" {
         ::config::get_string("gameplay", "drive-keys").unwrap_or_default()
+    } else if key == "boarding" {
+        ::config::get_string("gameplay", "boarding").unwrap_or_default()
+    } else if key == "maintenance" {
+        ::config::get_int("gameplay", "maintenance")
+            .map(|v| v.to_string())
+            .unwrap_or_default()
     } else if matches!(key, "vr_scale" | "vr_head_smoothing_ms" | "vr_mirror_rate") {
         ::config::get_float("vr", &key[3..].replace('_', "-"))
             .map(|v| v.to_string())

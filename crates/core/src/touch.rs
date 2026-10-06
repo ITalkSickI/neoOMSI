@@ -483,7 +483,7 @@ impl App {
             }
             // a manual without the automatic clutch of the settings: its clutch pedal, left of
             // the brake's buttons
-            t.clutch_r = if manual && !self.settings.auto_clutch {
+            t.clutch_r = if manual && !::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) {
                 let ch = 112.0 * u;
                 Rect::new(
                     t.brake_r.x - 14.0 * u - 50.0 * u - 14.0 * u - 64.0 * u,

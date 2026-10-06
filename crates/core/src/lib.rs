@@ -318,7 +318,7 @@ pub(crate) fn make_app(
             Err(e) => log::warn!("LAN: {e}"),
         }
     }
-    if settings::Settings::load().time_sync
+    if ::config::get_bool("gameplay", "time_sync").unwrap_or(false)
         && args.lan_join.is_none()
         && args.server.is_none()
         && args.offscreen.is_none()
@@ -390,10 +390,10 @@ pub(crate) fn make_app(
     }
     if let (Some(l), None) = (lan.as_mut(), server_cfg.as_ref()) {
         if l.role == ::network::Role::Host {
-            l.clock_speed = if settings.time_sync {
+            l.clock_speed = if ::config::get_bool("gameplay", "time_sync").unwrap_or(false) {
                 1.0
             } else {
-                settings.time_speed.clamp(1.0, 30.0)
+                ::config::get_float("gameplay", "time_speed").unwrap_or(1.0).clamp(1.0, 30.0)
             };
         }
     }

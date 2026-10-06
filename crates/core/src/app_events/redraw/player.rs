@@ -404,9 +404,9 @@ impl App {
                 r,
                 scene,
                 dt,
-                self.settings.driver && self.on_foot.is_none(),
+                ::config::get_bool("gameplay", "driver").unwrap_or(true) && self.on_foot.is_none(),
                 self.view == "driver",
-                self.settings.hands_in_cab,
+                ::config::get_bool("gameplay", "hands_in_cab").unwrap_or(false),
             );
             if self.view != "free" && self.view != "foot" {
                 let key = look_key_of(&self.view, Some(p.cam_choice));

@@ -154,7 +154,7 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
     }
     let s = &app.settings;
     Some(match verb {
-        "speed" => s.time_speed as f32,
+        "speed" => ::config::get_float("gameplay", "time_speed").unwrap_or(1.0) as f32,
         "traffic" => app.traffic.as_ref()?.target as f32,
         "pax" => s.pax_density,
         "volume" => ::config::get_float("audio", "master-volume").unwrap_or(1.0) as f32,
@@ -211,8 +211,9 @@ pub(super) fn option_set(
     }
     match verb {
         "speed" => {
-            app.settings.time_speed = v as f64;
-            Some(("time_speed", app.settings.time_speed.to_string()))
+            ::config::set_setting("gameplay", "time_speed", v as f64);
+            let _ = ::config::save();
+            None
         }
         "traffic" => {
             if let Some(t) = app.traffic.as_mut() {
@@ -418,32 +419,32 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "shadows" => s.shadows,
         "head" => ::config::get_bool("camera", "head_movement").unwrap_or(true),
         "cam_smooth" => ::config::get_bool("camera", "smooth").unwrap_or(true),
-        "coll_objects" => s.collision_objects,
-        "coll_vehicles" => s.collision_vehicles,
+        "coll_objects" => ::config::get_bool("gameplay", "collision_objects").unwrap_or(true),
+        "coll_vehicles" => ::config::get_bool("gameplay", "collision_vehicles").unwrap_or(true),
         "mouse" => app.mouse_drive,
         "mouse_right" => s.mouse_right_off,
         "blinker_cancel" => s.blinker_cancel,
         "steer_center" => s.steer_center,
         "fps" => s.show_fps,
-        "auto_ibis" => s.auto_ibis,
-        "time_sync" => s.time_sync,
-        "metar_sync" => s.metar_sync,
+        "auto_ibis" => ::config::get_bool("gameplay", "auto_ibis").unwrap_or(false),
+        "time_sync" => ::config::get_bool("gameplay", "time_sync").unwrap_or(false),
+        "metar_sync" => ::config::get_bool("gameplay", "metar_sync").unwrap_or(false),
         "snow_cover" => app.weather.as_ref().is_some_and(|w| w.snow),
         "snow_road" => app.weather.as_ref().is_some_and(|w| w.snow_on_road),
         "camcoll" => ::config::get_bool("camera", "collision").unwrap_or(true),
         "steer_look" => ::config::get_bool("camera", "steer_look").unwrap_or(false),
-        "hands_in_cab" => s.hands_in_cab,
+        "hands_in_cab" => ::config::get_bool("gameplay", "hands_in_cab").unwrap_or(false),
         "ff" => controllers::ff_enabled(),
         "brake_hold" => s.brake_hold,
-        "auto_clutch" => s.auto_clutch,
+        "auto_clutch" => ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true),
         "headtrack" => ::config::get_bool("camera", "head_tracking").unwrap_or(false),
         "timetable_win" => app.timetable,
         "info_bar" => app.info_bar,
         "nav_arrows" => app.navigator.as_ref().map_or(s.nav_arrows, |n| n.arrows),
-        "exact_fare" => s.exact_fare,
-        "pax_prefer_seats" => s.pax_prefer_seats,
+        "exact_fare" => ::config::get_bool("gameplay", "exact_fare").unwrap_or(true),
+        "pax_prefer_seats" => ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false),
         "pax_ik" => app.args.pax_ik.unwrap_or(s.pax_ik),
-        "collision_pedestrians" => s.collision_pedestrians,
+        "collision_pedestrians" => ::config::get_bool("gameplay", "collision_pedestrians").unwrap_or(true),
         "ssao" => s.ssao,
         "detail_textures" => s.detail_textures,
         "reflections" => s.reflections,
@@ -451,7 +452,7 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "fullscreen" => s.fullscreen,
         "vsync" => s.vsync,
         "texture_compression" => s.texture_compression,
-        "driver" => s.driver,
+        "driver" => ::config::get_bool("gameplay", "driver").unwrap_or(true),
         "alt_view" => ::config::get_bool("camera", "alt_view").unwrap_or(true),
         "free_look" => ::config::get_bool("camera", "free_look").unwrap_or(false),
         "crosshair" => ::config::get_bool("camera", "crosshair").unwrap_or(true),
@@ -461,8 +462,8 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "steering_linear" => s.steering_linear,
         "old_steering" => s.old_steering,
         "red_steer_spd" => s.red_steer_spd,
-        "momentary_gears" => s.momentary_gears,
-        "auto_shift" => s.auto_shift,
+        "momentary_gears" => ::config::get_bool("gameplay", "momentary_gears").unwrap_or(false),
+        "auto_shift" => ::config::get_bool("gameplay", "auto_shift").unwrap_or(false),
         "ff_invert" => controllers::global_ff_invert(),
         "ui_scale_window" => s.ui_scale_window,
         "tooltips" => s.tooltips,
@@ -540,16 +541,18 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
         }
         // (at once: stuck under a bridge a map made too low, the bus drives on)
         "coll_objects" => {
-            app.settings.collision_objects = on;
+            ::config::set_setting("gameplay", "collision_objects", on);
+            let _ = ::config::save();
             let cw = app.world.as_ref().map(|w| w.collision.lock().clone());
             if let Some(p) = app.player.as_mut() {
                 p.vehicle.collision = cw.filter(|_| on);
             }
-            Some(("collision_objects", bit))
+            None
         }
         "coll_vehicles" => {
-            app.settings.collision_vehicles = on;
-            Some(("collision_vehicles", bit))
+            ::config::set_setting("gameplay", "collision_vehicles", on);
+            let _ = ::config::save();
+            None
         }
         "mouse" => {
             app.mouse_drive = on;
@@ -595,30 +598,33 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("mouse_right_off", bit))
         }
         "auto_ibis" => {
-            app.settings.auto_ibis = on;
+            ::config::set_setting("gameplay", "auto_ibis", on);
+            let _ = ::config::save();
             if let Some(p) = app.player.as_mut() {
                 p.auto_ibis = on;
             }
-            Some(("auto_ibis", bit))
+            None
         }
         // the real-time sync: the clock takes the device's date and time at once (a host's
         // clock runs at real time while it is on, at its time speed again after)
         "time_sync" => {
-            app.settings.time_sync = on;
+            ::config::set_setting("gameplay", "time_sync", on);
+            let _ = ::config::save();
             if let Some(l) = app.lan.as_mut().filter(|l| l.role == ::network::Role::Host) {
                 l.clock_speed = if on {
                     1.0
                 } else {
-                    app.settings.time_speed.clamp(1.0, 30.0)
+                    ::config::get_float("gameplay", "time_speed").unwrap_or(1.0).clamp(1.0, 30.0)
                 };
             }
             app.sync_real_time();
-            Some(("time_sync", bit))
+            None
         }
         // the METAR sync: the weather goes over to the report of the nearest airport and
         // cannot be changed while it is on (the cycle and a hand-made weather end with it)
         "metar_sync" => {
-            app.settings.metar_sync = on;
+            ::config::set_setting("gameplay", "metar_sync", on);
+            let _ = ::config::save();
             app.metar_rx = None;
             app.metar_once = false;
             app.metar_next = 0.0;
@@ -626,7 +632,7 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
                 app.weather_cycle = None;
                 app.weather_blend = None;
             }
-            Some(("metar_sync", bit))
+            None
         }
         "snow_cover" => {
             app.edit_weather(|w| w.snow = on);
@@ -656,19 +662,21 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "hands_in_cab" => {
-            app.settings.hands_in_cab = on;
-            Some(("hands_in_cab", bit))
+            ::config::set_setting("gameplay", "hands_in_cab", on);
+            let _ = ::config::save();
+            None
         }
         "brake_hold" => {
             app.settings.brake_hold = on;
             Some(("brake_hold", bit))
         }
         "auto_clutch" => {
-            app.settings.auto_clutch = on;
+            ::config::set_setting("gameplay", "auto_clutch", on);
+            let _ = ::config::save();
             if let Some(p) = app.player.as_mut() {
                 p.vehicle.host.auto_clutch = if on { 1.0 } else { 0.0 };
             }
-            Some(("auto_clutch", bit))
+            None
         }
         "ff" => {
             controllers::set_ff_enabled(on);
@@ -688,20 +696,23 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("nav_arrows", bit))
         }
         "exact_fare" => {
-            app.settings.exact_fare = on;
-            Some(("exact_fare", bit))
+            ::config::set_setting("gameplay", "exact_fare", on);
+            let _ = ::config::save();
+            None
         }
         "pax_prefer_seats" => {
-            app.settings.pax_prefer_seats = on;
-            Some(("pax_prefer_seats", bit))
+            ::config::set_setting("gameplay", "pax_prefer_seats", on);
+            let _ = ::config::save();
+            None
         }
         "pax_ik" => {
             app.settings.pax_ik = on;
             Some(("pax_ik", bit))
         }
         "collision_pedestrians" => {
-            app.settings.collision_pedestrians = on;
-            Some(("collision_pedestrians", bit))
+            ::config::set_setting("gameplay", "collision_pedestrians", on);
+            let _ = ::config::save();
+            None
         }
         "ssao" => {
             app.settings.ssao = on;
@@ -735,8 +746,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("texture_compression", bit))
         }
         "driver" => {
-            app.settings.driver = on;
-            Some(("driver", bit))
+            ::config::set_setting("gameplay", "driver", on);
+            let _ = ::config::save();
+            None
         }
         "alt_view" => {
             ::config::set_setting("camera", "alt_view", on);
@@ -781,15 +793,17 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("red_steer_spd", bit))
         }
         "momentary_gears" => {
-            app.settings.momentary_gears = on;
-            Some(("momentary_gears", bit))
+            ::config::set_setting("gameplay", "momentary_gears", on);
+            let _ = ::config::save();
+            None
         }
         "auto_shift" => {
-            app.settings.auto_shift = on;
+            ::config::set_setting("gameplay", "auto_shift", on);
+            let _ = ::config::save();
             if let Some(p) = app.player.as_mut() {
                 p.auto_shift = on;
             }
-            Some(("auto_shift", bit))
+            None
         }
         "ff_invert" => {
             controllers::set_global_ff_invert(on);

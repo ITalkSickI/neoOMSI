@@ -82,7 +82,7 @@ pub(crate) fn run_offscreen(
     let mut player = spawn_player(args, &world, &renderer, &mut scene)?;
     let spawn_z = player.as_ref().map(|p| p.vehicle.position.z).unwrap_or(0.0);
     if let Some(p) = player.as_mut() {
-        p.vehicle.host.auto_clutch = if settings.auto_clutch { 1.0 } else { 0.0 };
+        p.vehicle.host.auto_clutch = if ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) { 1.0 } else { 0.0 };
         // OMSI_PAX_CAM=n: `--view pax` from the bus's n-th passenger camera
         if let Some(k) = ::legacy_config::env::var("OMSI_PAX_CAM")
             .ok()
@@ -171,9 +171,9 @@ pub(crate) fn run_offscreen(
         if let Some(seed) = lan_seed {
             h.set_lan_seed(seed);
         }
-        h.exact_fare = settings.exact_fare;
-        h.boarding = settings.boarding.clone();
-        h.prefer_seats = settings.pax_prefer_seats;
+        h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
+        h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
+        h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
         h.voices = match settings.pax_voices.as_str() {
             "off" => 2,
             "tickets" => 1,
@@ -358,9 +358,9 @@ pub(crate) fn run_offscreen(
                                 w.y,
                                 p.z + 0.5,
                             )
-                            .below
-                            .map(|z| format!("{z:.4}"))
-                            .unwrap_or_default()
+                                .below
+                                .map(|z| format!("{z:.4}"))
+                                .unwrap_or_default()
                         })
                         .collect();
                     let _ = writeln!(
@@ -573,10 +573,10 @@ pub(crate) fn run_offscreen(
                 Some(c) => c,
                 None => match player.as_ref() {
                     Some(p)
-                        if args.cam.is_none() && args.view != "free" && args.follow.is_none() =>
-                    {
-                        p.camera(&args.view, &camera)
-                    }
+                    if args.cam.is_none() && args.view != "free" && args.follow.is_none() =>
+                        {
+                            p.camera(&args.view, &camera)
+                        }
                     _ => Camera {
                         position: camera.position,
                         yaw: camera.yaw,
@@ -625,7 +625,7 @@ pub(crate) fn run_offscreen(
                             &renderer,
                             &mut scene,
                             1.0 / 30.0,
-                            settings.driver,
+                            ::config::get_bool("gameplay", "driver").unwrap_or(true),
                             args.view == "driver",
                         );
                     }
@@ -845,10 +845,10 @@ pub(crate) fn run_offscreen(
                                 .filter(|(k, s, d)| {
                                     *d < 6.0
                                         && ((net.lanes[*k].at(*s).1 as f64 - v.heading + 540.0)
-                                            .rem_euclid(360.0)
-                                            - 180.0)
-                                            .abs()
-                                            < 80.0
+                                        .rem_euclid(360.0)
+                                        - 180.0)
+                                        .abs()
+                                        < 80.0
                                 })
                                 .min_by(|a, b| a.2.total_cmp(&b.2))
                             {
@@ -946,7 +946,7 @@ pub(crate) fn run_offscreen(
                         at.y,
                         at.z + 1.5,
                     )
-                    .below;
+                        .below;
                     let lost = under.is_none_or(|g| at.z < g - 0.6);
                     if i % 15 == 0 || lost {
                         log::info!(
@@ -963,7 +963,7 @@ pub(crate) fn run_offscreen(
                 }
                 // the driver's hands follow the wheel frame by frame (as in the window), so
                 // that the snapshots show them where the hand-over-hand has got to
-                if settings.driver && !snapshot_times.is_empty() {
+                if ::config::get_bool("gameplay", "driver").unwrap_or(true) && !snapshot_times.is_empty() {
                     player.sync_driver(&renderer, &mut scene, dt, true, false);
                 }
                 // OMSI_SUSP_TRACE=<csv>: every frame, the body's height and vertical speed and
@@ -1277,7 +1277,7 @@ pub(crate) fn run_offscreen(
                         &renderer,
                         &mut scene,
                         1.0 / 30.0,
-                        settings.driver,
+                        ::config::get_bool("gameplay", "driver").unwrap_or(true),
                         args.view == "driver",
                     );
                     if args.cam.is_none() && args.view != "free" && args.follow.is_none() {
@@ -1552,7 +1552,7 @@ pub(crate) fn run_offscreen(
                 &renderer,
                 &mut scene,
                 1.0 / 30.0,
-                settings.driver,
+                ::config::get_bool("gameplay", "driver").unwrap_or(true),
                 args.view == "driver",
             );
             for (t, f) in std::mem::take(&mut player.vehicle.host.fired_file_triggers) {
@@ -1958,7 +1958,7 @@ pub(crate) fn run_offscreen(
                     let run = |v: &mut ::simulation::VehicleInstance,
                                name: Option<&str>,
                                d: (f32, f32)|
-                     -> (bool, Vec<f32>, Vec<f32>, Vec<String>) {
+                               -> (bool, Vec<f32>, Vec<f32>, Vec<String>) {
                         restore(v);
                         v.host.fired_triggers.clear();
                         v.host.fired_file_triggers.clear();
@@ -2010,7 +2010,7 @@ pub(crate) fn run_offscreen(
                                 .filter(|&k| {
                                     !noisy[k]
                                         && (differs(after[k], idle[k])
-                                            || differs(held[k], idle_held[k]))
+                                        || differs(held[k], idle_held[k]))
                                 })
                                 .collect();
                             played = sounds
@@ -2081,7 +2081,7 @@ pub(crate) fn run_offscreen(
                     &renderer,
                     &mut scene,
                     1.0 / 30.0,
-                    settings.driver,
+                    ::config::get_bool("gameplay", "driver").unwrap_or(true),
                     args.view == "driver",
                 );
                 if let Ok(names) = ::legacy_config::env::var("OMSI_DEBUG_VARS") {
@@ -2104,7 +2104,7 @@ pub(crate) fn run_offscreen(
             &renderer,
             &mut scene,
             1.0 / 30.0,
-            settings.driver,
+            ::config::get_bool("gameplay", "driver").unwrap_or(true),
             args.view == "driver",
         );
         player_ref = Some(player);
@@ -3383,10 +3383,10 @@ fn tyre_lows(v: &::simulation::VehicleInstance, world: &World) -> Vec<(DVec3, f6
         let def = &v.ty.model.meshes[vm.def_index];
         if !v.mesh_props[i].visible
             || !def.animations.iter().any(|an| {
-                an.variable
-                    .to_ascii_lowercase()
-                    .starts_with("wheel_rotation_")
-            })
+            an.variable
+                .to_ascii_lowercase()
+                .starts_with("wheel_rotation_")
+        })
         {
             continue;
         }
@@ -3427,10 +3427,10 @@ fn vehicle_camera(player: &Player, camera: &mut Camera) {
     if v.len() >= 5 {
         camera.position = player.vehicle.position
             + player
-                .vehicle
-                .body_rotation()
-                .transform_point3(Vec3::new(v[0], v[1], v[2]))
-                .as_dvec3();
+            .vehicle
+            .body_rotation()
+            .transform_point3(Vec3::new(v[0], v[1], v[2]))
+            .as_dvec3();
         camera.yaw = player.vehicle.heading as f32 + v[3];
         camera.pitch = v[4];
         camera.near = 0.02;

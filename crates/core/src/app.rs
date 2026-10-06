@@ -669,7 +669,7 @@ impl App {
                         let audio = ::audio::AudioEngine::new();
                         if let Some(p) = p.as_mut() {
                             p.vehicle.host.auto_clutch =
-                                if self.settings.auto_clutch { 1.0 } else { 0.0 };
+                                if ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) { 1.0 } else { 0.0 };
                             p.load_sounds(&audio);
                             p.ibis_background = true;
                             if self.args.autostart {
@@ -753,9 +753,9 @@ impl App {
                     if let Some(lan) = self.lan.as_ref() {
                         h.set_lan_seed(lan::population_seed(lan));
                     }
-                    h.exact_fare = self.settings.exact_fare;
-                    h.boarding = self.settings.boarding.clone();
-                    h.prefer_seats = self.settings.pax_prefer_seats;
+                    h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
+                    h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
+                    h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
                     h.voices = match self.settings.pax_voices.as_str() {
                         "off" => 2,
                         "tickets" => 1,
@@ -1045,11 +1045,9 @@ impl App {
             return;
         }
         if let Some(p) = self.player.as_mut() {
-            p.vehicle.collision = self
-                .settings
-                .collision_objects
-                .then(|| w.collision.lock().clone());
-            p.vehicle.wheel_walls = self.settings.collision_objects;
+            let objects = ::config::get_bool("gameplay", "collision_objects").unwrap_or(true);
+            p.vehicle.collision = objects.then(|| w.collision.lock().clone());
+            p.vehicle.wheel_walls = objects;
         }
         match self.traffic.as_mut() {
             Some(t) => {

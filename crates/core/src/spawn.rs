@@ -275,8 +275,8 @@ pub(crate) fn spawn_player(
                     pos.y,
                     pos.z + 1.5,
                 )
-                .below
-                .is_none()
+                    .below
+                    .is_none()
                 {
                     // nothing under the place at all (the marker came out under the ground):
                     // on the ground above, not in the void under the map
@@ -411,7 +411,7 @@ pub(crate) fn spawn_player(
     let terrains = world.terrains.clone();
     let surfaces = world.surfaces.clone();
     vehicle.contact = Some(Arc::new(scene::DriveGround { terrains, surfaces }));
-    let objects = settings::Settings::load().collision_objects;
+    let objects = ::config::get_bool("gameplay", "collision_objects").unwrap_or(true);
     vehicle.collision = objects.then(|| world.collision.lock().clone());
     vehicle.wheel_walls = objects;
     // a rail vehicle rides the track (its position comes from the rails, not the tyres)
@@ -512,9 +512,9 @@ pub(crate) fn spawn_player(
         mirrors_dirty: false,
         take_change: false,
         toggled_up: Default::default(),
-        momentary_gears: settings::Settings::load().momentary_gears,
-        auto_ibis: settings::Settings::load().auto_ibis,
-        auto_shift: settings::Settings::load().auto_shift,
+        momentary_gears: ::config::get_bool("gameplay", "momentary_gears").unwrap_or(false),
+        auto_ibis: ::config::get_bool("gameplay", "auto_ibis").unwrap_or(false),
+        auto_shift: ::config::get_bool("gameplay", "auto_shift").unwrap_or(false),
         auto_shift_wait: 0.0,
         auto_shift_idle: 0.0,
         side_lights_by_l: false,
@@ -626,9 +626,9 @@ pub(crate) fn spawn_player(
                 .map(|f| {
                     !f.is_empty()
                         && def
-                            .file
-                            .to_ascii_lowercase()
-                            .contains(&f.to_ascii_lowercase())
+                        .file
+                        .to_ascii_lowercase()
+                        .contains(&f.to_ascii_lowercase())
                 })
                 .unwrap_or(false)
             {

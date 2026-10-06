@@ -20,26 +20,26 @@ pub struct Settings {
     pub navigator: bool, // TODO: Migrate to new config lib | category: ui | default value: true
     pub ui_opacity: f32, // TODO: Migrate to new config lib | category: ui | default value: 0.85
     pub navigator_corner: String, // TODO: Migrate to new config lib | category: ui | default value: "bottom-left"
-    pub boarding: String, // TODO: Migrate to new config lib | category: gameplay | default value: "auto"
-    pub pax_prefer_seats: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
+    pub boarding: String, // Migrated
+    pub pax_prefer_seats: bool, // Migrated
     pub detail_textures: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
-    pub exact_fare: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
+    pub exact_fare: bool, // Migrated
     pub enhanced: bool, // TODO: Migrate to new config lib | category: graphics | default value: false
     pub graphics: String, // TODO: Migrate to new config lib | category: graphics | default value: "vanilla_plus"
     pub fullscreen: bool, // TODO: Migrate to new config lib | category: graphics | default value: false
     pub vsync: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub volume: f32, // Migrated
     pub post_aa: String, // TODO: Migrate to new config lib | category: graphics | default value: "fxaa"
-    pub maintenance: u8, // TODO: Migrate to new config lib | category: gameplay | default value: 0
+    pub maintenance: u8, // Migrated
     pub ai_unsched_factor: f32, // TODO: Migrate to new config lib | category: ai | default value: 1.0
     pub ai_max_scheduled: u32, // TODO: Migrate to new config lib | category: ai | default value: 0
     pub ai_max_parked: i32, // TODO: Migrate to new config lib | category: ai | default value: 0
-    pub collision_vehicles: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
-    pub collision_objects: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
-    pub collision_pedestrians: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
+    pub collision_vehicles: bool, // Migrated
+    pub collision_objects: bool, // Migrated
+    pub collision_pedestrians: bool, // Migrated
     pub head_movement: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
     pub driverview_smooth: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
-    pub hands_in_cab: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
+    pub hands_in_cab: bool, // Migrated
     pub alt_view: bool, // Migrated
     pub free_look: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
     pub crosshair: bool, // Migrated
@@ -58,10 +58,10 @@ pub struct Settings {
     pub nav_stops_ext: bool, // TODO: Migrate to new config lib | category: navigator | default value: false
     pub texture_compression: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub texture_memory: u32, // TODO: Migrate to new config lib | category: graphics | default value: 0
-    pub auto_clutch: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
-    pub momentary_gears: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
-    pub auto_ibis: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
-    pub auto_shift: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
+    pub auto_clutch: bool, // Migrated
+    pub momentary_gears: bool, // Migrated
+    pub auto_ibis: bool, // Migrated
+    pub auto_shift: bool, // Migrated
     pub min_obj_size: f32, // TODO: Migrate to new config lib | category: graphics | default value: 0.013
     pub map_detail: i16, // TODO: Migrate to new config lib | category: graphics | default value: -1
     pub max_obj_dist: f32, // TODO: Migrate to new config lib | category: graphics | default value: -1.0
@@ -69,7 +69,7 @@ pub struct Settings {
     pub chat: bool, // TODO: Migrate to new config lib | category: ui | default value: true
     pub tooltips: bool, // TODO: Migrate to new config lib | category: ui | default value: true
     pub name_tags: bool, // TODO: Migrate to new config lib | category: ui | default value: true
-    pub driver: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
+    pub driver: bool, // Migrated
     pub show_fps: bool, // TODO: Migrate to new config lib | category: ui | default value: false
     pub notes: bool, // TODO: Migrate to new config lib | category: ui | default value: true
     pub ui_scale: f32, // TODO: Migrate to new config lib | category: ui | default value: 1.0
@@ -81,10 +81,10 @@ pub struct Settings {
     pub mirror_size: u32, // TODO: Migrate to new config lib | category: graphics | default value: 256
     pub mirror_refresh: String, // TODO: Migrate to new config lib | category: graphics | default value: "full"
     pub doppler: bool, // TODO: Migrate to new config lib | category: audio | default value: true
-    pub time_speed: f64, // TODO: Migrate to new config lib | category: gameplay | default value: 1.0
-    pub time_sync: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
-    pub metar_sync: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
-    pub metar_station: String, // TODO: Migrate to new config lib | category: gameplay | default value: ""
+    pub time_speed: f64, // Migrated
+    pub time_sync: bool, // Migrated
+    pub metar_sync: bool, // Migrated
+    pub metar_station: String, // Migrated
     pub shadow_casters: String, // TODO: Migrate to new config lib | category: graphics | default value: "all"
     pub steering_linear: bool, // TODO: Migrate to new config lib | category: controls | default value: false
     pub old_steering: bool, // TODO: Migrate to new config lib | category: controls | default value: false

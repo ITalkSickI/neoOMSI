@@ -466,7 +466,7 @@ impl App {
         }
         match self.lan.as_ref() {
             Some(l) => l.clock_speed,
-            None => self.settings.time_speed.clamp(1.0, 30.0),
+            None => ::config::get_float("gameplay", "time_speed").unwrap_or(1.0).clamp(1.0, 30.0),
         }
     }
 
@@ -613,7 +613,7 @@ impl App {
         if let Some(h) = self.humans.as_mut() {
             h.player_bus_swapped(now.uid, next.uid, &mut next.vehicle);
         }
-        next.vehicle.host.auto_clutch = if self.settings.auto_clutch { 1.0 } else { 0.0 };
+        next.vehicle.host.auto_clutch = if ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) { 1.0 } else { 0.0 };
         self.placed.push(now);
         let name = format!(
             "{} {}",
@@ -628,7 +628,7 @@ impl App {
     }
 
     pub(crate) fn metar_locked(&self) -> bool {
-        self.settings.metar_sync
+        ::config::get_bool("gameplay", "metar_sync").unwrap_or(false)
             && !self
             .lan
             .as_ref()
@@ -636,8 +636,8 @@ impl App {
     }
 
     pub(crate) fn metar_station(&self) -> String {
-        if !self.settings.metar_station.is_empty() {
-            return self.settings.metar_station.to_ascii_uppercase();
+        if !::config::get_string("gameplay", "metar_station").unwrap_or_default().is_empty() {
+            return ::config::get_string("gameplay", "metar_station").unwrap_or_default().to_ascii_uppercase();
         }
         match self
             .args
@@ -792,7 +792,7 @@ impl App {
     }
 
     pub(crate) fn real_time_locked(&self) -> bool {
-        self.settings.time_sync
+        ::config::get_bool("gameplay", "time_sync").unwrap_or(false)
             && !self
             .lan
             .as_ref()
@@ -902,7 +902,7 @@ impl App {
             clock.time -= 86400.0;
             clock.day_of_year = clock.day_of_year % ::simulation::clock::days_in_year(clock.year) + 1;
         }
-        if !self.settings.time_sync
+        if !::config::get_bool("gameplay", "time_sync").unwrap_or(false)
             || self
             .lan
             .as_ref()

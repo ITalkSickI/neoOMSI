@@ -23,6 +23,23 @@ impl Def {
 pub const DEFAULTS: &[(&str, &str, Def)] = &[
     // [gameplay]
     ("gameplay", "drive-keys", Def::Str("simple")),
+    ("gameplay", "boarding", Def::Str("auto")),
+    ("gameplay", "pax_prefer_seats", Def::Bool(false)),
+    ("gameplay", "exact_fare", Def::Bool(true)),
+    ("gameplay", "driver", Def::Bool(true)),
+    ("gameplay", "maintenance", Def::Int(0)),
+    ("gameplay", "collision_vehicles", Def::Bool(true)),
+    ("gameplay", "collision_objects", Def::Bool(true)),
+    ("gameplay", "collision_pedestrians", Def::Bool(true)),
+    ("gameplay", "hands_in_cab", Def::Bool(false)),
+    ("gameplay", "time_speed", Def::Float(1.0)),
+    ("gameplay", "time_sync", Def::Bool(false)),
+    ("gameplay", "metar_sync", Def::Bool(false)),
+    ("gameplay", "metar_station", Def::Str("")),
+    ("gameplay", "auto_clutch", Def::Bool(true)),
+    ("gameplay", "momentary_gears", Def::Bool(false)),
+    ("gameplay", "auto_ibis", Def::Bool(false)),
+    ("gameplay", "auto_shift", Def::Bool(false)),
     // [graphics]
     ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]

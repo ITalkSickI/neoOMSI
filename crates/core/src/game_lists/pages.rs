@@ -1049,7 +1049,7 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             "METAR sync",
             "The weather follows the real METAR report",
         ));
-        let src = if app.settings.metar_station.is_empty() {
+        let src = if ::config::get_string("gameplay", "metar_station").unwrap_or_default().is_empty() {
             format!("{} ({})", app.metar_station(), ::user_interface::tr("automatic"))
         } else {
             app.metar_station()
