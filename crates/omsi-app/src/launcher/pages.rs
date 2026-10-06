@@ -632,7 +632,7 @@ pub fn settings(l: &mut Launcher, area: Rect) {
         (body.bottom() - bar.bottom() - 18.0).max(0.0),
     );
     let stale_pax = l.state.games_with_old_passengers();
-    let restarting = l.state.restart_pending;
+    let restarting = !l.state.restarting.is_empty();
     let models_before = l.state.settings["pax_models"].clone();
     let s = &mut l.state.settings;
     let dirty = &mut l.state.settings_dirty;
@@ -1941,7 +1941,7 @@ fn pax_pack_row(ui: &mut Ui, c: &mut Col, out: &mut Outside) {
             out.restart_games = true;
         }
         c.y += ui.paragraph(
-            "The running game still has the passengers from before. Restarting ends the current drive and starts the session chosen here again.",
+            "A running game still has the passengers from before. Restarting ends its drive and starts it again as it was started.",
             Vec2::new(c.inner.x, c.y),
             c.inner.w,
             12.5,

@@ -25,14 +25,17 @@ fn status_of(content: &Path) -> Status {
     if !dir.join("Humans").is_dir() {
         return Status::Missing;
     }
-    let version = std::fs::read_to_string(dir.join("pack.json"))
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .map(|v| v["version"].as_u64().unwrap_or(0));
+    let version = manifest(&dir).map(|v| v["version"].as_u64().unwrap_or(0));
     match version {
         Some(v) if v < VERSION => Status::Outdated,
         _ => Status::Installed,
     }
+}
+
+fn manifest(dir: &Path) -> Option<serde_json::Value> {
+    std::fs::read_to_string(dir.join("pack.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
 }
 
 pub struct PaxPack {
@@ -143,6 +146,12 @@ fn place(zip: &Path, staging: &Path, dest: &Path, old: &Path) -> anyhow::Result<
     if !root.join("Humans").is_dir() {
         anyhow::bail!("the archive holds no passengers");
     }
+    let Some(m) = manifest(&root) else {
+        anyhow::bail!("the archive has no readable pack.json");
+    };
+    if m["name"] != "RealisticPax" || m["version"].as_u64() != Some(VERSION) {
+        anyhow::bail!("the archive is not version {VERSION} of the pack (its pack.json: {m})");
+    }
     let _ = std::fs::remove_dir_all(old);
     if dest.exists() {
         std::fs::rename(dest, old)?;
@@ -189,12 +198,27 @@ mod tests {
         archive(&bad, &[("readme.txt", "")]);
         assert!(place(&bad, &staging, &dest, &old).is_err());
         assert!(dest.join("old.txt").exists());
+        for manifest in [
+            None,
+            Some("not json"),
+            Some(r#"{"name": "RealisticPax"}"#),
+            Some(r#"{"name": "RealisticPax", "version": 2}"#),
+            Some(r#"{"name": "Other", "version": 1}"#),
+        ] {
+            let mut files = vec![("RealisticPax/Humans/Other/man01.hum", "[model]
+")];
+            files.extend(manifest.map(|m| ("RealisticPax/pack.json", m)));
+            archive(&bad, &files);
+            assert!(place(&bad, &staging, &dest, &old).is_err(), "{manifest:?}");
+            let _ = std::fs::remove_dir_all(&staging);
+            assert!(dest.join("old.txt").exists());
+        }
 
         let good = dir.join("good.zip");
         archive(
             &good,
             &[
-                ("RealisticPax/pack.json", r#"{"version": 1}"#),
+                ("RealisticPax/pack.json", r#"{"name": "RealisticPax", "version": 1}"#),
                 ("RealisticPax/Humans/Other/man01.hum", "[model]\n"),
             ],
         );
@@ -216,7 +240,7 @@ mod tests {
         archive(
             &source,
             &[
-                ("RealisticPax/pack.json", r#"{"version": 1}"#),
+                ("RealisticPax/pack.json", r#"{"name": "RealisticPax", "version": 1}"#),
                 ("RealisticPax/Humans/Other/man01.hum", "[model]\n"),
             ],
         );

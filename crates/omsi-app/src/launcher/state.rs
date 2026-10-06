@@ -250,7 +250,7 @@ pub struct State {
     pub instances: Vec<core::Instance>,
     pub queued_launch: Option<core::Duty>,
     pub pax_changed: Option<u64>,
-    pub restart_pending: bool,
+    pub restarting: Vec<core::Instance>,
     /// Start was pressed: the graphics device stays given up until the list of games has the
     /// game started (its process, once it is known), 15 s at most.
     pub launch_hold: Option<Instant>,
@@ -327,7 +327,7 @@ impl State {
             instances: Vec::new(),
             queued_launch: None,
             pax_changed: None,
-            restart_pending: false,
+            restarting: Vec::new(),
             launch_hold: None,
             launched_pid: None,
             crash: None,
@@ -671,18 +671,31 @@ impl State {
     }
 
     pub fn restart_games(&mut self) {
-        let running: Vec<u32> = self
-            .instances
-            .iter()
-            .filter(|i| i.running)
-            .map(|i| i.pid)
-            .collect();
-        for pid in running {
-            if !self.stopping.contains(&pid) {
-                self.stop(pid);
+        for i in to_restart(self.pax_changed, &self.instances, &self.restarting) {
+            if !self.stopping.contains(&i.pid) {
+                self.stop(i.pid);
             }
+            self.restarting.push(i);
         }
-        self.restart_pending = true;
+    }
+
+    fn restart_next(&mut self) {
+        if self.queued_launch.is_some()
+            || self
+                .launch_hold
+                .is_some_and(|t| t.elapsed().as_secs_f32() < 15.0)
+            || !all_ended(&self.restarting, &self.stopping, &self.instances)
+        {
+            return;
+        }
+        if !self.save_pending_settings() {
+            self.restarting.clear();
+            return;
+        }
+        if let Some(i) = self.restarting.pop() {
+            self.set_status("Starting the game again with the new passengers…", false);
+            self.queued_launch = Some(core::Duty::again(&i));
+        }
     }
 
     pub fn stop(&mut self, pid: u32) {
@@ -783,6 +796,7 @@ impl State {
             season: Some(c.season.clone()).filter(|s| s != "auto"),
             tutorial: None,
             situation: None,
+            again: None,
         }
     }
 
@@ -932,13 +946,8 @@ impl State {
             self.handle(m);
         }
         self.follow_clock();
-        if self.restart_pending
-            && self.stopping.is_empty()
-            && !self.instances.iter().any(|i| i.running)
-        {
-            self.restart_pending = false;
-            self.pax_changed = None;
-            self.launch();
+        if !self.restarting.is_empty() {
+            self.restart_next();
         }
         self.poll_t -= dt;
         if self.poll_t <= 0.0 {
@@ -1305,7 +1314,10 @@ impl State {
                 match result {
                     Ok(true) => self.set_status(format!("Game {pid} ended by itself."), false),
                     Ok(false) => self.set_status(format!("Game {pid} did not end by itself and was killed - this run is not saved."), true),
-                    Err(e) => self.set_status(e, true),
+                    Err(e) => {
+                        self.restarting.retain(|r| r.pid != pid);
+                        self.set_status(e, true)
+                    }
                 }
                 self.poll_now();
             }
@@ -1655,6 +1667,43 @@ mod launch_tests {
     }
 
     #[test]
+    fn a_restart_takes_only_the_games_with_the_old_passengers_and_waits_for_all_of_them() {
+        let at = |id: &str, pid, running, started| Instance {
+            id: id.into(),
+            started,
+            ..game(pid, running)
+        };
+        let games = [
+            at("a", 1, true, 100),
+            at("b", 2, true, 150),
+            at("new", 3, true, 250),
+            at("ended", 4, false, 100),
+        ];
+        let ids = |v: &[Instance]| v.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+        let old = super::to_restart(Some(200), &games, &[]);
+        assert_eq!(ids(&old), ["a", "b"]);
+        assert!(super::to_restart(Some(200), &games, &old).is_empty());
+        assert!(super::to_restart(None, &games, &[]).is_empty());
+
+        let mut stopping: std::collections::HashSet<u32> = [1].into();
+        assert!(!super::all_ended(&old, &stopping, &games));
+        stopping.clear();
+        assert!(!super::all_ended(&old, &stopping, &games), "still listed as running");
+        let after = [
+            at("a", 1, false, 100),
+            at("b", 2, true, 150),
+            at("new", 3, true, 250),
+        ];
+        assert!(!super::all_ended(&old, &stopping, &after));
+        let after = [
+            at("a", 1, false, 100),
+            at("b", 2, false, 150),
+            at("new", 3, true, 250),
+        ];
+        assert!(super::all_ended(&old, &stopping, &after), "the newer game keeps running");
+    }
+
+    #[test]
     fn only_a_game_started_before_the_passengers_changed_has_the_old_ones() {
         let at = |pid, running, started| Instance {
             started,
@@ -1695,8 +1744,35 @@ mod crash_tests {
     }
 }
 
+fn has_old_passengers(changed: Option<u64>, game: &core::Instance) -> bool {
+    changed.is_some_and(|t| game.running && game.started < t)
+}
+
 fn old_passengers(changed: Option<u64>, games: &[core::Instance]) -> bool {
-    changed.is_some_and(|t| games.iter().any(|i| i.running && i.started < t))
+    games.iter().any(|i| has_old_passengers(changed, i))
+}
+
+fn to_restart(
+    changed: Option<u64>,
+    games: &[core::Instance],
+    restarting: &[core::Instance],
+) -> Vec<core::Instance> {
+    games
+        .iter()
+        .filter(|i| has_old_passengers(changed, i))
+        .filter(|i| !restarting.iter().any(|r| r.id == i.id))
+        .cloned()
+        .collect()
+}
+
+fn all_ended(
+    restarting: &[core::Instance],
+    stopping: &std::collections::HashSet<u32>,
+    games: &[core::Instance],
+) -> bool {
+    restarting.iter().all(|r| {
+        !stopping.contains(&r.pid) && !games.iter().any(|i| i.id == r.id && i.running)
+    })
 }
 
 fn read_settings_file() -> Option<String> {

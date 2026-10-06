@@ -120,8 +120,9 @@ and `--pax-ik` control it (`ik` remains a settings alias).
 For realistic models, press **Download the realistic passengers** under
 **Settings → Gameplay** in the launcher (a few hundred MB, once). The launcher installs
 them into the content folder's `Packs/RealisticPax` and selects **Passenger models →
-Realistic**; they appear from the next game start. A game that is running then shows
-the old passengers until it is restarted: the launcher offers **Restart the game now**,
-which ends the current drive and starts the chosen session again. Licensing details are in
+Realistic**; they appear from the next game start. Games that are running then show
+the old passengers until they are restarted: the launcher offers **Restart the game now**,
+which ends their drives and starts each of them again as it was started; games started
+after the change are left running. Licensing details are in
 [RealisticPax](../tools/realistic-pax/README.md). Without the pack, installed OMSI
 passengers remain in use.

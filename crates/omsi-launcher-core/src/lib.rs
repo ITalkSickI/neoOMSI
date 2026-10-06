@@ -3426,6 +3426,31 @@ pub struct Duty {
     /// A situation file to continue (the map's `laststn.osn`): nothing else of the duty.
     #[serde(default)]
     pub situation: Option<String>,
+    #[serde(skip)]
+    pub again: Option<Vec<String>>,
+}
+
+impl Duty {
+    pub fn again(i: &Instance) -> Duty {
+        Duty {
+            map: i.map.clone(),
+            bus: i.bus.clone(),
+            entry: i.entry,
+            line: i.line.clone(),
+            tour: i.tour.clone(),
+            profile: Some(i.profile.clone()).filter(|p| !p.is_empty()),
+            lan: Some(i.lan.clone()),
+            again: Some(i.args.clone()),
+            ..Default::default()
+        }
+    }
+
+    fn args(&self) -> Result<Vec<String>> {
+        match &self.again {
+            Some(a) => Ok(a.clone()),
+            None => duty_args(self),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -3767,7 +3792,7 @@ pub struct Launched {
 /// Start a game for the duty. Any number may run at once; each writes its own log.
 pub fn launch(d: &Duty) -> Result<Launched> {
     if IN_PROCESS_GAMES {
-        let args = duty_args(d)?;
+        let args = d.args()?;
         let command = args.join(" ");
         log_to_file(&format!("game in this process: {command}"));
         *IN_PROCESS.lock().unwrap_or_else(|e| e.into_inner()) = Some(args);
@@ -3780,7 +3805,7 @@ pub fn launch(d: &Duty) -> Result<Launched> {
     }
     let c = load_config();
     let game = find_game(&c.game).context("the game binary was not found (set it under Setup)")?;
-    let args = duty_args(d)?;
+    let args = d.args()?;
     let profile = d
         .profile
         .clone()
@@ -4179,6 +4204,24 @@ mod tests {
         )
         .unwrap();
         assert!(!alone.iter().any(|x| x == "--whole-tour"));
+    }
+
+    #[test]
+    fn a_game_started_again_keeps_its_command_line() {
+        let i = Instance {
+            map: "maps/x/global.cfg".into(),
+            bus: "Vehicles/x.bus".into(),
+            profile: "Jo".into(),
+            lan: "host".into(),
+            args: vec!["--lan-host".into(), "0".into()],
+            ..Default::default()
+        };
+        let d = Duty::again(&i);
+        assert_eq!(d.args().unwrap(), i.args);
+        assert_eq!(
+            (d.map.as_str(), d.profile.as_deref(), d.lan.as_deref()),
+            ("maps/x/global.cfg", Some("Jo"), Some("host"))
+        );
     }
 
     #[test]
