@@ -1,7 +1,9 @@
 //! `Snd_OutsideVol`, the one global of the runtime: how open the listener's bus is to the
 //! outside (doors, driver's window), written by the player's scripts every frame and read at
-//! the sound-set level. The helpers below are the stock `sound_volume.osc` shaping that the
-//! outside tests exercise; wiring them into the update path is Block B.
+//! the sound-set level. [`outside_gain`] and [`lowpass_of`] are the stock
+//! `sound_volume.osc` shaping, wired into an exterior sound set's transmission while the
+//! listener sits in a cabin (see `runtime::sound`). The own bus's outside-only entries go
+//! through `conditions::split` instead; the two paths are disjoint.
 
 /// `Snd_OutsideVol` of the bus the listener sits in (bits of an f32; NaN = none).
 static OUTSIDE_OPEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x7fc0_0000);
@@ -20,7 +22,6 @@ pub(super) fn outside_open() -> Option<f32> {
 }
 
 /// A cutoff `t` of the way from `a` to `b` (0 = no filter, treated as wide open).
-#[cfg(test)]
 pub(super) fn lp_between(a: f32, b: f32, t: f32) -> f32 {
     if a <= 0.0 && b <= 0.0 {
         return 0.0;
@@ -49,7 +50,6 @@ pub(super) fn merge_lowpass(a: f32, b: f32) -> f32 {
 /// and leaves the rest to the scripts' volume curves (`Snd_OutsideVol` and the like). We
 /// muffled every entry of it not tagged as a cabin sound alone - a blinker relay tagged
 /// for inside and out was cut to a quarter below 450 Hz, heard only with a door open.
-#[cfg(test)]
 pub(super) fn lowpass_of(muffled: f32, exterior: bool) -> f32 {
     if muffled > 0.0 && exterior {
         // doors or the driver's window open let the outside in unfiltered
@@ -67,7 +67,6 @@ pub(super) fn lowpass_of(muffled: f32, exterior: bool) -> f32 {
 /// `Snd_OutsideVol` (0 with everything shut, up to 0.5 with doors or the driver's window
 /// open: "when doors are open, you can hear outside sounds louder"); a shut bus keeps a
 /// quarter, an open one all of it. Without the variable the level stays as it was.
-#[cfg(test)]
 pub(super) fn outside_gain(muffled: f32, exterior: bool) -> f32 {
     if muffled > 0.0 && exterior {
         let shut = match outside_open() {

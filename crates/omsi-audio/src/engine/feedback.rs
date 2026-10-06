@@ -9,7 +9,7 @@
 
 use crate::assets::{clip::Clip, stream::StreamBuf};
 use crate::spatial::distance_gain;
-use crate::voice::{Voice, VoiceId, VoiceParams};
+use crate::voice::{MixParams, Voice, VoiceId, VoiceParams};
 use glam::Vec3;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -87,7 +87,7 @@ pub(crate) enum VoiceAsset {
 
 /// One voice the game started, as the game remembers it.
 pub(crate) struct ActiveVoice {
-    pub(crate) params: VoiceParams,
+    pub(crate) params: MixParams,
     pub(crate) asset: VoiceAsset,
 }
 
@@ -158,7 +158,7 @@ impl super::AudioEngine {
             .position
             .map(|p| distance_gain(a.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
-        Some((a.params, a.params.gain * spatial))
+        Some((a.params.into(), a.params.level.gain() * spatial))
     }
 
     pub fn is_playing(&self, id: VoiceId) -> bool {
@@ -196,7 +196,7 @@ mod tests {
             samples: vec![0; 4],
         });
         for id in 0..(REAPER_CAPACITY as u64 + 3) {
-            let mut v = Voice::clip_voice(id, clip.clone(), VoiceParams::default());
+            let mut v = Voice::clip_voice(id, clip.clone(), VoiceParams::default().into());
             v.finish();
             voices.push(v);
         }

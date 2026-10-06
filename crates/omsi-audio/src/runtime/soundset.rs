@@ -5,9 +5,10 @@
 use crate::clock::Clock;
 use crate::engine::Playback;
 use crate::runtime::event::SoundEvent;
-use crate::runtime::placement;
-use crate::runtime::sound::{warn_missing_once, EntryCtx, OnlyOne, RuntimeSound, SoundState};
-use crate::voice::VoiceParams;
+use crate::runtime::level::SOUND_MAXCOUNT;
+use crate::runtime::sound::{warn_missing_once, volume_side, EntryCtx, OnlyOne, RuntimeSound, SoundState};
+use crate::runtime::{outside, placement};
+use crate::voice::{Level, MixParams, VoiceParams};
 use glam::{Mat4, Vec3};
 use omsi_vehicle::SoundCfg;
 use std::path::Path;
@@ -261,10 +262,16 @@ impl SoundSet {
             return;
         };
         let ai = self.ai;
-        let (eased, _) = self.advance_blend();
+        let (eased, muffled) = self.advance_blend();
         self.inside_factor(eased, object_to_world, engine.listener_position());
         let (exterior, master) = (self.exterior, self.master);
+        let lowpass_hz = outside::lowpass_of(muffled, exterior);
         let now = self.clock.now();
+        let mut used = self
+            .sounds
+            .iter()
+            .filter(|s| s.voice.is_some_and(|id| engine.is_playing(id)))
+            .count();
         for s in self.sounds.iter_mut() {
             if !s
                 .def
@@ -274,20 +281,34 @@ impl SoundSet {
             {
                 continue;
             }
+            // the runtime admission budget: a `(T.F.)` sound past `[sound_maxcount]` and with
+            // no voice of its own does not start
+            let running = s.voice.is_some_and(|id| engine.is_playing(id));
+            if !running && used >= SOUND_MAXCOUNT {
+                continue;
+            }
             s.active_since = Some(now);
-            let Some(vol) = crate::runtime::sound::volume_side(&s.def, var, ai, 0.0, 1.0) else {
+            let Some((record, script, through)) = volume_side(&s.def, var, ai, 0.0, 1.0) else {
                 continue;
             };
+            if !running {
+                used += 1;
+            }
             let (position, reach, pan) =
                 placement::place(s.def.pos, s.def.range, exterior, object_to_world);
-            let params = VoiceParams {
-                gain: vol * master,
+            let params = MixParams {
+                level: Level::Omsi {
+                    record,
+                    script,
+                    transmission: through * outside::outside_gain(muffled, exterior),
+                    master,
+                },
                 pitch: 1.0,
                 looping: false,
                 position,
                 doppler: !self.listener_vehicle,
                 range: reach,
-                lowpass_hz: 0.0,
+                lowpass_hz,
                 important: s.def.important,
                 pan,
             };
@@ -295,7 +316,7 @@ impl SoundSet {
                 engine.stop(id);
             }
             s.clip = Some(clip.clone());
-            s.voice = Some(engine.play(clip.clone(), params));
+            s.voice = Some(engine.play_mix(clip.clone(), params));
             s.state = SoundState::Running;
         }
     }
@@ -410,7 +431,7 @@ impl SoundSet {
         if !engine.enabled() {
             return;
         }
-        let (eased, _) = self.advance_blend();
+        let (eased, muffled) = self.advance_blend();
         let listener = engine.listener_position();
         let inside = self.inside_factor(eased, object_to_world, listener);
         if self.hull.is_some() && self.hull_override.is_none() {
@@ -427,6 +448,7 @@ impl SoundSet {
             triggers,
             ai,
             exterior,
+            muffled,
             master,
             doppler,
             now,
@@ -435,8 +457,21 @@ impl SoundSet {
         // let every entry of this frame consult and update it.
         let mut only_one = std::mem::take(&mut self.only_one);
         only_one.retain(|_, id| engine.is_playing(*id));
+        // The runtime's OMSI admission budget (`[sound_maxcount]`), counted over this set's
+        // running voices. Past it an entry keeps running but no new voice starts; the mixer's
+        // separate `MAX_VOICES` virtualization is invisible here.
+        let mut used = self
+            .sounds
+            .iter()
+            .filter(|s| s.voice.is_some_and(|id| engine.is_playing(id)))
+            .count();
         for s in self.sounds.iter_mut() {
-            s.update(engine, &cx, &mut only_one);
+            let before = s.voice.is_some_and(|id| engine.is_playing(id));
+            s.update(engine, &cx, used < SOUND_MAXCOUNT, &mut only_one);
+            let after = s.voice.is_some_and(|id| engine.is_playing(id));
+            used = used
+                .saturating_add(usize::from(after))
+                .saturating_sub(usize::from(before));
         }
         self.only_one = only_one;
     }

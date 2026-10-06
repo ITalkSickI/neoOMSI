@@ -4,5 +4,5 @@
 pub mod params;
 pub mod voice;
 
-pub use params::{DOPPLER, Listener, VoiceId, VoiceParams};
+pub use params::{Level, MixParams, DOPPLER, Listener, VoiceId, VoiceParams};
 pub use voice::{doppler_enabled, Voice};

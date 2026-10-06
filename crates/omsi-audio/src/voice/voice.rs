@@ -5,7 +5,9 @@
 use crate::assets::{stream::StreamBuf, Clip};
 use crate::dsp::{filter::LowPass, resample};
 use crate::spatial::{self, Spatializer};
-use crate::voice::params::{Listener, VoiceId, VoiceParams, DOPPLER};
+use crate::voice::params::{Level, Listener, MixParams, VoiceId, DOPPLER};
+#[cfg(test)]
+use crate::voice::params::VoiceParams;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -14,7 +16,7 @@ pub struct Voice {
     clip: Arc<Clip>,
     /// A voice fed while it plays (internet radio) instead of from `clip`.
     pub(crate) stream: Option<Arc<StreamBuf>>,
-    params: VoiceParams,
+    params: MixParams,
     pos: f64,
     finished: bool,
     /// Smoothed gain to avoid clicks.
@@ -28,7 +30,7 @@ pub struct Voice {
 
 impl Voice {
     /// A voice playing `clip`.
-    pub fn clip_voice(id: VoiceId, clip: Arc<Clip>, params: VoiceParams) -> Voice {
+    pub fn clip_voice(id: VoiceId, clip: Arc<Clip>, params: MixParams) -> Voice {
         Voice {
             id,
             clip,
@@ -43,7 +45,7 @@ impl Voice {
     }
 
     /// A voice playing what `stream` is fed with; the voice ends when the stream is closed.
-    pub fn stream_voice(id: VoiceId, stream: Arc<StreamBuf>, params: VoiceParams) -> Voice {
+    pub fn stream_voice(id: VoiceId, stream: Arc<StreamBuf>, params: MixParams) -> Voice {
         Voice {
             id,
             clip: Arc::new(Clip {
@@ -73,7 +75,7 @@ impl Voice {
         self.stream.is_some()
     }
 
-    pub fn params(&self) -> VoiceParams {
+    pub fn params(&self) -> MixParams {
         self.params
     }
 
@@ -89,8 +91,9 @@ impl Voice {
     /// block to carry a steady level from the first frame).
     #[cfg(test)]
     pub(crate) fn test_voice(id: VoiceId, clip: Arc<Clip>, params: VoiceParams) -> Voice {
-        let mut v = Voice::clip_voice(id, clip, params);
-        v.cur_gain = params.gain;
+        let mix = MixParams::from(params);
+        let mut v = Voice::clip_voice(id, clip, mix);
+        v.cur_gain = mix.level.gain();
         v
     }
 
@@ -100,7 +103,7 @@ impl Voice {
     /// `DOPPLER` switch read once by the engine.
     pub fn apply_params(
         &mut self,
-        params: VoiceParams,
+        params: MixParams,
         now: Instant,
         listener: glam::Vec3,
         doppler_enabled: bool,
@@ -126,14 +129,14 @@ impl Voice {
         self.params = params;
     }
 
-    /// How loud this voice reaches `listener` (its gain and distance), to rank voices by.
+    /// How loud this voice reaches `listener` (its level and distance), to rank voices by.
     pub fn heard_gain(&self, listener: &Listener) -> f32 {
         let spatial = self
             .params
             .position
             .map(|p| spatial::distance_gain(self.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
-        self.params.gain * spatial
+        self.params.level.gain() * spatial
     }
 
     /// Move the voice on by `frames` output frames without mixing it (looping or ending as
@@ -180,7 +183,15 @@ impl Voice {
             listener.position,
             listener.right,
         );
-        let target_gain = (self.params.gain * placed.gain * listener.master).max(0.0);
+        // Documented legacy order: the level (record × script × transmission × set master,
+        // already clamped to 0 dB) is multiplied by the listener's global volume and only
+        // then *once* by the distance gain. A raw application gain takes the same path but
+        // is not clamped (the output limiter handles it). Frequency and pan are separate.
+        let level = match self.params.level {
+            Level::Raw(g) => g * listener.master,
+            Level::Omsi { .. } => (self.params.level.product() * listener.master).clamp(0.0, 1.0),
+        };
+        let target_gain = (level * placed.gain).max(0.0);
         self.lp
             .set_target(self.params.lowpass_hz, frames, rate as f32);
         let lp_on = self.lp.is_on();
@@ -289,14 +300,14 @@ mod tests {
             doppler,
             ..Default::default()
         };
-        let mut own = Voice::clip_voice(1, clip.clone(), params(None, false));
-        let mut passing = Voice::clip_voice(2, clip, params(None, false));
+        let mut own = Voice::clip_voice(1, clip.clone(), params(None, false).into());
+        let mut passing = Voice::clip_voice(2, clip, params(None, false).into());
         let now = Instant::now();
         for (distance, elapsed) in [(2.0, 0), (2.2, 20)] {
             let at = now + std::time::Duration::from_millis(elapsed);
             let position = Some(Vec3::new(distance, 0.0, 0.0));
-            own.apply_params(params(position, false), at, Vec3::ZERO, true);
-            passing.apply_params(params(position, true), at, Vec3::ZERO, true);
+            own.apply_params(params(position, false).into(), at, Vec3::ZERO, true);
+            passing.apply_params(params(position, true).into(), at, Vec3::ZERO, true);
         }
         assert_eq!(own.doppler.2, 1.0);
         assert!(passing.doppler.2 < 1.0);

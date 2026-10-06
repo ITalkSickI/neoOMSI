@@ -5,16 +5,26 @@
 use crate::assets::{clip::Clip, stream::StreamBuf};
 use crate::clock::Clock;
 use crate::engine::AudioEngine;
-use crate::voice::{VoiceId, VoiceParams};
+use crate::voice::{MixParams, VoiceId, VoiceParams};
 use glam::Vec3;
 use std::path::Path;
 use std::sync::Arc;
 
 pub trait Playback {
     fn play(&self, clip: Arc<Clip>, params: VoiceParams) -> VoiceId;
+    /// Play with the runtime's separate legacy levels (see [`MixParams`]). The default
+    /// forwards through the raw path, so a non-OMSI implementation stays compatible; the
+    /// concrete engine overrides it so the split survives.
+    fn play_mix(&self, clip: Arc<Clip>, params: MixParams) -> VoiceId {
+        self.play(clip, params.into())
+    }
     fn play_stream(&self, stream: Arc<StreamBuf>, params: VoiceParams) -> VoiceId;
     fn stop(&self, id: VoiceId);
     fn set_params(&self, id: VoiceId, params: VoiceParams);
+    /// Set the runtime's separate levels (see [`MixParams`]).
+    fn set_mix_params(&self, id: VoiceId, params: MixParams) {
+        self.set_params(id, params.into());
+    }
     fn is_playing(&self, id: VoiceId) -> bool;
     fn voice_state(&self, id: VoiceId) -> Option<(VoiceParams, f32)>;
     fn listener_position(&self) -> Vec3;
@@ -31,6 +41,10 @@ impl Playback for AudioEngine {
         AudioEngine::play(self, clip, params)
     }
 
+    fn play_mix(&self, clip: Arc<Clip>, params: MixParams) -> VoiceId {
+        AudioEngine::play_mix(self, clip, params)
+    }
+
     fn play_stream(&self, stream: Arc<StreamBuf>, params: VoiceParams) -> VoiceId {
         AudioEngine::play_stream(self, stream, params)
     }
@@ -41,6 +55,10 @@ impl Playback for AudioEngine {
 
     fn set_params(&self, id: VoiceId, params: VoiceParams) {
         AudioEngine::set_params(self, id, params)
+    }
+
+    fn set_mix_params(&self, id: VoiceId, params: MixParams) {
+        AudioEngine::set_mix_params(self, id, params)
     }
 
     fn is_playing(&self, id: VoiceId) -> bool {

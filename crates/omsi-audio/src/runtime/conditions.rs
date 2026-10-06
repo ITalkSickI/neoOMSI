@@ -62,22 +62,25 @@ pub(crate) fn conditions_hold(def: &SoundEntry, var: &dyn Fn(&str) -> Option<f32
         .all(|c| c.holds(var(&c.variable).unwrap_or(0.0)))
 }
 
-/// Volume factor from the volume curves and conditions. `None` when a condition or the
-/// `[viewpoint]` silences the sound; `view` is [`placement::view_mask`]. `outside_open` is
-/// how far the listener's bus is open to the outside (`Snd_OutsideVol`), or `None` when the
-/// scripts give none.
+/// The separate legacy level values of an entry, before the 0 dB clamp:
+/// `(record, script, transmission)`. `record` is the recording level (`def.volume`),
+/// `script` the product of the script volume curves, `transmission` the inside/outside
+/// share (1.0, or `Snd_OutsideVol`). `None` when a condition or the `[viewpoint]` silences
+/// the sound; `view` is [`placement::view_mask`]. `outside_open` is how far the listener's
+/// bus is open to the outside (`Snd_OutsideVol`), or `None` when the scripts give none.
 ///
 /// The exe (`TSound` update) evaluates the conditions only for entries without a
 /// `[trigger]`: a triggered entry plays whenever its trigger fires, whatever its conditions
-/// say.
-pub(crate) fn volume(
+/// say. It multiplies the recording and script factors and the transmission and clamps only
+/// once, at the very end (0 dB max); see [`crate::runtime::level`].
+pub(crate) fn split(
     def: &SoundEntry,
     var: &dyn Fn(&str) -> Option<f32>,
     view: i32,
     active: f32,
     facing: f32,
     outside_open: Option<f32>,
-) -> Option<f32> {
+) -> Option<(f32, f32, f32)> {
     // (an outside sound of the bus the camera sits in - no bit 2, the SD200's exterior
     // engine at `[viewpoint] 5` - comes into the cab through what is open, at
     // `Snd_OutsideVol`: TSound update 0x750340, played when that is over 0.01 and its
@@ -92,17 +95,31 @@ pub(crate) fn volume(
     if def.triggers.is_empty() && !conditions_hold(def, var) {
         return None;
     }
-    let mut vol = def.volume;
+    let mut script = 1.0;
     for vc in &def.vol_curves {
         if let Some(x) = curve_input(vc, var, active, facing) {
-            vol *= curve(&vc.points, x);
+            script *= curve(&vc.points, x);
         }
     }
-    // DirectSound has no gain over 0 dB: OMSI turns the factor into hundredths of a dB and
-    // the buffer takes at most 0, so a factor over 1 plays at 1. The MB 412D's
-    // `[sound] start2.wav` carries a loop sound's lines - "44100" read as its volume - and
-    // its start-up roared 44 100 times too loud.
-    Some((vol * through).clamp(0.0, 1.0))
+    Some((def.volume, script, through))
+}
+
+/// [`split`] as the single clamped factor the pure rules and tests use: the renderer itself
+/// keeps the parts separate and clamps after the global master (see
+/// [`crate::runtime::level`]). DirectSound has no gain over 0 dB, so a factor over 1 plays
+/// at 1 - the MB 412D's `[sound] start2.wav` carries a loop sound's lines ("44100" read as
+/// its volume) and its start-up roared 44 100 times too loud.
+#[cfg(test)]
+pub(crate) fn volume(
+    def: &SoundEntry,
+    var: &dyn Fn(&str) -> Option<f32>,
+    view: i32,
+    active: f32,
+    facing: f32,
+    outside_open: Option<f32>,
+) -> Option<f32> {
+    split(def, var, view, active, facing, outside_open)
+        .map(|(record, script, through)| (record * script * through).clamp(0.0, 1.0))
 }
 
 /// The playback rate of a `[loopsound]` relative to its clip, and whether it is fast enough

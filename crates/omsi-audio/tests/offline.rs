@@ -173,3 +173,36 @@ fn a_triggered_event_not_loaded_yet_keeps_its_start() {
     assert_eq!(engine.voice_count(), 1, "the accepted event was not swallowed");
     assert_eq!(set.state(0), Some(SoundState::Running));
 }
+
+/// A `[3d]` sound to the listener's right: DirectSound's pan damps the far (left) channel,
+/// it does not spread the level over both.
+#[test]
+fn a_sound_on_the_right_damps_the_left_channel() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/pan.cfg"));
+    let engine = engine_with(&cfg);
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let mut out = vec![0.0f32; BLOCK * 2];
+    step(&mut set, &engine, &[], &mut out);
+    let left: f32 = out.iter().step_by(2).map(|s| s * s).sum();
+    let right: f32 = out.iter().skip(1).step_by(2).map(|s| s * s).sum();
+    assert!(right > left * 100.0, "left {left}, right {right}");
+}
+
+/// A recording level over 1 is clamped only after the set master (OMSI's 0 dB buffer): the
+/// set master 0.5 with a level 4.0 gives 1.0, not 0.5.
+#[test]
+fn a_loud_level_is_clamped_after_the_set_master() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/volume.cfg"));
+    let engine = engine_with(&cfg);
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    set.master = 0.5;
+    let mut out = vec![0.0f32; BLOCK * 2];
+    step(&mut set, &engine, &[], &mut out);
+    let played = set.playing(&engine);
+    assert_eq!(played.len(), 1);
+    assert!(
+        (played[0].1 - 1.0).abs() < 0.02,
+        "the product is clamped after the master, not cut early: {}",
+        played[0].1
+    );
+}

@@ -5,7 +5,7 @@
 use crate::assets::Clip;
 use crate::engine::Playback;
 use crate::runtime::{conditions, outside, placement};
-use crate::voice::{VoiceId, VoiceParams};
+use crate::voice::{Level, MixParams, VoiceId};
 use glam::{Mat4, Vec3};
 use omsi_vehicle::SoundEntry;
 use std::collections::HashMap;
@@ -80,6 +80,9 @@ pub(super) struct EntryCtx<'a> {
     pub triggers: &'a [String],
     pub ai: bool,
     pub exterior: bool,
+    /// How muffled a foreign bus's sound is by the listener's own bodywork (0..1): the
+    /// inside/outside transmission for an `exterior` set, see [`crate::runtime::outside`].
+    pub muffled: f32,
     pub master: f32,
     pub doppler: bool,
     pub now: Instant,
@@ -126,8 +129,18 @@ impl RuntimeSound {
 
     /// The per-frame update of this entry (see `SoundSet::update_fired` for the semantics
     /// of trigger, loop and one-shot entries). `only_one` is the sound set's central
-    /// `[onlyone]` registry, keyed by file.
-    pub(super) fn update(&mut self, engine: &dyn Playback, cx: &EntryCtx, only_one: &mut OnlyOne) {
+    /// `[onlyone]` registry, keyed by file. `admit` is the runtime's OMSI admission
+    /// decision (see [`crate::runtime::level::SOUND_MAXCOUNT`]): when false the entry may
+    /// keep an already-running voice but must not start a new one this frame. That is
+    /// separate from the mixer's technical `MAX_VOICES` virtualization, which never changes
+    /// what the runtime believes is playing.
+    pub(super) fn update(
+        &mut self,
+        engine: &dyn Playback,
+        cx: &EntryCtx,
+        admit: bool,
+        only_one: &mut OnlyOne,
+    ) {
         // How the exe plays an entry (`TSound` update, 2.2.032):
         // * with a `[trigger]`: once each time the trigger fires, from the start, never
         //   looped (a `[loopsound]` too) and without looking at its conditions;
@@ -172,7 +185,11 @@ impl RuntimeSound {
             None
         };
         let fired = fired_by.is_some();
-        let mut vol = match fired_by {
+        // The separate legacy values (recording level, script volume, inside/outside). A
+        // triggered entry reads its curve at the instant it fired and holds the peak of the
+        // combined volume (TSound +0x2c); the renderer clamps the product only at the end, so
+        // a level is never cut before the global master (see `runtime::level`).
+        let split = match fired_by {
             Some(t) => volume_side(
                 &self.def,
                 &|n| (cx.at_fire)(t, n).or_else(|| (cx.var)(n)),
@@ -182,11 +199,38 @@ impl RuntimeSound {
             ),
             None => volume_side(&self.def, cx.var, cx.ai, active, facing),
         };
-        if triggered {
-            vol = conditions::peak_hold(&mut self.peak, vol, fired);
-        }
         // the conditions or the `[viewpoint]` silence it this frame
-        let suppressed = vol.is_none();
+        let suppressed = split.is_none();
+        let mut level = Level::Omsi {
+            record: 0.0,
+            script: 1.0,
+            transmission: 1.0,
+            master: cx.master,
+        };
+        let mut pre_master = 0.0;
+        if let Some((record, script, through)) = split {
+            // the inside/outside transmission: the own bus's `Snd_OutsideVol` share (folded
+            // into `through`) times the bodywork the listener's own cabin puts between them
+            let (record, script, through) = if triggered {
+                let combined = conditions::peak_hold(
+                    &mut self.peak,
+                    Some(record * script * through),
+                    fired,
+                )
+                .unwrap_or(0.0);
+                (combined, 1.0, 1.0)
+            } else {
+                (record, script, through)
+            };
+            let transmission = through * outside::outside_gain(cx.muffled, cx.exterior);
+            pre_master = record * script * transmission;
+            level = Level::Omsi {
+                record,
+                script,
+                transmission,
+                master: cx.master,
+            };
+        }
         let Some(clip) = self.resolve_asset(engine) else {
             // no asset yet: an accepted one-shot start waits for the clip instead of being
             // swallowed by the asynchronous load
@@ -207,17 +251,20 @@ impl RuntimeSound {
             return;
         };
         let (pitch, fast_enough) = conditions::pitch_of(&self.def, cx.var, clip.sample_rate);
-        let audible = vol.map(|v| v > 0.001).unwrap_or(false) && fast_enough;
+        let audible = pre_master > 0.001 && fast_enough;
         let (position, reach, pan) =
             placement::place(self.def.pos, self.def.range, cx.exterior, cx.object_to_world);
-        let params = |looping: bool| VoiceParams {
-            gain: vol.unwrap_or(0.0) * cx.master,
+        // the inside/outside timbre: a foreign bus heard from the cabin loses its edge as
+        // the bodywork closes (the transmission level is separate, above)
+        let lowpass_hz = outside::lowpass_of(cx.muffled, cx.exterior);
+        let params = |looping: bool| MixParams {
+            level,
             pitch: pitch.max(0.001),
             looping,
             position,
             doppler: cx.doppler,
             range: reach,
-            lowpass_hz: 0.0,
+            lowpass_hz,
             important: self.def.important,
             pan,
         };
@@ -226,9 +273,13 @@ impl RuntimeSound {
             match (self.voice, audible) {
                 (Some(id), true) => {
                     if engine.is_playing(id) {
-                        engine.set_params(id, params);
+                        engine.set_mix_params(id, params);
+                    } else if admit {
+                        self.voice = Some(engine.play_mix(clip, params));
                     } else {
-                        self.voice = Some(engine.play(clip, params));
+                        self.voice = None;
+                        self.state = SoundState::Ready;
+                        return;
                     }
                     self.state = SoundState::Running;
                 }
@@ -242,8 +293,12 @@ impl RuntimeSound {
                     };
                 }
                 (None, true) => {
-                    self.voice = Some(engine.play(clip, params));
-                    self.state = SoundState::Running;
+                    if admit {
+                        self.voice = Some(engine.play_mix(clip, params));
+                        self.state = SoundState::Running;
+                    } else {
+                        self.state = SoundState::Ready;
+                    }
                 }
                 (None, false) => {
                     self.state = if suppressed {
@@ -260,12 +315,12 @@ impl RuntimeSound {
         let params = params(false);
         let start = fired || rising || self.pending;
         self.pending = false;
-        if start && audible {
+        if start && audible && admit {
             if self.def.only_one {
                 let key = only_one_key(&self.def);
                 if let Some(existing) = only_one.get(&key).copied() {
                     if engine.is_playing(existing) {
-                        engine.set_params(existing, params);
+                        engine.set_mix_params(existing, params);
                         self.voice = Some(existing);
                         self.state = SoundState::Running;
                         return;
@@ -276,7 +331,7 @@ impl RuntimeSound {
             if let Some(id) = self.voice {
                 engine.stop(id);
             }
-            let id = engine.play(clip, params);
+            let id = engine.play_mix(clip, params);
             self.voice = Some(id);
             if self.def.only_one {
                 only_one.insert(only_one_key(&self.def), id);
@@ -284,7 +339,7 @@ impl RuntimeSound {
             self.state = SoundState::Running;
         } else if let Some(id) = self.voice {
             if engine.is_playing(id) {
-                engine.set_params(id, params);
+                engine.set_mix_params(id, params);
                 self.state = SoundState::Running;
             } else {
                 self.voice = None;
@@ -306,19 +361,20 @@ fn only_one_key(def: &SoundEntry) -> String {
     def.file.trim().to_ascii_lowercase()
 }
 
-/// The volume of an entry for a listener on either side of the bodywork: the entry's
-/// `[viewpoint]` says where its recording was made (inside the cabin / outside), not where
-/// it may be heard - see [`crate::runtime::conditions::volume`]. Only the AI bit still
-/// decides (an entry for AI vehicles only).
+/// The separate level values of an entry for a listener on either side of the bodywork:
+/// `(record, script, transmission)` before the 0 dB clamp. The entry's `[viewpoint]` says
+/// where its recording was made (inside the cabin / outside), not where it may be heard -
+/// see [`crate::runtime::conditions::split`]. Only the AI bit still decides (an entry for AI
+/// vehicles only).
 pub(super) fn volume_side(
     def: &SoundEntry,
     var: &dyn Fn(&str) -> Option<f32>,
     ai: bool,
     active: f32,
     facing: f32,
-) -> Option<f32> {
+) -> Option<(f32, f32, f32)> {
     let view = (def.viewpoint & 3) | if ai { 4 } else { 0 };
-    conditions::volume(def, var, view, active, facing, outside::outside_open())
+    conditions::split(def, var, view, active, facing, outside::outside_open())
 }
 
 /// Say once per file that a `(T.F.)` sound cannot be found: every AI bus of a type asks for

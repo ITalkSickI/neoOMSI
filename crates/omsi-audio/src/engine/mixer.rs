@@ -301,12 +301,13 @@ mod tests {
                 gain: 0.0,
                 looping: true,
                 ..Default::default()
-            },
+            }
+            .into(),
             at: Instant::now(),
         });
         let mut out = vec![0.0f32; 4];
         s.render(&mut out);
-        assert_eq!(s.voices[0].params().gain, 0.0);
+        assert_eq!(s.voices[0].params().level.gain(), 0.0);
     }
 
     #[test]
@@ -324,7 +325,8 @@ mod tests {
                 gain: 1.0,
                 looping: true,
                 ..Default::default()
-            },
+            }
+            .into(),
         });
         s.queue.push(Command::SetParams {
             id: 5,
@@ -332,13 +334,18 @@ mod tests {
                 gain: 0.25,
                 looping: true,
                 ..Default::default()
-            },
+            }
+            .into(),
             at: Instant::now(),
         });
         let mut out = vec![0.0f32; 4];
         s.render(&mut out);
         assert_eq!(s.voices.len(), 1);
-        assert_eq!(s.voices[0].params().gain, 0.25, "the parameters followed the start");
+        assert_eq!(
+            s.voices[0].params().level.gain(),
+            0.25,
+            "the parameters followed the start"
+        );
     }
 
     #[test]

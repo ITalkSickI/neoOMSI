@@ -7,6 +7,7 @@
 
 pub(crate) mod conditions;
 pub(crate) mod event;
+pub(crate) mod level;
 pub(crate) mod outside;
 pub(crate) mod placement;
 pub(crate) mod report;
@@ -258,5 +259,65 @@ mod tests {
         ];
         set.update_events(&engine, &now, &glam::Mat4::IDENTITY, &events, &slots);
         assert_eq!(engine.voice_count(), 1, "started at the fire-time volume");
+    }
+
+    /// An exterior (AI / other player) sound set heard from the player's cabin is damped by
+    /// the player's bodywork: the wired `outside_gain` transmission, separate from the
+    /// own bus's `Snd_OutsideVol` path.
+    #[test]
+    fn an_exterior_set_is_damped_by_the_bodywork() {
+        let cfg = SoundCfg {
+            sounds: vec![SoundEntry {
+                file: "amb.wav".into(),
+                volume: 1.0,
+                ..Default::default()
+            }],
+            unknown_keywords: Vec::new(),
+        };
+        outside::set_outside_open(Some(0.0));
+        let engine = engine_with(&cfg);
+        let mut set = SoundSet::new_exterior(&engine, &cfg, Path::new(""));
+        set.set_muffled(true);
+        // let the inside/outside blend reach its target (it is eased over ~0.45 s)
+        for _ in 0..6 {
+            engine
+                .clock()
+                .advance(std::time::Duration::from_millis(100));
+            set.update(&engine, &|_| Some(1.0), &glam::Mat4::IDENTITY, &[]);
+        }
+        let played = set.playing(&engine);
+        assert_eq!(played.len(), 1);
+        assert!(
+            (played[0].1 - 0.25).abs() < 0.02,
+            "a shut bodywork keeps a quarter: {}",
+            played[0].1
+        );
+        outside::set_outside_open(None);
+    }
+
+    /// The runtime's admission budget is separate from the mixer's `MAX_VOICES`: a set with
+    /// more entries than `[sound_maxcount]` starts at most that many.
+    #[test]
+    fn the_runtime_admits_at_most_sound_maxcount() {
+        use super::level::SOUND_MAXCOUNT;
+        let sounds: Vec<SoundEntry> = (0..(SOUND_MAXCOUNT + 20))
+            .map(|i| SoundEntry {
+                file: format!("s{i}.wav"),
+                volume: 1.0,
+                ..Default::default()
+            })
+            .collect();
+        let cfg = SoundCfg {
+            sounds,
+            unknown_keywords: Vec::new(),
+        };
+        let engine = engine_with(&cfg);
+        let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+        set.update(&engine, &|_| Some(1.0), &glam::Mat4::IDENTITY, &[]);
+        assert_eq!(
+            engine.voice_count(),
+            SOUND_MAXCOUNT,
+            "the rest wait for a slot (their type decides the resume rule)"
+        );
     }
 }

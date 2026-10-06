@@ -18,7 +18,7 @@ use crate::device::{watch_default_device, DeviceOutput, OutputFormat};
 use crate::engine::commands::{Command, CommandQueue};
 use crate::engine::feedback::{ActiveVoice, Counters, Reaper, VoiceAsset};
 use crate::engine::mixer::AudioCore;
-use crate::voice::{Listener, VoiceId, VoiceParams};
+use crate::voice::{Listener, MixParams, VoiceId, VoiceParams};
 use hashbrown::HashMap;
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -259,7 +259,14 @@ impl AudioEngine {
         ClipCache::ready(&self.cache, paths, self.enabled)
     }
 
+    /// Play `clip` with the application's raw parameters ([`VoiceParams`]); the runtime
+    /// builds [`MixParams`] directly with [`AudioEngine::play_mix`].
     pub fn play(&self, clip: Arc<Clip>, params: VoiceParams) -> VoiceId {
+        self.play_mix(clip, params.into())
+    }
+
+    /// Play `clip` with the runtime's separate legacy levels (see [`MixParams`]).
+    pub fn play_mix(&self, clip: Arc<Clip>, params: MixParams) -> VoiceId {
         self.pump();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.active.borrow_mut().insert(
@@ -278,6 +285,11 @@ impl AudioEngine {
     /// Play what `stream` is fed with (see [`crate::assets::stream::StreamBuf`]); the voice
     /// ends when the stream is closed.
     pub fn play_stream(&self, stream: Arc<StreamBuf>, params: VoiceParams) -> VoiceId {
+        self.play_stream_mix(stream, params.into())
+    }
+
+    /// [`AudioEngine::play_stream`] with the runtime's separate levels.
+    pub fn play_stream_mix(&self, stream: Arc<StreamBuf>, params: MixParams) -> VoiceId {
         self.pump();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.active.borrow_mut().insert(
@@ -297,6 +309,11 @@ impl AudioEngine {
     /// so the game never waits for a block being mixed. Given twice before that block, the
     /// later ones win.
     pub fn set_params(&self, id: VoiceId, params: VoiceParams) {
+        self.set_mix_params(id, params.into());
+    }
+
+    /// [`AudioEngine::set_params`] with the runtime's separate levels.
+    pub fn set_mix_params(&self, id: VoiceId, params: MixParams) {
         self.pump();
         let at = self.clock.now();
         if let Some(a) = self.active.borrow_mut().get_mut(&id) {

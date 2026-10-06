@@ -15,7 +15,7 @@
 
 use crate::assets::{clip::Clip, stream::StreamBuf};
 use crate::engine::feedback::Counters;
-use crate::voice::{Listener, VoiceId, VoiceParams};
+use crate::voice::{Listener, MixParams, VoiceId};
 use parking_lot::Mutex;
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
@@ -29,19 +29,19 @@ pub(crate) enum Command {
     Play {
         id: VoiceId,
         clip: Arc<Clip>,
-        params: VoiceParams,
+        params: MixParams,
     },
     PlayStream {
         id: VoiceId,
         stream: Arc<StreamBuf>,
-        params: VoiceParams,
+        params: MixParams,
     },
     Stop {
         id: VoiceId,
     },
     SetParams {
         id: VoiceId,
-        params: VoiceParams,
+        params: MixParams,
         at: Instant,
     },
     SetListener(Listener),
@@ -135,7 +135,7 @@ impl CommandQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::voice::VoiceParams;
+    use crate::voice::{MixParams, VoiceParams};
 
     fn queue() -> CommandQueue {
         CommandQueue::new(Arc::new(Counters::default()))
@@ -149,17 +149,17 @@ mod tests {
                 channels: 1,
                 samples: vec![0; 4],
             }),
-            params: VoiceParams::default(),
+            params: MixParams::default(),
         }
     }
 
     fn params(id: VoiceId, gain: f32) -> Command {
         Command::SetParams {
             id,
-            params: VoiceParams {
+            params: MixParams::from(VoiceParams {
                 gain,
                 ..Default::default()
-            },
+            }),
             at: Instant::now(),
         }
     }
@@ -191,7 +191,9 @@ mod tests {
         let got = drain(&q);
         assert_eq!(got.len(), 2, "the two parameter sets folded into one");
         match &got[1] {
-            Command::SetParams { params, .. } => assert_eq!(params.gain, 0.75),
+            Command::SetParams { params, .. } => {
+                assert_eq!(params.level.gain(), 0.75)
+            }
             _ => panic!("expected the coalesced parameters"),
         }
     }

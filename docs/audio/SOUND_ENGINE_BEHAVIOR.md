@@ -50,7 +50,8 @@ The behavior is exercised without an audio device by
 | negative curve variable `-2` | facing input | how much a `[3d]` entry with `[dir]` faces the listener (1 without one) | CONFIRMED | `runtime::conditions::curve_input` |
 | other negative index | e.g. `-3` | the entry is skipped ("Volume Variable not valid!") | CONFIRMED | `runtime::conditions::curve_input` |
 | unknown variable | name not a script variable | read as 0 | CONFIRMED | `curve_input` -> `var(...).unwrap_or(0.0)` |
-| gain clamp | volume factor over 1 | plays at 1 (DirectSound has no gain over 0 dB) | CONFIRMED | `runtime::conditions::volume` clamp; MB 412D case |
+| gain clamp | volume factor over 1 | plays at 1 (DirectSound has no gain over 0 dB) | CONFIRMED | the product is clamped once, after the global masters, in `voice::Voice::render_into`; `runtime::level`; MB 412D case |
+| volume conversion | linear level | converted to DirectSound hundredths of dB (`20·log10`), clamped to at most 0 dB and at least -100 dB; `SetVolume` | CONFIRMED | `runtime::level::{hundredths_db, from_hundredths_db}`; `00750444` `00750bb0` / vtable +0x3c |
 | loop pitch silence | pitch variable near 0 | below DirectSound's 100 Hz minimum the buffer is silent | CONFIRMED | `runtime::conditions::pitch_of` |
 
 ## 3. Viewpoint, inside/outside and `Snd_OutsideVol`
@@ -60,7 +61,7 @@ The behavior is exercised without an audio device by
 | `[viewpoint]` gating | entry tagged inside/outside, listener on the other side | **open question**: in the current update path the entry is *not* cut by the listener's side (only `report` uses the listener view mask). The intended behavior is described in the `view_mask` comment. Behavior is unchanged by the Schritt-4 refactor and locked by a regression test. | OPEN | `RuntimeSound::update` -> `volume_side` builds the view from the entry's own bits; `report` uses `placement::view_mask`; test `viewpoint_gating_is_taken_from_the_entry_not_the_listener` |
 | AI-only entry | `[viewpoint]` bit 4 on a non-AI vehicle | not heard | CONFIRMED | `volume_side`: entry view `(viewpoint & 3) | ai<<2`; `runtime::conditions::volume` |
 | `Snd_OutsideVol` through-path | own bus, outside-only entry (`[viewpoint] 5`), listener in cab, variable set | played at the variable's value when over 0.01, else silent | CONFIRMED (when the listener view is supplied) | `runtime::conditions::volume`; TSound update 0x750340; `set_outside_open` |
-| `Snd_OutsideVol` scaling | doors/window open | "shut" keeps a quarter; open lets it through (`sound_volume.osc`) | PARTIAL | helper exists (`outside_gain`/`lowpass_of`, test-only) but is not wired into the update path |
+| `Snd_OutsideVol` scaling | doors/window open | "shut" keeps a quarter; open lets it through (`sound_volume.osc`) | CONFIRMED (exterior sets) | `outside_gain`/`lowpass_of` are wired into an `exterior` set's transmission/timbre while the listener is muffled (`runtime::sound`); the own bus's outside-only entries use the `conditions::split` through-path instead, so the two never double-apply. The own-bus through-path is still gated by the entry's own bits, see `[viewpoint]` below (OPEN). |
 
 ## 4. Ordering and repeated events
 
@@ -79,6 +80,8 @@ The behavior is exercised without an audio device by
 | voice end | non-looping clip reaches its end | voice is removed; a looping clip wraps with no gap | CONFIRMED | `mixer` `Shared::render`; `a_loop_has_no_gap_where_it_turns` test |
 | distance | `[3d]` range and distance | full up to `range`, then inverse-distance (1/d); applies once | CONFIRMED | `mixer::distance_gain` |
 | Doppler | moving `[3d]` entry | closer = higher, away = lower; disabled for the listener's own vehicle and by `OMSI_DOPPLER` | CONFIRMED | `mixer::apply_params` |
+| resume rule (renderer limit) | a voice skipped because of `MAX_VOICES` becomes audible again | the voice kept running and its phase advanced; it is mixed again from that position | CONFIRMED | `mixer::Shared::render` `skip`; ranking recomputed each block |
+| resume rule (OMSI) | a sound the runtime stopped/never admitted becomes audible again | it is admitted again; a one-shot starts from the start, a loop resumes only while its voice still runs | CONFIRMED | `runtime::level::SOUND_MAXCOUNT`; `RuntimeSound::update` admission branch |
 
 ## 6. Loading, `[checkloading]`, `[onlyone]`, missing files
 
@@ -95,8 +98,8 @@ The behavior is exercised without an audio device by
 | Case | Input | Expected | Status | Evidence |
 |---|---|---|---|---|
 | pack ordering | several sound packs in earshot | the reference sorts packs by normalized distance, then budgets | OPEN | plan section 1; current mixer ranks individual voices instead |
-| pack budget | many vehicles | the current mixer keeps `[important]` voices first, then the loudest, up to `MAX_VOICES` (200); skipped voices still advance in time | PARTIAL | `mixer::Shared::render`; `MAX_VOICES` |
-| later-audible voice | a voice that was skipped becomes the loudest | it is mixed again from its advanced position | CONFIRMED | `skip_clip` advances the position; ranking is recomputed each block |
+| admission vs renderer limit | many vehicles | two separate decisions: the runtime admits at most `[sound_maxcount]` (200) voices per set (an OMSI decision with the sound type's lifetime rules); the mixer keeps `[important]` first, then the loudest, up to `MAX_VOICES` as a performance-only virtualization that never changes what the runtime believes is playing | PARTIAL | `runtime::level::SOUND_MAXCOUNT`; `runtime::soundset::SoundSet::update_frame`; `mixer::Shared::render`; `MAX_VOICES` |
+| later-audible voice | a voice that was skipped becomes the loudest | it is mixed again from its advanced position; a sound stopped by the runtime is re-admitted and starts per its type | CONFIRMED | `skip_clip` advances the position; ranking is recomputed each block; `RuntimeSound::update` |
 
 ## 8. Pause, time base and ownership
 
@@ -106,6 +109,35 @@ The behavior is exercised without an audio device by
 | player vehicle | own bus | 3D sounds pan and fade, but frame timing must not create Doppler pitch shifts | CONFIRMED | `SoundSet.listener_vehicle`, `doppler = !listener_vehicle` |
 | AI / other players | exterior sound set | non-3D entries are placed at the vehicle and fade with distance | CONFIRMED | `SoundSet::new_exterior`, `placement::place` |
 | trailers / coupled sets | coupled parts | each part's set updates with the leading vehicle's variables and triggers, at the part's transform | CONFIRMED | `SoundSet::update_parts`, `add_part` |
+
+## 9. Legacy parameter split and renderer order
+
+Schritt 5 hands the renderer separate values instead of one pre-mixed gain and documents the
+order in which they are applied. The reference's `TSound` update (`00750444`) computes the
+parts separately and only then calls `SetVolume` (hundredths of dB, clamped to 0 dB),
+`SetPan` and `SetFrequency`; distance is a separate 3D min-distance.
+
+```text
+buffer = clamp01(record × script × transmission × set_master)   // OMSI buffer volume, 0 dB max
+final  = clamp01(buffer × listener_master)                      // global volume / pause
+sample = sample × final × distance_gain × pan × low-pass        // distance, direction, frequency separate
+```
+
+- `record` is the `[sound]`/`[loopsound]` recording level, `script` the product of the
+  `[volcurve]` factors, `transmission` the inside/outside share. They are carried by
+  `voice::Level::Omsi` inside the renderer-only `voice::MixParams`; the public
+  `voice::VoiceParams` and every application call site stay unchanged (the app's raw gain is
+  `voice::Level::Raw` and is not clamped by the runtime's 0 dB rule).
+- The clamp happens **once**, after the set master and the listener master, so a loud
+  recording with a small master is not cut early (a level 4.0 with master 0.5 gives 1.0,
+  not 0.5).
+- Distance and inside/outside apply exactly once: distance in `spatial`, the own-bus
+  `Snd_OutsideVol` share in `conditions::split`, the bodywork/`Snd_OutsideVol` of a foreign
+  set in `outside::{outside_gain, lowpass_of}`. The paths are disjoint by `exterior`.
+- Pan reproduces DirectSound's `SetPan`: one channel is damped relative to the other
+  (`spatial::pan_gains`), not both spread. The exact OMSI scale stays OPEN until a live
+  comparison (see below).
+- Frequency is `pitch_of` (loop rate, silent below 100 Hz), unchanged.
 
 ## Open items to resolve with live OMSI
 
@@ -120,8 +152,15 @@ before Block B freezes the rules:
 5. What is the exact scope of `[onlyone]` (same entry, same file, same vehicle, global)?
 6. What does `[checkloading]` change at load/unload time?
 7. What is the sound-pack sort key and budget rule, and how does a previously suppressed
-   voice resume?
+   voice resume? Schritt 5 separates the runtime admission budget (`[sound_maxcount]`) from
+   the mixer's `MAX_VOICES` virtualization and defines the resume rule per type, but the
+   pack *sort key* is unchanged (the mixer still ranks individual voices) until the
+   comparison settles it.
 8. What is the time base under pause, and are loop/sound ages frozen or advanced?
+9. What is the exact OMSI pan scale and curve handed to `SetPan`? Schritt 5 reproduces the
+   documented DirectSound one-channel-damping behaviour with a fixture, but the reference
+   only shows the direction calculation (`00750444` `00750a03`), not DirectSound's DSP.
+   Likewise the exact dB floor for `SetVolume`.
 
 Once answered, each status above is updated to `CONFIRMED` with the comparison that
 settled it, and a fixture is added under `crates/omsi-audio/tests/fixtures/soundcfg/`.
