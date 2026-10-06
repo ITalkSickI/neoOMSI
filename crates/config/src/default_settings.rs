@@ -85,6 +85,9 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("passengers", "motion", Def::Str("natural")),
     ("passengers", "ik", Def::Bool(true)),
     ("passengers", "density", Def::Float(1.0)),
+    // [discord]
+    ("discord", "status", Def::Bool(true)),
+    ("discord", "app_id", Def::Str("")),
     // [graphics]
     ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]

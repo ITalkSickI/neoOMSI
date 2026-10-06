@@ -116,8 +116,8 @@ pub struct Settings {
     pub head_tracking: bool, // Migrated
     pub head_tracking_port: u16, // Migrated
     pub head_tracking_invert: String, // Migrated
-    pub discord_status: bool, // TODO: Migrate to new config lib | category: integration | default value: true
-    pub discord_app_id: String, // TODO: Migrate to new config lib | category: integration | default value: ""
+    pub discord_status: bool, // Migrated
+    pub discord_app_id: String, // Migrated
 }
 
 /// A pedal's last few per cent of travel are its end: a wheel's pedal on the floor reads

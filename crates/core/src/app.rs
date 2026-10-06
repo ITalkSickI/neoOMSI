@@ -495,7 +495,7 @@ impl App {
 
     #[cfg(not(target_os = "android"))]
     pub(crate) fn update_discord(&mut self, loading: bool) {
-        if self.args.server.is_some() || !self.settings.discord_status {
+        if self.args.server.is_some() || !::config::get_bool("discord", "status").unwrap_or(true) {
             if let Some(discord) = self.discord.as_ref() {
                 discord.stop();
                 if discord.is_finished() {
@@ -519,7 +519,7 @@ impl App {
         }
         self.discord_next_update = now + std::time::Duration::from_secs(5);
         if self.discord.is_none() {
-            self.discord = discord::Discord::start(&self.settings.discord_app_id);
+            self.discord = discord::Discord::start(&::config::get_string("discord", "app_id").unwrap_or_default());
         }
         if let Some(discord) = self.discord.as_ref() {
             let bus = self.player.as_ref().map(|p| {
