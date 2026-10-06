@@ -157,4 +157,51 @@ mod tests {
     fn unknown_key_is_returned_as_it_is() {
         assert_eq!(tr("no.such.key"), "no.such.key");
     }
+
+    #[test]
+    fn flatten_ignores_non_strings() {
+        let mut t = Table::new();
+        let v: serde_json::Value = serde_json::from_str(r#"{"a":1,"b":true,"c":{"d":"x"}}"#).unwrap();
+        flatten("", &v, &mut t);
+        assert_eq!(t.len(), 1);
+        assert_eq!(t["c.d"], "x");
+    }
+
+    #[test]
+    fn translate_unknown_key_returns_key() {
+        assert_eq!(translate("no.such.key", &[]), "no.such.key");
+    }
+
+    #[test]
+    fn translate_replaces_params() {
+        let out = translate("Hello {name}, {n} left", &[("name", &"Bob"), ("n", &3)]);
+        assert_eq!(out, "Hello Bob, 3 left");
+    }
+
+    #[test]
+    fn translate_keeps_unknown_placeholders() {
+        assert_eq!(translate("x {a} {b}", &[("a", &1)]), "x 1 {b}");
+    }
+
+    #[test]
+    fn keys_are_sorted_and_unique() {
+        let k = keys();
+        assert!(k.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn set_language_en_is_default() {
+        set_language("EN");
+        assert_eq!(language(), "");
+        set_language("DE");
+        assert_eq!(language(), "de");
+        set_language("en");
+        assert_eq!(language(), "");
+    }
+
+    #[test]
+    fn lookup_unknown_is_none() {
+        assert!(lookup("en", "no.such.key").is_none());
+        assert!(lookup("xx", "no.such.key").is_none());
+    }
 }
