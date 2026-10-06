@@ -89,6 +89,7 @@ pub fn keys() -> Vec<String> {
     let mut all: Vec<String> = tables()
         .values()
         .flat_map(|t| t.keys().cloned())
+        .chain(legacy::keys().cloned())
         .collect();
     all.sort();
     all.dedup();
