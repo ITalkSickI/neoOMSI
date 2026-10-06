@@ -264,6 +264,7 @@ pub fn vehicle_lights(
                     cone,
                     core: INTERIOR_SPILL_CORE * sp.core.max(0.01),
                     mode: LightMode::Enhanced,
+                    shadow_first: true,
                     ..Default::default()
                 });
             }

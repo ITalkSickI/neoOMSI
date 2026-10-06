@@ -69,7 +69,7 @@ pub(super) fn enclosure(coll: &omsi_sim::collision::CollisionWorld, p: DVec3) ->
 pub(super) const SHADOW_RANGE: f64 = 50.0;
 pub(super) const SHADOW_REACH: f64 = 25.0;
 pub(super) const SHADOW_MAX: usize = 32;
-pub(super) const SHADOW_LIGHTS: usize = 16;
+pub(super) const SHADOW_LIGHTS: usize = 32;
 pub(super) const POINT_TRI_MAX: usize = 10;
 pub(super) const POINT_TRI_MIN_AREA: f64 = 0.4;
 pub(super) const SHADOW_SPOTS: usize = 8;
@@ -287,7 +287,8 @@ pub(super) fn assign_occluders(
         } else {
             (2.0, 0.0)
         };
-        let dir_key = if spot {
+        let aimed = spot || spill;
+        let dir_key = if aimed {
             ((l.direction.x.atan2(l.direction.y).to_degrees() / 10.0).round() as i32) * 64
                 + (l.cone[1] * 100.0).round() as i32 * 4096
                 + (l.direction.z.clamp(-1.0, 1.0) * 8.0).round() as i32
@@ -307,9 +308,7 @@ pub(super) fn assign_occluders(
                 continue;
             }
             gathers += 1;
-            let made = if spill {
-                Vec::new()
-            } else if spot {
+            let made = if aimed {
                 gather_spot_occluders(seen, l.position, l.direction, l.radius, l.cone[1])
             } else {
                 gather_occluders(coll, seen, l.position, l.radius + extra)

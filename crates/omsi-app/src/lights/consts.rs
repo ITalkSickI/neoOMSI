@@ -15,8 +15,8 @@ pub(super) const INTERIOR_SPILL_HEIGHT: f32 = 1.8;
 pub(super) const INTERIOR_SPILL_WHITE: f32 = 0.6;
 pub(super) const INTERIOR_SPILL_MAX: usize = 8;
 pub(super) const INTERIOR_SPILL_TILT: f32 = 20.0;
-pub(super) const INTERIOR_SPILL_INNER: f32 = 25.0;
-pub(super) const INTERIOR_SPILL_OUTER: f32 = 68.0;
+pub(super) const INTERIOR_SPILL_INNER: f32 = 15.0;
+pub(super) const INTERIOR_SPILL_OUTER: f32 = 45.0;
 
 pub(super) const MAP_LIGHT_RANGE: f64 = 300.0;
 pub(super) const CORONA_RANGE: f64 = 1500.0;
