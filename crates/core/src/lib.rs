@@ -187,12 +187,12 @@ pub fn run() -> Result<()> {
 pub(crate) fn launcher_statics() {
     let s = settings::Settings::load();
     ENHANCED.store(
-        s.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
+        (crate::settings::graphics_mode(&::config::get_string("graphics", "graphics").unwrap_or_else(|| "vanilla_plus".into())) == "enhanced") || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    CLASSIC.store(s.classic(), std::sync::atomic::Ordering::Relaxed);
+    CLASSIC.store((crate::settings::graphics_mode(&::config::get_string("graphics", "graphics").unwrap_or_else(|| "vanilla_plus".into())) == "vanilla"), std::sync::atomic::Ordering::Relaxed);
     CLOUDS.store(
-        s.clouds && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
+        ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
     );
 }
@@ -337,11 +337,11 @@ pub(crate) fn make_app(
         args.drive_keys = k;
     }
     ENHANCED.store(
-        settings.enhanced || args.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
+        (crate::settings::graphics_mode(&::config::get_string("graphics", "graphics").unwrap_or_else(|| "vanilla_plus".into())) == "enhanced") || args.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
     CLOUDS.store(
-        settings.clouds && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
+        ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_AI.store(
@@ -352,10 +352,10 @@ pub(crate) fn make_app(
         (::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    MIRROR_SIZE.store(settings.mirror_size, std::sync::atomic::Ordering::Relaxed);
+    MIRROR_SIZE.store(::config::get_int("graphics", "mirror_size").unwrap_or(256) as u32, std::sync::atomic::Ordering::Relaxed);
     ::audio::DOPPLER.store(::config::get_bool("audio", "doppler").unwrap_or(true), std::sync::atomic::Ordering::Relaxed);
     CLASSIC.store(
-        settings.classic() && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
+        (crate::settings::graphics_mode(&::config::get_string("graphics", "graphics").unwrap_or_else(|| "vanilla_plus".into())) == "vanilla") && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
         std::sync::atomic::Ordering::Relaxed,
     );
     let mut lan = if args.export_glb.is_none() {

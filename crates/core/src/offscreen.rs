@@ -19,13 +19,31 @@ pub(crate) fn run_offscreen(
         })
         .unwrap_or((1600, 900));
     let view_aspect = w as f32 / h.max(1) as f32;
-    let settings = settings::Settings::load();
     let instance = graphics_instance();
     let mut renderer = pollster::block_on(Renderer::new_with(
         &instance,
         None,
         Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-        settings.render_options(),
+        ::render::RenderOptions {
+            msaa: ::config::get_int("graphics", "msaa").unwrap_or(4) as u32,
+            anisotropy: ::config::get_int("graphics", "anisotropy").unwrap_or(8) as u16,
+            shadow_size: ::config::get_int("graphics", "shadow_size").unwrap_or(2048) as u32,
+            ssao: ::config::get_bool("graphics", "ssao").unwrap_or(true),
+            render_scale: ::config::get_float("graphics", "render_scale").unwrap_or(0.0) as f32,
+            compress_textures: ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
+            fxaa: ::config::get_string("graphics", "post_aa").as_deref() != Some("off"),
+            min_obj_size: ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32,
+            max_obj_dist: match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
+                d if d >= 0.0 => d,
+                _ => crate::settings::view_distance().map(|v| v as f32).unwrap_or(900.0),
+            },
+            omsi_shadow_casters: ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi"),
+            shadow_blobs: ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
+            reflections: ::config::get_bool("graphics", "reflections").unwrap_or(true),
+            no_enhanced: crate::settings::graphics_mode(
+                &::config::get_string("graphics", "graphics").unwrap_or_default(),
+            ) != "enhanced",
+        },
     ))?;
     log::info!("adapter: {}", renderer.adapter_name);
     lights::load_smoke_texture(&mut renderer, &args.root);
@@ -635,7 +653,7 @@ pub(crate) fn run_offscreen(
                         &weather,
                         cloud_drift_at(&weather, run_clock.time),
                         0.0,
-                        settings.shadows,
+                        ::config::get_bool("graphics", "shadows").unwrap_or(true),
                     );
                     let pixels =
                         renderer.render_to_image(&mut scene, w, h, &view_cam, &lighting)?;
@@ -1332,7 +1350,7 @@ pub(crate) fn run_offscreen(
                     } else {
                         0.0
                     },
-                    settings.shadows,
+                    ::config::get_bool("graphics", "shadows").unwrap_or(true),
                 );
                 lighting.inside = player.as_ref().and_then(|p| {
                     p.vehicle
@@ -1359,7 +1377,7 @@ pub(crate) fn run_offscreen(
                     .filter_map(|t| t.ty.def.bounding_box.map(|bb| (t.position, t.heading, bb)))
                     .take(3)
                     .collect();
-                lighting.detail = settings.detail_textures;
+                lighting.detail = ::config::get_bool("graphics", "detail_textures").unwrap_or(true);
                 world.finish_texture_upgrades(&renderer, &mut scene);
                 let pixels = renderer.render_to_image(&mut scene, w, h, &cam, &lighting)?;
                 let path = out.with_file_name(format!(
@@ -2825,7 +2843,7 @@ pub(crate) fn run_offscreen(
         &weather,
         cloud_drift_at(&weather, clock.time),
         wetness,
-        settings.shadows,
+        ::config::get_bool("graphics", "shadows").unwrap_or(true),
     );
     // the player's vehicle has moved into `player_ref` by now (after --drive): without
     // this the offscreen picture had no cab box, unlike the window
@@ -2849,7 +2867,7 @@ pub(crate) fn run_offscreen(
         .filter_map(|t| t.ty.def.bounding_box.map(|bb| (t.position, t.heading, bb)))
         .take(3)
         .collect();
-    lighting.detail = settings.detail_textures;
+    lighting.detail = ::config::get_bool("graphics", "detail_textures").unwrap_or(true);
     lighting.glass_wind = player_ref
         .as_ref()
         .or(player.as_ref())
@@ -3330,7 +3348,7 @@ pub(crate) fn run_offscreen(
     // been there, then - with the budget raised to MB - the textures that come near again
     // with the camera are read back)
     if ::legacy_config::env::var_os("OMSI_TEXTURE_MEMORY").is_some() {
-        world.set_texture_budget(texture_budget(&settings));
+        world.set_texture_budget(texture_budget());
         let from: Vec<f64> = ::legacy_config::env::var("OMSI_BUDGET_FROM")
             .unwrap_or_default()
             .split(',')

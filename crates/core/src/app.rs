@@ -215,7 +215,7 @@ impl App {
             if self.surface.is_none() {
                 if let Some(r) = self.renderer.as_ref() {
                     let size = window.inner_size();
-                    let vsync = self.settings.vsync && !self.vr_active();
+                    let vsync = ::config::get_bool("graphics", "vsync").unwrap_or(true) && !self.vr_active();
                     self.surface = SurfaceState::new_with(
                         &self.instance,
                         window.clone(),
@@ -258,7 +258,7 @@ impl App {
         if let Some(at) = at {
             attrs = attrs.with_position(at);
         }
-        if self.settings.fullscreen {
+        if ::config::get_bool("graphics", "fullscreen").unwrap_or(false) {
             attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
         }
         if ::legacy_config::env::var_os("OMSI_BACKGROUND").is_some() {
@@ -269,7 +269,30 @@ impl App {
             None => Arc::new(event_loop.create_window(attrs).expect("window")),
         };
         let mut renderer =
-            match window_renderer(&mut self.instance, &window, self.settings.render_options()) {
+            match window_renderer(
+                &mut self.instance,
+                &window,
+                ::render::RenderOptions {
+                    msaa: ::config::get_int("graphics", "msaa").unwrap_or(4) as u32,
+                    anisotropy: ::config::get_int("graphics", "anisotropy").unwrap_or(8) as u16,
+                    shadow_size: ::config::get_int("graphics", "shadow_size").unwrap_or(2048) as u32,
+                    ssao: ::config::get_bool("graphics", "ssao").unwrap_or(true),
+                    render_scale: ::config::get_float("graphics", "render_scale").unwrap_or(0.0) as f32,
+                    compress_textures: ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
+                    fxaa: ::config::get_string("graphics", "post_aa").as_deref() != Some("off"),
+                    min_obj_size: ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32,
+                    max_obj_dist: match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
+                        d if d >= 0.0 => d,
+                        _ => crate::settings::view_distance().map(|v| v as f32).unwrap_or(900.0),
+                    },
+                    omsi_shadow_casters: ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi"),
+                    shadow_blobs: ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
+                    reflections: ::config::get_bool("graphics", "reflections").unwrap_or(true),
+                    no_enhanced: crate::settings::graphics_mode(
+                        &::config::get_string("graphics", "graphics").unwrap_or_default(),
+                    ) != "enhanced",
+                },
+            ) {
                 Ok(r) => r,
                 Err(e) => {
                     fatal_message(&format!("The game cannot draw on this computer: {e:#}"));
@@ -312,7 +335,7 @@ impl App {
             &renderer,
             size.width,
             size.height,
-            self.settings.vsync && !self.vr_active(),
+            ::config::get_bool("graphics", "vsync").unwrap_or(true) && !self.vr_active(),
         ) {
             Ok(s) => s,
             Err(e) => {
@@ -601,10 +624,10 @@ impl App {
                         .unwrap_or(900.0)
                         .max(::map::tile_size());
                     w.set_fast_texture_loads(true);
-                    w.set_texture_budget(texture_budget(&self.settings));
+                    w.set_texture_budget(texture_budget());
                     log::info!(
                         "texture budget: {:.0} MB",
-                        texture_budget(&self.settings) as f64 / 1e6
+                        texture_budget() as f64 / 1e6
                     );
                     self.streamer = Some(tiles::Streamer::new(
                         w.clone(),

@@ -369,7 +369,7 @@ impl App {
                     w,
                     self.cloud_drift,
                     self.wetness,
-                    self.settings.shadows,
+                    ::config::get_bool("graphics", "shadows").unwrap_or(true),
                 )
             }
             None => lights::lighting_from(&daylight, 50000.0),
@@ -412,7 +412,7 @@ impl App {
             .filter_map(|t| t.ty.def.bounding_box.map(|bb| (t.position, t.heading, bb)))
             .take(3)
             .collect();
-        lighting.detail = self.settings.detail_textures;
+        lighting.detail = ::config::get_bool("graphics", "detail_textures").unwrap_or(true);
         lighting.glass_wind = self
             .player
             .as_ref()
@@ -424,11 +424,11 @@ impl App {
             .map(rain::weather_wind)
             .unwrap_or_default();
         lighting.animation_time = Some(self.clock.run_time as f32);
-        lighting.led_glow = self.settings.led_glow as f32 * 0.25;
+        lighting.led_glow = ::config::get_int("graphics", "led_glow").unwrap_or(6) as u8 as f32 * 0.25;
         lights::set_led_glow(lighting.led_glow);
-        lighting.nightmap_glow = self.settings.nightmap_glow as f32 * 0.25;
-        lighting.led_mips = self.settings.led_mips;
-        lighting.atmosphere_brightness = self.settings.atmosphere_brightness;
+        lighting.nightmap_glow = ::config::get_int("graphics", "nightmap_glow").unwrap_or(6) as u8 as f32 * 0.25;
+        lighting.led_mips = ::config::get_float("graphics", "led_mips").unwrap_or(1.3) as f32;
+        lighting.atmosphere_brightness = ::config::get_float("graphics", "atmosphere_brightness").unwrap_or(1.0) as f32;
         lighting.html_glow = lights::screen_fx(0);
         lighting.html_light = lights::screen_fx(1);
         lighting.script_glow = lights::screen_fx(2);
@@ -541,10 +541,10 @@ impl App {
                 .or(stand_in);
             if let Some(view) = view {
                 let __t = Instant::now();
-                if self.settings.mirror_size == 0 {
+                if ::config::get_int("graphics", "mirror_size").unwrap_or(256) as u32 == 0 {
                     self.mirror_budget = 0.0;
                     self.mirrors_seen = 0;
-                } else if self.settings.mirror_refresh == "off" {
+                } else if ::config::get_string("graphics", "mirror_refresh").unwrap_or_else(|| "full".into()) == "off" {
                     self.mirror_budget = 0.0;
                     if let (Some(w), Some(p)) = (self.world.as_ref(), self.player.as_ref()) {
                         let since = match &self.frozen_mirrors {
@@ -586,7 +586,7 @@ impl App {
                                         .clamp(-1.0, 360.0) as f32,
                                 )
                         } else {
-                            let max_hz = if self.settings.mirror_refresh == "full" {
+                            let max_hz = if ::config::get_string("graphics", "mirror_refresh").unwrap_or_else(|| "full".into()) == "full" {
                                 MIRROR_MAX_HZ_FULL
                             } else {
                                 MIRROR_MAX_HZ_ECO
@@ -764,7 +764,7 @@ impl App {
                 let __t = Instant::now();
                 match frame {
                     Some(frame) => {
-                        if self.settings.vsync {
+                        if ::config::get_bool("graphics", "vsync").unwrap_or(true) {
                             win.pre_present_notify();
                         }
                         r.queue.present(frame);
@@ -787,7 +787,7 @@ impl App {
             let max_fps = ::legacy_config::env::var("OMSI_MAX_FPS")
                 .ok()
                 .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(self.settings.max_fps);
+                .unwrap_or(::config::get_int("graphics", "max_fps").unwrap_or(0) as u32);
             let max_fps = if max_fps == 0 {
                 self.window
                     .as_ref()

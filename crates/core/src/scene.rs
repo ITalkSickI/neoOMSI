@@ -2988,7 +2988,12 @@ impl World {
             root: root.to_path_buf(),
             global,
             map_dir,
-            map_detail: crate::settings::map_detail(root),
+            map_detail: match ::config::get_int("graphics", "map_detail").unwrap_or(-1) {
+                d if d >= 0 => d as u8,
+                _ => ::content::options::Options::load(&root.join("options.cfg"))
+                    .map(|o| o.i32("maxcomplexity_map", 2).clamp(0, 255) as u8)
+                    .unwrap_or(2),
+            },
             parklist: Mutex::new(HashMap::new()),
             mirror_textures: Mutex::new(Vec::new()),
             chrono_dirs: parking_lot::RwLock::new(chrono_dirs),

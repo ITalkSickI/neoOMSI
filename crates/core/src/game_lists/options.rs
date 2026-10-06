@@ -152,16 +152,15 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
             None
         };
     }
-    let s = &app.settings;
     Some(match verb {
         "speed" => ::config::get_float("gameplay", "time_speed").unwrap_or(1.0) as f32,
         "traffic" => app.traffic.as_ref()?.target as f32,
         "pax" => ::config::get_float("passengers", "density").unwrap_or(1.0) as f32,
         "volume" => ::config::get_float("audio", "master-volume").unwrap_or(1.0) as f32,
-        "led_glow" => s.led_glow as f32,
-        "nightmap_glow" => s.nightmap_glow as f32,
-        "led_mips" => s.led_mips,
-        "atmosphere_brightness" => s.atmosphere_brightness,
+        "led_glow" => ::config::get_int("graphics", "led_glow").unwrap_or(6) as u8 as f32,
+        "nightmap_glow" => ::config::get_int("graphics", "nightmap_glow").unwrap_or(6) as u8 as f32,
+        "led_mips" => ::config::get_float("graphics", "led_mips").unwrap_or(1.3) as f32,
+        "atmosphere_brightness" => ::config::get_float("graphics", "atmosphere_brightness").unwrap_or(1.0) as f32,
         "pedal_t" => ::config::get_float("controls", "pedal_throttle").unwrap_or(1.0) as f32,
         "pedal_b" => ::config::get_float("controls", "pedal_brake").unwrap_or(1.0) as f32,
         "mouse_sens" => ::config::get_float("controls", "mouse_sens").unwrap_or(1.0) as f32,
@@ -233,23 +232,24 @@ pub(super) fn option_set(
             None
         }
         "led_glow" => {
-            app.settings.led_glow = v.round() as _;
-            Some(("led_glow", app.settings.led_glow.to_string()))
+            ::config::set_setting("graphics", "led_glow", v.round() as i64);
+            let _ = ::config::save();
+            None
         }
         "nightmap_glow" => {
-            app.settings.nightmap_glow = v.round() as _;
-            Some(("nightmap_glow", app.settings.nightmap_glow.to_string()))
+            ::config::set_setting("graphics", "nightmap_glow", v.round() as i64);
+            let _ = ::config::save();
+            None
         }
         "atmosphere_brightness" => {
-            app.settings.atmosphere_brightness = v.clamp(0.0, 2.0);
-            Some((
-                "atmosphere_brightness",
-                app.settings.atmosphere_brightness.to_string(),
-            ))
+            ::config::set_setting("graphics", "atmosphere_brightness", v.clamp(0.0, 2.0) as f64);
+            let _ = ::config::save();
+            None
         }
         "led_mips" => {
-            app.settings.led_mips = v.clamp(0.0, 4.0);
-            Some(("led_mips", app.settings.led_mips.to_string()))
+            ::config::set_setting("graphics", "led_mips", v.clamp(0.0, 4.0) as f64);
+            let _ = ::config::save();
+            None
         }
         "pedal_t" => {
             ::config::set_setting("controls", "pedal_throttle", v as f64);
@@ -408,7 +408,6 @@ pub(super) fn option_set(
 }
 
 pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
-    let s = &app.settings;
     Some(match id {
         "navigator" => {
             if app.vr_active() {
@@ -431,7 +430,7 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
             .navigator
             .as_ref()
             .map_or(::config::get_bool("navigator", "stops_ext").unwrap_or(false), |n| n.schedule),
-        "shadows" => s.shadows,
+        "shadows" => ::config::get_bool("graphics", "shadows").unwrap_or(true),
         "head" => ::config::get_bool("camera", "head_movement").unwrap_or(true),
         "cam_smooth" => ::config::get_bool("camera", "smooth").unwrap_or(true),
         "coll_objects" => ::config::get_bool("gameplay", "collision_objects").unwrap_or(true),
@@ -460,13 +459,13 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "pax_prefer_seats" => ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false),
         "pax_ik" => app.args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true)),
         "collision_pedestrians" => ::config::get_bool("gameplay", "collision_pedestrians").unwrap_or(true),
-        "ssao" => s.ssao,
-        "detail_textures" => s.detail_textures,
-        "reflections" => s.reflections,
-        "clouds" => s.clouds,
-        "fullscreen" => s.fullscreen,
-        "vsync" => s.vsync,
-        "texture_compression" => s.texture_compression,
+        "ssao" => ::config::get_bool("graphics", "ssao").unwrap_or(true),
+        "detail_textures" => ::config::get_bool("graphics", "detail_textures").unwrap_or(true),
+        "reflections" => ::config::get_bool("graphics", "reflections").unwrap_or(true),
+        "clouds" => ::config::get_bool("graphics", "clouds").unwrap_or(true),
+        "fullscreen" => ::config::get_bool("graphics", "fullscreen").unwrap_or(false),
+        "vsync" => ::config::get_bool("graphics", "vsync").unwrap_or(true),
+        "texture_compression" => ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
         "driver" => ::config::get_bool("gameplay", "driver").unwrap_or(true),
         "alt_view" => ::config::get_bool("camera", "alt_view").unwrap_or(true),
         "free_look" => ::config::get_bool("camera", "free_look").unwrap_or(false),
@@ -547,8 +546,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "shadows" => {
-            app.settings.shadows = on;
-            Some(("shadows", bit))
+            ::config::set_setting("graphics", "shadows", on);
+            let _ = ::config::save();
+            None
         }
         "head" => {
             ::config::set_setting("camera", "head_movement", on);
@@ -743,35 +743,42 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "ssao" => {
-            app.settings.ssao = on;
-            Some(("ssao", bit))
+            ::config::set_setting("graphics", "ssao", on);
+            let _ = ::config::save();
+            None
         }
         "detail_textures" => {
-            app.settings.detail_textures = on;
-            Some(("detail_textures", bit))
+            ::config::set_setting("graphics", "detail_textures", on);
+            let _ = ::config::save();
+            None
         }
         "reflections" => {
-            app.settings.reflections = on;
-            Some(("reflections", bit))
+            ::config::set_setting("graphics", "reflections", on);
+            let _ = ::config::save();
+            None
         }
         "clouds" => {
-            app.settings.clouds = on;
-            Some(("clouds", bit))
+            ::config::set_setting("graphics", "clouds", on);
+            let _ = ::config::save();
+            None
         }
         "fullscreen" => {
-            app.settings.fullscreen = on;
+            ::config::set_setting("graphics", "fullscreen", on);
+            let _ = ::config::save();
             if let Some(w) = app.window.as_ref() {
                 w.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
             }
-            Some(("fullscreen", bit))
+            None
         }
         "vsync" => {
-            app.settings.vsync = on;
-            Some(("vsync", bit))
+            ::config::set_setting("graphics", "vsync", on);
+            let _ = ::config::save();
+            None
         }
         "texture_compression" => {
-            app.settings.texture_compression = on;
-            Some(("texture_compression", bit))
+            ::config::set_setting("graphics", "texture_compression", on);
+            let _ = ::config::save();
+            None
         }
         "driver" => {
             ::config::set_setting("gameplay", "driver", on);
