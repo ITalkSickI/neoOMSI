@@ -3063,7 +3063,23 @@ impl AiState {
         }
         while self.change.is_none() && self.s >= net.lanes[self.lane].length() {
             let l = &net.lanes[self.lane];
-            let Some(next) = self.planned_next else {
+            let fallback = if self.planned_next.is_none() && l.kind != LaneKind::Air {
+                let seed = self.s.to_bits() as usize ^ self.lane;
+                let nexts: Vec<usize> = l
+                    .next
+                    .iter()
+                    .copied()
+                    .filter(|&n| net.lanes.get(n).map(|x| x.kind == l.kind).unwrap_or(false))
+                    .collect();
+                if nexts.is_empty() {
+                    None
+                } else {
+                    Some(nexts[seed % nexts.len()])
+                }
+            } else {
+                None
+            };
+            let Some(next) = self.planned_next.or(fallback) else {
                 // the end of a flight path: the aircraft flies on straight (the way runs on
                 // along the end tangent) until the traffic takes it away out of sight
                 if l.kind == LaneKind::Air {
