@@ -3,14 +3,14 @@
 //! roots), script errors, callbacks and fonts the scripts ask for, textures and sounds,
 //! its coupled parts - and whether it can be put into service by itself.
 
-use omsi_cfg::resolve_path;
+use ::legacy_config::resolve_path;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// The sub-folders of `dir` (a folder or a folder inside a mounted archive).
 fn sub_dirs(dir: &Path) -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> = omsi_cfg::vfs::list_dir(dir)
+    let mut v: Vec<PathBuf> = ::legacy_config::vfs::list_dir(dir)
         .unwrap_or_default()
         .into_iter()
         .filter(|(_, is_dir)| *is_dir)
@@ -22,7 +22,7 @@ fn sub_dirs(dir: &Path) -> Vec<PathBuf> {
 
 /// Whether `dir` holds a vehicle file of its own.
 fn has_vehicle(dir: &Path) -> bool {
-    omsi_cfg::vfs::read_dir_paths(dir).iter().any(|f| {
+    ::legacy_config::vfs::read_dir_paths(dir).iter().any(|f| {
         f.extension()
             .map(|x| x.eq_ignore_ascii_case("bus") || x.eq_ignore_ascii_case("ovh"))
             .unwrap_or(false)
@@ -34,10 +34,10 @@ fn has_vehicle(dir: &Path) -> bool {
 /// mod folder together read the mod twice and never saw the installation's own buses.
 fn vehicles_dir(root: &Path) -> Option<PathBuf> {
     let d = root.join("Vehicles");
-    if omsi_cfg::vfs::is_dir(&d) {
+    if ::legacy_config::vfs::is_dir(&d) {
         return Some(d);
     }
-    omsi_cfg::vfs::list_dir(root)?
+    ::legacy_config::vfs::list_dir(root)?
         .into_iter()
         .find(|(n, is_dir)| *is_dir && n.to_string_lossy().eq_ignore_ascii_case("vehicles"))
         .map(|(n, _)| root.join(n))
@@ -64,7 +64,7 @@ pub fn vehicle_files(dirs: &[PathBuf]) -> Vec<PathBuf> {
             if !seen_folders.insert(name) {
                 continue;
             }
-            for f in omsi_cfg::vfs::read_dir_paths(&folder) {
+            for f in ::legacy_config::vfs::read_dir_paths(&folder) {
                 if f.extension()
                     .map(|e| e.eq_ignore_ascii_case("bus") || e.eq_ignore_ascii_case("ovh"))
                     .unwrap_or(false)
@@ -83,7 +83,7 @@ pub fn vehicle_files(dirs: &[PathBuf]) -> Vec<PathBuf> {
 /// every flip-dot matrix is drawn). Several colours can be layers of one physical display;
 /// it is blank only when every one of its layers is blank.
 fn shown_script_texture_groups(
-    model: &omsi_model::Model,
+    model: &::model::Model,
     value: impl Fn(&str) -> Option<f32>,
 ) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
@@ -123,7 +123,7 @@ fn shown_script_texture_groups(
 }
 
 /// The `[texttexture]`s a material of the model really shows (`[useTextTexture] n`).
-fn shown_text_textures(model: &omsi_model::Model) -> Vec<usize> {
+fn shown_text_textures(model: &::model::Model) -> Vec<usize> {
     let mut v: Vec<usize> = Vec::new();
     for m in &model.meshes {
         for o in &m.materials {
@@ -142,7 +142,7 @@ fn missing(label: &str, base: &Path, rel: &str, out: &mut Vec<String>) -> Option
         return None;
     }
     let p = resolve_path(base, rel);
-    if omsi_cfg::vfs::exists(&p) {
+    if ::legacy_config::vfs::exists(&p) {
         Some(p)
     } else {
         out.push(format!("missing {label}: {rel}"));
@@ -154,7 +154,7 @@ fn missing(label: &str, base: &Path, rel: &str, out: &mut Vec<String>) -> Option
 pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<String>) {
     let mut problems: Vec<String> = Vec::new();
     let mut info: Vec<String> = Vec::new();
-    let def = match omsi_vehicle::Vehicle::load(path) {
+    let def = match ::legacy_vehicle::Vehicle::load(path) {
         Ok(v) => v,
         Err(e) => return (vec![format!("cannot read: {e}")], info),
     };
@@ -170,7 +170,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
             def.type_name.trim()
         ));
     } else if def.is_rear_section() {
-        let fronts = omsi_vehicle::vehicle::front_sections_of(path);
+        let fronts = ::legacy_vehicle::vehicle::front_sections_of(path);
         match fronts.first() {
             Some(f) => info.push(format!(
                 "rear section of {} (not listed; spawned with it)",
@@ -207,7 +207,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
         ("constfile", &def.scripts.constfiles),
     ] {
         for p in list {
-            if !omsi_cfg::vfs::exists(p) {
+            if !::legacy_config::vfs::exists(p) {
                 problems.push(format!("missing {label}: {}", p.display()));
             }
         }
@@ -221,7 +221,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
         }
     }
     // the vehicle as the game loads it
-    let vt = match omsi_sim::VehicleType::load(root, path) {
+    let vt = match ::simulation::VehicleType::load(root, path) {
         Ok(v) => Arc::new(v),
         Err(e) => {
             problems.push(format!("does not load: {e:#}"));
@@ -235,7 +235,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
             problems.push(format!("script: {s}"));
         }
     }
-    let provided = omsi_sim::host::PROVIDED_CALLBACKS;
+    let provided = ::simulation::host::PROVIDED_CALLBACKS;
     let unknown: Vec<String> = vt
         .program
         .callbacks_used()
@@ -247,7 +247,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
             "callbacks the engine does not provide (read 0): {unknown:?}"
         ));
     }
-    let mut fonts = omsi_sim::texttex::FontLibrary::new(root);
+    let mut fonts = ::simulation::texttex::FontLibrary::new(root);
     let no_decode = |_: &Path| -> Option<(u32, u32, Vec<u8>)> { Some((1, 1, vec![0; 4])) };
     let mut bad_fonts: Vec<String> = Vec::new();
     let mut sibling_fonts: Vec<String> = Vec::new();
@@ -308,9 +308,9 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
     let mut bad_meshes = Vec::new();
     for md in &vt.model.meshes[vt.model.lods.first().map(|l| l.first_mesh).unwrap_or(0)..lod0_end] {
         let p = resolve_path(&model_dir, &md.file);
-        if !omsi_cfg::vfs::is_file(&p) {
+        if !::legacy_config::vfs::is_file(&p) {
             bad_meshes.push(md.file.clone());
-        } else if let Err(e) = omsi_o3d::load_mesh(&p) {
+        } else if let Err(e) = ::legacy_o3d::load_mesh(&p) {
             bad_meshes.push(format!("{} ({e})", md.file));
         }
     }
@@ -332,7 +332,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
         {
             return;
         }
-        if omsi_texture::find_texture(name, &dirs_ref).is_none()
+        if ::texture::find_texture(name, &dirs_ref).is_none()
             && !bad.iter().any(|b| b.eq_ignore_ascii_case(name))
         {
             bad.push(name.to_string());
@@ -341,10 +341,10 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
     for vm in &vt.meshes {
         let def = &vt.model.meshes[vm.def_index];
         for (slot, m) in vm.materials.iter().enumerate() {
-            let ov: Vec<&omsi_model::MaterialDef> = def
+            let ov: Vec<&::model::MaterialDef> = def
                 .materials
                 .iter()
-                .filter(|o| omsi_sim::vehicle::override_slot(&vm.materials, o) == Some(slot))
+                .filter(|o| ::simulation::vehicle::override_slot(&vm.materials, o) == Some(slot))
                 .collect();
             let generated = ov.iter().any(|o| {
                 o.use_text_texture.is_some()
@@ -379,7 +379,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
         ));
     }
     for c in &vt.model.ctc {
-        if !omsi_cfg::vfs::is_dir(&resolve_path(&dir, &c.path)) {
+        if !::legacy_config::vfs::is_dir(&resolve_path(&dir, &c.path)) {
             problems.push(format!("paint scheme folder [CTC] not found: {}", c.path));
         }
     }
@@ -393,7 +393,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
     // sounds
     if let Some(rel) = &def.sound {
         let p = resolve_path(&dir, rel);
-        if let Ok(cfg) = omsi_vehicle::SoundCfg::load(&p) {
+        if let Ok(cfg) = ::legacy_vehicle::SoundCfg::load(&p) {
             let sdir = p.parent().map(Path::to_path_buf).unwrap_or_default();
             // a blank file name is a real `[sound]` block, not a broken reference: it is
             // how a sound is deliberately silenced (the MB_C2 gearbox script's neutral
@@ -406,7 +406,7 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
                 .filter(|s| {
                     !s.file.trim().is_empty()
                         && s.file.trim().parse::<i32>().is_err()
-                        && !omsi_cfg::vfs::is_file(&resolve_path(&sdir, &s.file))
+                        && !::legacy_config::vfs::is_file(&resolve_path(&sdir, &s.file))
                 })
                 .map(|s| s.file.clone())
                 .collect::<std::collections::BTreeSet<_>>()
@@ -429,32 +429,32 @@ pub fn check_vehicle(root: &Path, path: &Path, run: bool) -> (Vec<String>, Vec<S
 /// electrics and the engine come on, which displays get drawn, which callbacks were missed.
 fn run_vehicle(
     root: &Path,
-    vt: &Arc<omsi_sim::VehicleType>,
+    vt: &Arc<::simulation::VehicleType>,
     problems: &mut Vec<String>,
     info: &mut Vec<String>,
 ) {
-    let mut host = omsi_sim::VehicleHost::new(omsi_sim::SimClock::default());
+    let mut host = ::simulation::VehicleHost::new(::simulation::SimClock::default());
     host.font_lib = Some(Arc::new(parking_lot::Mutex::new(
-        omsi_sim::texttex::FontLibrary::new(root),
+        ::simulation::texttex::FontLibrary::new(root),
     )));
     // the depot file next to the vehicle, as a map without one would give it
-    host.hof = omsi_vehicle::hof::depot_files(vt.def.dir())
+    host.hof = ::legacy_vehicle::hof::depot_files(vt.def.dir())
         .first()
-        .and_then(|h| omsi_vehicle::Hof::load(h).ok())
+        .and_then(|h| ::legacy_vehicle::Hof::load(h).ok())
         .map(Arc::new);
-    let mut v = omsi_sim::VehicleInstance::new(vt.clone(), host);
+    let mut v = ::simulation::VehicleInstance::new(vt.clone(), host);
     {
         let lib = v.host.font_lib.clone().unwrap();
         v.init_text_textures(&mut lib.lock(), &|p| {
-            omsi_texture::decode_file(p)
+            ::texture::decode_file(p)
                 .ok()
                 .map(|i| (i.width, i.height, i.rgba))
         });
     }
-    let bound: Vec<String> = omsi_content::KeyboardCfg::load(&root.join("Inputs/keyboard.cfg"))
+    let bound: Vec<String> = ::content::KeyboardCfg::load(&root.join("Inputs/keyboard.cfg"))
         .map(|k| k.vehicles.iter().map(|b| b.action.clone()).collect())
         .unwrap_or_default();
-    let mut s = omsi_sim::startup::StartUp::new(&v, &bound);
+    let mut s = ::simulation::startup::StartUp::new(&v, &bound);
     let dt = 1.0 / 30.0;
     let mut typed = false;
     for _ in 0..(20.0 / dt) as usize {
@@ -472,8 +472,8 @@ fn run_vehicle(
         }
         v.update(dt);
     }
-    let power = omsi_sim::startup::power_on(&v);
-    let engine = omsi_sim::startup::engine_running(&v);
+    let power = ::simulation::startup::power_on(&v);
+    let engine = ::simulation::startup::engine_running(&v);
     let what = if s.report.is_empty() {
         "nothing pressed".to_string()
     } else {
@@ -574,11 +574,11 @@ mod tests {
 
     #[test]
     fn inactive_matrix_colour_is_not_checked_as_a_blank_display() {
-        let mut model = omsi_model::Model::default();
+        let mut model = ::model::Model::default();
         model.script_textures = vec![(16, 8), (16, 8)];
-        let mut inactive = omsi_model::MeshDef::default();
+        let mut inactive = ::model::MeshDef::default();
         inactive.visible = Some(("matrix_colour".into(), 1.0));
-        inactive.materials.push(omsi_model::MaterialDef {
+        inactive.materials.push(::model::MaterialDef {
             use_script_texture: Some(1),
             ..Default::default()
         });
@@ -594,7 +594,7 @@ mod tests {
 
 /// Type the depot file's first numbered IBIS trip the way a driver does (log in where the IBIS wants
 /// its driver number, line/Kurs, route); what the IBIS then has.
-fn type_first_trip(v: &mut omsi_sim::VehicleInstance) -> Option<String> {
+fn type_first_trip(v: &mut ::simulation::VehicleInstance) -> Option<String> {
     let hof = v.host.hof.clone()?;
     // a trip of a numbered line (depot files start with test and service entries)
     let trip = hof
@@ -606,7 +606,7 @@ fn type_first_trip(v: &mut omsi_sim::VehicleInstance) -> Option<String> {
                 !t.line.trim().is_empty() && t.line.trim().bytes().all(|b| b.is_ascii_digit())
             })
         })?;
-    let press = |v: &mut omsi_sim::VehicleInstance, keys: &str| {
+    let press = |v: &mut ::simulation::VehicleInstance, keys: &str| {
         for d in keys.chars() {
             v.trigger(&format!("IBIS_{d}"));
         }
@@ -618,7 +618,7 @@ fn type_first_trip(v: &mut omsi_sim::VehicleInstance) -> Option<String> {
             press(v, &format!("{}", pin.round() as u32));
         }
     }
-    let line = omsi_cfg::parse_i32(&trip.code).max(0) as u32;
+    let line = ::legacy_config::parse_i32(&trip.code).max(0) as u32;
     let route = trip
         .code
         .trim()
@@ -795,7 +795,7 @@ pub fn check_fleet(
             if has_vehicle(&f) {
                 continue;
             }
-            let elsewhere = omsi_cfg::content_dirs(&format!("Vehicles/{name}"))
+            let elsewhere = ::legacy_config::content_dirs(&format!("Vehicles/{name}"))
                 .iter()
                 .any(|x| has_vehicle(x));
             println!(

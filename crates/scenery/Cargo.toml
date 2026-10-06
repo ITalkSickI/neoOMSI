@@ -1,0 +1,11 @@
+[package]
+name = "scenery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Scenery object (.sco) and spline (.sli) definitions (units mc_complMapObj, mc_splines, mc_path)"
+
+[dependencies]
+legacy-config = { path = "../legacy-config" }
+model = { path = "../model" }
+log.workspace = true

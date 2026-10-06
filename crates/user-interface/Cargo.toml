@@ -1,0 +1,24 @@
+[package]
+name = "user-interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Interface drawing shared by the game's navigator and the launcher: Roboto text, Material Symbols icons, anti-aliased shapes and a wgpu pipeline for them"
+
+[dependencies]
+wgpu.workspace = true
+bytemuck.workspace = true
+glam.workspace = true
+log.workspace = true
+ab_glyph = "0.2"
+resvg = { version = "0.48", default-features = false }
+hashbrown.workspace = true
+pollster.workspace = true
+i18n = { path = "../i18n" }
+render = { path = "../render" }
+texture = { path = "../texture" }
+rustrict = "0.7"
+image.workspace = true
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }

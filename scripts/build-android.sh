@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build neoOMSI for Android (arm64) as dist/android/neoOMSI-<version>.apk: the game and
 # its launcher in one app (NativeActivity + libneoomsi_game.so, see
-# crates/omsi-app/src/android.rs). Needs Rust with the aarch64-linux-android target
+# crates/core/src/android.rs). Needs Rust with the aarch64-linux-android target
 # (rustup target add aarch64-linux-android), the Android SDK (platform 34+, build-tools,
 # the NDK) and a JDK 17; see android/env.sh for where they are looked for.
 #
@@ -24,7 +24,7 @@ rm -rf "$build"
 mkdir -p "$build/classes" "$build/apk/lib/arm64-v8a" dist/android
 
 # --- the native code
-cargo rustc --locked --profile android --target "$target" -p omsi-app --lib --crate-type cdylib
+cargo rustc --locked --profile android --target "$target" -p core --lib --crate-type cdylib
 so="target/$target/android/libneoomsi_game.so"
 cp "$so" "$build/apk/lib/arm64-v8a/"
 # every symbol the library needs must be in the system's libraries (Android loads it with

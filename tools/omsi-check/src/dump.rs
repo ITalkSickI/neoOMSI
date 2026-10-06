@@ -8,7 +8,7 @@
 //! Vehicles and scenery objects include their compiled scripts, models their resolved
 //! mesh files.
 
-use omsi_cfg::vfs;
+use ::legacy_config::vfs;
 use rayon::prelude::*;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -48,7 +48,7 @@ fn scripts(lists: [&[PathBuf]; 4], vehicle: bool) -> String {
         return String::new();
     }
     let (rv, rvs, so) = BUILTINS.get().cloned().unwrap_or_default();
-    let mut inp = omsi_script::CompileInput {
+    let mut inp = ::legacy_script::CompileInput {
         varlists: lists[0].to_vec(),
         stringvarlists: lists[1].to_vec(),
         scripts: lists[2].to_vec(),
@@ -68,7 +68,7 @@ fn scripts(lists: [&[PathBuf]; 4], vehicle: bool) -> String {
     } else {
         inp.builtin_vars = so;
     }
-    let p = omsi_script::compile(&inp);
+    let p = ::legacy_script::compile(&inp);
     let mut macros: Vec<String> = p.macros.keys().cloned().collect();
     macros.sort();
     let mut triggers: Vec<String> = p.triggers.keys().cloned().collect();
@@ -86,10 +86,10 @@ fn scripts(lists: [&[PathBuf]; 4], vehicle: bool) -> String {
 }
 
 /// Whether every mesh file of a model resolves to an existing file (and where).
-fn meshes(dir: &Path, model: &omsi_model::Model) -> String {
+fn meshes(dir: &Path, model: &::model::Model) -> String {
     let mut s = String::from("meshes:\n");
     for m in &model.meshes {
-        let p = omsi_cfg::resolve_path(dir, &m.file);
+        let p = ::legacy_config::resolve_path(dir, &m.file);
         s.push_str(&format!(
             "  {} -> {} {}\n",
             m.file,
@@ -109,9 +109,9 @@ pub fn describe(p: &Path) -> Option<String> {
         .unwrap_or_default();
     let lower = p.to_string_lossy().to_ascii_lowercase().replace('\\', "/");
     let dir = p.parent().unwrap_or(Path::new(""));
-    let err = |e: omsi_cfg::CfgError| format!("error: {e}");
+    let err = |e: ::legacy_config::CfgError| format!("error: {e}");
     let s = match ext.as_str() {
-        "bus" | "ovh" => match omsi_vehicle::Vehicle::load(p) {
+        "bus" | "ovh" => match ::legacy_vehicle::Vehicle::load(p) {
             Ok(v) => {
                 let s = &v.scripts;
                 format!(
@@ -124,7 +124,7 @@ pub fn describe(p: &Path) -> Option<String> {
             }
             Err(e) => err(e),
         },
-        "sco" => match omsi_scenery::SceneryObject::load(p) {
+        "sco" => match ::scenery::SceneryObject::load(p) {
             Ok(o) => {
                 let s = &o.scripts;
                 format!(
@@ -138,67 +138,67 @@ pub fn describe(p: &Path) -> Option<String> {
             }
             Err(e) => err(e),
         },
-        "sli" => match omsi_scenery::Spline::load(p) {
+        "sli" => match ::scenery::Spline::load(p) {
             Ok(s) => format!("{s:#?}"),
             Err(e) => err(e),
         },
-        "hum" => match omsi_content::Human::load(p) {
+        "hum" => match ::content::Human::load(p) {
             Ok(h) => format!("{h:#?}"),
             Err(e) => err(e),
         },
-        "hof" => match omsi_vehicle::Hof::load(p) {
+        "hof" => match ::legacy_vehicle::Hof::load(p) {
             Ok(h) => format!("{h:#?}"),
             Err(e) => err(e),
         },
-        "owt" => match omsi_content::Weather::load(p) {
+        "owt" => match ::content::Weather::load(p) {
             Ok(w) => format!("{w:#?}"),
             Err(e) => err(e),
         },
-        "oft" => match omsi_content::Font::load_all(p) {
+        "oft" => match ::content::Font::load_all(p) {
             Ok(f) => format!("{f:#?}"),
             Err(e) => err(e),
         },
-        "cti" => match omsi_content::tickets::TicketItems::load(p) {
+        "cti" => match ::content::tickets::TicketItems::load(p) {
             Ok(t) => format!("{t:#?}"),
             Err(e) => err(e),
         },
-        "otp" => match omsi_content::TicketPack::load(p) {
+        "otp" => match ::content::TicketPack::load(p) {
             Ok(t) => format!("{t:#?}"),
             Err(e) => err(e),
         },
-        "odr" => match omsi_content::Driver::load(p) {
+        "odr" => match ::content::Driver::load(p) {
             Ok(d) => format!("{d:#?}"),
             Err(e) => err(e),
         },
-        "osn" => match omsi_content::Situation::load(p) {
+        "osn" => match ::content::Situation::load(p) {
             Ok(s) => format!("{s:#?}"),
             Err(e) => err(e),
         },
-        "ttp" => format!("{:#?}", omsi_timetable::Trip::load(p).map_err(err)),
-        "ttr" => format!("{:#?}", omsi_timetable::Track::load(p).map_err(err)),
-        "ttl" => format!("{:#?}", omsi_timetable::Line::load(p).map_err(err)),
-        "ocu" => format!("{:#?}", omsi_timetable::CarUse::load(p).map_err(err)),
+        "ttp" => format!("{:#?}", ::timetable::Trip::load(p).map_err(err)),
+        "ttr" => format!("{:#?}", ::timetable::Track::load(p).map_err(err)),
+        "ttl" => format!("{:#?}", ::timetable::Line::load(p).map_err(err)),
+        "ocu" => format!("{:#?}", ::timetable::CarUse::load(p).map_err(err)),
         "map" if name.starts_with("tile_") || lower.contains("/chrono/") => {
-            format!("{:#?}", omsi_map::Tile::load(p).map_err(err))
+            format!("{:#?}", ::map::Tile::load(p).map_err(err))
         }
         "cfg" => {
             if name == "global.cfg" {
-                format!("{:#?}", omsi_map::GlobalCfg::load(p).map_err(err))
+                format!("{:#?}", ::map::GlobalCfg::load(p).map_err(err))
             } else if name.starts_with("ailists") {
-                format!("{:#?}", omsi_map::AiLists::load(p).map_err(err))
+                format!("{:#?}", ::map::AiLists::load(p).map_err(err))
             } else if name == "envir.cfg" {
-                format!("{:#?}", omsi_content::Envir::load(p).map_err(err))
+                format!("{:#?}", ::content::Envir::load(p).map_err(err))
             } else if name.contains("passengercabin") {
-                format!("{:#?}", omsi_vehicle::PassengerCabin::load(p).map_err(err))
+                format!("{:#?}", ::legacy_vehicle::PassengerCabin::load(p).map_err(err))
             } else if name.starts_with("paths") {
-                format!("{:#?}", omsi_vehicle::VehiclePaths::load(p).map_err(err))
+                format!("{:#?}", ::legacy_vehicle::VehiclePaths::load(p).map_err(err))
             } else if name.contains("sound") {
-                format!("{:#?}", omsi_vehicle::SoundCfg::load(p).map_err(err))
+                format!("{:#?}", ::legacy_vehicle::SoundCfg::load(p).map_err(err))
             } else if lower.contains("/model/")
                 || lower.contains("/model_")
                 || name.starts_with("model")
             {
-                match omsi_model::Model::load(p) {
+                match ::model::Model::load(p) {
                     Ok(m) => format!("{m:#?}\n{}", meshes(dir, &m)),
                     Err(e) => err(e),
                 }

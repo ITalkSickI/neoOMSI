@@ -38,7 +38,8 @@ if [ "$GITHUB_REF_TYPE" = "tag" ]; then
   fi
 else
   # Nightlies show fragments changed since the latest previous release/tag or pending fragments.
-  previous_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+  # (only version tags: the passenger pack's release has a tag of its own)
+  previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
   if [ -n "$previous_tag" ] && git rev-parse --verify --quiet "refs/tags/$previous_tag" >/dev/null; then
     previous_commit="$(git rev-parse "refs/tags/$previous_tag")"
     fragments=()

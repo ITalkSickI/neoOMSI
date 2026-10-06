@@ -9,11 +9,11 @@ dest="${1:-$repo/dist/server}"
 export PATH="$HOME/.cargo/bin:$PATH"
 command -v cargo >/dev/null || { echo "Install Rust (https://rustup.rs) first." >&2; exit 1; }
 export neoomsi_VERSION="${neoomsi_VERSION:-$(sh scripts/version.sh 2>/dev/null || echo 0.0.0)}"
-cargo build --locked --release -p omsi-app
+cargo build --locked --release -p core
 mkdir -p "$dest"
 cp target/release/neoomsi "$dest/neoomsi"
 cp scripts/server/start.sh "$dest/start.sh"
 cp docs/SERVER.md "$dest/README.md"
 chmod +x "$dest/start.sh" "$dest/neoomsi"
-touch "$dest/.neoomsi-content"
+touch "$dest/.neocontent"
 echo "neoOMSI server $neoomsi_VERSION in $dest. Start it: $dest/start.sh /path/to/OMSI2"
