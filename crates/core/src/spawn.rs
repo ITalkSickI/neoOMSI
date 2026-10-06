@@ -206,7 +206,8 @@ pub(crate) fn spawn_player(
     }
     let mut host = ::simulation::VehicleHost::new(start_clock(args));
     // the maintenance condition of the options (AI vehicles never wear)
-    host.wear_lifespan = settings::Settings::load().wear_lifespan();
+    host.wear_lifespan = [1.5e6, 0.01, 0.1, 1.0, 10.0]
+        [::config::get_int("gameplay", "maintenance").unwrap_or(0).clamp(0, 4) as usize];
     host.hof = find_hof(args, world, &vt);
     host.font_lib = Some(world.fonts.clone());
     if !world.ticket_pack.trim().is_empty() {
@@ -508,7 +509,23 @@ pub(crate) fn spawn_player(
         head_omega: Vec3::ZERO,
         steer_look: 0.0,
         seat: Vec3::ZERO,
-        mirror_offsets: settings::mirror_offsets(&vt.def.path),
+        mirror_offsets: {
+            let mut out: Vec<[f32; 2]> = Vec::new();
+            let bus = vt.def.path.to_string_lossy().to_ascii_lowercase();
+            for (i, v) in ::config::get_table_sub("mirrors", &bus) {
+                let (Ok(i), Some((y, p))) = (i.parse::<usize>(), v.as_str().and_then(|v| v.split_once(','))) else {
+                    continue;
+                };
+                if i > 64 {
+                    continue;
+                }
+                if out.len() <= i {
+                    out.resize(i + 1, [0.0; 2]);
+                }
+                out[i] = [y.trim().parse().unwrap_or(0.0), p.trim().parse().unwrap_or(0.0)];
+            }
+            out
+        },
         mirrors_dirty: false,
         take_change: false,
         toggled_up: Default::default(),

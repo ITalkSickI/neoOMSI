@@ -1080,18 +1080,18 @@ impl Controllers {
                             _ => ((v + 1.0 - 2.0 * dz).max(0.0) / (1.0 - dz)) - 1.0,
                         };
                         // a pedal travels the whole range, -1 up to 1 down
-                        let pedal = crate::settings::pedal_ends(((v + 1.0) * 0.5).clamp(0.0, 1.0));
+                        let pedal = pedal_ends(((v + 1.0) * 0.5).clamp(0.0, 1.0));
                         match f {
                             Func::Steering | Func::LookX | Func::LookY => {
                                 unreachable!("steering and looking handled before pedal mapping")
                             }
                             Func::Throttle if gives(1, &c.name) => set(
                                 &mut out.throttle,
-                                crate::settings::pedal_curve(pedal, self.pedal_throttle),
+                                pedal_curve(pedal, self.pedal_throttle),
                             ),
                             Func::Brake if gives(2, &c.name) => set(
                                 &mut out.brake,
-                                crate::settings::pedal_curve(pedal, self.pedal_brake),
+                                pedal_curve(pedal, self.pedal_brake),
                             ),
                             Func::Clutch if gives(3, &c.name) => set(&mut out.clutch, pedal),
                             Func::ThrottleBrake => {
@@ -1100,7 +1100,7 @@ impl Controllers {
                                 if gives(1, &c.name) {
                                     set(
                                         &mut out.throttle,
-                                        crate::settings::pedal_curve(
+                                        pedal_curve(
                                             v.max(0.0),
                                             self.pedal_throttle,
                                         ),
@@ -1109,7 +1109,7 @@ impl Controllers {
                                 if gives(2, &c.name) {
                                     set(
                                         &mut out.brake,
-                                        crate::settings::pedal_curve(
+                                        pedal_curve(
                                             (-v).max(0.0),
                                             self.pedal_brake,
                                         ),
@@ -1209,11 +1209,11 @@ impl Controllers {
                 }
                 if free.throttle && gives(1, pad.name()) {
                     out.throttle
-                        .get_or_insert(crate::settings::pedal_curve(rt, self.pedal_throttle));
+                        .get_or_insert(pedal_curve(rt, self.pedal_throttle));
                 }
                 if free.brake && gives(2, pad.name()) {
                     out.brake
-                        .get_or_insert(crate::settings::pedal_curve(lt, self.pedal_brake));
+                        .get_or_insert(pedal_curve(lt, self.pedal_brake));
                 }
                 // the right stick looks round, as the truck games have it (#454)
                 if free.look && out.look == [0.0, 0.0] {
@@ -2779,4 +2779,23 @@ mod button_tests {
         assert_eq!(zero, 0.0);
         assert!(normal.abs() > 0.05, "{normal}");
     }
+}
+
+/// A pedal's last few per cent of travel are its end: a wheel's pedal on the floor reads
+/// 0.93..0.99, and the scripts ask for the ends exactly - the LiAZ/PAZ gearboxes put a gear
+/// in only at `(L.L.clutch) 1 =` and part the engine from the wheels only above 0.95, so a
+/// clutch held down to the floor still dragged and the engine died at every stop.
+fn pedal_ends(v: f32) -> f32 {
+    if v >= 0.96 {
+        1.0
+    } else if v <= 0.02 {
+        0.0
+    } else {
+        v
+    }
+}
+
+/// A pedal as the settings shape it: `v` 0..1 through the response curve of `strength`.
+fn pedal_curve(v: f32, strength: f32) -> f32 {
+    v.clamp(0.0, 1.0).powf(1.0 / strength.clamp(0.25, 4.0))
 }

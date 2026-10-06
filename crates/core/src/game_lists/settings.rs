@@ -47,31 +47,35 @@ pub(super) fn store_with(app: &mut App, change: impl FnOnce(&mut serde_json::Val
 
 pub(super) fn reload_settings(app: &mut App) {
     flush_settings(true);
-    app.settings = crate::settings::Settings::load();
-    crate::ui_language(&app.settings.language);
+    crate::ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
     sync_live(app);
 }
 
 pub(super) fn sync_live(app: &mut App) {
-    let s = &app.settings;
-    crate::startup::SOUND_AI.store(s.vol_ai.to_bits(), std::sync::atomic::Ordering::Relaxed);
-    crate::startup::SOUND_SCENERY.store(
-        s.vol_scenery.to_bits(),
+    crate::startup::SOUND_AI.store(
+        (::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    ::audio::DOPPLER.store(s.doppler, std::sync::atomic::Ordering::Relaxed);
+    crate::startup::SOUND_SCENERY.store(
+        (::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    ::audio::DOPPLER.store(
+        ::config::get_bool("audio", "doppler").unwrap_or(true),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     if let Some(n) = app.navigator.as_mut() {
-        n.arrows = s.nav_arrows;
+        n.arrows = ::config::get_bool("navigator", "arrows").unwrap_or(false);
     }
     if let Some(h) = app.humans.as_mut() {
-        h.exact_fare = s.exact_fare;
-        h.boarding = s.boarding.clone();
-        h.prefer_seats = s.pax_prefer_seats;
-        h.set_ik(app.args.pax_ik.unwrap_or(s.pax_ik));
-        h.set_natural(s.pax_motion == "natural");
-        h.voices = match s.pax_voices.as_str() {
-            "off" => 2,
-            "tickets" => 1,
+        h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
+        h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
+        h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
+        h.set_ik(app.args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true)));
+        h.set_natural(::config::get_string("passengers", "motion").as_deref().unwrap_or("natural") == "natural");
+        h.voices = match ::config::get_string("passengers", "voices").as_deref() {
+            Some("off") => 2,
+            Some("tickets") => 1,
             _ => 0,
         };
     }
@@ -112,7 +116,7 @@ pub(crate) fn flush_settings(force: bool) {
         }
         if !force
             && p.1
-                .is_some_and(|t| t.elapsed().as_millis() < SETTINGS_FLUSH_MS)
+            .is_some_and(|t| t.elapsed().as_millis() < SETTINGS_FLUSH_MS)
         {
             return;
         }

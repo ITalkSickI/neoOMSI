@@ -35,14 +35,12 @@ pub(crate) fn run_offscreen(
             min_obj_size: ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32,
             max_obj_dist: match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
                 d if d >= 0.0 => d,
-                _ => crate::settings::view_distance().map(|v| v as f32).unwrap_or(900.0),
+                _ => ::config::get_float("graphics", "view_distance").filter(|v| *v > 0.0).map(|v| v as f32).unwrap_or(900.0),
             },
             omsi_shadow_casters: ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi"),
             shadow_blobs: ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
             reflections: ::config::get_bool("graphics", "reflections").unwrap_or(true),
-            no_enhanced: crate::settings::graphics_mode(
-                &::config::get_string("graphics", "graphics").unwrap_or_default(),
-            ) != "enhanced",
+            no_enhanced: ::config::get_string("graphics", "graphics").as_deref() != Some("enhanced"),
         },
     ))?;
     log::info!("adapter: {}", renderer.adapter_name);
