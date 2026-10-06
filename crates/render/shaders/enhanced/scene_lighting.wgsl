@@ -558,7 +558,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         metal = 0.0;
     }
     // --- a PBR set beside the diffuse texture (`foo_n.png`, `foo_r` / `_m` / `_ao` or
-    // `foo_orm`: see ::texture::pbr): the normal map bends the normal, the packed map
+    // `foo_orm`: see texture::pbr): the normal map bends the normal, the packed map
     // gives the occlusion, roughness and metalness in place of the guesses above
     var pbr_ao = 1.0;
     if (material.pbr.x > 0.5) {

@@ -395,7 +395,7 @@ fn reflection_mask(uv: vec2<f32>, diffuse_a: f32) -> f32 {
 // [matl_envmap] factor x 255 x its light (at most 1), truncated, and OR-ed together shifted
 // into place without saturation - a factor over 1 spills into the neighbouring channel
 // exactly as there (a factor of 10 at full light reads almost white).
-fn ::texture_factor(factor: f32, light: vec3<f32>) -> vec3<f32> {
+fn omsi_texture_factor(factor: f32, light: vec3<f32>) -> vec3<f32> {
     let m = min(max(light, vec3<f32>(0.0)), vec3<f32>(1.0)) * max(factor, 0.0) * 255.0;
     let r = u32(m.r);
     let g = u32(m.g);
@@ -1949,7 +1949,7 @@ fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>) -> vec4<f32> {
             let a = select(diffuse_a, textureSample(t_envmask, s_diffuse, duv).a, has_env_mask());
             kk = vec3<f32>(a * g);
         } else {
-            kk = ::texture_factor(material.params2.y, camera.ambient.rgb + vec3<f32>(g));
+            kk = omsi_texture_factor(material.params2.y, camera.ambient.rgb + vec3<f32>(g));
         }
         // In the vanilla picture the lerp is made on the encoded values, as the stage makes
         // it, like the texture x light product above: made on linear ones it showed the
