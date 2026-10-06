@@ -17,9 +17,9 @@ pub struct Settings {
     pub shadows: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub shadow_size: u32, // TODO: Migrate to new config lib | category: graphics | default value: 2048
     pub shadow_blobs: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
-    pub navigator: bool, // TODO: Migrate to new config lib | category: ui | default value: true
-    pub ui_opacity: f32, // TODO: Migrate to new config lib | category: ui | default value: 0.85
-    pub navigator_corner: String, // TODO: Migrate to new config lib | category: ui | default value: "bottom-left"
+    pub navigator: bool, // Migrated
+    pub ui_opacity: f32, // Migrated
+    pub navigator_corner: String, // Migrated
     pub boarding: String, // Migrated
     pub pax_prefer_seats: bool, // Migrated
     pub detail_textures: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
@@ -44,8 +44,8 @@ pub struct Settings {
     pub free_look: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
     pub crosshair: bool, // Migrated
     pub render_scale: f32, // TODO: Migrate to new config lib | category: graphics | default value: 0.0
-    pub language: String, // TODO: Migrate to new config lib | category: ui | default value: "ENG"
-    pub units: String, // TODO: Migrate to new config lib | category: ui | default value: "metric"
+    pub language: String, // Migrated
+    pub units: String, // Migrated
     pub pax_voices: String, // TODO: Migrate to new config lib | category: passengers | default value: "all"
     pub pax_models: String, // TODO: Migrate to new config lib | category: passengers | default value: "omsi"
     pub pax_motion: String, // TODO: Migrate to new config lib | category: passengers | default value: "natural"
@@ -66,14 +66,14 @@ pub struct Settings {
     pub map_detail: i16, // TODO: Migrate to new config lib | category: graphics | default value: -1
     pub max_obj_dist: f32, // TODO: Migrate to new config lib | category: graphics | default value: -1.0
     pub max_fps: u32, // TODO: Migrate to new config lib | category: graphics | default value: 0
-    pub chat: bool, // TODO: Migrate to new config lib | category: ui | default value: true
-    pub tooltips: bool, // TODO: Migrate to new config lib | category: ui | default value: true
-    pub name_tags: bool, // TODO: Migrate to new config lib | category: ui | default value: true
+    pub chat: bool, // Migrated
+    pub tooltips: bool, // Migrated
+    pub name_tags: bool, // Migrated
     pub driver: bool, // Migrated
-    pub show_fps: bool, // TODO: Migrate to new config lib | category: ui | default value: false
-    pub notes: bool, // TODO: Migrate to new config lib | category: ui | default value: true
-    pub ui_scale: f32, // TODO: Migrate to new config lib | category: ui | default value: 1.0
-    pub ui_scale_window: bool, // TODO: Migrate to new config lib | category: ui | default value: true
+    pub show_fps: bool, // Migrated
+    pub notes: bool, // Migrated
+    pub ui_scale: f32, // Migrated
+    pub ui_scale_window: bool, // Migrated
     pub clouds: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub pax_density: f32, // TODO: Migrate to new config lib | category: passengers | default value: 1.0
     pub vol_ai: f32, // Migrated
@@ -166,7 +166,7 @@ impl Default for Settings {
             volume: 0.6,
             post_aa: "fxaa".into(),
             render_scale: 0.0,
-            language: "ENG".into(),
+            language: "en".into(),
             units: "metric".into(),
             pax_voices: "all".into(),
             pax_models: "omsi".into(),

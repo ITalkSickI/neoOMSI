@@ -366,8 +366,8 @@ impl App {
                 * ui::size_factor(
                 s.config.height as f32,
                 dpi,
-                self.settings.ui_scale,
-                self.settings.ui_scale_window,
+                ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                ::config::get_bool("ui", "scale_window").unwrap_or(true),
             );
             ui.loading_bg = Some(None);
             ui.loading(
@@ -446,8 +446,8 @@ impl App {
                 * ui::size_factor(
                 s.config.height as f32,
                 dpi,
-                self.settings.ui_scale,
-                self.settings.ui_scale_window,
+                ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                ::config::get_bool("ui", "scale_window").unwrap_or(true),
             );
             ui.loading(
                 r,
@@ -733,9 +733,9 @@ impl App {
                     self.camera = Some(cam);
                 }
                 self.navigator = Some(navigator::Navigator::new(
-                    self.settings.navigator,
-                    self.settings.ui_opacity,
-                    &self.settings.navigator_corner,
+                    ::config::get_bool("ui", "navigator").unwrap_or(true),
+                    ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32,
+                    &::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into()),
                 ));
                 if let Some(n) = self.navigator.as_mut() {
                     n.arrows = self.settings.nav_arrows;
@@ -931,8 +931,8 @@ impl App {
                 * ui::size_factor(
                 s.config.height as f32,
                 dpi,
-                self.settings.ui_scale,
-                self.settings.ui_scale_window,
+                ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                ::config::get_bool("ui", "scale_window").unwrap_or(true),
             );
             ui.loading(
                 &renderer,

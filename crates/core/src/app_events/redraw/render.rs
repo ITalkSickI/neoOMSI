@@ -41,7 +41,7 @@ impl App {
             self.scene.as_mut(),
         ) {
             let mut lines: Vec<String> = Vec::new();
-            let names = describe::names(&self.args.root, &self.settings.language);
+            let names = describe::names(&self.args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
             let tooltip = self.hover.as_ref().map(|h| names.control(h));
             if self.editor.is_some() {
                 lines.push("Object editor: click picks · drag moves · wheel turns (Shift lifts) · Del · C copy · V variant · Backspace undo · Ctrl+S save · Esc".into());
@@ -136,6 +136,8 @@ impl App {
                         Some(f) => (f.pos, f.heading),
                         None => (p.vehicle.position, p.vehicle.heading),
                     };
+                    let ui_lang = ::config::get_string("ui", "language").unwrap_or_else(|| "en".into());
+                    let ui_units = ::config::get_string("ui", "units").unwrap_or_else(|| "metric".into());
                     let frame = navigator::NavFrame {
                         traffic: self.traffic.as_ref(),
                         bus: at,
@@ -151,8 +153,8 @@ impl App {
                         stop_requested: navigator::stop_requested(&p.vehicle),
                         time: self.clock.time,
                         weekday: self.clock.weekday(),
-                        language: &self.settings.language,
-                        units: &self.settings.units,
+                        language: &ui_lang,
+                        units: &ui_units,
                         screen: if vr_active {
                             (1440.0, 1440.0)
                         } else {
@@ -161,12 +163,12 @@ impl App {
                         ui_scale: if vr_active {
                             1.0
                         } else {
-                            self.settings.ui_scale
+                            ::config::get_float("ui", "scale").unwrap_or(1.0) as f32
                         },
                         follow_window: if vr_active {
                             true
                         } else {
-                            self.settings.ui_scale_window
+                            ::config::get_bool("ui", "scale_window").unwrap_or(true)
                         },
                         dt,
                     };
@@ -195,9 +197,9 @@ impl App {
                     .map(|w| w.scale_factor() as f32)
                     .unwrap_or(1.0);
                 let (w, h) = (s.config.width as f32, s.config.height as f32);
-                self.remotes.chat.disabled = !self.settings.chat;
+                self.remotes.chat.disabled = !::config::get_bool("ui", "chat").unwrap_or(true);
                 let chat =
-                    (!screenshot_mode && self.lan.is_some() && self.settings.chat).then(|| {
+                    (!screenshot_mode && self.lan.is_some() && ::config::get_bool("ui", "chat").unwrap_or(true)).then(|| {
                         ui::ChatView {
                             lines: &self.remotes.chat.lines,
                             typing: self.remotes.chat.typing.as_deref(),
@@ -205,7 +207,7 @@ impl App {
                         }
                     });
                 ui.chat.hidden = self.remotes.chat.hidden;
-                let tags = if !screenshot_mode && self.settings.name_tags {
+                let tags = if !screenshot_mode && ::config::get_bool("ui", "name_tags").unwrap_or(true) {
                     self.camera
                         .as_ref()
                         .map(|c| lan::name_tags(&self.remotes, c, w, h))
@@ -262,10 +264,10 @@ impl App {
                     ui_scale: ui::size_factor(
                         h,
                         scale,
-                        self.settings.ui_scale,
-                        self.settings.ui_scale_window,
+                        ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                        ::config::get_bool("ui", "scale_window").unwrap_or(true),
                     ),
-                    opacity: ui::backdrop(self.settings.ui_opacity),
+                    opacity: ui::backdrop(::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32),
                     width: w,
                     height: h,
                     cursor: self.cursor,
@@ -284,7 +286,7 @@ impl App {
                         None
                     } else {
                         tooltip.filter(|_| {
-                            self.settings.tooltips
+                            ::config::get_bool("ui", "tooltips").unwrap_or(true)
                                 && !self.dragging
                                 && !covered
                                 && self.game_menu.is_none()
@@ -292,12 +294,12 @@ impl App {
                     },
                     notes: if screenshot_mode {
                         screenshot_help.as_slice()
-                    } else if self.settings.notes && !map_open && self.game_menu.is_none() {
+                    } else if ::config::get_bool("ui", "notes").unwrap_or(true) && !map_open && self.game_menu.is_none() {
                         &notes
                     } else {
                         &[]
                     },
-                    fps: (!screenshot_mode && self.settings.show_fps).then_some(self.fps),
+                    fps: (!screenshot_mode && ::config::get_bool("ui", "show_fps").unwrap_or(false)).then_some(self.fps),
                     paused: self.paused && !screenshot_mode,
                     menu: match chooser_sel {
                         Some(k) => Some((k, &chooser_items[..])),

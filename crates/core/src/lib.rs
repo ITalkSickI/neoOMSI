@@ -201,7 +201,7 @@ pub(crate) fn prepare(
     mut args: Args,
     bare: bool,
 ) -> Result<Option<(Args, Option<server::ServerCfg>)>> {
-    ui_language(&settings::Settings::load().language);
+    ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
     let server_cfg = match args.server.clone() {
         Some(p) => match server::prepare(&mut args, &p) {
             Ok(c) => Some(c),

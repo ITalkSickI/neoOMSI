@@ -1871,7 +1871,7 @@ pub(crate) fn run_offscreen(
                     );
                     log::info!(
                         "  switch '{ev}' at screen ({sx:.0}, {sy:.0}): {}",
-                        describe::names(&args.root, &settings.language).control(ev)
+                        describe::names(&args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into())).control(ev)
                     );
                     switches.push((ev.clone(), sx, sy));
                 }
@@ -3031,9 +3031,9 @@ pub(crate) fn run_offscreen(
         }
         hud.update(&renderer, &mut scene, &lines);
         // the navigator, as the window shows it (its camera settled first)
-        if settings.navigator {
+        if ::config::get_bool("ui", "navigator").unwrap_or(true) {
             let mut nav =
-                navigator::Navigator::new(true, settings.ui_opacity, &settings.navigator_corner);
+                navigator::Navigator::new(true, ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32, &::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into()));
             nav.schedule = ::legacy_config::env::var_os("OMSI_NAV_SCHEDULE").is_some();
             nav.show_ai = settings.nav_ai;
             nav.show_topbar = settings.nav_topbar;
@@ -3054,6 +3054,8 @@ pub(crate) fn run_offscreen(
                 nav.set_route(&key, lanes, true, g);
             }
             let (outside_temp, inside_temp) = app_events::vehicle_temperatures(p);
+            let ui_lang = ::config::get_string("ui", "language").unwrap_or_else(|| "en".into());
+            let ui_units = ::config::get_string("ui", "units").unwrap_or_else(|| "metric".into());
             let frame = navigator::NavFrame {
                 traffic: traffic.as_ref(),
                 bus: p.vehicle.position,
@@ -3069,11 +3071,11 @@ pub(crate) fn run_offscreen(
                 stop_requested: navigator::stop_requested(&p.vehicle),
                 time: clock.time,
                 weekday: clock.weekday(),
-                language: &settings.language,
-                units: &settings.units,
+                language: &ui_lang,
+                units: &ui_units,
                 screen: (w as f32, h as f32),
-                ui_scale: settings.ui_scale,
-                follow_window: settings.ui_scale_window,
+                ui_scale: ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                follow_window: ::config::get_bool("ui", "scale_window").unwrap_or(true),
                 dt: 0.1,
             };
             for _ in 0..30 {

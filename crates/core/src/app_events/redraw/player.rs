@@ -47,7 +47,7 @@ impl App {
         if self.world.is_some() {
             if let Some(n) = self.args.tutorial.take() {
                 self.tutorial =
-                    tutorial::Tutorial::load(&self.args.root, n, &self.settings.language);
+                    tutorial::Tutorial::load(&self.args.root, n, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
             }
         }
         let hwnd = self

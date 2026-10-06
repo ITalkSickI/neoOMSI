@@ -671,7 +671,7 @@ pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
             "noop".to_string(),
         )];
     };
-    let names = crate::describe::names(&app.args.root, &app.settings.language);
+    let names = crate::describe::names(&app.args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
     let head = |t: &str, n: usize| {
         (
             row(&t.to_uppercase(), 'i', &n.to_string(), "", None),

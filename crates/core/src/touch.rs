@@ -1238,7 +1238,7 @@ impl App {
             .map(|p| p.vehicle.physics.velocity_kmh().abs());
         let lock_angle = touch_lock_angle();
         // (the buttons' backgrounds follow the interface's opacity; their icons stay solid)
-        let panel_bg = PANEL_BG.alpha(crate::ui::backdrop(self.settings.ui_opacity));
+        let panel_bg = PANEL_BG.alpha(crate::ui::backdrop(::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32));
         let (w, h) = self.touch.size;
         let t = &mut self.touch;
         let u = t.u;
@@ -1339,7 +1339,7 @@ impl App {
             }
             if let Some(v) = speed {
                 let at = Vec2::new(w * 0.5, h - 22.0 * u);
-                let s = if matches!(self.settings.units.as_str(), "uk" | "imperial") {
+                let s = if matches!(::config::get_string("ui", "units").unwrap_or_else(|| "metric".into()).as_str(), "uk" | "imperial") {
                     format!("{:.0} mph", v * 0.621_371)
                 } else {
                     format!("{v:.0} km/h")

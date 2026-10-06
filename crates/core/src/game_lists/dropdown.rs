@@ -218,6 +218,15 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                         ::config::set_setting("ai", &key[3..], v);
                         let _ = ::config::save();
                     }
+                } else if key == "language" {
+                    ::config::set_setting("ui", "language", crate::describe::language_code(value));
+                    let _ = ::config::save();
+                } else if key == "units" {
+                    ::config::set_setting("ui", "units", value);
+                    let _ = ::config::save();
+                } else if key == "navigator_corner" {
+                    ::config::set_setting("ui", "navigator_corner", value.to_ascii_lowercase());
+                    let _ = ::config::save();
                 } else if key == "maintenance" {
                     if let Ok(v) = value.parse::<i64>() {
                         ::config::set_setting("gameplay", "maintenance", v);
@@ -232,6 +241,9 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                     remember_setting(key, value);
                 }
                 reload_settings(app);
+                if key == "language" {
+                    crate::ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
+                }
             }
         }
         "preset" => {
@@ -529,6 +541,12 @@ pub(super) fn select_state(
         ::config::get_int("ai", &key[3..])
             .map(|v| v.to_string())
             .unwrap_or_default()
+    } else if key == "language" {
+        ::config::get_string("ui", "language").unwrap_or_default()
+    } else if key == "units" {
+        ::config::get_string("ui", "units").unwrap_or_default()
+    } else if key == "navigator_corner" {
+        ::config::get_string("ui", "navigator_corner").unwrap_or_default()
     } else if key == "maintenance" {
         ::config::get_int("gameplay", "maintenance")
             .map(|v| v.to_string())

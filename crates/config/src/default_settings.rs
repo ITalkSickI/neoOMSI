@@ -59,6 +59,19 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("ai", "unsched_factor", Def::Float(1.0)),
     ("ai", "max_scheduled", Def::Int(0)),
     ("ai", "max_parked", Def::Int(0)),
+    // [ui]
+    ("ui", "navigator", Def::Bool(true)),
+    ("ui", "opacity", Def::Float(0.85)),
+    ("ui", "navigator_corner", Def::Str("bottom-left")),
+    ("ui", "scale", Def::Float(1.0)),
+    ("ui", "scale_window", Def::Bool(true)),
+    ("ui", "notes", Def::Bool(true)),
+    ("ui", "show_fps", Def::Bool(false)),
+    ("ui", "chat", Def::Bool(true)),
+    ("ui", "tooltips", Def::Bool(true)),
+    ("ui", "name_tags", Def::Bool(true)),
+    ("ui", "language", Def::Str("en")),
+    ("ui", "units", Def::Str("metric")),
     // [graphics]
     ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]

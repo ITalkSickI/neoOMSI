@@ -1485,7 +1485,7 @@ fn content_language() -> &'static str {
     language_code(
         settings_from_text(text.as_deref())["language"]
             .as_str()
-            .unwrap_or("ENG"),
+            .unwrap_or("en"),
     )
 }
 
@@ -1498,8 +1498,8 @@ fn dsc_candidates(file: &Path, lang: &str) -> Vec<PathBuf> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     let mut langs = vec![lang];
-    if lang != "DEU" && lang != "ENG" {
-        langs.push("ENG");
+    if lang != "de" && lang != "en" {
+        langs.push("en");
     }
     langs
         .into_iter()
@@ -2338,8 +2338,8 @@ fn setting_key(k: &str) -> String {
 /// OMSI's own texts (key names, `.dsc` descriptions, tutorials) exist in English, German
 /// and French: every other language shows those in English.
 pub const LANGUAGES: &[(&str, &str, &str, &[&str])] = &[
-    ("ENG", "English", "en", &["en", "english"]),
-    ("DEU", "Deutsch", "de", &["de", "ger", "german", "deutsch"]),
+    ("en", "English", "en", &["en", "english"]),
+    ("de", "Deutsch", "de", &["de", "ger", "german", "deutsch"]),
 ];
 
 /// The settings' language code from any spelling the game accepts (English when unknown).
@@ -2351,7 +2351,7 @@ pub fn language_code(s: &str) -> &'static str {
             code.eq_ignore_ascii_case(&s) || aliases.iter().any(|a| *a == s)
         })
         .map(|l| l.0)
-        .unwrap_or("ENG")
+        .unwrap_or("en")
 }
 
 /// The interface tables' code of a language (`ru`, `ja` ...; empty for English).
@@ -2391,7 +2391,7 @@ fn mirror_refresh(x: &str) -> &'static str {
 
 /// The page's view of a `settings.cfg` text (None: no file yet, the game's defaults).
 pub fn settings_from_text(text: Option<&str>) -> Value {
-    let mut v = json!({ "msaa": 4, "anisotropy": 8, "ssao": true, "shadows": true, "shadow_size": 2048, "navigator": true, "ui_opacity": 0.85, "navigator_corner": "bottom-left", "boarding": "auto", "detail_textures": true, "exact_fare": true, "enhanced": false, "graphics": "vanilla_plus", "fullscreen": false, "vsync": true, "volume": 0.6, "drive_keys": "simple", "render_scale": "auto", "view_distance": "auto", "language": "ENG", "units": "metric", "texture_memory": 0, "texture_compression": true, "chat": true, "tooltips": true, "name_tags": true, "show_fps": false, "clouds": true, "pax_density": 1.0, "vol_ai": 1.0, "vol_scenery": 1.0, "mirror_size": 256, "doppler": true, "driver": true, "max_fps": 0, "min_obj_size": 0.013, "max_obj_dist": "auto" });
+    let mut v = json!({ "msaa": 4, "anisotropy": 8, "ssao": true, "shadows": true, "shadow_size": 2048, "navigator": true, "ui_opacity": 0.85, "navigator_corner": "bottom-left", "boarding": "auto", "detail_textures": true, "exact_fare": true, "enhanced": false, "graphics": "vanilla_plus", "fullscreen": false, "vsync": true, "volume": 0.6, "drive_keys": "simple", "render_scale": "auto", "view_distance": "auto", "language": "en", "units": "metric", "texture_memory": 0, "texture_compression": true, "chat": true, "tooltips": true, "name_tags": true, "show_fps": false, "clouds": true, "pax_density": 1.0, "vol_ai": 1.0, "vol_scenery": 1.0, "mirror_size": 256, "doppler": true, "driver": true, "max_fps": 0, "min_obj_size": 0.013, "max_obj_dist": "auto" });
     v["vr"] = json!(false);
     v["vr_scale"] = json!(0.65);
     v["vr_head_smoothing_ms"] = json!(0);
@@ -2824,7 +2824,7 @@ pub fn tutorials() -> Vec<(usize, String, String)> {
     let lang = content_language();
     let mut out = Vec::new();
     for n in 1..=4usize {
-        let p = [lang, "ENG", "DEU"]
+        let p = [lang, "en", "de"]
             .iter()
             .map(|l| r.join("Tutorials").join(format!("menu_{n}_{l}.html")))
             .find(|p| p.is_file());
@@ -3098,7 +3098,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
             Some(Value::Number(x)) if x.as_f64().map(|m| m > 0.0).unwrap_or(false) => x.to_string(),
             _ => "auto".to_string(),
         },
-        language_code(v.get("language").and_then(|x| x.as_str()).unwrap_or("ENG")),
+        language_code(v.get("language").and_then(|x| x.as_str()).unwrap_or("en")),
         match v.get("units").and_then(|x| x.as_str()) {
             Some("uk") => "uk",
             Some("imperial") => "imperial",
@@ -4138,12 +4138,12 @@ mod tests {
         );
         let p = std::path::Path::new("/x/maps/Spandau/global.cfg");
         assert_eq!(
-            super::dsc_candidates(p, "ENG"),
+            super::dsc_candidates(p, "en"),
             vec![std::path::PathBuf::from("/x/maps/Spandau/global_ENG.dsc")]
         );
         assert_eq!(super::dsc_candidates(p, "FRA").len(), 2);
         assert_eq!(
-            super::dsc_candidates(std::path::Path::new("/v/MAN_EN92_main.bus"), "DEU"),
+            super::dsc_candidates(std::path::Path::new("/v/MAN_EN92_main.bus"), "de"),
             vec![std::path::PathBuf::from("/v/MAN_EN92_main_DEU.dsc")]
         );
     }
@@ -4208,11 +4208,11 @@ mod tests {
 
     #[test]
     fn only_english_and_german_are_supported() {
-        assert_eq!(language_code("English"), "ENG");
-        assert_eq!(language_iso("ENG"), "");
-        assert_eq!(language_code("Deutsch"), "DEU");
-        assert_eq!(language_iso("DEU"), "de");
-        assert_eq!(language_code("pt-BR"), "ENG");
+        assert_eq!(language_code("English"), "en");
+        assert_eq!(language_iso("en"), "");
+        assert_eq!(language_code("Deutsch"), "de");
+        assert_eq!(language_iso("de"), "de");
+        assert_eq!(language_code("pt-BR"), "en");
     }
 
     #[test]
@@ -4427,14 +4427,14 @@ mod tests {
         let v = settings_from_text(Some(old));
         assert_eq!(v["msaa"], 1);
         assert_eq!(v["view_distance"], "1500");
-        assert_eq!(v["language"], "DEU");
+        assert_eq!(v["language"], "de");
         assert_eq!(v["texture_memory"], 401);
         assert_eq!(v["texture_compression"], true);
         assert_eq!(v["detail_textures"], false);
         // the page changes a few things (its selects give strings) and saves
         let mut page = v.clone();
         page["view_distance"] = json!("2000");
-        page["language"] = json!("ENG");
+        page["language"] = json!("en");
         page["texture_memory"] = json!("3000");
         page["texture_compression"] = json!(false);
         page["texture_memory_auto"] = json!(2000);
@@ -4472,7 +4472,7 @@ mod tests {
         // and it reads back as saved
         let back = settings_from_text(Some(&text));
         assert_eq!(back["view_distance"], "2000");
-        assert_eq!(back["language"], "ENG");
+        assert_eq!(back["language"], "en");
         assert_eq!(back["texture_memory"], 3000);
         assert_eq!(back["texture_compression"], false);
     }
@@ -4517,7 +4517,7 @@ mod tests {
     fn settings_defaults_and_automatic_values() {
         let v = settings_from_text(None);
         assert_eq!(v["view_distance"], "auto");
-        assert_eq!(v["language"], "ENG");
+        assert_eq!(v["language"], "en");
         assert_eq!(v["texture_memory"], 0);
         let text = settings_to_text(&v, None);
         for line in [
@@ -4539,7 +4539,7 @@ mod tests {
                 v["language"].as_str(),
                 v["texture_memory"].as_i64()
             ),
-            (Some("auto"), Some("ENG"), Some(0))
+            (Some("auto"), Some("en"), Some(0))
         );
         // a number from a script instead of the select's string
         let text = settings_to_text(
@@ -4611,7 +4611,7 @@ mod omsi_options_tests {
         assert_eq!(o.last_driver.as_deref(), Some("OMSI-Fan"));
         assert_eq!(o.settings["max_fps"], 30);
         assert_eq!(o.settings["mirror_size"], 512);
-        assert_eq!(o.settings["language"], "ENG");
+        assert_eq!(o.settings["language"], "en");
         assert_eq!(o.settings["head_movement"], true);
         assert_eq!(o.settings["collision_vehicles"], false);
     }

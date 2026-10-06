@@ -296,7 +296,7 @@ impl State {
             settings
                 .get("language")
                 .and_then(|x| x.as_str())
-                .unwrap_or("ENG"),
+                .unwrap_or("en"),
         );
         let keybindings = core::get_keybindings().unwrap_or(serde_json::Value::Null);
         let choice = Choice::load();

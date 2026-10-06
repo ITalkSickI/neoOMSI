@@ -2184,7 +2184,7 @@ fn general_tab(
         ],
     );
     // (the launcher speaks the chosen language at once)
-    crate::ui_language(get(s, "language").as_str().unwrap_or("ENG"));
+    crate::ui_language(get(s, "language").as_str().unwrap_or("en"));
     toggle_setting(
         ui,
         s,
@@ -2438,7 +2438,7 @@ fn control_names(l: &Launcher) -> &'static crate::describe::ControlNames {
             .settings
             .get("language")
             .and_then(|x| x.as_str())
-            .unwrap_or("ENG"),
+            .unwrap_or("en"),
     )
 }
 

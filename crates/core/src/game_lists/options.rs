@@ -168,8 +168,8 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "stick_sens" => ::config::get_float("controls", "stick_sens").unwrap_or(0.25) as f32,
         "ctrl_deadzone" => controllers::global_deadzone(),
         "look_sens" => ::config::get_float("camera", "look_sens").unwrap_or(1.0) as f32,
-        "ui_scale" => s.ui_scale,
-        "ui_opacity" => s.ui_opacity,
+        "ui_scale" => ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+        "ui_opacity" => ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32,
         "vol_ai" => ::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32,
         "vol_scenery" => ::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32,
         "wheel_range" => ::config::get_float("controls", "wheel_range").unwrap_or(900.0) as f32,
@@ -281,12 +281,14 @@ pub(super) fn option_set(
             None
         }
         "ui_scale" => {
-            app.settings.ui_scale = (v * 100.0).round() / 100.0;
-            Some(("ui_scale", app.settings.ui_scale.to_string()))
+            ::config::set_setting("ui", "scale", ((v * 100.0).round() / 100.0) as f64);
+            let _ = ::config::save();
+            None
         }
         "ui_opacity" => {
-            app.settings.ui_opacity = (v * 100.0).round() / 100.0;
-            Some(("ui_opacity", app.settings.ui_opacity.to_string()))
+            ::config::set_setting("ui", "opacity", ((v * 100.0).round() / 100.0) as f64);
+            let _ = ::config::save();
+            None
         }
         "vol_ai" => {
             let v = (v * 100.0).round() / 100.0;
@@ -437,7 +439,7 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "mouse_right" => ::config::get_bool("controls", "mouse_right_off").unwrap_or(false),
         "blinker_cancel" => ::config::get_bool("controls", "blinker_cancel").unwrap_or(true),
         "steer_center" => ::config::get_bool("controls", "steer_center").unwrap_or(true),
-        "fps" => s.show_fps,
+        "fps" => ::config::get_bool("ui", "show_fps").unwrap_or(false),
         "auto_ibis" => ::config::get_bool("gameplay", "auto_ibis").unwrap_or(false),
         "time_sync" => ::config::get_bool("gameplay", "time_sync").unwrap_or(false),
         "metar_sync" => ::config::get_bool("gameplay", "metar_sync").unwrap_or(false),
@@ -477,11 +479,11 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "momentary_gears" => ::config::get_bool("gameplay", "momentary_gears").unwrap_or(false),
         "auto_shift" => ::config::get_bool("gameplay", "auto_shift").unwrap_or(false),
         "ff_invert" => controllers::global_ff_invert(),
-        "ui_scale_window" => s.ui_scale_window,
-        "tooltips" => s.tooltips,
-        "notes" => s.notes,
-        "chat" => s.chat,
-        "name_tags" => s.name_tags,
+        "ui_scale_window" => ::config::get_bool("ui", "scale_window").unwrap_or(true),
+        "tooltips" => ::config::get_bool("ui", "tooltips").unwrap_or(true),
+        "notes" => ::config::get_bool("ui", "notes").unwrap_or(true),
+        "chat" => ::config::get_bool("ui", "chat").unwrap_or(true),
+        "name_tags" => ::config::get_bool("ui", "name_tags").unwrap_or(true),
         _ => return None,
     })
 }
@@ -499,8 +501,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             if let Some(n) = app.navigator.as_mut() {
                 n.enabled = on;
             }
-            app.settings.navigator = on;
-            Some(("navigator", bit))
+            ::config::set_setting("ui", "navigator", on);
+            let _ = ::config::save();
+            None
         }
         "nav_ai" => {
             if let Some(n) = app.navigator.as_mut() {
@@ -658,8 +661,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "fps" => {
-            app.settings.show_fps = on;
-            Some(("show_fps", bit))
+            ::config::set_setting("ui", "show_fps", on);
+            let _ = ::config::save();
+            None
         }
         "headtrack" => {
             ::config::set_setting("camera", "head_tracking", on);
@@ -832,24 +836,29 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "ui_scale_window" => {
-            app.settings.ui_scale_window = on;
-            Some(("ui_scale_window", bit))
+            ::config::set_setting("ui", "scale_window", on);
+            let _ = ::config::save();
+            None
         }
         "tooltips" => {
-            app.settings.tooltips = on;
-            Some(("tooltips", bit))
+            ::config::set_setting("ui", "tooltips", on);
+            let _ = ::config::save();
+            None
         }
         "notes" => {
-            app.settings.notes = on;
-            Some(("notes", bit))
+            ::config::set_setting("ui", "notes", on);
+            let _ = ::config::save();
+            None
         }
         "chat" => {
-            app.settings.chat = on;
-            Some(("chat", bit))
+            ::config::set_setting("ui", "chat", on);
+            let _ = ::config::save();
+            None
         }
         "name_tags" => {
-            app.settings.name_tags = on;
-            Some(("name_tags", bit))
+            ::config::set_setting("ui", "name_tags", on);
+            let _ = ::config::save();
+            None
         }
         _ => None,
     }
