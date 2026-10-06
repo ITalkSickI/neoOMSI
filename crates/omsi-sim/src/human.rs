@@ -902,6 +902,7 @@ pub enum Activity {
     Pay,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Gesture {
     #[default]
     Touch,
