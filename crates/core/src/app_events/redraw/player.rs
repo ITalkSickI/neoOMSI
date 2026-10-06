@@ -59,13 +59,13 @@ impl App {
             .get_or_insert_with(|| controllers::Controllers::new(&self.args.root, hwnd));
         ctl.set_focus(self.window_focused);
         ctl.deadzone = controllers::global_deadzone();
-        ctl.centre = self.settings.steer_center;
-        ctl.pedal_throttle = self.settings.pedal_throttle;
-        ctl.pedal_brake = self.settings.pedal_brake;
+        ctl.centre = ::config::get_bool("controls", "steer_center").unwrap_or(true);
+        ctl.pedal_throttle = ::config::get_float("controls", "pedal_throttle").unwrap_or(1.0) as f32;
+        ctl.pedal_brake = ::config::get_float("controls", "pedal_brake").unwrap_or(1.0) as f32;
         ctl.ff_invert = controllers::global_ff_invert();
         ctl.ff_enabled = controllers::ff_enabled();
-        ctl.steer_gain = if self.settings.wheel_lock >= 45.0 {
-            (self.settings.wheel_range / self.settings.wheel_lock).clamp(0.1, 20.0)
+        ctl.steer_gain = if (::config::get_float("controls", "wheel_lock").unwrap_or(0.0) as f32) >= 45.0 {
+            ((::config::get_float("controls", "wheel_range").unwrap_or(900.0) as f32) / ::config::get_float("controls", "wheel_lock").unwrap_or(0.0) as f32).clamp(0.1, 20.0)
         } else {
             1.0
         };
@@ -165,7 +165,7 @@ impl App {
         }
         if analog.stick {
             if let (Some(x), Some(p)) = (analog.steering, self.player.as_ref()) {
-                let sens = self.settings.stick_sens;
+                let sens = ::config::get_float("controls", "stick_sens").unwrap_or(0.25) as f32;
                 let target = controllers::gamepad_steering(
                     x,
                     p.vehicle.physics.velocity_kmh(),
@@ -203,7 +203,7 @@ impl App {
             self.mouse_kmh += (raw_kmh - self.mouse_kmh) * k_v;
             let kmh = self.mouse_kmh;
             let base = (mouse_steering(self.cursor.0, w, kmh)
-                * self.settings.mouse_sens)
+                * ::config::get_float("controls", "mouse_sens").unwrap_or(1.0) as f32)
                 .clamp(-1.0, 1.0);
             self.mouse_edge = self
                 .mouse_edge
@@ -319,10 +319,10 @@ impl App {
             }
         }
         if let Some(p) = self.player.as_mut() {
-            p.axes.linear = self.settings.steering_linear;
-            p.axes.old_steering = self.settings.old_steering;
-            p.axes.red_steer_spd = self.settings.red_steer_spd;
-            p.axes.pedal_hold = self.settings.brake_hold;
+            p.axes.linear = ::config::get_bool("controls", "steering_linear").unwrap_or(false);
+            p.axes.old_steering = ::config::get_bool("controls", "old_steering").unwrap_or(false);
+            p.axes.red_steer_spd = ::config::get_bool("controls", "red_steer_spd").unwrap_or(false);
+            p.axes.pedal_hold = ::config::get_bool("controls", "brake_hold").unwrap_or(true);
             p.analog = analog;
             if self.game_menu.is_none() {
                 for (name, down) in actions {

@@ -813,7 +813,7 @@ impl App {
                         da += std::f32::consts::TAU;
                     }
                     self.touch.steer =
-                        (self.touch.steer + da / touch_lock_angle(&self.settings)).clamp(-1.0, 1.0);
+                        (self.touch.steer + da / touch_lock_angle()).clamp(-1.0, 1.0);
                 }
                 self.touch.fingers[k].role = Role::Wheel(a, d.length());
             }
@@ -1236,7 +1236,7 @@ impl App {
             .player
             .as_ref()
             .map(|p| p.vehicle.physics.velocity_kmh().abs());
-        let lock_angle = touch_lock_angle(&self.settings);
+        let lock_angle = touch_lock_angle();
         // (the buttons' backgrounds follow the interface's opacity; their icons stay solid)
         let panel_bg = PANEL_BG.alpha(crate::ui::backdrop(self.settings.ui_opacity));
         let (w, h) = self.touch.size;
@@ -1694,12 +1694,10 @@ pub(crate) fn composite(base: &mut [u8], over: &[u8]) {
 /// the wheel comes back by itself when let go). The settings did nothing on a phone, so the
 /// drawn wheel could not be made to turn as the bus's own (#856). (120 degrees was a lock in
 /// a flick.)
-fn touch_lock_angle(s: &crate::settings::Settings) -> f32 {
-    let lock_to_lock = if s.wheel_lock >= 45.0 {
-        s.wheel_lock
-    } else {
-        s.wheel_range
-    };
+fn touch_lock_angle() -> f32 {
+    let lock = ::config::get_float("controls", "wheel_lock").unwrap_or(0.0) as f32;
+    let range = ::config::get_float("controls", "wheel_range").unwrap_or(900.0) as f32;
+    let lock_to_lock = if lock >= 45.0 { lock } else { range };
     (lock_to_lock.clamp(90.0, 2880.0) * 0.5).to_radians()
 }
 
@@ -1713,36 +1711,18 @@ fn steer_curve(s: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::touch_lock_angle;
-    use crate::settings::Settings;
 
     #[test]
     fn the_screen_wheel_turns_as_the_wheel_settings_say() {
-        let deg = |s: &Settings| touch_lock_angle(s).to_degrees().round();
+        let deg = |range: f64, lock: f64| {
+            ::config::set_setting("controls", "wheel_range", range);
+            ::config::set_setting("controls", "wheel_lock", lock);
+            touch_lock_angle().to_degrees().round()
+        };
         // "Full lock at: OMSI": the wheel's whole rotation is the lock, half of it each way
-        assert_eq!(
-            deg(&Settings {
-                wheel_range: 900.0,
-                wheel_lock: 0.0,
-                ..Default::default()
-            }),
-            450.0
-        );
-        assert_eq!(
-            deg(&Settings {
-                wheel_range: 1800.0,
-                wheel_lock: 0.0,
-                ..Default::default()
-            }),
-            900.0
-        );
+        assert_eq!(deg(900.0, 0.0), 450.0);
+        assert_eq!(deg(1800.0, 0.0), 900.0);
         // a lock set of its own wins
-        assert_eq!(
-            deg(&Settings {
-                wheel_range: 900.0,
-                wheel_lock: 540.0,
-                ..Default::default()
-            }),
-            270.0
-        );
+        assert_eq!(deg(900.0, 540.0), 270.0);
     }
 }

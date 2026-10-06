@@ -86,32 +86,32 @@ pub struct Settings {
     pub metar_sync: bool, // Migrated
     pub metar_station: String, // Migrated
     pub shadow_casters: String, // TODO: Migrate to new config lib | category: graphics | default value: "all"
-    pub steering_linear: bool, // TODO: Migrate to new config lib | category: controls | default value: false
-    pub old_steering: bool, // TODO: Migrate to new config lib | category: controls | default value: false
-    pub red_steer_spd: bool, // TODO: Migrate to new config lib | category: controls | default value: false
+    pub steering_linear: bool, // Migrated
+    pub old_steering: bool, // Migrated
+    pub red_steer_spd: bool, // Migrated
     pub reflections: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub led_glow: u8, // TODO: Migrate to new config lib | category: graphics | default value: 6
     pub nightmap_glow: u8, // TODO: Migrate to new config lib | category: graphics | default value: 6
     pub atmosphere_brightness: f32, // TODO: Migrate to new config lib | category: graphics | default value: 1.0
     pub led_mips: f32, // TODO: Migrate to new config lib | category: graphics | default value: 1.3
-    pub mouse_sens: f32, // TODO: Migrate to new config lib | category: controls | default value: 1.0
-    pub stick_sens: f32, // TODO: Migrate to new config lib | category: controls | default value: 0.25
-    pub steer_center: bool, // TODO: Migrate to new config lib | category: controls | default value: true
+    pub mouse_sens: f32, // Migrated
+    pub stick_sens: f32, // Migrated
+    pub steer_center: bool, // Migrated
     pub graphics_api: String, // TODO: Migrate to new config lib | category: graphics | default value: "auto"
-    pub brake_hold: bool, // TODO: Migrate to new config lib | category: controls | default value: true
-    pub mouse_steering: bool, // TODO: Migrate to new config lib | category: controls | default value: false
-    pub mouse_right_off: bool, // TODO: Migrate to new config lib | category: controls | default value: false
+    pub brake_hold: bool, // Migrated
+    pub mouse_steering: bool, // Migrated
+    pub mouse_right_off: bool, // Migrated
     pub look_sens: f32, // Migrated
-    pub blinker_cancel: bool, // TODO: Migrate to new config lib | category: controls | default value: true
-    pub wheel_range: f32, // TODO: Migrate to new config lib | category: controls | default value: 900.0
-    pub wheel_lock: f32, // TODO: Migrate to new config lib | category: controls | default value: 0.0
+    pub blinker_cancel: bool, // Migrated
+    pub wheel_range: f32, // Migrated
+    pub wheel_lock: f32, // Migrated
     pub fov: f32, // Migrated
     pub camera_collision: bool, // Migrated
     pub steer_look: bool, // Migrated
     pub steer_look_angle: f32, // Migrated
     pub steer_look_response: f32, // Migrated
-    pub pedal_throttle: f32, // TODO: Migrate to new config lib | category: controls | default value: 1.0
-    pub pedal_brake: f32, // TODO: Migrate to new config lib | category: controls | default value: 1.0
+    pub pedal_throttle: f32, // Migrated
+    pub pedal_brake: f32, // Migrated
     pub seat: [f32; 3], // Migrated
     pub head_tracking: bool, // Migrated
     pub head_tracking_port: u16, // Migrated

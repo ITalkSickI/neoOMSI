@@ -604,7 +604,7 @@ pub(crate) fn make_app(
     };
     app.lan = lan;
     app.remotes = lan_game;
-    if app.settings.mouse_steering {
+    if ::config::get_bool("controls", "mouse_steering").unwrap_or(false) {
         app.mouse_drive = true;
         app.mouse_steer = (0.0, 1.0);
         app.center_cursor = true;

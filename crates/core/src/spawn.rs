@@ -526,7 +526,7 @@ pub(crate) fn spawn_player(
         ibis_background: false,
         arm: Default::default(),
         blinker_key_state: 0,
-        blinker_cancel: settings::Settings::load().blinker_cancel,
+        blinker_cancel: ::config::get_bool("controls", "blinker_cancel").unwrap_or(true),
     };
     for _ in 0..3 {
         p.vehicle.update(1.0 / 30.0);

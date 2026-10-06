@@ -40,6 +40,25 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("gameplay", "momentary_gears", Def::Bool(false)),
     ("gameplay", "auto_ibis", Def::Bool(false)),
     ("gameplay", "auto_shift", Def::Bool(false)),
+    // [controls]
+    ("controls", "steering_linear", Def::Bool(false)),
+    ("controls", "old_steering", Def::Bool(false)),
+    ("controls", "red_steer_spd", Def::Bool(false)),
+    ("controls", "mouse_sens", Def::Float(1.0)),
+    ("controls", "stick_sens", Def::Float(0.25)),
+    ("controls", "steer_center", Def::Bool(true)),
+    ("controls", "brake_hold", Def::Bool(true)),
+    ("controls", "mouse_steering", Def::Bool(false)),
+    ("controls", "mouse_right_off", Def::Bool(false)),
+    ("controls", "blinker_cancel", Def::Bool(true)),
+    ("controls", "wheel_range", Def::Float(900.0)),
+    ("controls", "wheel_lock", Def::Float(0.0)),
+    ("controls", "pedal_throttle", Def::Float(1.0)),
+    ("controls", "pedal_brake", Def::Float(1.0)),
+    // [ai]
+    ("ai", "unsched_factor", Def::Float(1.0)),
+    ("ai", "max_scheduled", Def::Int(0)),
+    ("ai", "max_parked", Def::Int(0)),
     // [graphics]
     ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]

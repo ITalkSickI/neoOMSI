@@ -208,6 +208,16 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                 } else if key == "boarding" {
                     ::config::set_setting("gameplay", "boarding", value);
                     let _ = ::config::save();
+                } else if key == "ai_unsched_factor" {
+                    if let Ok(v) = value.parse::<f64>() {
+                        ::config::set_setting("ai", "unsched_factor", v / 100.0);
+                        let _ = ::config::save();
+                    }
+                } else if matches!(key, "ai_max_scheduled" | "ai_max_parked") {
+                    if let Ok(v) = value.parse::<i64>() {
+                        ::config::set_setting("ai", &key[3..], v);
+                        let _ = ::config::save();
+                    }
                 } else if key == "maintenance" {
                     if let Ok(v) = value.parse::<i64>() {
                         ::config::set_setting("gameplay", "maintenance", v);
@@ -511,6 +521,14 @@ pub(super) fn select_state(
         ::config::get_string("gameplay", "drive-keys").unwrap_or_default()
     } else if key == "boarding" {
         ::config::get_string("gameplay", "boarding").unwrap_or_default()
+    } else if key == "ai_unsched_factor" {
+        ::config::get_float("ai", "unsched_factor")
+            .map(|v| ((v * 100.0).round() as i64).to_string())
+            .unwrap_or_default()
+    } else if matches!(key, "ai_max_scheduled" | "ai_max_parked") {
+        ::config::get_int("ai", &key[3..])
+            .map(|v| v.to_string())
+            .unwrap_or_default()
     } else if key == "maintenance" {
         ::config::get_int("gameplay", "maintenance")
             .map(|v| v.to_string())

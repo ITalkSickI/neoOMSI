@@ -162,18 +162,18 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "nightmap_glow" => s.nightmap_glow as f32,
         "led_mips" => s.led_mips,
         "atmosphere_brightness" => s.atmosphere_brightness,
-        "pedal_t" => s.pedal_throttle,
-        "pedal_b" => s.pedal_brake,
-        "mouse_sens" => s.mouse_sens,
-        "stick_sens" => s.stick_sens,
+        "pedal_t" => ::config::get_float("controls", "pedal_throttle").unwrap_or(1.0) as f32,
+        "pedal_b" => ::config::get_float("controls", "pedal_brake").unwrap_or(1.0) as f32,
+        "mouse_sens" => ::config::get_float("controls", "mouse_sens").unwrap_or(1.0) as f32,
+        "stick_sens" => ::config::get_float("controls", "stick_sens").unwrap_or(0.25) as f32,
         "ctrl_deadzone" => controllers::global_deadzone(),
         "look_sens" => ::config::get_float("camera", "look_sens").unwrap_or(1.0) as f32,
         "ui_scale" => s.ui_scale,
         "ui_opacity" => s.ui_opacity,
         "vol_ai" => s.vol_ai,
         "vol_scenery" => s.vol_scenery,
-        "wheel_range" => s.wheel_range,
-        "wheel_lock" => s.wheel_lock,
+        "wheel_range" => ::config::get_float("controls", "wheel_range").unwrap_or(900.0) as f32,
+        "wheel_lock" => ::config::get_float("controls", "wheel_lock").unwrap_or(0.0) as f32,
         "fov" => ::config::get_float("camera", "fov").unwrap_or(0.0) as f32,
         "steer_look_angle" => ::config::get_float("camera", "steer_look_angle").unwrap_or(30.0) as f32,
         "steer_look_response" => ::config::get_float("camera", "steer_look_response").unwrap_or(0.25) as f32,
@@ -251,12 +251,14 @@ pub(super) fn option_set(
             Some(("led_mips", app.settings.led_mips.to_string()))
         }
         "pedal_t" => {
-            app.settings.pedal_throttle = v;
-            Some(("pedal_throttle", v.to_string()))
+            ::config::set_setting("controls", "pedal_throttle", v as f64);
+            let _ = ::config::save();
+            None
         }
         "pedal_b" => {
-            app.settings.pedal_brake = v;
-            Some(("pedal_brake", v.to_string()))
+            ::config::set_setting("controls", "pedal_brake", v as f64);
+            let _ = ::config::save();
+            None
         }
         "look_sens" => {
             ::config::set_setting("camera", "look_sens", ((v * 100.0).round() / 100.0) as f64);
@@ -264,12 +266,14 @@ pub(super) fn option_set(
             None
         }
         "mouse_sens" => {
-            app.settings.mouse_sens = (v * 100.0).round() / 100.0;
-            Some(("mouse_sens", app.settings.mouse_sens.to_string()))
+            ::config::set_setting("controls", "mouse_sens", ((v * 100.0).round() / 100.0) as f64);
+            let _ = ::config::save();
+            None
         }
         "stick_sens" => {
-            app.settings.stick_sens = (v * 100.0).round() / 100.0;
-            Some(("stick_sens", app.settings.stick_sens.to_string()))
+            ::config::set_setting("controls", "stick_sens", ((v * 100.0).round() / 100.0) as f64);
+            let _ = ::config::save();
+            None
         }
         "ctrl_deadzone" => {
             controllers::set_global_deadzone((v * 100.0).round() / 100.0);
@@ -293,12 +297,14 @@ pub(super) fn option_set(
             Some(("vol_scenery", app.settings.vol_scenery.to_string()))
         }
         "wheel_range" => {
-            app.settings.wheel_range = v.round();
-            Some(("wheel_range", app.settings.wheel_range.to_string()))
+            ::config::set_setting("controls", "wheel_range", v.round() as f64);
+            let _ = ::config::save();
+            None
         }
         "wheel_lock" => {
-            app.settings.wheel_lock = if v < 45.0 { 0.0 } else { v.round() };
-            Some(("wheel_lock", app.settings.wheel_lock.to_string()))
+            ::config::set_setting("controls", "wheel_lock", (if v < 45.0 { 0.0 } else { v.round() }) as f64);
+            let _ = ::config::save();
+            None
         }
         "fov" => {
             ::config::set_setting("camera", "fov", (if v < 20.0 { 0.0 } else { v.round() }) as f64);
@@ -422,9 +428,9 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "coll_objects" => ::config::get_bool("gameplay", "collision_objects").unwrap_or(true),
         "coll_vehicles" => ::config::get_bool("gameplay", "collision_vehicles").unwrap_or(true),
         "mouse" => app.mouse_drive,
-        "mouse_right" => s.mouse_right_off,
-        "blinker_cancel" => s.blinker_cancel,
-        "steer_center" => s.steer_center,
+        "mouse_right" => ::config::get_bool("controls", "mouse_right_off").unwrap_or(false),
+        "blinker_cancel" => ::config::get_bool("controls", "blinker_cancel").unwrap_or(true),
+        "steer_center" => ::config::get_bool("controls", "steer_center").unwrap_or(true),
         "fps" => s.show_fps,
         "auto_ibis" => ::config::get_bool("gameplay", "auto_ibis").unwrap_or(false),
         "time_sync" => ::config::get_bool("gameplay", "time_sync").unwrap_or(false),
@@ -435,7 +441,7 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "steer_look" => ::config::get_bool("camera", "steer_look").unwrap_or(false),
         "hands_in_cab" => ::config::get_bool("gameplay", "hands_in_cab").unwrap_or(false),
         "ff" => controllers::ff_enabled(),
-        "brake_hold" => s.brake_hold,
+        "brake_hold" => ::config::get_bool("controls", "brake_hold").unwrap_or(true),
         "auto_clutch" => ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true),
         "headtrack" => ::config::get_bool("camera", "head_tracking").unwrap_or(false),
         "timetable_win" => app.timetable,
@@ -459,9 +465,9 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "vr" => ::config::get_bool("vr", "enabled").unwrap_or(false),
         "vr_desktop_mirror" => ::config::get_bool("vr", "desktop-mirror").unwrap_or(true),
         "doppler" => s.doppler,
-        "steering_linear" => s.steering_linear,
-        "old_steering" => s.old_steering,
-        "red_steer_spd" => s.red_steer_spd,
+        "steering_linear" => ::config::get_bool("controls", "steering_linear").unwrap_or(false),
+        "old_steering" => ::config::get_bool("controls", "old_steering").unwrap_or(false),
+        "red_steer_spd" => ::config::get_bool("controls", "red_steer_spd").unwrap_or(false),
         "momentary_gears" => ::config::get_bool("gameplay", "momentary_gears").unwrap_or(false),
         "auto_shift" => ::config::get_bool("gameplay", "auto_shift").unwrap_or(false),
         "ff_invert" => controllers::global_ff_invert(),
@@ -583,19 +589,22 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "steer_center" => {
-            app.settings.steer_center = on;
-            Some(("steer_center", bit))
+            ::config::set_setting("controls", "steer_center", on);
+            let _ = ::config::save();
+            None
         }
         "blinker_cancel" => {
-            app.settings.blinker_cancel = on;
+            ::config::set_setting("controls", "blinker_cancel", on);
+            let _ = ::config::save();
             if let Some(p) = app.player.as_mut() {
                 p.blinker_cancel = on;
             }
-            Some(("blinker_cancel", bit))
+            None
         }
         "mouse_right" => {
-            app.settings.mouse_right_off = on;
-            Some(("mouse_right_off", bit))
+            ::config::set_setting("controls", "mouse_right_off", on);
+            let _ = ::config::save();
+            None
         }
         "auto_ibis" => {
             ::config::set_setting("gameplay", "auto_ibis", on);
@@ -667,8 +676,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "brake_hold" => {
-            app.settings.brake_hold = on;
-            Some(("brake_hold", bit))
+            ::config::set_setting("controls", "brake_hold", on);
+            let _ = ::config::save();
+            None
         }
         "auto_clutch" => {
             ::config::set_setting("gameplay", "auto_clutch", on);
@@ -781,16 +791,19 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("doppler", bit))
         }
         "steering_linear" => {
-            app.settings.steering_linear = on;
-            Some(("steering_linear", bit))
+            ::config::set_setting("controls", "steering_linear", on);
+            let _ = ::config::save();
+            None
         }
         "old_steering" => {
-            app.settings.old_steering = on;
-            Some(("old_steering", bit))
+            ::config::set_setting("controls", "old_steering", on);
+            let _ = ::config::save();
+            None
         }
         "red_steer_spd" => {
-            app.settings.red_steer_spd = on;
-            Some(("red_steer_spd", bit))
+            ::config::set_setting("controls", "red_steer_spd", on);
+            let _ = ::config::save();
+            None
         }
         "momentary_gears" => {
             ::config::set_setting("gameplay", "momentary_gears", on);
