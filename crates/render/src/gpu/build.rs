@@ -335,8 +335,8 @@ impl Renderer {
         let takes = |flags: wgpu::TextureFormatFeatureFlags, f: wgpu::TextureFormat, n: u32| {
             flags.sample_count_supported(n)
                 && (n == 1
-                    || f.is_depth_stencil_format()
-                    || flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE))
+                || f.is_depth_stencil_format()
+                || flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE))
         };
         let adapter_table_needed = !targets.iter().all(|&f| {
             takes(
@@ -393,9 +393,9 @@ impl Renderer {
             .features()
             .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
             || !adapter
-                .get_downlevel_capabilities()
-                .flags
-                .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
         let flags_of = |f: wgpu::TextureFormat| {
             if adapter_table {
                 adapter.get_texture_format_features(f).flags
@@ -1151,7 +1151,7 @@ impl Renderer {
                         let y = f32(i32(i >> 1u) * 4 - 1);
                         return vec4<f32>(x, y, 1.0, 1.0);
                     }"
-                    .into(),
+                        .into(),
                 ),
             });
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1506,8 +1506,8 @@ impl Renderer {
         };
         let wire_ok = cfg!(all(feature = "devtools", debug_assertions))
             && device
-                .features()
-                .contains(wgpu::Features::POLYGON_MODE_LINE);
+            .features()
+            .contains(wgpu::Features::POLYGON_MODE_LINE);
         let wire_for = |f: wgpu::TextureFormat, fs: &str| -> Option<Vec<wgpu::RenderPipeline>> {
             if !wire_ok {
                 return None;
@@ -1824,7 +1824,7 @@ impl Renderer {
                 (2, false),
                 (2, true),
             ]
-            .map(|(kind, cull)| make_prepass_samples(kind, cull, msaa))
+                .map(|(kind, cull)| make_prepass_samples(kind, cull, msaa))
         });
         log::info!("renderer: compiling the mip maps shaders");
         let mip_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -2389,6 +2389,8 @@ impl Renderer {
                 cube_wait: 0,
                 cube_eye: None,
                 cube_recapture: false,
+                cloud_sig: [0.0; 12],
+                cloud_age: 0,
             }
         };
         let overlay_pipeline_1x = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

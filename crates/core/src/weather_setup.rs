@@ -549,35 +549,150 @@ fn cloud_texture(root: &Path, kind: &str) -> Option<::texture::Image> {
     Some(img)
 }
 
-/// Cloud cover of a weather file: `[clouds] type density`, type -1 = clear, density up to
-/// ~300 (Cumulus 3) - mapped to 0..1; the cover drifts with the wind.
+fn rel_humidity(w: &::content::weather::Weather) -> f32 {
+    let t = w.temp.0.clamp(-40.0, 50.0);
+    let es = 6.112 * (17.62 * t / (243.12 + t)).exp();
+    let sat = 216.7 * es / (t + 273.15);
+    if sat > 0.0 {
+        (w.temp.1 / sat).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+struct CloudModel {
+    density: f32,
+    layers: [[f32; 4]; 3],
+}
+
+fn smooth(a: f32, b: f32, x: f32) -> f32 {
+    let k = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    k * k * (3.0 - 2.0 * k)
+}
+
+fn hash01(mut h: u32) -> f32 {
+    h ^= h >> 16;
+    h = h.wrapping_mul(0x85eb_ca6b);
+    h ^= h >> 13;
+    h = h.wrapping_mul(0xc2b2_ae35);
+    h ^= h >> 16;
+    (h & 0xffff) as f32 / 65535.0
+}
+
+/// Smooth noise over time `x` (one lattice step each unit), 0..1.
+fn time_noise(x: f64, seed: u32) -> f32 {
+    let i = x.floor();
+    let f = (x - i) as f32;
+    let k = f * f * (3.0 - 2.0 * f);
+    let h = |n: i64| hash01((n as u32).wrapping_mul(0x9e37_79b9) ^ seed);
+    let (a, b) = (h(i as i64), h(i as i64 + 1));
+    a + (b - a) * k
+}
+
+/// The sky this weather makes at this date and hour. Nothing in it is fixed: humidity,
+/// temperature, pressure, visibility, rain and brightness set how thick and how high the
+/// clouds are, the season and the time of day how much the warm air piles them up (cumulus
+/// peak in the afternoon, flat stratus in cold or damp mornings), and the weather of the
+/// date itself (a slow noise over the day count and the hour, never the same twice) moves
+/// the cover and the layers up and down.
+fn cloud_model(w: &::content::weather::Weather) -> CloudModel {
+    let none = CloudModel {
+        density: 0.0,
+        layers: [[0.0; 4]; 3],
+    };
+    if !CLOUDS.load(std::sync::atomic::Ordering::Relaxed) {
+        return none;
+    }
+    let (year, doy) = {
+        let v = CLOUD_DAY.load(std::sync::atomic::Ordering::Relaxed);
+        ((v / 1000) as i32, (v % 1000) as i32)
+    };
+    let hour = f32::from_bits(CLOUD_HOUR.load(std::sync::atomic::Ordering::Relaxed)).rem_euclid(24.0);
+    let tau = std::f32::consts::TAU;
+    let summer = 0.5 + 0.5 * (tau * (doy as f32 - 200.0) / 365.0).cos();
+    let sun_heat = (0.5 + 0.5 * (tau * (hour - 15.0) / 24.0).cos()).powf(1.5);
+    let tdate = doy as f64 * 24.0 + hour as f64;
+    let seed = (year as u32).wrapping_mul(7919);
+    let var1 = time_noise(tdate / 5.0, seed ^ 0x1111) - 0.5;
+    let var2 = time_noise(tdate / 9.0, seed ^ 0x2222) - 0.5;
+    let var3 = time_noise(tdate / 14.0, seed ^ 0x3333) - 0.5;
+
+    let t = w.temp.0.clamp(-40.0, 50.0);
+    let rh = rel_humidity(w);
+    let humid = smooth(0.45, 1.0, rh);
+    let heat = ((t - 5.0) / 25.0).clamp(0.0, 1.0);
+    let cold = ((8.0 - t) / 12.0).clamp(0.0, 1.0);
+    let conv = heat * sun_heat * (0.5 + 0.5 * summer);
+    let low_pressure = ((1013.0 - w.pressure) / 30.0).clamp(0.0, 1.0);
+    let (pk, rate) = precip_of(w);
+    let rain = if pk != 0 { rate } else { 0.0 };
+    let vis = w.fog.0.max(50.0);
+    let v = (1.0 - vis / 30000.0).clamp(0.0, 1.0);
+    let vis_term = 0.95 * v.powf(1.3);
+    let dim = CustomWeather::parse(&w.path.to_string_lossy())
+        .map(|c| (1.0 - c.brightness).clamp(0.0, 1.0))
+        .unwrap_or(0.0);
+
+    // how much of the sky is covered
+    let fair = 0.1 + 0.3 * conv;
+    let mut density = fair + humid * (0.85 - fair) + low_pressure * 0.3 + cold * humid * 0.3;
+    density += var1 * 0.5 * (1.0 - humid);
+    if pk != 0 {
+        density = density.max(0.6 + 0.4 * rain.sqrt());
+    }
+    density = density.max(vis_term).max((dim * 1.15).min(1.0));
+    let density = density.clamp(0.0, 1.0);
+    let thick_sky = smooth(0.7, 1.0, density);
+
+    // the low layer: base from the dew point spread, lowered by damp, rain and haze
+    let rh_c = rh.max(0.01);
+    let gamma = rh_c.ln() + 17.62 * t / (243.12 + t);
+    let dew = 243.12 * gamma / (17.62 - gamma);
+    let spread = (t - dew).max(0.0);
+    let mut base0 = 300.0 + 125.0 * spread + 25.0 * (t - 15.0).max(0.0) + 400.0 * summer * conv;
+    if let Some(c) = CustomWeather::parse(&w.path.to_string_lossy()) {
+        if c.cloud_base_m > 50.0 {
+            base0 = c.cloud_base_m.clamp(300.0, 4000.0);
+        }
+    }
+    base0 *= 1.0 - 0.5 * vis_term.max(rain.sqrt()).max(dim * 0.8);
+    base0 *= 1.0 - 0.25 * cold;
+    base0 = base0 + (700.0f32.min(base0) - base0) * thick_sky;
+    let base0 = base0.clamp(250.0, 4000.0);
+    let shape0 = ((0.25 + 0.75 * conv + 0.2 * heat) * (1.0 - smooth(0.55, 0.95, density)) * (1.0 - 0.8 * rain))
+        .clamp(0.1, 1.0);
+    let thick0 = 500.0
+        + (1100.0 + 2200.0 * heat) * (1.0 - density * 0.4) * shape0
+        + 700.0 * density
+        + 1500.0 * rain
+        + 1200.0 * dim;
+    let top0 = base0 + thick0;
+
+    // the middle and the high layer
+    let mid_moist = ((rh - 0.35) / 0.5).clamp(0.0, 1.0);
+    let base1 = (top0 + 1200.0).max(3000.0);
+    let cover1 = (mid_moist * 0.55 * (1.0 - 0.6 * thick_sky) + low_pressure * 0.25 + var2 * 0.5).clamp(0.0, 1.0);
+    let cover2 = (0.1 + 0.5 * low_pressure + 0.2 * mid_moist + 0.15 * cold + var3 * 0.6).clamp(0.0, 0.8);
+    let base2 = (base1 + 2500.0).max(7000.0);
+    CloudModel {
+        density: if density < 0.02 { 0.0 } else { density },
+        layers: [
+            [base0, top0, if density < 0.02 { 0.0 } else { density }, shape0],
+            [base1, base1 + 900.0, if cover1 < 0.03 { 0.0 } else { cover1 }, 0.3],
+            [base2, base2 + 700.0, if cover2 < 0.03 { 0.0 } else { cover2 }, 0.5],
+        ],
+    }
+}
+
+pub(crate) fn cloud_layers_of(w: &::content::weather::Weather) -> [[f32; 4]; 3] {
+    cloud_model(w).layers
+}
+
 pub(crate) fn clouds_of(w: &::content::weather::Weather, drift: [f32; 2]) -> (f32, [f32; 2]) {
-    let kind = w.clouds.0.trim();
-    if kind.is_empty()
-        || kind.starts_with("-1")
-        || !CLOUDS.load(std::sync::atomic::Ordering::Relaxed)
-    {
+    let density = cloud_model(w).density;
+    if density <= 0.0 {
         return (0.0, [0.0; 2]);
     }
-    // cover by type: Cumulus 1..3 scattered → broken, Overcast closed
-    let lower = kind.to_ascii_lowercase();
-    let density = if lower.starts_with("overcast") {
-        1.0
-    } else if lower.starts_with("cumulus") {
-        match lower
-            .trim_start_matches("cumulus")
-            .trim()
-            .parse::<i32>()
-            .unwrap_or(1)
-        {
-            1 => 0.35,
-            2 => 0.55,
-            _ => 0.75,
-        }
-    } else {
-        0.5
-    };
-
     let seed = cloud_seed();
     (density, [drift[0] + seed[0], drift[1] + seed[1]])
 }
@@ -588,6 +703,15 @@ pub(crate) fn set_cloud_day(year: i32, day_of_year: i32) {
         (year as u32)
             .wrapping_mul(1000)
             .wrapping_add(day_of_year as u32),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+static CLOUD_HOUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x4140_0000);
+
+pub(crate) fn set_cloud_time(secs: f64) {
+    CLOUD_HOUR.store(
+        ((secs / 3600.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
 }
@@ -608,8 +732,8 @@ fn cloud_seed() -> [f32; 2] {
     h = h.wrapping_mul(0xc2b2_ae35);
     h ^= h >> 16;
     [
-        (h & 0xffff) as f32 / 65536.0 * 28.0,
-        (h >> 16) as f32 / 65536.0 * 28.0,
+        (h & 0xffff) as f32 / 65536.0,
+        (h >> 16) as f32 / 65536.0,
     ]
 }
 
@@ -620,13 +744,9 @@ pub(crate) fn cloud_drift_at(w: &::content::weather::Weather, time: f64) -> [f32
     d
 }
 
-/// Move the clouds on by `secs` of [wind] direction (deg) speed (m/s), over the 2500 m
-/// tiling; the field repeats every tile, so only the fraction of a tile is kept. (Taken
-/// from the absolute time, every change of the wind while a weather blends in moved the
-/// whole sky by time x change.)
 pub(crate) fn cloud_drift_step(d: &mut [f32; 2], w: &::content::weather::Weather, secs: f64) {
     let (dir, speed) = (w.wind.0.to_radians() as f64, w.wind.1 as f64);
-    let s = secs * speed / 2500.0;
+    let s = secs * speed / 70000.0;
     d[0] = (d[0] as f64 + dir.sin() * s).rem_euclid(1.0) as f32;
     d[1] = (d[1] as f64 + dir.cos() * s).rem_euclid(1.0) as f32;
 }
@@ -656,6 +776,7 @@ pub(crate) fn weather_lighting(
     let (density, offset) = clouds_of(w, cloud_drift);
     lighting.cloud_density = density;
     lighting.cloud_offset = offset;
+    lighting.cloud_layers = cloud_layers_of(w);
     let (kind, rate) = precip_of(w);
     lights::apply_weather(
         &mut lighting,
@@ -675,13 +796,7 @@ pub(crate) fn weather_lighting(
     lighting.wetness = wetness;
     // Omsi.exe hides the sun under an 'ovc' cloud type (the Overcast ones in clouds.cfg) and
     // draws no sun shadows below 350 m visibility
-    let overcast = w
-        .clouds
-        .0
-        .trim()
-        .to_ascii_lowercase()
-        .starts_with("overcast");
-    lighting.shadows = shadows && !overcast && w.fog.0 > 350.0;
+    lighting.shadows = shadows && density < 0.85 && w.fog.0 > 350.0;
     lighting.light_shadows = shadows;
     lighting
 }

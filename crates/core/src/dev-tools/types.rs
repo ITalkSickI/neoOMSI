@@ -104,6 +104,38 @@ pub(crate) struct Extra {
     pub lan: Option<LanInfo>,
     pub tours: Vec<TourRow>,
     pub quicksave: bool,
+    pub profile: Vec<(&'static str, f64)>,
+    pub frames: u32,
+    pub traffic: Option<TrafficPerf>,
+    pub weather: WeatherInfo,
+}
+
+pub(crate) struct WeatherInfo {
+    pub spec: String,
+    pub weather: ::content::weather::Weather,
+    pub custom: crate::weather_setup::CustomWeather,
+    pub is_custom: bool,
+    pub wetness: f32,
+    pub blend: Option<(f32, String)>,
+    pub cycle_next: Option<f64>,
+    pub client: bool,
+    pub metar_locked: bool,
+    pub metar_loading: bool,
+    pub metar_station: String,
+    pub time_locked: bool,
+    pub year: i32,
+    pub day_of_year: i32,
+    pub day_month: (i32, i32),
+    pub density: f32,
+    pub layers: [[f32; 4]; 3],
+    pub precip: (i32, f32),
+    pub street_cond: f32,
+    pub drift: [f32; 2],
+}
+
+pub(crate) struct TrafficPerf {
+    pub cars: usize,
+    pub dormant: usize,
 }
 
 pub(crate) enum Action {
@@ -116,4 +148,15 @@ pub(crate) enum Action {
     Cockpit(usize),
     VehicleSaloonLights,
     VehicleStartUp,
+    WeatherPreset(String, f32),
+    WeatherNext,
+    WeatherCustom(Box<crate::weather_setup::CustomWeather>),
+    WeatherFromCurrent,
+    WeatherMetar(String),
+    WeatherCycle(bool),
+    WeatherCycleNow,
+    WeatherWetness(f32),
+    WeatherSave(String),
+    SetTime(f64),
+    SetDay(i32),
 }

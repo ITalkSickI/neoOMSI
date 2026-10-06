@@ -64,7 +64,7 @@ fn cloud_fbm(p: vec2<f32>) -> f32 {
 
 /// How far the cloud field reaches before it repeats (m): a cumulus is then half a
 /// kilometre to two across.
-const CLOUD_FIELD_TILE: f32 = 14000.0;
+const CLOUD_FIELD_TILE: f32 = 14000.0; // 70000 (CLOUD_ORIGIN_PERIOD) is a whole multiple of every cloud period
 
 // The ground point under the sky at distance `t` along the view ray `d`, in the clouds' own
 // frame (world coordinates modulo 70 km, lib.rs `CLOUD_ORIGIN_PERIOD`), so that the cloud
@@ -83,7 +83,7 @@ fn cloud_ground(d: vec3<f32>, t: f32) -> vec2<f32> {
 // cloud field: its equalised shape (G) cut at 1 - the cover, the weather's own picture (R)
 // nudging where the clouds gather, billows (B) fraying the edges near by.
 fn cloud_cover_at(p: vec2<f32>, lod: f32) -> vec3<f32> {
-    let uv = p / CLOUD_FIELD_TILE + camera.clouds.yz * (2500.0 / CLOUD_FIELD_TILE);
+    let uv = p / CLOUD_FIELD_TILE + camera.clouds.yz * (70000.0 / CLOUD_FIELD_TILE);
     let t = textureSampleLevel(t_clouds, s_repeat, uv, lod);
     let thr = 1.0 - clamp(camera.clouds.x, 0.0, 1.0);
     let smooth_shape = t.g + (t.r - 0.5) * 0.15;
@@ -91,7 +91,7 @@ fn cloud_cover_at(p: vec2<f32>, lod: f32) -> vec3<f32> {
     // the billows only where they are big enough to see
     let fray = 1.0 - smoothstep(2.0, 5.0, lod);
     if (fray > 0.0) {
-        let detail = textureSampleLevel(t_clouds, s_repeat, uv * 3.7 + vec2<f32>(0.31, 0.73), lod + 1.9).b;
+        let detail = textureSampleLevel(t_clouds, s_repeat, uv * 4.0 + vec2<f32>(0.31, 0.73), lod + 1.9).b;
         shape = shape + (detail - 0.5) * 0.2 * fray;
     }
     return vec3<f32>(clamp((shape - thr) / 0.14, 0.0, 1.0), t.a, clamp((smooth_shape - thr) / 0.14, 0.0, 1.0));

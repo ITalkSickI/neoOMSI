@@ -258,6 +258,156 @@ impl crate::App {
             lan,
             tours,
             quicksave,
+            profile: self.profile.iter().map(|(k, v)| (*k, *v)).collect(),
+            frames: self.total_frames,
+            traffic: self.traffic.as_ref().map(|t| TrafficPerf {
+                cars: t.cars.len(),
+                dormant: t.dormant.len(),
+            }),
+            weather: self.dev_weather_info(),
+        }
+    }
+
+    fn dev_weather_info(&self) -> WeatherInfo {
+        let w = self.weather.clone().unwrap_or_default();
+        let parsed = crate::weather_setup::custom_weather(self.args.weather.as_deref());
+        let is_custom = parsed.is_some();
+        let custom = parsed.unwrap_or_else(|| {
+            crate::weather_setup::CustomWeather::from_weather(&w, 1.0, self.wetness)
+        });
+        let density = crate::weather_setup::clouds_of(&w, [0.0; 2]).0;
+        let client = self
+            .lan
+            .as_ref()
+            .is_some_and(|l| l.role == ::network::Role::Client);
+        WeatherInfo {
+            spec: self.args.weather.clone().unwrap_or_default(),
+            custom,
+            is_custom,
+            wetness: self.wetness,
+            blend: self
+                .weather_blend
+                .as_ref()
+                .map(|b| (b.progress(), b.target().name.clone())),
+            cycle_next: self.weather_cycle.as_ref().map(|c| c.next_in),
+            client,
+            metar_locked: self.metar_locked(),
+            metar_loading: self.metar_rx.is_some(),
+            metar_station: self.metar_station(),
+            time_locked: client || self.real_time_locked(),
+            year: self.clock.year,
+            day_of_year: self.clock.day_of_year,
+            day_month: self.clock.day_month(),
+            density,
+            layers: crate::weather_setup::cloud_layers_of(&w),
+            precip: crate::weather_setup::precip_of(&w),
+            street_cond: crate::weather_setup::street_condition(&w, self.wetness),
+            drift: self.cloud_drift,
+            weather: w,
+        }
+    }
+
+    fn dev_weather_action(&mut self, a: Action) {
+        match a {
+            Action::WeatherPreset(file, secs) => {
+                self.change_weather(Some(file), true, secs.max(0.5));
+            }
+            Action::WeatherNext => self.step_weather(),
+            Action::WeatherCustom(c) => self.set_custom_weather(*c),
+            Action::WeatherFromCurrent => self.current_weather_as_custom(),
+            Action::WeatherMetar(icao) => {
+                let icao = icao.trim().to_ascii_uppercase();
+                if icao.len() < 3 {
+                    self.service_msg = Some(("Enter an ICAO station code".into(), 3.0));
+                    return;
+                }
+                if self
+                    .lan
+                    .as_ref()
+                    .is_some_and(|l| l.role == ::network::Role::Client)
+                {
+                    self.service_msg =
+                        Some(("In a LAN session the host sets the weather".into(), 3.0));
+                    return;
+                }
+                if self.metar_locked() {
+                    self.service_msg = Some((
+                        "The weather cannot be changed while the METAR sync is on".into(),
+                        3.0,
+                    ));
+                    return;
+                }
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.metar_rx = Some(rx);
+                self.metar_once = true;
+                let station = icao.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(crate::weather_setup::try_metar(&station));
+                });
+                self.service_msg = Some((format!("Weather: loading METAR for {icao}"), 4.0));
+            }
+            Action::WeatherCycle(on) => {
+                if on {
+                    if self.weather_cycle.is_none() {
+                        let seed = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_nanos() as u64)
+                            .unwrap_or(7);
+                        self.weather_cycle = Some(crate::weather_cycle::Cycle::new(seed));
+                    }
+                } else {
+                    self.weather_cycle = None;
+                }
+            }
+            Action::WeatherCycleNow => {
+                if let Some(c) = self.weather_cycle.as_mut() {
+                    c.next_in = 0.0;
+                } else {
+                    self.service_msg = Some(("The weather cycle is off".into(), 3.0));
+                }
+            }
+            Action::WeatherWetness(v) => {
+                self.wetness = v.clamp(0.0, 1.0);
+            }
+            Action::WeatherSave(name) => {
+                let Some(w) = self.weather.clone() else {
+                    return;
+                };
+                let safe: String = name
+                    .trim()
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '-' || c == ' ' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                if safe.is_empty() {
+                    self.service_msg = Some(("Give the weather a name".into(), 3.0));
+                    return;
+                }
+                let dir = crate::startup::content_dir()
+                    .unwrap_or_else(|| self.args.root.clone())
+                    .join("Weather");
+                let path = dir.join(format!("{safe}.owt"));
+                let text = super::weather_ui::to_owt(&safe, &w);
+                let res = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text));
+                self.service_msg = Some(match res {
+                    Ok(_) => (format!("Weather saved: {}", path.display()), 5.0),
+                    Err(e) => (format!("Weather not saved: {e}"), 5.0),
+                });
+            }
+            Action::SetTime(t) => {
+                self.clock.time = t.rem_euclid(86400.0);
+            }
+            Action::SetDay(d) => {
+                let max = ::simulation::clock::days_in_year(self.clock.year);
+                self.clock.day_of_year = d.clamp(1, max);
+                self.follow_date();
+            }
+            _ => {}
         }
     }
 
@@ -303,6 +453,17 @@ impl crate::App {
                         p.start_up();
                     }
                 }
+                a @ (Action::WeatherPreset(..)
+                | Action::WeatherNext
+                | Action::WeatherCustom(_)
+                | Action::WeatherFromCurrent
+                | Action::WeatherMetar(_)
+                | Action::WeatherCycle(_)
+                | Action::WeatherCycleNow
+                | Action::WeatherWetness(_)
+                | Action::WeatherSave(_)
+                | Action::SetTime(_)
+                | Action::SetDay(_)) => self.dev_weather_action(a),
                 Action::OpenLan(port) => {
                     if self.lan.is_some() {
                         self.service_msg = Some(("Already in a LAN session".into(), 3.0));

@@ -9,11 +9,13 @@ mod lights_ui;
 mod menu;
 mod net;
 mod overlays;
+mod perf;
 mod types;
 mod util;
 mod vehicle_editor;
 mod vehicle_ui;
 mod walk;
+mod weather_ui;
 mod translation;
 
 use imgui::{BackendFlags, Condition, TextureId};
@@ -37,6 +39,8 @@ struct Show {
     lan: bool,
     walk: bool,
     translation: bool,
+    perf: bool,
+    weather: bool,
 }
 
 pub(crate) struct DevTools {
@@ -60,6 +64,8 @@ pub(crate) struct DevTools {
     release: Vec<String>,
     editor: vehicle_editor::VehicleEditor,
     tr_tool: translation::TranslationTool,
+    perf: perf::PerfTool,
+    weather_tool: weather_ui::WeatherTool,
 }
 
 impl DevTools {
@@ -102,6 +108,8 @@ impl DevTools {
                 lan: false,
                 walk: false,
                 translation: false,
+                perf: false,
+                weather: false,
             },
             actions: Vec::new(),
             connect_addr: String::new(),
@@ -112,6 +120,8 @@ impl DevTools {
             release: Vec::new(),
             editor: vehicle_editor::VehicleEditor::new(),
             tr_tool: translation::TranslationTool::new(),
+            perf: perf::PerfTool::new(),
+            weather_tool: weather_ui::WeatherTool::new(),
             box_radius: 25.0,
         }
     }
@@ -157,6 +167,7 @@ impl DevTools {
             io.font_global_scale = scale.max(1.0);
             io.delta_time = (snap.dt_ms / 1000.0).clamp(0.0001, 0.25);
         }
+        self.perf.update(extra, snap.dt_ms);
         self.ensure_gpu(r);
         let mut mode = self.mode;
         {
@@ -171,6 +182,8 @@ impl DevTools {
             let cockpit_filter = &mut self.cockpit_filter;
             let editor = &mut self.editor;
             let tr_tool = &mut self.tr_tool;
+            let perf_tool = &mut self.perf;
+            let weather_tool = &mut self.weather_tool;
             let ui = self.ctx.new_frame();
 
             if *show_boxes {
@@ -212,6 +225,8 @@ impl DevTools {
             net::lan(ui, &mut show.lan, lan_port, actions);
             walk::window(ui, &mut show.walk, extra);
             translation::window(ui, &mut show.translation, tr_tool);
+            perf::window(ui, &mut show.perf, perf_tool, snap, extra);
+            weather_ui::window(ui, &mut show.weather, weather_tool, extra, actions);
         }
         if mode != self.mode {
             self.mode = mode;

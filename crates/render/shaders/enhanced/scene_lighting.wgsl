@@ -61,6 +61,59 @@ fn rain_env_enhanced(d: vec3<f32>, lod: f32) -> vec3<f32> {
     return mix(surround, e, smoothstep(-0.05, 0.35, d.z));
 }
 
+fn cs_hash(p: vec2<f32>) -> f32 {
+    let q = fract(p * vec2<f32>(0.1031, 0.1030));
+    let r = q + dot(q, q.yx + 33.33);
+    return fract((r.x + r.y) * r.x);
+}
+
+fn cs_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(cs_hash(i), cs_hash(i + vec2<f32>(1.0, 0.0)), u.x),
+               mix(cs_hash(i + vec2<f32>(0.0, 1.0)), cs_hash(i + vec2<f32>(1.0, 1.0)), u.x), u.y);
+}
+
+fn cs_fbm(p: vec2<f32>) -> f32 {
+    return cs_noise(p) * 0.5 + cs_noise(p * 2.03 + 11.7) * 0.3 + cs_noise(p * 4.1 + 5.3) * 0.2;
+}
+
+// 1 = sun free, towards 0 = in the shadow of a cloud. Without enhanced layers (classic
+// graphics) one layer from the weather's cloud density (camera.clouds.x) is used.
+fn cloud_sun_visibility(world: vec3<f32>) -> f32 {
+    let sd = normalize(camera.sun_dir.xyz);
+    if (sd.z < 0.05) {
+        return 1.0;
+    }
+    let have = (enh.layers[0].z + enh.layers[1].z + enh.layers[2].z) > 0.01;
+    var vis = 1.0;
+    for (var li = 0; li < 3; li = li + 1) {
+        var lay = enh.layers[li];
+        if (!have) {
+            if (li > 0) {
+                break;
+            }
+            lay = vec4<f32>(1400.0, 4200.0, camera.clouds.x, 1.0);
+        }
+        if (lay.z <= 0.01 || lay.y <= lay.x) {
+            continue;
+        }
+        let fl = f32(li);
+        let h = lay.x + (lay.y - lay.x) * 0.3;
+        let t = max(h - world.z, 0.0) / sd.z;
+        let g = world.xy + camera.world_origin.zw + sd.xy * t;
+        let drift = camera.clouds.yz * 70000.0 * (1.0 + fl) + vec2<f32>(5300.0, 2900.0) * fl;
+        let period = mix(9000.0, 5000.0, lay.w);
+        let n = cs_fbm((g + drift) / period);
+        let cover = clamp(0.15 + lay.z * 0.75, 0.0, 1.0);
+        let dens = smoothstep(0.9 - cover * 0.8, 1.0 - cover * 0.8 + 0.15, n);
+        let closed = select(0.0, 1.0, li == 0) * smoothstep(0.85, 1.0, lay.z);
+        vis = vis * (1.0 - 0.85 * max(dens, closed) * mix(0.6, 1.0, lay.w));
+    }
+    return clamp(vis, 0.0, 1.0);
+}
+
 // A fixed, deterministic PCF kernel (shader.wgsl's SHADOW_OFFSETS). The old PCSS blocker
 // search was unstable for alpha-tested foliage: a few leaves entering or leaving its
 // 12-sample search changed the penumbra radius, producing checkerboard patches and
@@ -676,7 +729,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         } else if (nl > 0.0 || thin) {
             shadow = sun_shadow_soft(in.world, n, thin);
         }
-        let e_sun = enh.sun.rgb * shadow;
+        let e_sun = enh.sun.rgb * shadow * cloud_sun_visibility(in.world);
         if (thin) {
             // foliage: a crown of leaves facing every way, whose normals OMSI points up
             // only to light it evenly - lit by the sun from any side (the shadow map
