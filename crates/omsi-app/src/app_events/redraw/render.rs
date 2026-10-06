@@ -23,7 +23,7 @@ impl App {
         let vr_active = self.vr_active();
         let screenshot_mode = self.screenshot_mode.is_some();
         let crosshair = !screenshot_mode
-            && self.settings.crosshair
+            && omsi_config::get_bool("camera", "crosshair").unwrap_or(true)
             && !matches!(self.view.as_str(), "pax" | "outside")
             && self.raycast_active();
         let screenshot_help = self.screenshot_mode.as_mut().and_then(|mode| {
@@ -221,10 +221,10 @@ impl App {
                     || ui.chat.hovered
                     || map_open
                     || (!vr_active
-                        && self
-                            .navigator
-                            .as_ref()
-                            .is_some_and(|n| n.over_panel(cx, cy)));
+                    && self
+                    .navigator
+                    .as_ref()
+                    .is_some_and(|n| n.over_panel(cx, cy)));
                 let dropdown = self
                     .dropdown
                     .as_ref()
@@ -417,10 +417,10 @@ impl App {
             .map(|p| lights::vehicle_velocity(&p.vehicle))
             .unwrap_or_default()
             - self
-                .weather
-                .as_ref()
-                .map(rain::weather_wind)
-                .unwrap_or_default();
+            .weather
+            .as_ref()
+            .map(rain::weather_wind)
+            .unwrap_or_default();
         lighting.animation_time = Some(self.clock.run_time as f32);
         lighting.led_glow = self.settings.led_glow as f32 * 0.25;
         lights::set_led_glow(lighting.led_glow);
@@ -482,47 +482,47 @@ impl App {
             let acquired = match s.surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(_)
                 | wgpu::CurrentSurfaceTexture::Suboptimal(_)
-                    if hidden_now =>
-                {
-                    wgpu::CurrentSurfaceTexture::Occluded
-                }
+                if hidden_now =>
+                    {
+                        wgpu::CurrentSurfaceTexture::Occluded
+                    }
                 other => other,
             };
             let (frame, stand_in) = match acquired {
                 wgpu::CurrentSurfaceTexture::Success(frame)
                 | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => (Some(frame), None),
                 wgpu::CurrentSurfaceTexture::Occluded
-                    if omsi_cfg::env::var_os("OMSI_RENDER_OCCLUDED").is_some() =>
-                {
-                    let (w, h) = (s.config.width, s.config.height);
-                    if self
-                        .stand_in
-                        .as_ref()
-                        .map(|t| (t.width(), t.height()) != (w, h))
-                        .unwrap_or(true)
+                if omsi_cfg::env::var_os("OMSI_RENDER_OCCLUDED").is_some() =>
                     {
-                        self.stand_in = Some(r.device.create_texture(&wgpu::TextureDescriptor {
-                            label: Some("hidden window"),
-                            size: wgpu::Extent3d {
-                                width: w,
-                                height: h,
-                                depth_or_array_layers: 1,
-                            },
-                            mip_level_count: 1,
-                            sample_count: 1,
-                            dimension: wgpu::TextureDimension::D2,
-                            format: r.format(),
-                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                            view_formats: &[],
-                        }));
-                    }
-                    (
-                        None,
-                        self.stand_in
+                        let (w, h) = (s.config.width, s.config.height);
+                        if self
+                            .stand_in
                             .as_ref()
-                            .map(|t| t.create_view(&Default::default())),
-                    )
-                }
+                            .map(|t| (t.width(), t.height()) != (w, h))
+                            .unwrap_or(true)
+                        {
+                            self.stand_in = Some(r.device.create_texture(&wgpu::TextureDescriptor {
+                                label: Some("hidden window"),
+                                size: wgpu::Extent3d {
+                                    width: w,
+                                    height: h,
+                                    depth_or_array_layers: 1,
+                                },
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: wgpu::TextureDimension::D2,
+                                format: r.format(),
+                                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                                view_formats: &[],
+                            }));
+                        }
+                        (
+                            None,
+                            self.stand_in
+                                .as_ref()
+                                .map(|t| t.create_view(&Default::default())),
+                        )
+                    }
                 wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                     reconfigure = true;
                     (None, None)
@@ -578,7 +578,11 @@ impl App {
                                 .ok()
                                 .and_then(|s| s.parse::<f32>().ok())
                                 .filter(|rate| rate.is_finite() && *rate >= -1.0)
-                                .unwrap_or(self.settings.vr_mirror_rate)
+                                .unwrap_or(
+                                    omsi_config::get_float("vr", "mirror-rate")
+                                        .unwrap_or(16.0)
+                                        .clamp(-1.0, 360.0) as f32,
+                                )
                         } else {
                             let max_hz = if self.settings.mirror_refresh == "full" {
                                 MIRROR_MAX_HZ_FULL
@@ -622,11 +626,11 @@ impl App {
                     }
                     while (self.in_cab || near)
                         && drawn
-                            < (if vr_active {
-                                draw_limit
-                            } else {
-                                self.mirrors_seen.clamp(1, 2)
-                            })
+                        < (if vr_active {
+                        draw_limit
+                    } else {
+                        self.mirrors_seen.clamp(1, 2)
+                    })
                         && (vr_active || self.mirror_budget >= 1.0)
                     {
                         let (Some(w), Some(p)) = (self.world.as_ref(), self.player.as_ref()) else {
@@ -694,7 +698,9 @@ impl App {
                                     .map(|index| (index, d))
                             }),
                         self.player.as_ref().map(|p| p.uid),
-                        self.settings.vr_head_smoothing_ms,
+                        omsi_config::get_float("vr", "head-smoothing-ms")
+                            .unwrap_or(0.0)
+                            .clamp(0.0, 30.0) as f32,
                         !self.mouse_drive,
                         self.vr_zoom_active,
                     ) {

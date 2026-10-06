@@ -146,6 +146,9 @@ pub fn run() -> Result<()> {
         );
         default_hook(info);
     }));
+    if let Err(e) = omsi_config::init(omsi_config::default_path()) {
+        log::warn!("settings not loaded: {e}");
+    }
     log::info!(
         "neoOMSI {VERSION}, build {BUILD}{}",
         if std::env::var_os("MallocLargeCache").is_some() {
@@ -328,9 +331,10 @@ pub(crate) fn make_app(
     let settings = settings::Settings::load();
     applog::log_system(&settings);
     if args.drive_keys.eq_ignore_ascii_case("simple")
-        && !settings.drive_keys.eq_ignore_ascii_case("simple")
+        && let Some(k) = omsi_config::get_string("gameplay", "drive-keys")
+        && !k.eq_ignore_ascii_case("simple")
     {
-        args.drive_keys = settings.drive_keys.clone();
+        args.drive_keys = k;
     }
     ENHANCED.store(
         settings.enhanced || args.enhanced || omsi_cfg::env::var_os("OMSI_ENHANCED").is_some(),

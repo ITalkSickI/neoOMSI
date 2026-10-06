@@ -151,11 +151,11 @@ pub fn profile(l: &mut Launcher, area: Rect) {
     let half = (inner.w - GAP) * 0.5;
     if !names.is_empty()
         && l.ui.select(
-            "profile",
-            Rect::new(inner.x, inner.y, half, ROW),
-            &mut sel,
-            &names,
-        )
+        "profile",
+        Rect::new(inner.x, inner.y, half, ROW),
+        &mut sel,
+        &names,
+    )
     {
         l.state.config.profile = names[sel].clone();
         let _ = core::save_config(&l.state.config);
@@ -540,10 +540,10 @@ fn sel_setting(
     let mut sel = values.iter().position(|v| {
         *v == cur
             || v.parse::<f64>()
-                .ok()
-                .zip(cur.parse::<f64>().ok())
-                .map(|(a, b)| (a - b).abs() < 1e-6)
-                .unwrap_or(false)
+            .ok()
+            .zip(cur.parse::<f64>().ok())
+            .map(|(a, b)| (a - b).abs() < 1e-6)
+            .unwrap_or(false)
     });
     if sel.is_none() && !cur.is_empty() {
         // a value written by hand gets an entry of its own
@@ -944,28 +944,28 @@ fn graphics_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) ->
                         let cur = get(s, k);
                         cur == v
                             || cur
-                                .as_f64()
-                                .zip(v.as_f64())
-                                .map(|(a, b)| (a - b).abs() < 1e-6)
-                                .unwrap_or(false)
+                            .as_f64()
+                            .zip(v.as_f64())
+                            .map(|(a, b)| (a - b).abs() < 1e-6)
+                            .unwrap_or(false)
                             || cur
-                                .as_str()
-                                .zip(v.as_f64())
-                                .map(|(a, b)| {
-                                    a.parse::<f64>()
-                                        .map(|a| (a - b).abs() < 1e-6)
-                                        .unwrap_or(false)
-                                })
-                                .unwrap_or(false)
+                            .as_str()
+                            .zip(v.as_f64())
+                            .map(|(a, b)| {
+                                a.parse::<f64>()
+                                    .map(|a| (a - b).abs() < 1e-6)
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(false)
                             || cur
-                                .as_f64()
-                                .zip(v.as_str())
-                                .map(|(a, b)| {
-                                    b.parse::<f64>()
-                                        .map(|b| (a - b).abs() < 1e-6)
-                                        .unwrap_or(false)
-                                })
-                                .unwrap_or(false)
+                            .as_f64()
+                            .zip(v.as_str())
+                            .map(|(a, b)| {
+                                b.parse::<f64>()
+                                    .map(|b| (a - b).abs() < 1e-6)
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(false)
                     })
                 })
                 .unwrap_or(false)
@@ -1581,22 +1581,16 @@ fn driving_tab(
             *dirty = 0.3;
         }
     }
-    toggle_setting(
-        ui,
-        s,
-        dirty,
-        c.row(),
-        "Force feedback and vibration",
-        "ff_enabled",
-    );
-    toggle_setting(
-        ui,
-        s,
-        dirty,
-        c.row(),
-        "Invert force feedback by default",
-        "ff_invert",
-    );
+    let mut ff = crate::controllers::ff_enabled();
+    if ui.toggle("set-ff_enabled", c.row(), &mut ff, "Force feedback and vibration") {
+        crate::controllers::set_ff_enabled(ff);
+        let _ = omsi_config::save();
+    }
+    let mut inv = crate::controllers::global_ff_invert();
+    if ui.toggle("set-ff_invert", c.row(), &mut inv, "Invert force feedback by default") {
+        crate::controllers::set_global_ff_invert(inv);
+        let _ = omsi_config::save();
+    }
     c.y += ui.paragraph(
         "Wheels with a saved direction use their own setting under Controls → Game controllers.",
         Vec2::new(c.inner.x, c.y),
@@ -1614,8 +1608,9 @@ fn driving_tab(
     ) {
         s["wheel_range"] = json!(900.0);
         s["wheel_lock"] = json!(0.0);
-        s["ff_invert"] = json!(false);
-        s["ff_enabled"] = json!(true);
+        crate::controllers::set_global_ff_invert(false);
+        crate::controllers::set_ff_enabled(true);
+        let _ = omsi_config::save();
         *dirty = 0.3;
     }
     if ui.button(
@@ -2636,8 +2631,8 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         ("Driving & the bus", "The bus's own keys", "vehicles"),
         ("The game", "Menus, views, pausing", "game"),
     ]
-    .iter()
-    .enumerate()
+        .iter()
+        .enumerate()
     {
         let r = Rect::new(
             body.x + sec as f32 * (half + GAP * 2.0),
@@ -2706,8 +2701,8 @@ pub fn controls(l: &mut Launcher, area: Rect) {
             .map(|(i, a, s, m)| {
                 let clash = *s != 0
                     && list
-                        .iter()
-                        .any(|(j, _, s2, m2)| j != i && s2 == s && m2 == m);
+                    .iter()
+                    .any(|(j, _, s2, m2)| j != i && s2 == s && m2 == m);
                 (
                     *i,
                     action_text(names, a),
@@ -2733,8 +2728,8 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         if shown.is_empty()
             && new_action.len() > 1
             && new_action
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             if l.ui.button(
                 &format!("kb-add-{sec}"),
@@ -2930,8 +2925,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         pv.io = Some(crate::controllers::Devices::new(hwnd, false));
     }
     if pv.devices.is_none() {
-        let root = std::path::PathBuf::from(&l.state.config.root);
-        pv.devices = Some(crate::controllers::read_cfg(&root));
+        pv.devices = Some(crate::controllers::read_cfg());
     }
     // what the devices do now (and a button pressed while one is awaited)
     let mut pressed: Vec<(String, usize)> = Vec::new();
@@ -2964,26 +2958,16 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let mut sel = pv.selected;
     let several = devices.len()
         + connected
-            .iter()
-            .filter(|c| {
-                !devices
-                    .iter()
-                    .any(|d| crate::controllers::names_match(&d.name, &c.name))
-            })
-            .count()
+        .iter()
+        .filter(|c| {
+            !devices
+                .iter()
+                .any(|d| crate::controllers::names_match(&d.name, &c.name))
+        })
+        .count()
         > 1;
     let mut assign = pv.assign && several;
     let list_r = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 58.0);
-    let offs: Vec<String> = l
-        .state
-        .settings
-        .get("ctrl_off")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .split('|')
-        .map(str::to_string)
-        .filter(|s| !s.is_empty())
-        .collect();
     {
         let ui = &mut l.ui;
         let devices = &*devices;
@@ -3001,7 +2985,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             }
             for (i, d) in devices.iter().enumerate() {
                 let on = connected.iter().any(|c| crate::controllers::names_match(&d.name, &c.name));
-                let switched_off = offs.iter().any(|o| o.eq_ignore_ascii_case(&d.name));
+                let switched_off = !d.enabled;
                 let r = Rect::new(v.x + 6.0, y, v.w - 12.0, 44.0);
                 if ui.row(&format!("pad-{i}"), r, !assign && sel == i) {
                     sel = i;
@@ -3073,10 +3057,9 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     ) && pv.dirty
     {
         match save_gamectrler(devices) {
-            Ok(p) => {
+            Ok(()) => {
                 pv.dirty = false;
-                l.state
-                    .set_status(format!("Game controllers saved to {}", p.display()), false);
+                l.state.set_status("Game controllers saved", false);
             }
             Err(e) => l.state.set_status(format!("Not saved: {e}"), true),
         }
@@ -3138,11 +3121,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                 &mut pv.io,
                 &mut pv.feedback_test,
                 hwnd,
-                l.state
-                    .settings
-                    .get("ff_invert")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
+                crate::controllers::global_ff_invert(),
             )
         } else {
             wizard(
@@ -3175,12 +3154,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         return;
     }
     if let Some(c) = pv.calibrating.as_mut() {
-        let global_dz = l
-            .state
-            .settings
-            .get("ctrl_deadzone")
-            .and_then(|x| x.as_f64())
-            .unwrap_or(0.05) as f32;
+        let global_dz = crate::controllers::global_deadzone();
         match calibration(
             &mut l.ui,
             inner,
@@ -3202,34 +3176,13 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         return;
     }
     // this device on or off (a second listing of the same wheel, a device not to be used)
-    {
-        let offs: Vec<String> = l
-            .state
-            .settings
-            .get("ctrl_off")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .split('|')
-            .map(str::to_string)
-            .filter(|s| !s.is_empty())
-            .collect();
-        let mut on = !offs.iter().any(|o| o.eq_ignore_ascii_case(&d.name));
-        if l.ui.toggle(
-            "pad-on",
-            Rect::new(inner.right() - 400.0, inner.y - 36.0, 170.0, 30.0),
-            &mut on,
-            "Use this device",
-        ) {
-            let mut offs: Vec<String> = offs
-                .into_iter()
-                .filter(|o| !o.eq_ignore_ascii_case(&d.name))
-                .collect();
-            if !on {
-                offs.push(d.name.clone());
-            }
-            l.state.settings["ctrl_off"] = json!(offs.join("|"));
-            l.state.settings_dirty = 0.3;
-        }
+    if l.ui.toggle(
+        "pad-on",
+        Rect::new(inner.right() - 400.0, inner.y - 36.0, 170.0, 30.0),
+        &mut d.enabled,
+        "Use this device",
+    ) {
+        pv.dirty = true;
     }
     if l.ui.button(
         "pad-wizard",
@@ -3335,12 +3288,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     // (the axes, then every button of the device: the list scrolls - it stopped at the ten
     // buttons that fitted)
     let list = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 50.0);
-    let default_dz = l
-        .state
-        .settings
-        .get("ctrl_deadzone")
-        .and_then(|x| x.as_f64())
-        .unwrap_or(0.05) as f32;
+    let default_dz = crate::controllers::global_deadzone();
     let mut buttons_start_y = 0.0;
     l.ui.scroll_area("pad-detail", list, &mut |ui, v| {
         let x0 = v.x + 6.0;
@@ -3392,13 +3340,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             }
             y += ROW + 20.0;
             if !live_dev.is_some_and(|c| c.gamepad) {
-                let mut invert = d.ff_invert.unwrap_or_else(|| {
-                    l.state
-                        .settings
-                        .get("ff_invert")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false)
-                });
+                let mut invert = d.ff_invert.unwrap_or_else(crate::controllers::global_ff_invert);
                 if ui.toggle(
                     "pad-ff-invert",
                     Rect::new(x0, y, w, ROW),
@@ -3458,11 +3400,11 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             let mut inv = d.axes[a].map(|x| x.1).unwrap_or(false);
             if d.axes[a].is_some()
                 && ui.toggle(
-                    &format!("pad-inv-{a}"),
-                    Rect::new(bar.right() + GAP + sel_w + GAP, r.y, inv_w, r.h),
-                    &mut inv,
-                    "Reversed",
-                )
+                &format!("pad-inv-{a}"),
+                Rect::new(bar.right() + GAP + sel_w + GAP, r.y, inv_w, r.h),
+                &mut inv,
+                "Reversed",
+            )
             {
                 if let Some(x) = d.axes[a].as_mut() {
                     x.1 = inv;
@@ -4033,12 +3975,12 @@ fn wizard(
     }
     let skip = w.step >= 2
         && ui.button(
-            "wiz-skip",
-            Rect::new(r.right() - 260.0, by, 110.0, 36.0),
-            "Skip",
-            None,
-            ButtonKind::Normal,
-        );
+        "wiz-skip",
+        Rect::new(r.right() - 260.0, by, 110.0, 36.0),
+        "Skip",
+        None,
+        ButtonKind::Normal,
+    );
     let next = ui.button(
         "wiz-next",
         Rect::new(r.right() - 140.0, by, 140.0, 36.0),
@@ -4093,8 +4035,8 @@ fn wizard(
     let axes = wizard_result(&w.rest, &w.at);
     if feedback
         && axes
-            .iter()
-            .any(|a| matches!(a, Some((crate::controllers::Func::Steering, _))))
+        .iter()
+        .any(|a| matches!(a, Some((crate::controllers::Func::Steering, _))))
     {
         return None;
     }
@@ -4215,12 +4157,12 @@ fn feedback_setup(
     }
     if !*active
         && ui.button(
-            "wiz-ff-finish",
-            Rect::new(r.right() - 140.0, by, 140.0, 36.0),
-            "Finish",
-            Some("check"),
-            ButtonKind::Primary,
-        )
+        "wiz-ff-finish",
+        Rect::new(r.right() - 140.0, by, 140.0, 36.0),
+        "Finish",
+        Some("check"),
+        ButtonKind::Primary,
+    )
     {
         d.axes = axes;
         d.ff_invert = Some(w.ff_choice.or(d.ff_invert).unwrap_or(global_invert));
@@ -4286,26 +4228,10 @@ fn moved_most(
         .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
 }
 
-/// Write the devices to the content folder's `Inputs/gamectrler.cfg` (OMSI 2's own is only
-/// read; the game takes the content folder's first).
-fn save_gamectrler(
-    devices: &[crate::controllers::DeviceCfg],
-) -> Result<std::path::PathBuf, String> {
-    let candidate = core::content_dir()
-        .unwrap_or_else(core::data_dir)
-        .join("Inputs");
-    let dir = if (candidate.exists() || std::fs::create_dir_all(&candidate).is_ok())
-        && omsi_cfg::is_writable(&candidate)
-    {
-        candidate
-    } else {
-        core::data_dir().join("Inputs")
-    };
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let p = dir.join("gamectrler.cfg");
-    std::fs::write(&p, crate::controllers::cfg_text(devices)).map_err(|e| e.to_string())?;
-    omsi_cfg::content_changed();
-    Ok(p)
+/// Write the devices into the settings file.
+fn save_gamectrler(devices: &[crate::controllers::DeviceCfg]) -> Result<(), String> {
+    crate::controllers::write_cfg(devices);
+    omsi_config::save().map_err(|e| e.to_string())
 }
 
 /// Settings → Driving keys: "Custom controls", the keys of the Controls page.

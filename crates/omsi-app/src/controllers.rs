@@ -67,9 +67,11 @@ impl Func {
     ];
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DeviceCfg {
     pub(crate) name: String,
+    /// A device that is off is not read at all.
+    pub(crate) enabled: bool,
     /// The line after the name (kept as the file has it).
     pub(crate) second: String,
     /// Per DirectInput axis: the function and whether it runs the other way.
@@ -84,6 +86,23 @@ pub(crate) struct DeviceCfg {
     pub(crate) ff_invert: Option<bool>,
     pub(crate) calibration: [Option<AxisCal>; 8],
     pub(crate) deadzone: Option<f32>,
+}
+
+impl Default for DeviceCfg {
+    fn default() -> Self {
+        DeviceCfg {
+            name: String::new(),
+            enabled: true,
+            second: String::new(),
+            axes: [None; 8],
+            axis_flags: [0; 8],
+            buttons: Vec::new(),
+            ff_scale: None,
+            ff_invert: None,
+            calibration: [None; 8],
+            deadzone: None,
+        }
+    }
 }
 
 impl DeviceCfg {
@@ -172,174 +191,133 @@ impl AxisCal {
     }
 }
 
-/// The `gamectrler.cfg` in use: the content folder's (written by the launcher) before
-/// OMSI 2's own.
-pub(crate) fn cfg_path(root: &Path) -> std::path::PathBuf {
-    omsi_cfg::find_in_roots("Inputs/gamectrler.cfg")
-        .map(|(_, p)| p)
-        .unwrap_or_else(|| root.join("Inputs").join("gamectrler.cfg"))
+const CAT: &str = "controller";
+
+fn dev_get(name: &str, key: &str) -> Option<omsi_config::Value> {
+    omsi_config::get_setting_sub(CAT, name, key)
 }
 
-/// `Inputs/gamectrler.cfg`: the configured devices.
-pub(crate) fn read_cfg(root: &Path) -> Vec<DeviceCfg> {
-    let path = cfg_path(root);
-    let Ok(text) = std::fs::read(&path) else {
-        return Vec::new();
+fn dev_put(name: &str, key: &str, v: Option<omsi_config::Value>) {
+    match v {
+        Some(v) => omsi_config::set_setting_sub(CAT, name, key, v),
+        None => omsi_config::remove_setting_sub(CAT, name, key),
+    }
+}
+
+/// Dead zone of the devices that have none of their own (0..0.3).
+pub(crate) fn global_deadzone() -> f32 {
+    omsi_config::get_float(CAT, "deadzone").unwrap_or(0.05).clamp(0.0, 0.3) as f32
+}
+
+pub(crate) fn set_global_deadzone(v: f32) {
+    omsi_config::set_setting(CAT, "deadzone", v.clamp(0.0, 0.3) as f64);
+}
+
+/// Force feedback and rumble on.
+pub(crate) fn ff_enabled() -> bool {
+    omsi_config::get_bool(CAT, "ff_enabled").unwrap_or(true)
+}
+
+pub(crate) fn set_ff_enabled(on: bool) {
+    omsi_config::set_setting(CAT, "ff_enabled", on);
+}
+
+/// Force feedback the other way round, for devices without their own direction.
+pub(crate) fn global_ff_invert() -> bool {
+    omsi_config::get_bool(CAT, "ff_invert").unwrap_or(false)
+}
+
+pub(crate) fn set_global_ff_invert(on: bool) {
+    omsi_config::set_setting(CAT, "ff_invert", on);
+}
+
+/// The configured devices (`[controller]` in the settings file), in their saved order.
+pub(crate) fn read_cfg() -> Vec<DeviceCfg> {
+    omsi_config::get_setting(CAT, "devices")
+        .and_then(|v| {
+            v.as_array().map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_str().map(read_device))
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn read_device(name: &str) -> DeviceCfg {
+    let int = |k: &str| dev_get(name, k).and_then(|v| v.as_integer());
+    let flt = |k: &str| {
+        dev_get(name, k).and_then(|v| v.as_float().or(v.as_integer().map(|i| i as f64)))
     };
-    let mut devices = parse_cfg(&omsi_cfg::codepage::decode(&text));
-    // An inherited OMSI file can contain 0/0 FFScale on a wheel. Keep its axis and
-    // button bindings, but use neoOMSI's 100/100 default until our own file is saved.
-    let original = root.join("Inputs").join("gamectrler.cfg");
-    let from_original = path == original
-        || std::fs::canonicalize(&path)
-            .ok()
-            .zip(std::fs::canonicalize(&original).ok())
-            .is_some_and(|(a, b)| a == b);
-    if from_original {
-        for d in &mut devices {
-            if d.ff_scale == Some((0.0, 0.0)) {
-                d.ff_scale = None;
-            }
-        }
+    let mut d = DeviceCfg {
+        name: name.to_string(),
+        enabled: dev_get(name, "enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        second: dev_get(name, "second")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_else(|| "0".into()),
+        ..Default::default()
+    };
+    for a in 0..8 {
+        let f = int(&format!("axis{a}")).unwrap_or(-1) as i32;
+        let flags = int(&format!("axis{a}_flags")).unwrap_or(0) as i32;
+        d.axes[a] = Func::from_code(f).map(|f| (f, flags & 1 != 0));
+        d.axis_flags[a] = flags & !1;
+        d.calibration[a] = dev_get(name, &format!("axis{a}_cal"))
+            .and_then(|v| v.as_str().and_then(AxisCal::parse));
     }
-    devices
+    let n = int("buttons").unwrap_or(0).clamp(0, 512) as usize;
+    for b in 0..n {
+        let s = |k: String, def: &str| {
+            dev_get(name, &k)
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| def.to_string())
+        };
+        d.buttons
+            .push((s(format!("Button{b}"), ""), s(format!("Button{b}_n"), "0")));
+    }
+    d.ff_scale = flt("ff_scale_steer").zip(flt("ff_scale_vibration")).map(|(a, b)| (a as f32, b as f32));
+    d.ff_invert = dev_get(name, "ff_invert").and_then(|v| v.as_bool());
+    d.deadzone = flt("deadzone")
+        .filter(|v| v.is_finite())
+        .map(|v| (v as f32).clamp(0.0, 0.3));
+    d
 }
 
-pub(crate) fn parse_cfg(text: &str) -> Vec<DeviceCfg> {
-    let lines: Vec<&str> = text.lines().map(str::trim).collect();
-    let mut out: Vec<DeviceCfg> = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        match lines[i] {
-            "[ctrl]" => {
-                out.push(DeviceCfg {
-                    name: lines.get(i + 1).unwrap_or(&"").to_string(),
-                    second: lines.get(i + 2).unwrap_or(&"0").to_string(),
-                    ..Default::default()
-                });
-                i += 3;
-            }
-            "[axis]" => {
-                if let Some(d) = out.last_mut() {
-                    for a in 0..8 {
-                        let f: i32 = lines
-                            .get(i + 1 + a * 2)
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(-1);
-                        let flags: i32 = lines
-                            .get(i + 2 + a * 2)
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(0);
-                        d.axes[a] = Func::from_code(f).map(|f| (f, flags & 1 != 0));
-                        d.axis_flags[a] = flags & !1;
-                    }
-                }
-                i += 17;
-            }
-            "[buttons]" => {
-                let n: usize = lines
-                    .get(i + 1)
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0)
-                    .min(512);
-                if let Some(d) = out.last_mut() {
-                    for b in 0..n {
-                        d.buttons.push((
-                            lines.get(i + 2 + b * 2).unwrap_or(&"").to_string(),
-                            lines.get(i + 3 + b * 2).unwrap_or(&"0").to_string(),
-                        ));
-                    }
-                }
-                i += 2 + n * 2;
-            }
-            "[ffscale]" | "[FFScale]" => {
-                if let Some(d) = out.last_mut() {
-                    let f = |k: usize| {
-                        lines
-                            .get(i + k)
-                            .map(|v| omsi_cfg::parse_f64(v))
-                            .unwrap_or(1.0) as f32
-                    };
-                    d.ff_scale = Some((f(1), f(2)));
-                }
-                i += 3;
-            }
-            "[neoOMSI.FFInvert]" => {
-                if let Some(d) = out.last_mut() {
-                    d.ff_invert = lines.get(i + 1).and_then(|v| match *v {
-                        "0" => Some(false),
-                        "1" => Some(true),
-                        _ => None,
-                    });
-                }
-                i += 2;
-            }
-            // OMSI skips sections it doesn't know.
-            "[neoOMSI.Deadzone]" => {
-                if let Some(d) = out.last_mut() {
-                    d.deadzone = lines
-                        .get(i + 1)
-                        .and_then(|v| v.parse::<f32>().ok())
-                        .filter(|v| v.is_finite())
-                        .map(|v| v.clamp(0.0, 0.3));
-                }
-                i += 2;
-            }
-            "[neoOMSI.Calibration]" => {
-                if let Some(d) = out.last_mut() {
-                    for a in 0..8 {
-                        d.calibration[a] = lines.get(i + 1 + a).and_then(|l| AxisCal::parse(l));
-                    }
-                }
-                i += 9;
-            }
-            _ => i += 1,
-        }
-    }
-    out
-}
-
-/// The file's text for `devices`, as OMSI writes it (CR LF).
-pub(crate) fn cfg_text(devices: &[DeviceCfg]) -> String {
-    let mut t = String::new();
+/// Put the devices into the settings (call `omsi_config::save` to write them out).
+pub(crate) fn write_cfg(devices: &[DeviceCfg]) {
+    let names: Vec<String> = devices.iter().map(|d| d.name.clone()).collect();
+    omsi_config::set_setting(CAT, "devices", names);
     for d in devices {
-        t.push_str(&format!(
-            "\r\n[ctrl]\r\n{}\r\n{}\r\n\r\n[axis]\r\n",
-            d.name,
-            if d.second.is_empty() { "0" } else { &d.second }
-        ));
-        for a in 0..8 {
-            let (f, inv) = match d.axes[a] {
-                Some((f, inv)) => (Func::code(Some(f)), inv),
-                None => (-1, false),
-            };
-            t.push_str(&format!("{f}\r\n{}\r\n", d.axis_flags[a] | inv as i32));
-        }
-        t.push_str(&format!("\r\n[buttons]\r\n{}\r\n", d.buttons.len()));
-        for (action, n) in &d.buttons {
-            t.push_str(&format!(
-                "{action}\r\n{}\r\n",
-                if n.is_empty() { "0" } else { n }
-            ));
-        }
-        let (a, b) = d.ff_scale.unwrap_or((1.0, 1.0));
-        t.push_str(&format!("\r\n[FFScale]\r\n{a:.3}\r\n{b:.3}\r\n\r\n"));
-        if let Some(invert) = d.ff_invert {
-            t.push_str(&format!("[neoOMSI.FFInvert]\r\n{}\r\n\r\n", invert as u8));
-        }
-        if let Some(dz) = d.deadzone {
-            t.push_str(&format!("[neoOMSI.Deadzone]\r\n{dz:.3}\r\n\r\n"));
-        }
-        if d.calibration.iter().any(Option::is_some) {
-            t.push_str("[neoOMSI.Calibration]\r\n");
-            for c in &d.calibration {
-                t.push_str(&c.map_or("-".to_string(), |c| c.line()));
-                t.push_str("\r\n");
-            }
-            t.push_str("\r\n");
-        }
+        write_device(d);
     }
-    t
+}
+
+pub(crate) fn write_device(d: &DeviceCfg) {
+    use omsi_config::Value;
+    let n = d.name.as_str();
+    dev_put(n, "enabled", Some(Value::from(d.enabled)));
+    dev_put(n, "second", Some(Value::from(if d.second.is_empty() { "0" } else { &d.second })));
+    for a in 0..8 {
+        let (f, inv) = match d.axes[a] {
+            Some((f, inv)) => (Func::code(Some(f)), inv),
+            None => (-1, false),
+        };
+        dev_put(n, &format!("axis{a}"), Some(Value::from(f as i64)));
+        dev_put(n, &format!("axis{a}_flags"), Some(Value::from((d.axis_flags[a] | inv as i32) as i64)));
+        dev_put(n, &format!("axis{a}_cal"), d.calibration[a].map(|c| Value::from(c.line())));
+    }
+    dev_put(n, "buttons", Some(Value::from(d.buttons.len() as i64)));
+    for (b, (action, num)) in d.buttons.iter().enumerate() {
+        dev_put(n, &format!("Button{b}"), Some(Value::from(action.as_str())));
+        dev_put(n, &format!("Button{b}_n"), Some(Value::from(if num.is_empty() { "0" } else { num })));
+    }
+    let sc = d.ff_scale.unwrap_or((1.0, 1.0));
+    dev_put(n, "ff_scale_steer", Some(Value::from(sc.0 as f64)));
+    dev_put(n, "ff_scale_vibration", Some(Value::from(sc.1 as f64)));
+    dev_put(n, "ff_invert", d.ff_invert.map(Value::from));
+    dev_put(n, "deadzone", d.deadzone.map(|v| Value::from(v as f64)));
 }
 
 /// The analog controls a controller gives this frame (None: that one is not on it).
@@ -554,8 +532,8 @@ impl Devices {
         self.hid_axes.iter().any(|(n, axes)| {
             names_match(n, name)
                 && axes
-                    .iter()
-                    .any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2)
+                .iter()
+                .any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2)
         })
     }
 
@@ -629,7 +607,7 @@ impl Devices {
                 d.devices.iter().any(|dev| {
                     include_direct_input_device(&dev.name, dev.ff_capable(), xinput_pads)
                         && (names_match(&dev.name, pad.name())
-                            || id.is_some_and(|id| dev.hardware_id == Some(id)))
+                        || id.is_some_and(|id| dev.hardware_id == Some(id)))
                 })
             })
         };
@@ -649,55 +627,55 @@ impl Devices {
                     // DirectInput handles wheels on Windows; system-mapped gamepads
                     // such as Xbox controllers are listed through gilrs.
                     EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code)
-                        if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) =>
-                    {
-                        if let Some(n) = button_number(&pad, code) {
-                            out.push((
-                                pad.name().to_string(),
-                                n,
-                                matches!(ev.event, EventType::ButtonPressed(..)),
-                            ));
+                    if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) =>
+                        {
+                            if let Some(n) = button_number(&pad, code) {
+                                out.push((
+                                    pad.name().to_string(),
+                                    n,
+                                    matches!(ev.event, EventType::ButtonPressed(..)),
+                                ));
+                            }
                         }
-                    }
                     #[cfg(target_os = "linux")]
                     EventType::AxisChanged(_, value, code)
-                        if code.into_u32() >> 16 == 3
-                            && (0x10..0x18).contains(&(code.into_u32() & 0xFFFF)) =>
-                    {
-                        let axis = (code.into_u32() & 0xFFFF) as usize - 0x10;
-                        let name = pad.name().to_string();
-                        let k = match self.hats.iter().position(|(n, _)| *n == name) {
-                            Some(k) => k,
-                            None => {
-                                self.hats.push((name.clone(), [0; 8]));
-                                self.hats.len() - 1
-                            }
-                        };
-                        let now = if value > 0.5 {
-                            1
-                        } else if value < -0.5 {
-                            -1
-                        } else {
-                            0
-                        };
-                        let was = std::mem::replace(&mut self.hats[k].1[axis], now);
-                        let (hat, y) = (axis / 2, axis % 2 == 1);
-                        let dir = |v: i8| match (y, v) {
-                            (true, -1) => Some(0),
-                            (false, 1) => Some(1),
-                            (true, 1) => Some(2),
-                            (false, -1) => Some(3),
-                            _ => None,
-                        };
-                        if was != now {
-                            if let Some(d) = dir(was) {
-                                out.push((name.clone(), HAT_BUTTONS + hat * 4 + d, false));
-                            }
-                            if let Some(d) = dir(now) {
-                                out.push((name, HAT_BUTTONS + hat * 4 + d, true));
+                    if code.into_u32() >> 16 == 3
+                        && (0x10..0x18).contains(&(code.into_u32() & 0xFFFF)) =>
+                        {
+                            let axis = (code.into_u32() & 0xFFFF) as usize - 0x10;
+                            let name = pad.name().to_string();
+                            let k = match self.hats.iter().position(|(n, _)| *n == name) {
+                                Some(k) => k,
+                                None => {
+                                    self.hats.push((name.clone(), [0; 8]));
+                                    self.hats.len() - 1
+                                }
+                            };
+                            let now = if value > 0.5 {
+                                1
+                            } else if value < -0.5 {
+                                -1
+                            } else {
+                                0
+                            };
+                            let was = std::mem::replace(&mut self.hats[k].1[axis], now);
+                            let (hat, y) = (axis / 2, axis % 2 == 1);
+                            let dir = |v: i8| match (y, v) {
+                                (true, -1) => Some(0),
+                                (false, 1) => Some(1),
+                                (true, 1) => Some(2),
+                                (false, -1) => Some(3),
+                                _ => None,
+                            };
+                            if was != now {
+                                if let Some(d) = dir(was) {
+                                    out.push((name.clone(), HAT_BUTTONS + hat * 4 + d, false));
+                                }
+                                if let Some(d) = dir(now) {
+                                    out.push((name, HAT_BUTTONS + hat * 4 + d, true));
+                                }
                             }
                         }
-                    }
                     _ => {}
                 }
             }
@@ -899,13 +877,11 @@ pub struct Controllers {
     /// The pedals' response curves (Settings → pedal strength; 1 = as the pedal reads).
     pub pedal_throttle: f32,
     pub pedal_brake: f32,
-    /// Devices switched off (Settings: `ctrl_off`): not read at all.
-    pub disabled: Vec<String>,
     pub sources: [Option<String>; 4],
     pub centre: bool,
-    /// Force feedback the other way round (Settings: `ff_invert`).
+    /// Force feedback the other way round (`[controller] ff_invert`).
     pub ff_invert: bool,
-    /// Force feedback and rumble switched on (Settings: `ff_enabled`).
+    /// Force feedback and rumble switched on (`[controller] ff_enabled`).
     pub ff_enabled: bool,
     /// The wheel's rotation over the rotation that is the bus's full lock (Settings:
     /// `wheel_range` / `wheel_lock`; 1 = the whole wheel is the full lock, as OMSI).
@@ -951,15 +927,15 @@ impl Controllers {
         }
     }
 
-    pub fn new(root: &Path, hwnd: Option<isize>) -> Controllers {
+    pub fn new(_root: &Path, hwnd: Option<isize>) -> Controllers {
         let devices = Devices::new(hwnd, true);
-        let cfg = read_cfg(root);
+        let cfg = read_cfg();
         for c in devices.connected() {
             log::info!(
                 "game controller: {} ({})",
                 c.name,
                 if cfg.iter().any(|d| names_match(&d.name, &c.name)) {
-                    "set up in gamectrler.cfg"
+                    "set up in the settings"
                 } else if c.gamepad {
                     "as a gamepad"
                 } else {
@@ -975,7 +951,6 @@ impl Controllers {
             deadzone: 0.0,
             pedal_throttle: 1.0,
             pedal_brake: 1.0,
-            disabled: Vec::new(),
             sources: Default::default(),
             centre: true,
             ff_invert: false,
@@ -1025,12 +1000,11 @@ impl Controllers {
         // the devices set up in gamectrler.cfg first; a device the file does not know only
         // gives what none of them does - a pad lying beside a set-up wheel held the steering
         // at its own centre, whichever the system listed first
-        let off = self.disabled.clone();
         let mut pads: Vec<(Option<&DeviceCfg>, Connected)> = self
             .devices
             .connected()
             .into_iter()
-            .filter(|c| !off.iter().any(|d| names_match(d, &c.name)))
+            .filter(|c| !self.off(&c.name))
             .map(|c| (find_device_cfg(&self.cfg, &c.name), c))
             .collect();
         pads.sort_by_key(|(cfg, _)| cfg.is_none());
@@ -1184,7 +1158,6 @@ impl Controllers {
         }
         // gamepads: the left stick steers, the triggers are the pedals
         let di = self.devices.direct_input();
-        let off = self.disabled.clone();
         if let Some(g) = self.devices.gilrs.as_ref() {
             for (_, pad) in g.gamepads() {
                 // An Xbox-type pad's DirectInput twin is left out on Windows, so the pad is
@@ -1197,7 +1170,7 @@ impl Controllers {
                 if self.devices.hid_wheel(pad.name()) {
                     continue;
                 }
-                if (di && !xinput) || off.iter().any(|d| names_match(d, pad.name())) {
+                if (di && !xinput) || self.off(pad.name()) {
                     continue;
                 }
                 let free = PadDefaults::of(find_device_cfg(&self.cfg, pad.name()));
@@ -1211,9 +1184,9 @@ impl Controllers {
                 // "the sticks do nothing" then says which way the pad came in)
                 if x.abs() > 0.5
                     && !self
-                        .announced
-                        .iter()
-                        .any(|n| n == &format!("stick:{}", pad.name()))
+                    .announced
+                    .iter()
+                    .any(|n| n == &format!("stick:{}", pad.name()))
                 {
                     self.announced.push(format!("stick:{}", pad.name()));
                     log::info!(
@@ -1356,8 +1329,8 @@ impl Controllers {
             let other = self.wheel.as_ref().is_some_and(|w| w.name != name);
             let retry = self.wheel.is_none()
                 && self.wheel_tried.as_ref().is_none_or(|(n, t)| {
-                    *n != name || t.elapsed() > std::time::Duration::from_secs(2)
-                });
+                *n != name || t.elapsed() > std::time::Duration::from_secs(2)
+            });
             if other || retry {
                 self.wheel_tried = Some((name.clone(), std::time::Instant::now()));
                 self.wheel = crate::evdev_ff::Wheel::open(&name);
@@ -1460,7 +1433,7 @@ impl Controllers {
     }
 
     fn off(&self, name: &str) -> bool {
-        self.disabled.iter().any(|d| names_match(d, name))
+        find_device_cfg(&self.cfg, name).is_some_and(|d| !d.enabled)
     }
 
     /// Any controller there at all.
@@ -1971,10 +1944,15 @@ mod tests {
         assert_eq!(still.apply(0.3), 0.3);
     }
 
+    fn round(d: &super::DeviceCfg) -> super::DeviceCfg {
+        super::write_device(d);
+        super::read_device(&d.name)
+    }
+
     #[test]
     fn calibration_and_dead_zone_go_through_the_file() {
         let mut d = super::DeviceCfg {
-            name: "Wheel".into(),
+            name: "Cal Wheel".into(),
             second: "0".into(),
             ..Default::default()
         };
@@ -1991,24 +1969,21 @@ mod tests {
             max: 0.6,
             deadzone: None,
         });
-        let back = super::parse_cfg(&super::cfg_text(std::slice::from_ref(&d)));
-        assert_eq!(back.len(), 1);
-        assert_eq!(back[0].calibration[0], d.calibration[0]);
-        assert_eq!(back[0].calibration[5], d.calibration[5]);
-        assert_eq!(back[0].calibration[1], None);
-        assert_eq!(back[0].deadzone(0, 0.2), 0.05);
-        assert_eq!(back[0].deadzone(1, 0.2), 0.2);
+        let back = round(&d);
+        assert_eq!(back.calibration[0], d.calibration[0]);
+        assert_eq!(back.calibration[5], d.calibration[5]);
+        assert_eq!(back.calibration[1], None);
+        assert_eq!(back.deadzone(0, 0.2), 0.05);
+        assert_eq!(back.deadzone(1, 0.2), 0.2);
         let mut own = d.clone();
         own.deadzone = Some(0.08);
-        let own = super::parse_cfg(&super::cfg_text(std::slice::from_ref(&own))).remove(0);
+        let own = round(&own);
         assert_eq!(own.deadzone, Some(0.08));
         assert_eq!(own.deadzone(0, 0.2), 0.05);
         assert_eq!(own.deadzone(1, 0.2), 0.08);
         let mut plain = d.clone();
         plain.calibration = Default::default();
-        let text = super::cfg_text(std::slice::from_ref(&plain));
-        assert!(!text.contains("Calibration"));
-        assert_eq!(super::parse_cfg(&text)[0].calibrated(0, 0.3), 0.3);
+        assert_eq!(round(&plain).calibrated(0, 0.3), 0.3);
     }
 
     #[test]
@@ -2221,6 +2196,11 @@ mod slot_tests {
 
 #[cfg(test)]
 mod cfg_tests {
+    fn round(d: &super::DeviceCfg) -> super::DeviceCfg {
+        super::write_device(d);
+        super::read_device(&d.name)
+    }
+
     #[test]
     fn feedback_keeps_the_physical_position_inside_the_steering_deadzone() {
         for (axis, deadzone) in [(0.2, 0.3), (0.01, 0.02)] {
@@ -2279,7 +2259,7 @@ mod cfg_tests {
                 ..Default::default()
             },
         ];
-        let saved = super::parse_cfg(&super::cfg_text(&devices));
+        let saved: Vec<_> = devices.iter().map(round).collect();
         assert_eq!(saved[0].ff_scale, Some((2.0, 0.5)));
         assert_eq!(saved[1].ff_scale, Some((0.75, 1.25)));
     }
@@ -2288,21 +2268,21 @@ mod cfg_tests {
     fn force_feedback_direction_is_saved_and_applied_per_wheel() {
         let devices = vec![
             super::DeviceCfg {
-                name: "Wheel A".into(),
+                name: "Invert A".into(),
                 ff_invert: Some(true),
                 ..Default::default()
             },
             super::DeviceCfg {
-                name: "Wheel B".into(),
+                name: "Invert B".into(),
                 ff_invert: Some(false),
                 ..Default::default()
             },
             super::DeviceCfg {
-                name: "Uncalibrated".into(),
+                name: "Invert None".into(),
                 ..Default::default()
             },
         ];
-        let saved = super::parse_cfg(&super::cfg_text(&devices));
+        let saved: Vec<_> = devices.iter().map(round).collect();
         assert_eq!(saved[0].ff_invert, Some(true));
         assert_eq!(saved[1].ff_invert, Some(false));
         assert_eq!(saved[2].ff_invert, None);
@@ -2346,22 +2326,6 @@ mod cfg_tests {
         assert!(super::force_axis_reversed(Some(&wheel), Some(0)));
         assert!(!super::force_axis_reversed(Some(&wheel), Some(1)));
         assert!(!super::force_axis_reversed(Some(&wheel), None));
-    }
-
-    #[test]
-    fn the_stock_file_round_trips() {
-        let Ok(bytes) = std::fs::read("../../../OMSI 2 Original/Inputs/gamectrler.cfg") else {
-            return;
-        };
-        let text = omsi_cfg::codepage::decode(&bytes);
-        let devs = super::parse_cfg(&text);
-        assert!(
-            devs.iter().any(|d| d.name.contains("G25")),
-            "{:?}",
-            devs.iter().map(|d| &d.name).collect::<Vec<_>>()
-        );
-        let again = super::parse_cfg(&super::cfg_text(&devs));
-        assert_eq!(again, devs);
     }
 }
 

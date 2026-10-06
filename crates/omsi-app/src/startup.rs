@@ -223,7 +223,9 @@ pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
         return vec![wgpu::Backends::METAL];
     }
     let settings = crate::settings::Settings::load();
-    let wanted = if settings.vr_requested() {
+    let wanted = if cfg!(windows)
+        && (omsi_config::get_bool("vr", "enabled").unwrap_or(false)
+        || omsi_cfg::env::var_os("OMSI_OPENXR").is_some()) {
         "dx12".to_owned()
     } else {
         omsi_cfg::env::var("OMSI_BACKEND")

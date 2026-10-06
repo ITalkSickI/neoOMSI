@@ -351,8 +351,8 @@ impl App {
             let has = |name: &str| {
                 p.vehicle.ty.program.trigger(name).is_some()
                     || p.bound_actions()
-                        .iter()
-                        .any(|a| a.eq_ignore_ascii_case(name))
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(name))
             };
             // --- the wheel, bottom left
             t.wheel_r = 78.0 * u;
@@ -856,7 +856,7 @@ impl App {
                 }
                 if self.touch.fingers[k].moved {
                     // (degrees for a point dragged: a full turn is a few swipes)
-                    let k = 0.28 / u * self.settings.look_sens;
+                    let k = 0.28 / u * (omsi_config::get_float("camera", "look_sens").unwrap_or(1.0) as f32);
                     // (the view turns the way the finger moves: taken the other way round,
                     // as grabbing the world, every direction felt inverted)
                     self.look_by((p.x - last.x) * k, (p.y - last.y) * k);
@@ -914,11 +914,11 @@ impl App {
                     self.touch_button(event_loop, b, false);
                 } else if !cancelled
                     && self
-                        .touch
-                        .button_at(p)
-                        .and_then(|k| self.touch.buttons.get(k))
-                        .map(|x| x.btn)
-                        == Some(b)
+                    .touch
+                    .button_at(p)
+                    .and_then(|k| self.touch.buttons.get(k))
+                    .map(|x| x.btn)
+                    == Some(b)
                 {
                     self.touch_button(event_loop, b, true);
                 }
@@ -1067,16 +1067,16 @@ impl App {
                 self.view = match self.view.as_str() {
                     "driver" => "outside",
                     "outside"
-                        if self
-                            .player
-                            .as_ref()
-                            .is_some_and(|p| p.pax_camera_count() > 0) =>
-                    {
-                        "pax"
-                    }
+                    if self
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.pax_camera_count() > 0) =>
+                        {
+                            "pax"
+                        }
                     _ => "driver",
                 }
-                .into();
+                    .into();
                 let v = match self.view.as_str() {
                     "driver" => "Driver's view",
                     "outside" => "Outside view",

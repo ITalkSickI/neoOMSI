@@ -72,9 +72,9 @@ pub(super) fn look_options_page(app: &App) -> Page {
             "Shows the name of what the cursor or the screen centre points at",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     ("Free look", rows)
 }
 pub(super) fn map_options_page(app: &App) -> Page {
@@ -118,9 +118,9 @@ pub(super) fn map_options_page(app: &App) -> Page {
             "Takes effect when the game starts the next time",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     ("Map", rows)
 }
 
@@ -291,9 +291,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "For wheels without a saved direction",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let mut camera: Vec<(String, String)> = vec![
         slider_row(
             app,
@@ -377,7 +377,7 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "Head tracking",
             &format!(
                 "Head tracking with opentrack (UDP port {})",
-                s.head_tracking_port
+                omsi_config::get_int("camera", "head_tracking_port").and_then(|v| u16::try_from(v).ok()).unwrap_or(4242)
             ),
         ),
         switch_row(
@@ -414,9 +414,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             &cm,
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     camera.push(button(
         "Reset the seat position",
         "Reset",
@@ -498,9 +498,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             &|v| format!("{v:.2}"),
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let display: Vec<(String, String)> = vec![
         switch_row(
             app,
@@ -517,9 +517,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "Show the frames per second in the top right corner",
         ),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let sound: Vec<(String, String)> = vec![
         slider_row(
             app,
@@ -550,9 +550,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         pick("pax_voices", "Passenger voices", "What passengers say"),
     ]
-    .into_iter()
-    .flatten()
-    .collect();
+        .into_iter()
+        .flatten()
+        .collect();
     let interface: Vec<(String, String)> = vec![
         pick("language", "Language", "The language of the game's interface"),
         pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
@@ -573,26 +573,27 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         .flatten()
         .collect();
     let mut vr: Vec<(String, String)> = Vec::new();
+    let vr_on = omsi_config::get_bool("vr", "enabled").unwrap_or(false);
     if cfg!(windows) {
         vr.extend(
             vec![
                 switch_row(app, "vr", "Use OpenXR headset", later),
-                if s.vr {
+                if vr_on {
                     pick("vr_scale", "Eye resolution", later)
                 } else {
                     None
                 },
-                if s.vr {
+                if vr_on {
                     pick("vr_head_smoothing_ms", "Head tracking smoothing", later)
                 } else {
                     None
                 },
-                if s.vr {
+                if vr_on {
                     pick("vr_mirror_rate", "Bus mirror refresh", later)
                 } else {
                     None
                 },
-                if s.vr {
+                if vr_on {
                     switch_row(
                         app,
                         "vr_desktop_mirror",
@@ -603,8 +604,8 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
                     None
                 },
             ]
-            .into_iter()
-            .flatten(),
+                .into_iter()
+                .flatten(),
         );
     }
     if app.vr_active() && app.player.is_some() {

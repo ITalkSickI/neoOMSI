@@ -224,7 +224,7 @@ impl App {
                         size.height.max(1),
                         vsync,
                     )
-                    .ok();
+                        .ok();
                     self.last = Instant::now();
                 }
             }
@@ -278,11 +278,13 @@ impl App {
                 }
             };
         #[cfg(windows)]
-        if self.settings.vr_requested() {
+        if cfg!(windows)
+            && (omsi_config::get_bool("vr", "enabled").unwrap_or(false)
+            || omsi_cfg::env::var_os("OMSI_OPENXR").is_some()) {
             match openxr::Vr::new(
                 &renderer,
-                self.settings.vr_scale,
-                self.settings.vr_desktop_mirror,
+                omsi_config::get_float("vr", "scale").unwrap_or(0.65).clamp(0.5, 1.0) as f32,
+                omsi_config::get_bool("vr", "desktop-mirror").unwrap_or(true),
             ) {
                 Ok(vr) => self.vr = Some(vr),
                 Err(e) => log::error!("OpenXR could not start: {e:#}"),
@@ -362,11 +364,11 @@ impl App {
             let dpi = win.scale_factor() as f32;
             let scale = dpi
                 * ui::size_factor(
-                    s.config.height as f32,
-                    dpi,
-                    self.settings.ui_scale,
-                    self.settings.ui_scale_window,
-                );
+                s.config.height as f32,
+                dpi,
+                self.settings.ui_scale,
+                self.settings.ui_scale_window,
+            );
             ui.loading_bg = Some(None);
             ui.loading(
                 r,
@@ -442,11 +444,11 @@ impl App {
             let dpi = win.scale_factor() as f32;
             let scale = dpi
                 * ui::size_factor(
-                    s.config.height as f32,
-                    dpi,
-                    self.settings.ui_scale,
-                    self.settings.ui_scale_window,
-                );
+                s.config.height as f32,
+                dpi,
+                self.settings.ui_scale,
+                self.settings.ui_scale_window,
+            );
             ui.loading(
                 r,
                 scene,
@@ -927,11 +929,11 @@ impl App {
             let dpi = win.scale_factor() as f32;
             let scale = dpi
                 * ui::size_factor(
-                    s.config.height as f32,
-                    dpi,
-                    self.settings.ui_scale,
-                    self.settings.ui_scale_window,
-                );
+                s.config.height as f32,
+                dpi,
+                self.settings.ui_scale,
+                self.settings.ui_scale_window,
+            );
             ui.loading(
                 &renderer,
                 &mut scene,
@@ -1033,12 +1035,12 @@ impl App {
         w.update_texture_budget(r, scene, &centers, false);
         if centers.is_empty()
             || !streamer.update(
-                r,
-                scene,
-                &centers,
-                std::time::Duration::from_millis(6),
-                self.audio.as_ref(),
-            )
+            r,
+            scene,
+            &centers,
+            std::time::Duration::from_millis(6),
+            self.audio.as_ref(),
+        )
         {
             return;
         }

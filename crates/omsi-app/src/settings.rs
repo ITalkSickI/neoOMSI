@@ -1,3 +1,4 @@
+// TODO: This class will be removed. Use config-lib api instead.
 //! The user's settings: graphics and gameplay switches, kept as `key=value` lines in
 //! `~/.neoomsi/settings.cfg` (the launcher writes the same file). Anything missing
 //! keeps its default, so an old file never breaks a new build.
@@ -9,290 +10,113 @@ pub const SETTINGS_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
-    /// Samples per pixel: 1, 2, 4 or 8.
-    pub msaa: u32,
-    /// Anisotropic filtering 1..16.
-    pub anisotropy: u16,
-    pub ssao: bool,
-    pub shadows: bool,
-    pub shadow_size: u32,
-    /// Draw the models' `[isshadow]` shadow meshes: OMSI's flat blob under a vehicle,
-    /// standing in for the sky light the body keeps off the road. Off, only the sun shadow
-    /// map shades under a vehicle (the blob is a fake OMSI draws whatever the depth).
-    pub shadow_blobs: bool,
-    /// The route navigator in the lower right corner.
-    pub navigator: bool,
-    /// How much of the interface's backgrounds shows - the navigator's, the menu's, the
-    /// timetable's, the notes' plates - 0.2 .. 1, the texts staying solid: 0.85 (the default)
-    /// as designed (`ui::backdrop`). `navigator_opacity` in older files: it was the
-    /// navigator's alone.
-    pub ui_opacity: f32,
-    /// Which corner the navigator sits in: `bottom-left` (default), `bottom-right`,
-    /// `top-left` or `top-right`.
-    pub navigator_corner: String,
-    /// How passengers board: `auto` - they pay at the cash desk and take the ticket
-    /// themselves; `pay` - they wait at the desk for the driver to sell the ticket (the
-    /// ticket key or the printer); `walk` - they just walk into the saloon (a flat-fare
-    /// or ticket-machine service).
-    pub boarding: String,
-    /// neoOMSI extension: reserve a seated place before using standing places.
-    /// Off by default to preserve OMSI's random choice among all free places.
-    pub pax_prefer_seats: bool,
-    /// Procedural detail (fractal) texturing of the ground and large walls when close.
-    pub detail_textures: bool,
-    /// Passengers pay the exact fare (no change to give at the cash desk).
-    pub exact_fare: bool,
-    /// Enhanced graphics: the physically based renderer (its own lighting, sky, exposure).
-    pub enhanced: bool,
-    /// The graphics: `vanilla` (as OMSI 2 draws it: no sun shadows, no ambient occlusion,
-    /// no detail grain, no snow cover or rain drops of our own), `vanilla_plus` (the same
-    /// renderer with those extras, the default) or `enhanced` (`enhanced` follows it).
-    pub graphics: String,
-    /// Start a PC OpenXR headset session when the game starts (Windows only).
-    pub vr: bool,
-    /// Fraction of the OpenXR runtime's recommended eye resolution.
-    pub vr_scale: f32,
-    /// Optional VR head pose smoothing time in milliseconds; zero uses raw tracking.
-    pub vr_head_smoothing_ms: f32,
-    /// Total bus mirror redraws per second in VR; zero freezes them,
-    /// and -1 redraws every mirror once per game frame.
-    pub vr_mirror_rate: f32,
-    /// Copy the left eye to the desktop while VR is active.
-    pub vr_desktop_mirror: bool,
-    pub fullscreen: bool,
-    pub vsync: bool,
-    /// Master volume 0..1.
-    pub volume: f32,
-    /// Control preset: "simple", "wasd", "arrows" or "omsi".
-    pub drive_keys: String,
-    /// Anti-aliasing of the enhanced picture after tone mapping: `fxaa` (default) or `off`.
-    pub post_aa: String,
-    /// OMSI's maintenance condition (`[wear_lifespan]`): 0 infinite (no wear), 1 very bad,
-    /// 2 bad, 3 normal, 4 good - the player's bus's `wearlifespan` 1.5e6, 0.01, 0.1, 1, 10
-    ///; AI vehicles never wear.
-    pub maintenance: u8,
-    /// `[AIUnschedFactor]`: the share of the random traffic (percent of the map's density).
-    pub ai_unsched_factor: f32,
-    /// `[AIMaxCountScheduled]`: timetable vehicles on the road at once (0 = no limit).
-    pub ai_max_scheduled: u32,
-    /// `[AIMaxCountParked]`: parked cars placed in the loaded tiles (0 = every space, -1 =
-    /// none at all).
-    pub ai_max_parked: i32,
-    /// `[no_collision_vehToVeh]` off: the player's bus collides with the traffic.
-    pub collision_vehicles: bool,
-    /// `[no_collision]` off: the player's bus collides with the map's solid objects.
-    pub collision_objects: bool,
-    /// `[no_collision_pedastrians]` off: people are knocked down.
-    pub collision_pedestrians: bool,
-    /// `[driverview_moving]`: the driver's head moves with the bus (braking, bends, bumps).
-    pub head_movement: bool,
-    /// The interior camera glides between viewpoints (OMSI's `[driverview_smooth]`).
-    pub driverview_smooth: bool,
-    /// The driver's hands on the wheel in the cab view (the rest of the figure left out).
-    pub hands_in_cab: bool,
-    /// OMSI's `[altView]` (options.cfg): the right mouse button turns the view and
-    /// Shift+right zooms. Off, the right button zooms and the middle one turns the view
-    /// (TForm_main.Panel1MouseMove 0x82c5f8) - OMSI's default, but on here by default: a
-    /// laptop's touchpad has no middle button to look round with, and right-drag looking
-    /// is what neoOMSI always did.
-    pub alt_view: bool,
-    /// The view turns with the mouse and the middle of the screen operates things;
-    /// Left Alt (or 10 s idle) switches to the free cursor and back.
-    pub free_look: bool,
-    /// Free look: the dot ring in the middle of the screen.
-    pub crosshair: bool,
-    /// The 3D picture drawn at this fraction of the window's size and scaled up (0.5..1),
-    /// 0 = automatic (full size unless the window has more pixels than a 2560x1080 screen,
-    /// as a Retina window does). The HUD is always drawn at full size.
-    pub render_scale: f32,
-    /// Language of the texts the game shows about the cockpit: `ENG` (default), `DEU` or
-    /// `FRA` - OMSI's own language file codes.
-    pub language: String,
-    /// Measurements shown in the interface: `metric`, `uk` or `imperial`.
-    pub units: String,
-    /// What passengers say: `all`, `tickets` (only what they ask for) or `off`.
-    pub pax_voices: String,
-    pub pax_models: String,
-    /// Natural passenger and pedestrian movement; `omsi` uses the original movement.
-    pub pax_motion: String,
-    /// Procedural IK posing for passengers and pedestrians, independently of movement.
-    pub pax_ik: bool,
-    /// OMSI 2's route arrows over the road (as well as or instead of the navigator).
-    pub nav_arrows: bool,
-    /// The other (AI) vehicles as dots on the navigator's and the city map.
-    pub nav_ai: bool,
-    /// The navigator's top bar (speed, speed limit, time).
-    pub nav_topbar: bool,
-    /// The navigator's turn indicator.
-    pub nav_turn: bool,
-    /// The navigator's stop bar below the map.
-    pub nav_stoplist: bool,
-    /// The stop bar in its extended view (more stops).
-    pub nav_stops_ext: bool,
-    /// Uncompressed texture files are compressed on loading where that leaves the picture
-    /// close (DXT files always stay compressed on a GPU that takes them).
-    pub texture_compression: bool,
-    /// Texture memory the scenery may take (MB) before far textures lose their finest mip
-    /// levels, like OMSI's `[texmemlimit]`; 0 = automatic (a share of the machine's memory).
-    pub texture_memory: u32,
-    /// OMSI's automatic clutch (`AutoClutch`, on unless `[no_automaticClutch]`): the
-    /// manual-gearbox scripts work the clutch themselves while it is on.
-    pub auto_clutch: bool,
-    /// Manual gate buttons return the gearbox to neutral when released.
-    pub momentary_gears: bool,
-    /// A chosen line / route is typed into the IBIS by the game itself (on), or the driver
-    /// enters everything (off).
-    pub auto_ibis: bool,
-    /// The automated manual: a gear lever's gates are worked by the engine speed (#713).
-    pub auto_shift: bool,
-    /// The original's `performance_minObjSize`: objects smaller on the screen than this are
-    /// not drawn (its presets say 0.013; 0.020 for slow machines, smaller keeps more).
-    pub min_obj_size: f32,
-    /// Maximum saved map detail (0..255); -1 follows the OMSI installation setting.
-    pub map_detail: i16,
-    /// The original's `performance_maxObjDist` (m): objects farther away are not drawn
-    /// (0 = no limit). `auto` (-1) takes `view_distance` when the file sets one, else 900 m
-    /// (the original's high presets).
-    pub max_obj_dist: f32,
-    /// Frames a second at most (the original's `[maxFPS]`); 0 = no limit. The frame waits
-    /// asleep, so a limit also saves power and heat, and the CPU time for the rest.
-    pub max_fps: u32,
-    /// The chat of a LAN session (V shows and hides it, / types); off leaves it out altogether.
-    pub chat: bool,
-    /// The name of what the cursor points at, shown next to the cursor.
-    pub tooltips: bool,
-    /// The other players' names above their buses.
-    pub name_tags: bool,
-    /// The driver sits in the player's bus, turning the wheel, seen from outside and the
-    /// passengers' seats and in the mirrors (`driver`), never in the driver's own view.
-    pub driver: bool,
-    /// The frame rate in the HUD.
-    pub show_fps: bool,
-    /// The notes in the top left corner: why the bus does not move, the change due, what a
-    /// service did (off, none are shown).
-    pub notes: bool,
-    /// The size of the game's interface over the picture - texts, the menu, the timetable,
-    /// the navigator - on top of the screen's own scale and the window's height (see
-    /// `ui::size_factor`): 0.5 .. 2 (1 = as designed).
-    pub ui_scale: f32,
-    /// The interface grows with a window taller than 1080 lines (`ui::size_factor`); off,
-    /// it keeps its size on any window, as before.
-    pub ui_scale_window: bool,
-    /// Clouds in the sky (volumetric with enhanced graphics, OMSI's cloud layer without).
-    pub clouds: bool,
-    /// How many people wait and ride, against the map's own numbers (OMSI's `AIPassFactor`,
-    /// 1 = 100 %).
-    pub pax_density: f32,
-    /// Volume of the AI vehicles and of the scenery's sounds (OMSI's `sound_ai`,
-    /// `sound_scenery`), 0..1.
-    pub vol_ai: f32,
-    pub vol_scenery: f32,
-    /// Edge of the mirrors' pictures in pixels (OMSI's `performance_reflTexSize`, 2^n); 0 disables mirror rendering.
-    pub mirror_size: u32,
-    /// How often the mirrors are drawn (OMSI's `performance_realreflexions`): `off` once
-    /// for each bus and then still, `eco` 15 times a second at most, `full` 30 (the default).
-    pub mirror_refresh: String,
-    /// OMSI's `sound_doppler`: approaching sounds higher, receding ones lower.
-    pub doppler: bool,
-    /// How fast the clock runs (1 real time .. 30); in LAN play the host's decides.
-    pub time_speed: f64,
-    /// The game's date and time follow this device's clock (the host's in LAN play); the
-    /// time cannot be changed while it is on.
-    pub time_sync: bool,
-    /// The weather follows the METAR report of the airport nearest the map (refreshed every
-    /// few minutes); the weather cannot be changed while it is on.
-    pub metar_sync: bool,
-    /// The airport (ICAO) whose report the METAR sync follows; empty: the one nearest the map.
-    pub metar_station: String,
-    /// Which meshes cast sun shadows: "all" solid ones, or "omsi" - only those the models
-    /// mark `[shadow]`, as OMSI 2's shadows do.
-    pub shadow_casters: String,
-    /// Dead zone round the centre of a set-up game controller's axes (0..0.3).
-    pub ctrl_deadzone: f32,
-    /// Game controllers switched off, by name (`|` between them).
-    pub ctrl_off: String,
-    /// `steering=<device>|throttle=<device>|...`
-    pub ctrl_assign: String,
-    /// Keyboard steering at OMSI's steady pace (`KeyboardAxes::linear`).
-    pub steering_linear: bool,
-    /// The wheel stays where the keys left it (`KeyboardAxes::old_steering`).
-    pub old_steering: bool,
-    /// OMSI's `[redSteerSpd]`: the steering keys slower at speed (`KeyboardAxes::red_steer_spd`).
-    pub red_steer_spd: bool,
-    /// The materials' reflection maps (`RenderOptions::reflections`).
-    pub reflections: bool,
-    /// How bright an LED panel's dots burn (`Lighting::led_glow`): 0 (off) .. 15, 16 levels.
-    pub led_glow: u8,
-    pub nightmap_glow: u8,
-    /// How bright the night is (`Lighting::atmosphere_brightness`): 0 (pitch black) .. 2, 1 = as is.
-    pub atmosphere_brightness: f32,
-    /// Brightness of HTML / script screens (glow and light): 0 .. 4, 1 = as is.
-    /// How much of the mip chain an LED panel is held at (`Lighting::led_mips`): its own
-    /// picture and its `\S:n` mask are sampled at the level their screen footprint asks
-    /// for, never coarser than this. 0 point-samples them (the sharpest dots, and the
-    /// worst shimmer); 1.3 (the default) leaves a matrix's dots a couple of pixels across
-    /// when the panel is small; 4 is near the calm of the full chain.
-    pub led_mips: f32,
-    /// Mouse steering: how far the wheel turns for the same hand movement (1 = OMSI's: the
-    /// window's width is the full lock).
-    pub mouse_sens: f32,
-    pub stick_sens: f32,
-    pub steer_center: bool,
-    /// The graphics interface: `auto` (DirectX 12, else Vulkan), `vulkan`
-    /// or `dx12` (see `startup::graphics_instance`).
-    pub graphics_api: String,
-    /// Default motor polarity for wheels without a saved per-device direction.
-    pub ff_invert: bool,
-    /// Force feedback and rumble at all (off: the controller neither pushes nor shakes).
-    pub ff_enabled: bool,
-    /// OMSI's held brake on the keyboard (see `KeyboardAxes::pedal_hold`); `brake_hold` in
-    /// the file - the old `pedal_hold` (off unless set, and holding the throttle as well)
-    /// is left behind.
-    pub brake_hold: bool,
-    /// Mouse steering as it was left last time (O or the menu switches it; the game
-    /// starts with it as the player had it).
-    pub mouse_steering: bool,
-    /// A right click ends the mouse steering, as in Omsi.exe (0x6f44aa: the right button
-    /// held while the mouse steers fires `toggel_mouse_ctrl`). Off by default: looking
-    /// round with the right button dragged switched it off every time.
-    pub mouse_right_off: bool,
-    /// How fast the view turns for the mouse's way while looking round (1 = Omsi.exe's
-    /// field of view / 78.75 degrees per pixel in the views of the bus; #859).
-    pub look_sens: f32,
-    /// The bus's script may cancel the indicator after a turn (#451: off, an indicator set
-    /// stays on until the player turns it off).
-    pub blinker_cancel: bool,
-    /// The steering wheel's own rotation, lock to lock (degrees; a G29 turns 900).
-    pub wheel_range: f32,
-    /// How far the wheel is turned, lock to lock, for the bus's full lock (degrees); 0 = the
-    /// whole of the wheel's rotation, as OMSI.
-    pub wheel_lock: f32,
-    /// Field of view of the views from the bus (degrees; 0 = the bus's own cameras).
-    pub fov: f32,
-    /// The outside camera is pulled in in front of what stands between it and the bus
-    /// (off: it goes through everything, as in OMSI).
-    pub camera_collision: bool,
-    /// The driver's view turns a little into the steering (off: it stays fixed to the bus,
-    /// as in OMSI, which has no such thing).
-    pub steer_look: bool,
-    /// Maximum automatic driver's-view yaw at full steering lock (degrees).
-    pub steer_look_angle: f32,
-    /// Steering-view smoothing time constant (seconds).
-    pub steer_look_response: f32,
-    /// How strongly the analog throttle and brake pedals act: the response curve's
-    /// strength (1 = linear, below 1 softer at the start, above 1 stronger).
-    pub pedal_throttle: f32,
-    pub pedal_brake: f32,
-    /// The driver's eye moved from the bus's own camera (m, bus frame: right, forward, up).
-    pub seat: [f32; 3],
-    /// Head tracking through opentrack's UDP output (TrackIR, webcams, phones), and its port.
-    pub head_tracking: bool,
-    pub head_tracking_port: u16,
-    /// Axes of the tracker turned the other way (`yaw,pitch,roll`): trackers disagree.
-    pub head_tracking_invert: String,
-    /// Discord's "Playing" status (Rich Presence) and the Discord application it shows as.
-    pub discord_status: bool,
-    pub discord_app_id: String,
+    pub msaa: u32, // TODO: Migrate to new config lib
+    pub anisotropy: u16, // TODO: Migrate to new config lib
+    pub ssao: bool, // TODO: Migrate to new config lib
+    pub shadows: bool, // TODO: Migrate to new config lib
+    pub shadow_size: u32, // TODO: Migrate to new config lib
+    pub shadow_blobs: bool, // TODO: Migrate to new config lib
+    pub navigator: bool, // TODO: Migrate to new config lib
+    pub ui_opacity: f32, // TODO: Migrate to new config lib
+    pub navigator_corner: String, // TODO: Migrate to new config lib
+    pub boarding: String, // TODO: Migrate to new config lib
+    pub pax_prefer_seats: bool, // TODO: Migrate to new config lib
+    pub detail_textures: bool, // TODO: Migrate to new config lib
+    pub exact_fare: bool, // TODO: Migrate to new config lib
+    pub enhanced: bool, // TODO: Migrate to new config lib
+    pub graphics: String, // TODO: Migrate to new config lib
+    pub fullscreen: bool, // TODO: Migrate to new config lib
+    pub vsync: bool, // TODO: Migrate to new config lib
+    pub volume: f32, // Migrated
+    pub post_aa: String, // TODO: Migrate to new config lib
+    pub maintenance: u8, // TODO: Migrate to new config lib
+    pub ai_unsched_factor: f32, // TODO: Migrate to new config lib
+    pub ai_max_scheduled: u32, // TODO: Migrate to new config lib
+    pub ai_max_parked: i32, // TODO: Migrate to new config lib
+    pub collision_vehicles: bool, // TODO: Migrate to new config lib
+    pub collision_objects: bool, // TODO: Migrate to new config lib
+    pub collision_pedestrians: bool, // TODO: Migrate to new config lib
+    pub head_movement: bool, // TODO: Migrate to new config lib
+    pub driverview_smooth: bool, // TODO: Migrate to new config lib
+    pub hands_in_cab: bool, // TODO: Migrate to new config lib
+    pub alt_view: bool, // Migrated
+    pub free_look: bool, // TODO: Migrate to new config lib
+    pub crosshair: bool, // Migrated
+    pub render_scale: f32, // TODO: Migrate to new config lib
+    pub language: String, // TODO: Migrate to new config lib
+    pub units: String, // TODO: Migrate to new config lib
+    pub pax_voices: String, // TODO: Migrate to new config lib
+    pub pax_models: String, // TODO: Migrate to new config lib
+    pub pax_motion: String, // TODO: Migrate to new config lib
+    pub pax_ik: bool, // TODO: Migrate to new config lib
+    pub nav_arrows: bool, // TODO: Migrate to new config lib
+    pub nav_ai: bool, // TODO: Migrate to new config lib
+    pub nav_topbar: bool, // TODO: Migrate to new config lib
+    pub nav_turn: bool, // TODO: Migrate to new config lib
+    pub nav_stoplist: bool, // TODO: Migrate to new config lib
+    pub nav_stops_ext: bool, // TODO: Migrate to new config lib
+    pub texture_compression: bool, // TODO: Migrate to new config lib
+    pub texture_memory: u32, // TODO: Migrate to new config lib
+    pub auto_clutch: bool, // TODO: Migrate to new config lib
+    pub momentary_gears: bool, // TODO: Migrate to new config lib
+    pub auto_ibis: bool, // TODO: Migrate to new config lib
+    pub auto_shift: bool, // TODO: Migrate to new config lib
+    pub min_obj_size: f32, // TODO: Migrate to new config lib
+    pub map_detail: i16, // TODO: Migrate to new config lib
+    pub max_obj_dist: f32, // TODO: Migrate to new config lib
+    pub max_fps: u32, // TODO: Migrate to new config lib
+    pub chat: bool, // TODO: Migrate to new config lib
+    pub tooltips: bool, // TODO: Migrate to new config lib
+    pub name_tags: bool, // TODO: Migrate to new config lib
+    pub driver: bool, // TODO: Migrate to new config lib
+    pub show_fps: bool, // TODO: Migrate to new config lib
+    pub notes: bool, // TODO: Migrate to new config lib
+    pub ui_scale: f32, // TODO: Migrate to new config lib
+    pub ui_scale_window: bool, // TODO: Migrate to new config lib
+    pub clouds: bool, // TODO: Migrate to new config lib
+    pub pax_density: f32, // TODO: Migrate to new config lib
+    pub vol_ai: f32, // TODO: Migrate to new config lib
+    pub vol_scenery: f32, // TODO: Migrate to new config lib
+    pub mirror_size: u32, // TODO: Migrate to new config lib
+    pub mirror_refresh: String, // TODO: Migrate to new config lib
+    pub doppler: bool, // TODO: Migrate to new config lib
+    pub time_speed: f64, // TODO: Migrate to new config lib
+    pub time_sync: bool, // TODO: Migrate to new config lib
+    pub metar_sync: bool, // TODO: Migrate to new config lib
+    pub metar_station: String, // TODO: Migrate to new config lib
+    pub shadow_casters: String, // TODO: Migrate to new config lib
+    pub steering_linear: bool, // TODO: Migrate to new config lib
+    pub old_steering: bool, // TODO: Migrate to new config lib
+    pub red_steer_spd: bool, // TODO: Migrate to new config lib
+    pub reflections: bool, // TODO: Migrate to new config lib
+    pub led_glow: u8, // TODO: Migrate to new config lib
+    pub nightmap_glow: u8, // TODO: Migrate to new config lib
+    pub atmosphere_brightness: f32, // TODO: Migrate to new config lib
+    pub led_mips: f32, // TODO: Migrate to new config lib
+    pub mouse_sens: f32, // TODO: Migrate to new config lib
+    pub stick_sens: f32, // TODO: Migrate to new config lib
+    pub steer_center: bool, // TODO: Migrate to new config lib
+    pub graphics_api: String, // TODO: Migrate to new config lib
+    pub brake_hold: bool, // TODO: Migrate to new config lib
+    pub mouse_steering: bool, // TODO: Migrate to new config lib
+    pub mouse_right_off: bool, // TODO: Migrate to new config lib
+    pub look_sens: f32, // Migrated
+    pub blinker_cancel: bool, // TODO: Migrate to new config lib
+    pub wheel_range: f32, // TODO: Migrate to new config lib
+    pub wheel_lock: f32, // TODO: Migrate to new config lib
+    pub fov: f32, // Migrated
+    pub camera_collision: bool, // Migrated
+    pub steer_look: bool, // Migrated
+    pub steer_look_angle: f32, // Migrated
+    pub steer_look_response: f32, // Migrated
+    pub pedal_throttle: f32, // TODO: Migrate to new config lib
+    pub pedal_brake: f32, // TODO: Migrate to new config lib
+    pub seat: [f32; 3], // Migrated
+    pub head_tracking: bool, // Migrated
+    pub head_tracking_port: u16, // Migrated
+    pub head_tracking_invert: String, // Migrated
+    pub discord_status: bool, // TODO: Migrate to new config lib
+    pub discord_app_id: String, // TODO: Migrate to new config lib
 }
 
 /// A pedal's last few per cent of travel are its end: a wheel's pedal on the floor reads
@@ -359,15 +183,9 @@ impl Settings {
             exact_fare: true,
             enhanced: false,
             graphics: "vanilla_plus".into(),
-            vr: false,
-            vr_scale: 0.65,
-            vr_head_smoothing_ms: 0.0,
-            vr_mirror_rate: 16.0,
-            vr_desktop_mirror: true,
             fullscreen: false,
             vsync: true,
             volume: 0.6,
-            drive_keys: "simple".into(),
             post_aa: "fxaa".into(),
             render_scale: 0.0,
             language: "ENG".into(),
@@ -422,9 +240,6 @@ impl Settings {
             metar_sync: false,
             metar_station: String::new(),
             shadow_casters: "all".into(),
-            ctrl_deadzone: 0.05,
-            ctrl_off: String::new(),
-            ctrl_assign: String::new(),
             steering_linear: false,
             old_steering: false,
             red_steer_spd: false,
@@ -437,8 +252,6 @@ impl Settings {
             stick_sens: 0.25,
             steer_center: true,
             graphics_api: "auto".into(),
-            ff_invert: false,
-            ff_enabled: true,
             brake_hold: true,
             mouse_steering: false,
             mouse_right_off: false,
@@ -464,11 +277,6 @@ impl Settings {
 }
 
 impl Settings {
-    /// The launcher setting, with the old environment switch kept for existing VR runs.
-    pub fn vr_requested(&self) -> bool {
-        cfg!(windows) && (self.vr || omsi_cfg::env::var_os("OMSI_OPENXR").is_some())
-    }
-
     /// `~/.neoomsi/settings.cfg` (or `%USERPROFILE%` on Windows).
     pub fn path() -> Option<PathBuf> {
         let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
@@ -494,24 +302,6 @@ impl Settings {
         {
             s.apply_safe_gpu(n);
         }
-        log::info!(
-            "settings from {}: msaa {} af {} ssao {} shadows {} ({}) navigator {} graphics {} post aa {} vsync {} render scale {} boarding {} min object size {} max object distance {} max fps {}",
-            p.display(),
-            s.msaa,
-            s.anisotropy,
-            s.ssao,
-            s.shadows,
-            s.shadow_size,
-            s.navigator,
-            s.graphics,
-            s.post_aa,
-            s.vsync,
-            s.render_scale_text(),
-            s.boarding,
-            s.min_obj_size,
-            s.object_distance(),
-            s.max_fps
-        );
         s
     }
 
@@ -555,32 +345,6 @@ impl Settings {
                 "exact_fare" => s.exact_fare = b(v),
                 "enhanced" => s.enhanced = b(v),
                 "graphics" | "renderer" => graphics = Some(graphics_mode(v).to_string()),
-                "vr" => s.vr = b(v),
-                "vr_scale" => {
-                    s.vr_scale = v
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|x| x.is_finite())
-                        .map(|x| x.clamp(0.5, 1.0))
-                        .unwrap_or(s.vr_scale)
-                }
-                "vr_head_smoothing_ms" => {
-                    s.vr_head_smoothing_ms = v
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|x| x.is_finite())
-                        .map(|x| x.clamp(0.0, 30.0))
-                        .unwrap_or(s.vr_head_smoothing_ms)
-                }
-                "vr_mirror_rate" => {
-                    s.vr_mirror_rate = v
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|x| x.is_finite())
-                        .map(|x| x.clamp(-1.0, 360.0))
-                        .unwrap_or(s.vr_mirror_rate)
-                }
-                "vr_desktop_mirror" => s.vr_desktop_mirror = b(v),
                 "fullscreen" => s.fullscreen = b(v),
                 "vsync" => s.vsync = b(v),
                 "volume" => s.volume = v.parse().unwrap_or(s.volume),
@@ -621,7 +385,7 @@ impl Settings {
                     } else {
                         "natural"
                     }
-                    .into()
+                        .into()
                 }
                 "pax_models" => {
                     s.pax_models = if v.eq_ignore_ascii_case("realistic") {
@@ -629,7 +393,7 @@ impl Settings {
                     } else {
                         "omsi"
                     }
-                    .into()
+                        .into()
                 }
                 "nav_arrows" => s.nav_arrows = b(v),
                 "nav_ai" => s.nav_ai = b(v),
@@ -724,7 +488,7 @@ impl Settings {
                         "eco" | "economy" => "eco",
                         _ => "full",
                     }
-                    .into()
+                        .into()
                 }
                 "texture_memory" | "texmemlimit" => {
                     s.texture_memory = v
@@ -780,14 +544,6 @@ impl Settings {
                         .collect::<String>()
                         .to_ascii_uppercase()
                 }
-                "ctrl_deadzone" => {
-                    s.ctrl_deadzone = v
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|x| x.is_finite())
-                        .map(|x| x.clamp(0.0, 0.3))
-                        .unwrap_or(s.ctrl_deadzone)
-                }
                 "reflections" | "envmap" => s.reflections = b(v),
                 "led_glow" => {
                     s.led_glow = v
@@ -822,13 +578,9 @@ impl Settings {
                         .unwrap_or(s.led_mips)
                 }
                 "graphics_api" => s.graphics_api = v.trim().to_ascii_lowercase(),
-                "ctrl_off" => s.ctrl_off = v.trim().to_string(),
-                "ctrl_assign" => s.ctrl_assign = v.trim().to_string(),
                 "steering_linear" => s.steering_linear = b(v),
                 "old_steering" => s.old_steering = b(v),
                 "red_steer_spd" => s.red_steer_spd = b(v),
-                "ff_invert" => s.ff_invert = b(v),
-                "ff_enabled" => s.ff_enabled = b(v),
                 "brake_hold" => s.brake_hold = b(v),
                 "mouse_steering" => s.mouse_steering = b(v),
                 "mouse_right_off" => s.mouse_right_off = b(v),
@@ -963,12 +715,6 @@ impl Settings {
                         "fxaa".into()
                     }
                 }
-                "drive_keys" => {
-                    s.drive_keys = match v.to_ascii_lowercase().as_str() {
-                        "wasd" | "arrows" | "omsi" | "simple" => v.to_ascii_lowercase(),
-                        _ => s.drive_keys,
-                    }
-                }
                 _ => {}
             }
         }
@@ -980,7 +726,7 @@ impl Settings {
             } else {
                 "vanilla_plus"
             }
-            .to_string()
+                .to_string()
         });
         s.enhanced = s.graphics == "enhanced";
         if s.classic() {
@@ -1005,7 +751,7 @@ impl Settings {
     #[cfg(test)]
     pub fn to_text(&self) -> String {
         let mut text = format!(
-            "# neoOMSI settings\nversion={}\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nshadow_blobs={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nvr={}\nvr_scale={}\nfullscreen={}\nvsync={}\nvolume={}\ndrive_keys={}\npost_aa={}\nrender_scale={}\nlanguage={}\ntexture_compression={}\ntexture_memory={}\nauto_clutch={}\nauto_ibis={}\nmomentary_gears={}\nmin_obj_size={}\nmax_obj_dist={}\nmax_fps={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\nmirror_refresh={}\ndoppler={}\ndriver={}\ndriverview_smooth={}\n",
+            "# neoOMSI settings\nversion={}\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nshadow_blobs={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nfullscreen={}\nvsync={}\nvolume={}\npost_aa={}\nrender_scale={}\nlanguage={}\ntexture_compression={}\ntexture_memory={}\nauto_clutch={}\nauto_ibis={}\nmomentary_gears={}\nmin_obj_size={}\nmax_obj_dist={}\nmax_fps={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\nmirror_refresh={}\ndoppler={}\ndriver={}\ndriverview_smooth={}\n",
             SETTINGS_VERSION,
             self.msaa,
             self.anisotropy,
@@ -1021,12 +767,9 @@ impl Settings {
             self.exact_fare as u8,
             self.enhanced as u8,
             self.graphics,
-            self.vr as u8,
-            self.vr_scale,
             self.fullscreen as u8,
             self.vsync as u8,
             self.volume,
-            self.drive_keys,
             self.post_aa,
             self.render_scale_text(),
             self.language,
@@ -1058,8 +801,8 @@ impl Settings {
         );
         text.push_str(&format!("nightmap_glow={}\n", self.nightmap_glow));
         text.push_str(&format!(
-            "vr_head_smoothing_ms={}\nvr_mirror_rate={}\nvr_desktop_mirror={}\nled_glow={}\nled_mips={}\nui_scale={}\nui_scale_window={}\nnotes={}\n",
-            self.vr_head_smoothing_ms, self.vr_mirror_rate, self.vr_desktop_mirror as u8, self.led_glow, self.led_mips, self.ui_scale, self.ui_scale_window as u8, self.notes as u8,
+            "led_glow={}\nled_mips={}\nui_scale={}\nui_scale_window={}\nnotes={}\n",
+            self.led_glow, self.led_mips, self.ui_scale, self.ui_scale_window as u8, self.notes as u8,
         ));
         text.push_str(&format!(
             "atmosphere_brightness={}\n",
@@ -1212,231 +955,6 @@ pub fn view_distance() -> Option<f64> {
         .filter(|v| *v > 0.0)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn passenger_seat_preference_is_opt_in_and_round_trips() {
-        assert!(!Settings::from_text("").pax_prefer_seats);
-        let enabled = Settings::from_text("pax_prefer_seats=1\n");
-        assert!(enabled.pax_prefer_seats);
-        assert_eq!(Settings::from_text(&enabled.to_text()), enabled);
-        assert!(!Settings::from_text("pax_prefer_seats=0\n").pax_prefer_seats);
-    }
-
-    #[test]
-    fn old_files_board_automatically() {
-        // the launcher's old default, written without a version
-        assert_eq!(
-            Settings::from_text("msaa=1\nboarding=pay\n").boarding,
-            "auto"
-        );
-        // chosen again in a current file, it stays
-        assert_eq!(
-            Settings::from_text("version=2\nboarding=pay\n").boarding,
-            "pay"
-        );
-        assert_eq!(Settings::from_text("boarding=walk\n").boarding, "walk");
-        // what we write reads back the same
-        let s = Settings {
-            boarding: "pay".into(),
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-        let s = Settings {
-            texture_compression: false,
-            texture_memory: 1500,
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-        assert_eq!(
-            Settings::from_text("texmemlimit=401.0\n").texture_memory,
-            401
-        );
-    }
-
-    #[test]
-    fn graphics_modes() {
-        // an old file: its vanilla renderer is Vanilla+ now, enhanced stays enhanced
-        assert_eq!(Settings::from_text("enhanced=0\n").graphics, "vanilla_plus");
-        assert_eq!(Settings::from_text("enhanced=1\n").graphics, "enhanced");
-        let v = Settings::from_text("graphics=vanilla\nshadows=1\nssao=1\n");
-        assert!(v.classic() && v.shadows && !v.ssao && !v.detail_textures && !v.enhanced);
-        assert!(Settings::from_text("graphics=enhanced\nenhanced=0\n").enhanced);
-        assert_eq!(graphics_mode("Vanilla+"), "vanilla_plus");
-        assert_eq!(graphics_mode("OMSI 2"), "vanilla");
-        let s = Settings {
-            graphics: "enhanced".into(),
-            enhanced: true,
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-    }
-
-    #[test]
-    fn mirror_size_zero_disables_mirror_rendering() {
-        assert_eq!(Settings::from_text("mirror_size=0\n").mirror_size, 0);
-        assert_eq!(Settings::from_text("mirror_size=32\n").mirror_size, 64);
-        let off = Settings {
-            mirror_size: 0,
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&off.to_text()).mirror_size, 0);
-    }
-
-    #[test]
-    fn mirror_refresh_reads_omsi_realreflexions_and_round_trips() {
-        assert_eq!(Settings::default().mirror_refresh, "full");
-        assert_eq!(
-            Settings::from_text("performance_realreflexions=none\n").mirror_refresh,
-            "off"
-        );
-        assert_eq!(
-            Settings::from_text("performance_realreflexions=economy\n").mirror_refresh,
-            "eco"
-        );
-        assert_eq!(
-            Settings::from_text("performance_realreflexions=full\n").mirror_refresh,
-            "full"
-        );
-        assert_eq!(
-            Settings::from_text("mirror_refresh=nonsense\n").mirror_refresh,
-            "full"
-        );
-        for mode in ["off", "eco", "full"] {
-            let s = Settings {
-                mirror_refresh: mode.into(),
-                ..Default::default()
-            };
-            assert_eq!(Settings::from_text(&s.to_text()).mirror_refresh, mode);
-        }
-    }
-
-    #[test]
-    fn steering_view_settings_round_trip_and_reject_invalid_values() {
-        let settings = Settings {
-            steer_look: true,
-            steer_look_angle: 45.0,
-            steer_look_response: 0.5,
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&settings.to_text()), settings);
-        let invalid = Settings::from_text("steer_look_angle=NaN\nsteer_look_response=NaN\n");
-        assert_eq!(invalid.steer_look_angle, 30.0);
-        assert_eq!(invalid.steer_look_response, 0.25);
-        let clamped = Settings::from_text("steer_look_angle=999\nsteer_look_response=-1\n");
-        assert_eq!(clamped.steer_look_angle, 60.0);
-        assert_eq!(clamped.steer_look_response, 0.05);
-    }
-
-    #[test]
-    fn vr_mirror_rates_round_trip_including_every_frame() {
-        for rate in [-1.0, 0.0, 16.0, 60.0, 120.0, 240.0, 360.0] {
-            let s = Settings {
-                vr_mirror_rate: rate,
-                ..Default::default()
-            };
-            assert_eq!(Settings::from_text(&s.to_text()).vr_mirror_rate, rate);
-        }
-        assert_eq!(
-            Settings::from_text("vr_mirror_rate=NaN\n").vr_mirror_rate,
-            16.0
-        );
-        assert_eq!(
-            Settings::from_text("vr_mirror_rate=999\n").vr_mirror_rate,
-            360.0
-        );
-    }
-
-    #[test]
-    fn interface_size_is_read_within_its_range() {
-        assert_eq!(Settings::default().ui_scale, 1.0);
-        assert_eq!(Settings::from_text("ui_scale=1.25\n").ui_scale, 1.25);
-        assert_eq!(Settings::from_text("ui_scale=5\n").ui_scale, 2.0);
-        assert_eq!(Settings::from_text("ui_scale=0\n").ui_scale, 0.5);
-        assert_eq!(Settings::from_text("ui_scale=NaN\n").ui_scale, 1.0);
-        let s = Settings {
-            ui_scale: 1.5,
-            ui_scale_window: false,
-            ui_opacity: 0.4,
-            notes: false,
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-        // (the opacity under its old name, the navigator's)
-        assert_eq!(
-            Settings::from_text("navigator_opacity=0.5\n").ui_opacity,
-            0.5
-        );
-        assert_eq!(Settings::from_text("ui_opacity=7\n").ui_opacity, 1.0);
-    }
-
-    #[test]
-    fn units_default_to_metric_and_round_trip() {
-        assert_eq!(Settings::default().units, "metric");
-        assert_eq!(Settings::from_text("units=uk\n").units, "uk");
-        assert_eq!(Settings::from_text("units=imperial\n").units, "imperial");
-        assert_eq!(Settings::from_text("units=unknown\n").units, "metric");
-        let s = Settings {
-            units: "imperial".into(),
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&s.to_text()), s);
-    }
-
-    #[test]
-    fn passenger_motion_and_procedural_ik_are_independent_and_round_trip() {
-        assert_eq!(Settings::default().pax_motion, "natural");
-        assert!(Settings::default().pax_ik);
-        for motion in ["natural", "omsi"] {
-            for ik in [false, true] {
-                let settings = Settings::from_text(&format!(
-                    "pax_motion={motion}\npax_ik={}\npax_models=realistic\n",
-                    ik as u8
-                ));
-                assert_eq!(settings.pax_motion, motion);
-                assert_eq!(settings.pax_ik, ik);
-                assert_eq!(settings.pax_models, "realistic");
-                assert_eq!(Settings::from_text(&settings.to_text()), settings);
-            }
-        }
-        let reversed = Settings::from_text("pax_ik=0\npax_motion=natural\n");
-        assert_eq!(reversed.pax_motion, "natural");
-        assert!(!reversed.pax_ik);
-        let reversed = Settings::from_text("pax_motion=omsi\npax_ik=1\n");
-        assert_eq!(reversed.pax_motion, "omsi");
-        assert!(reversed.pax_ik);
-        assert!(!Settings::from_text("ik=0\n").pax_ik);
-        assert_eq!(
-            Settings::from_text("pax_motion=unknown").pax_motion,
-            "natural"
-        );
-        assert_eq!(Settings::from_text("pax_models=unknown").pax_models, "omsi");
-    }
-
-    #[test]
-    fn discord_settings_round_trip_and_default_enabled() {
-        assert!(Settings::default().discord_status);
-        let settings = Settings {
-            discord_status: false,
-            discord_app_id: "123456".into(),
-            ..Default::default()
-        };
-        assert_eq!(Settings::from_text(&settings.to_text()), settings);
-    }
-
-    #[test]
-    fn post_aa_is_read_and_written() {
-        assert_eq!(Settings::from_text("enhanced=1\n").post_aa, "fxaa");
-        let off = Settings::from_text("enhanced=1\npost_aa=off\n");
-        assert_eq!(off.post_aa, "off");
-        assert!(!off.render_options().fxaa);
-        assert!(Settings::from_text("post_aa=FXAA").render_options().fxaa);
-        assert_eq!(Settings::from_text(&off.to_text()), off);
-    }
-}
-
 impl Settings {
     /// The player's bus's `wearlifespan` for the maintenance condition (OMSI's table).
     pub fn wear_lifespan(&self) -> f32 {
@@ -1507,44 +1025,4 @@ pub fn save_mirror_offsets(bus: &std::path::Path, offsets: &[[f32; 2]]) {
         let _ = std::fs::create_dir_all(d);
     }
     let _ = std::fs::write(&p, lines.join("\n") + "\n");
-}
-
-#[cfg(test)]
-mod map_detail_tests {
-    use super::*;
-
-    #[test]
-    fn automatic_detail_follows_installed_options_and_explicit_selection_wins() {
-        let root = std::env::temp_dir().join(format!(
-            "neoomsi-detail-options-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&root).unwrap();
-        let automatic = Settings::from_text("map_detail=auto\n");
-        let missing = resolve_map_detail(&automatic, &root);
-        std::fs::write(root.join("options.cfg"), "[maxcomplexity_map]\n1\n").unwrap();
-        let inherited = resolve_map_detail(&automatic, &root);
-        let explicit = resolve_map_detail(&Settings::from_text("map_detail=2\n"), &root);
-        let actual = root.canonicalize().unwrap();
-        let temp = std::env::temp_dir().canonicalize().unwrap();
-        assert!(actual.starts_with(&temp) && actual != temp);
-        std::fs::remove_dir_all(actual).unwrap();
-        assert_eq!(missing, 2);
-        assert_eq!(inherited, 1);
-        assert_eq!(explicit, 2);
-    }
-    #[test]
-    fn map_complexity_alias_and_selection_round_trip() {
-        assert_eq!(Settings::from_text("").map_detail, -1);
-        for limit in [0, 1, 2, 255] {
-            let settings = Settings::from_text(&format!("maxcomplexity_map={limit}\n"));
-            assert_eq!(settings.map_detail, limit);
-            assert_eq!(Settings::from_text(&settings.to_text()).map_detail, limit);
-        }
-        assert_eq!(Settings::from_text("map_detail=bad\n").map_detail, -1);
-    }
 }

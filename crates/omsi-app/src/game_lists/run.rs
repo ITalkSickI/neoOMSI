@@ -103,9 +103,9 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                     }
                 }
                 "seat_reset" if step => {
-                    app.settings.seat = [0.0; 3];
                     for k in ["seat_x", "seat_y", "seat_z"] {
-                        remember_setting(k, "0");
+                        omsi_config::set_setting("camera", k, 0.0_f64);
+                        let _ = omsi_config::save();
                     }
                 }
                 "clock_ontime" if step => {

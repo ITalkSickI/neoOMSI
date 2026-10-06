@@ -115,7 +115,7 @@ impl ApplicationHandler for App {
                     self.look.0 = y;
                     self.look.1 = p;
                 } else {
-                    let k = 0.15 * self.settings.look_sens;
+                    let k = 0.15 * (omsi_config::get_float("camera", "look_sens").unwrap_or(1.0) as f32);
                     self.look_by(delta.0 as f32 * k, delta.1 as f32 * k);
                 }
                 return;
@@ -133,7 +133,7 @@ impl ApplicationHandler for App {
                         self.look.0 = y;
                         self.look.1 = p;
                     } else {
-                        let k = 0.15 * self.settings.look_sens;
+                        let k = 0.15 * (omsi_config::get_float("camera", "look_sens").unwrap_or(1.0) as f32);
                         self.look_by(delta.0 as f32 * k, delta.1 as f32 * k);
                     }
                 }

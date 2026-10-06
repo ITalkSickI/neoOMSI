@@ -185,13 +185,13 @@ impl App {
     pub(crate) fn mouse_steers_in_view(&self) -> bool {
         self.player.is_some()
             && (matches!(self.view.as_str(), "driver" | "outside" | "pax")
-                || (self.view == "free" && !self.ego))
+            || (self.view == "free" && !self.ego))
     }
 
     /// The raycast camera is steering: the mouse turns the view, the middle of the
     /// screen is the cursor.
     pub(crate) fn raycast_active(&self) -> bool {
-        self.settings.free_look
+        omsi_config::get_bool("camera", "free_look").unwrap_or(false)
             && !self.free_look
             && self.player.is_some()
             && matches!(self.view.as_str(), "driver" | "pax" | "outside" | "foot")
@@ -218,7 +218,7 @@ impl App {
     /// The right button alone zooms, as in Omsi.exe (TForm_main.Panel1MouseMove 0x82c5f8:
     /// ssRight without `[altView]`, or Shift+right with it); otherwise it turns the view.
     pub(crate) fn right_zooms(&self) -> bool {
-        !self.settings.alt_view
+        !omsi_config::get_bool("camera", "alt_view").unwrap_or(true)
             || self.keys.contains(&KeyCode::ShiftLeft)
             || self.keys.contains(&KeyCode::ShiftRight)
     }
@@ -494,7 +494,7 @@ impl App {
                 .unwrap_or(1.0)
                 .max(0.1);
             let fov = self.camera.as_ref().map(|c| c.fov_deg).unwrap_or(60.0);
-            let k = look_deg_per_px(fov) * self.settings.look_sens;
+            let k = look_deg_per_px(fov) * (omsi_config::get_float("camera", "look_sens").unwrap_or(1.0) as f32);
             self.look_by((x - last.0) / scale * k, (y - last.1) / scale * k);
         }
         if self.dragging {
@@ -830,11 +830,11 @@ impl App {
         #[cfg(windows)]
         if !self.mouse_drive
             && self.vr.as_ref().is_some_and(|vr| {
-                vr.needs_cursor_surface(
-                    self.cursor,
-                    self.game_menu.is_some() || self.chooser.is_some(),
-                )
-            })
+            vr.needs_cursor_surface(
+                self.cursor,
+                self.game_menu.is_some() || self.chooser.is_some(),
+            )
+        })
         {
             let surface = self
                 .player
@@ -860,16 +860,16 @@ impl App {
             self.surface.as_ref(),
         ) {
             (Some(p), Some(cam), Some(s))
-                if self.view != "free"
-                    && (self.view != "foot" || self.foot_reaches_bus())
-                    && !(self.vr_active()
-                        && self.mouse_drive
-                        && matches!(self.view.as_str(), "driver" | "pax")) =>
-            {
-                let (o, d, spread) =
-                    self.cockpit_cursor_ray(cam, (s.config.width, s.config.height));
-                p.hovered_part(o, d, spread)
-            }
+            if self.view != "free"
+                && (self.view != "foot" || self.foot_reaches_bus())
+                && !(self.vr_active()
+                && self.mouse_drive
+                && matches!(self.view.as_str(), "driver" | "pax")) =>
+                {
+                    let (o, d, spread) =
+                        self.cockpit_cursor_ray(cam, (s.config.width, s.config.height));
+                    p.hovered_part(o, d, spread)
+                }
             _ => (None, false),
         };
         let found = if found.0.is_none() && !found.1 && self.view != "free" {
@@ -952,9 +952,9 @@ impl App {
             || u.menu_time.iter().any(|r| inside(r))
             || u.menu_ctl.iter().flatten().any(|r| inside(r))
             || u.menu_rects
-                .iter()
-                .enumerate()
-                .any(|(i, r)| inside(r) && !self.menu_item_off(i + u.menu_start));
+            .iter()
+            .enumerate()
+            .any(|(i, r)| inside(r) && !self.menu_item_off(i + u.menu_start));
         if clickable { 1 } else { 0 }
     }
 }

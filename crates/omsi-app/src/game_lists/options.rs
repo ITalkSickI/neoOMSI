@@ -1,5 +1,6 @@
 //! Reading and writing the values of the sliders and switches of the options windows.
 
+use crate::{controllers, player, weather_setup};
 use super::*;
 
 pub(super) const SPEEDS: [f64; 5] = [1.0, 2.0, 4.0, 8.0, 15.0];
@@ -93,16 +94,16 @@ pub(super) fn cloud_index(kind: &str) -> Option<usize> {
     })
 }
 
-pub(super) fn custom_state(app: &App) -> crate::weather_setup::CustomWeather {
-    if let Some(mut c) = crate::weather_setup::custom_weather(app.args.weather.as_deref()) {
+pub(super) fn custom_state(app: &App) -> weather_setup::CustomWeather {
+    if let Some(mut c) = weather_setup::custom_weather(app.args.weather.as_deref()) {
         // Wetness keeps evolving while driving; never restore an old serialized value just
         // because another custom field (brightness, humidity, etc.) was edited.
         c.road_wetness = app.wetness;
         return c;
     }
     match app.weather.as_ref() {
-        Some(w) => crate::weather_setup::CustomWeather::from_weather(w, 1.0, app.wetness),
-        None => crate::weather_setup::CustomWeather::default(),
+        Some(w) => weather_setup::CustomWeather::from_weather(w, 1.0, app.wetness),
+        None => weather_setup::CustomWeather::default(),
     }
 }
 
@@ -156,7 +157,7 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "speed" => s.time_speed as f32,
         "traffic" => app.traffic.as_ref()?.target as f32,
         "pax" => s.pax_density,
-        "volume" => s.volume,
+        "volume" => omsi_config::get_float("audio", "master-volume").unwrap_or(1.0) as f32,
         "led_glow" => s.led_glow as f32,
         "nightmap_glow" => s.nightmap_glow as f32,
         "led_mips" => s.led_mips,
@@ -165,18 +166,18 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "pedal_b" => s.pedal_brake,
         "mouse_sens" => s.mouse_sens,
         "stick_sens" => s.stick_sens,
-        "ctrl_deadzone" => s.ctrl_deadzone,
-        "look_sens" => s.look_sens,
+        "ctrl_deadzone" => controllers::global_deadzone(),
+        "look_sens" => omsi_config::get_float("camera", "look_sens").unwrap_or(1.0) as f32,
         "ui_scale" => s.ui_scale,
         "ui_opacity" => s.ui_opacity,
         "vol_ai" => s.vol_ai,
         "vol_scenery" => s.vol_scenery,
         "wheel_range" => s.wheel_range,
         "wheel_lock" => s.wheel_lock,
-        "fov" => s.fov,
-        "steer_look_angle" => s.steer_look_angle,
-        "steer_look_response" => s.steer_look_response,
-        "seat" => s.seat[arg.trim().parse::<usize>().unwrap_or(0).min(2)],
+        "fov" => (omsi_config::get_float("camera", "fov").unwrap_or(0.0) as f32),
+        "steer_look_angle" => (omsi_config::get_float("camera", "steer_look_angle").unwrap_or(30.0) as f32),
+        "steer_look_response" => (omsi_config::get_float("camera", "steer_look_response").unwrap_or(0.25) as f32),
+        "seat" => ["seat_x", "seat_y", "seat_z"].map(|k| omsi_config::get_float("camera", k).unwrap_or(0.0) as f32)[arg.trim().parse::<usize>().unwrap_or(0).min(2)],
         "hour" => ((app.clock.time / 3600.0) as i64).rem_euclid(24) as f32,
         "minute" => (((app.clock.time / 60.0) as i64) % 60) as f32,
         "visibility" => app.weather.as_ref()?.fog.0,
@@ -225,8 +226,9 @@ pub(super) fn option_set(
             Some(("pax_density", v.to_string()))
         }
         "volume" => {
-            app.settings.volume = v;
-            Some(("volume", v.to_string()))
+            omsi_config::set_setting("audio", "master-volume", v);
+            let _ = omsi_config::save();
+            None
         }
         "led_glow" => {
             app.settings.led_glow = v.round() as _;
@@ -256,8 +258,9 @@ pub(super) fn option_set(
             Some(("pedal_brake", v.to_string()))
         }
         "look_sens" => {
-            app.settings.look_sens = (v * 100.0).round() / 100.0;
-            Some(("look_sens", app.settings.look_sens.to_string()))
+            omsi_config::set_setting("camera", "look_sens", ((v * 100.0).round() / 100.0) as f64);
+            let _ = omsi_config::save();
+            None
         }
         "mouse_sens" => {
             app.settings.mouse_sens = (v * 100.0).round() / 100.0;
@@ -268,8 +271,9 @@ pub(super) fn option_set(
             Some(("stick_sens", app.settings.stick_sens.to_string()))
         }
         "ctrl_deadzone" => {
-            app.settings.ctrl_deadzone = (v * 100.0).round() / 100.0;
-            Some(("ctrl_deadzone", app.settings.ctrl_deadzone.to_string()))
+            controllers::set_global_deadzone((v * 100.0).round() / 100.0);
+            let _ = omsi_config::save();
+            None
         }
         "ui_scale" => {
             app.settings.ui_scale = (v * 100.0).round() / 100.0;
@@ -296,30 +300,25 @@ pub(super) fn option_set(
             Some(("wheel_lock", app.settings.wheel_lock.to_string()))
         }
         "fov" => {
-            app.settings.fov = if v < 20.0 { 0.0 } else { v.round() };
-            Some(("fov", app.settings.fov.to_string()))
+            omsi_config::set_setting("camera", "fov", (if v < 20.0 { 0.0 } else { v.round() }) as f64);
+            let _ = omsi_config::save();
+            None
         }
         "steer_look_angle" => {
-            app.settings.steer_look_angle = v.round();
-            Some((
-                "steer_look_angle",
-                app.settings.steer_look_angle.to_string(),
-            ))
+            omsi_config::set_setting("camera", "steer_look_angle", (v.round()) as f64);
+            let _ = omsi_config::save();
+            None
         }
         "steer_look_response" => {
-            app.settings.steer_look_response = (v * 100.0).round() / 100.0;
-            Some((
-                "steer_look_response",
-                app.settings.steer_look_response.to_string(),
-            ))
+            omsi_config::set_setting("camera", "steer_look_response", ((v * 100.0).round() / 100.0) as f64);
+            let _ = omsi_config::save();
+            None
         }
         "seat" => {
             let k: usize = arg.trim().parse().unwrap_or(0).min(2);
-            app.settings.seat[k] = (v * 100.0).round() / 100.0;
-            Some((
-                ["seat_x", "seat_y", "seat_z"][k],
-                app.settings.seat[k].to_string(),
-            ))
+            omsi_config::set_setting("camera", ["seat_x", "seat_y", "seat_z"][k], ((v * 100.0).round() / 100.0) as f64);
+            let _ = omsi_config::save();
+            None
         }
         "hour" | "minute" => {
             if app
@@ -417,8 +416,8 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
             .as_ref()
             .map_or(s.nav_stops_ext, |n| n.schedule),
         "shadows" => s.shadows,
-        "head" => s.head_movement,
-        "cam_smooth" => s.driverview_smooth,
+        "head" => omsi_config::get_bool("camera", "head_movement").unwrap_or(true),
+        "cam_smooth" => omsi_config::get_bool("camera", "smooth").unwrap_or(true),
         "coll_objects" => s.collision_objects,
         "coll_vehicles" => s.collision_vehicles,
         "mouse" => app.mouse_drive,
@@ -431,13 +430,13 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "metar_sync" => s.metar_sync,
         "snow_cover" => app.weather.as_ref().is_some_and(|w| w.snow),
         "snow_road" => app.weather.as_ref().is_some_and(|w| w.snow_on_road),
-        "camcoll" => s.camera_collision,
-        "steer_look" => s.steer_look,
+        "camcoll" => omsi_config::get_bool("camera", "collision").unwrap_or(true),
+        "steer_look" => omsi_config::get_bool("camera", "steer_look").unwrap_or(false),
         "hands_in_cab" => s.hands_in_cab,
-        "ff" => s.ff_enabled,
+        "ff" => controllers::ff_enabled(),
         "brake_hold" => s.brake_hold,
         "auto_clutch" => s.auto_clutch,
-        "headtrack" => s.head_tracking,
+        "headtrack" => omsi_config::get_bool("camera", "head_tracking").unwrap_or(false),
         "timetable_win" => app.timetable,
         "info_bar" => app.info_bar,
         "nav_arrows" => app.navigator.as_ref().map_or(s.nav_arrows, |n| n.arrows),
@@ -453,18 +452,18 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "vsync" => s.vsync,
         "texture_compression" => s.texture_compression,
         "driver" => s.driver,
-        "alt_view" => s.alt_view,
-        "free_look" => s.free_look,
-        "crosshair" => s.crosshair,
-        "vr" => s.vr,
-        "vr_desktop_mirror" => s.vr_desktop_mirror,
+        "alt_view" => omsi_config::get_bool("camera", "alt_view").unwrap_or(true),
+        "free_look" => omsi_config::get_bool("camera", "free_look").unwrap_or(false),
+        "crosshair" => omsi_config::get_bool("camera", "crosshair").unwrap_or(true),
+        "vr" => omsi_config::get_bool("vr", "enabled").unwrap_or(false),
+        "vr_desktop_mirror" => omsi_config::get_bool("vr", "desktop-mirror").unwrap_or(true),
         "doppler" => s.doppler,
         "steering_linear" => s.steering_linear,
         "old_steering" => s.old_steering,
         "red_steer_spd" => s.red_steer_spd,
         "momentary_gears" => s.momentary_gears,
         "auto_shift" => s.auto_shift,
-        "ff_invert" => s.ff_invert,
+        "ff_invert" => controllers::global_ff_invert(),
         "ui_scale_window" => s.ui_scale_window,
         "tooltips" => s.tooltips,
         "notes" => s.notes,
@@ -530,12 +529,14 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("shadows", bit))
         }
         "head" => {
-            app.settings.head_movement = on;
-            Some(("head_movement", bit))
+            omsi_config::set_setting("camera", "head_movement", on);
+            let _ = omsi_config::save();
+            None
         }
         "cam_smooth" => {
-            app.settings.driverview_smooth = on;
-            Some(("driverview_smooth", bit))
+            omsi_config::set_setting("camera", "smooth", on);
+            let _ = omsi_config::save();
+            None
         }
         // (at once: stuck under a bridge a map made too low, the bus drives on)
         "coll_objects" => {
@@ -553,7 +554,7 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
         "mouse" => {
             app.mouse_drive = on;
             if !app.mouse_drive {
-                crate::player::keep_wheel(app.player.as_mut());
+                player::keep_wheel(app.player.as_mut());
             }
             #[cfg(windows)]
             if !app.mouse_drive {
@@ -640,16 +641,19 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("show_fps", bit))
         }
         "headtrack" => {
-            app.settings.head_tracking = on;
-            Some(("head_tracking", bit))
+            omsi_config::set_setting("camera", "head_tracking", on);
+            let _ = omsi_config::save();
+            None
         }
         "camcoll" => {
-            app.settings.camera_collision = on;
-            Some(("camera_collision", bit))
+            omsi_config::set_setting("camera", "collision", on);
+            let _ = omsi_config::save();
+            None
         }
         "steer_look" => {
-            app.settings.steer_look = on;
-            Some(("steer_look", bit))
+            omsi_config::set_setting("camera", "steer_look", on);
+            let _ = omsi_config::save();
+            None
         }
         "hands_in_cab" => {
             app.settings.hands_in_cab = on;
@@ -667,8 +671,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("auto_clutch", bit))
         }
         "ff" => {
-            app.settings.ff_enabled = on;
-            Some(("ff_enabled", bit))
+            controllers::set_ff_enabled(on);
+            let _ = omsi_config::save();
+            None
         }
         "timetable_win" => {
             app.timetable = on;
@@ -734,25 +739,30 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("driver", bit))
         }
         "alt_view" => {
-            app.settings.alt_view = on;
-            Some(("alt_view", bit))
+            omsi_config::set_setting("camera", "alt_view", on);
+            let _ = omsi_config::save();
+            None
         }
         "free_look" => {
-            app.settings.free_look = on;
+            omsi_config::set_setting("camera", "free_look", on);
+            let _ = omsi_config::save();
             app.free_look = false;
-            Some(("free_look", bit))
+            None
         }
         "crosshair" => {
-            app.settings.crosshair = on;
-            Some(("crosshair", bit))
+            omsi_config::set_setting("camera", "crosshair", on);
+            let _ = omsi_config::save();
+            None
         }
         "vr" => {
-            app.settings.vr = on;
-            Some(("vr", bit))
+            omsi_config::set_setting("vr", "enabled", on);
+            let _ = omsi_config::save();
+            None
         }
         "vr_desktop_mirror" => {
-            app.settings.vr_desktop_mirror = on;
-            Some(("vr_desktop_mirror", bit))
+            omsi_config::set_setting("vr", "desktop-mirror", on);
+            let _ = omsi_config::save();
+            None
         }
         "doppler" => {
             app.settings.doppler = on;
@@ -782,8 +792,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             Some(("auto_shift", bit))
         }
         "ff_invert" => {
-            app.settings.ff_invert = on;
-            Some(("ff_invert", bit))
+            controllers::set_global_ff_invert(on);
+            let _ = omsi_config::save();
+            None
         }
         "ui_scale_window" => {
             app.settings.ui_scale_window = on;

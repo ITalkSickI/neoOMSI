@@ -90,9 +90,9 @@ impl KeyboardCfg {
             .any(|b| b.scan_code == 16 && b.chord() == 0);
         if !q_taken
             && !self
-                .vehicles
-                .iter()
-                .any(|b| b.action.eq_ignore_ascii_case("IBIS_vor"))
+            .vehicles
+            .iter()
+            .any(|b| b.action.eq_ignore_ascii_case("IBIS_vor"))
         {
             self.vehicles.push(KeyBinding {
                 action: "IBIS_vor".into(),
@@ -187,9 +187,9 @@ impl KeyboardCfg {
             ("navigator_close", 1, 0),
             ("menu_exit", 1, 0),
         ]
-        .into_iter()
-        .map(|(a, s, m)| (a.to_string(), s, m))
-        .collect();
+            .into_iter()
+            .map(|(a, s, m)| (a.to_string(), s, m))
+            .collect();
         // Shift+1..9: the doors, front to back
         keys.extend((1..=9).map(|n| (format!("doorkey_{n}"), 1 + n, KEY_SHIFT)));
         for (action, scan_code, modifier) in keys {
@@ -301,59 +301,6 @@ impl KeyboardCfg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct GameController {
-    pub name: String,
-    pub index: i32,
-    /// 16 values: per logical axis (steer, throttle, brake, clutch, combined …) the device
-    /// axis number and inversion flag.
-    pub axes: Vec<i32>,
-    pub buttons: Vec<(String, i32)>,
-    pub ff_scale: (f32, f32),
-}
-
-pub fn load_game_controllers(path: &Path) -> Result<Vec<GameController>, omsi_cfg::CfgError> {
-    let f = CfgFile::read(path)?;
-    let mut out: Vec<GameController> = Vec::new();
-    let mut r = f.reader();
-    while let Some(kw) = r.next_keyword() {
-        match kw.as_str() {
-            "ctrl" => out.push(GameController {
-                name: r.str().to_string(),
-                index: r.i32(),
-                ..Default::default()
-            }),
-            "axis" => {
-                let v = (0..16).map(|_| r.i32()).collect();
-                if let Some(c) = out.last_mut() {
-                    c.axes = v;
-                }
-            }
-            "buttons" => {
-                let n = r.usize();
-                let mut b = Vec::with_capacity(n);
-                for _ in 0..n {
-                    let a = r.str().to_string();
-                    let i = r.i32();
-                    b.push((a, i));
-                }
-                if let Some(c) = out.last_mut() {
-                    c.buttons = b;
-                }
-            }
-            "ffscale" => {
-                let a = r.f32();
-                let b = r.f32();
-                if let Some(c) = out.last_mut() {
-                    c.ff_scale = (a, b);
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(out)
-}
-
 /// `.kyb`: `scancode<TAB>name` lines.
 pub fn load_key_names(path: &Path) -> Result<Vec<(i32, String)>, omsi_cfg::CfgError> {
     let f = CfgFile::read(path)?;
@@ -381,8 +328,8 @@ mod tests {
             vehicles: vec![custom.clone()],
             ..Default::default()
         }
-        .with_game_defaults()
-        .with_game_defaults();
+            .with_game_defaults()
+            .with_game_defaults();
         assert_eq!(
             cfg.vehicles
                 .iter()
@@ -419,7 +366,7 @@ mod tests {
             }],
             ..Default::default()
         }
-        .with_game_defaults();
+            .with_game_defaults();
         assert_eq!(key(&moved, "chat_open"), vec![(20, KEY_CTRL)]);
     }
 
@@ -442,7 +389,7 @@ mod tests {
             vehicles: vec![gear.clone()],
             ..Default::default()
         }
-        .with_game_defaults();
+            .with_game_defaults();
         assert_eq!(key(&cfg, "chat_open"), vec![(41, 0)]);
         assert!(cfg.vehicles.contains(&gear));
         // a file saved while the chat was on '/' as well: moved off it, once
@@ -454,8 +401,8 @@ mod tests {
             }],
             vehicles: vec![gear.clone()],
         }
-        .with_game_defaults()
-        .with_game_defaults();
+            .with_game_defaults()
+            .with_game_defaults();
         assert_eq!(key(&old, "chat_open"), vec![(41, 0)]);
         // '/' moved to Shift+'/' by the player stays there
         let shifted = KeyboardCfg {
@@ -466,7 +413,7 @@ mod tests {
             }],
             vehicles: vec![gear],
         }
-        .with_game_defaults();
+            .with_game_defaults();
         assert_eq!(key(&shifted, "chat_open"), vec![(53, KEY_SHIFT)]);
     }
 
@@ -507,8 +454,8 @@ mod tests {
             game: vec![custom.clone()],
             ..Default::default()
         }
-        .with_vr_defaults()
-        .with_vr_defaults();
+            .with_vr_defaults()
+            .with_vr_defaults();
         assert_eq!(
             cfg.game
                 .iter()

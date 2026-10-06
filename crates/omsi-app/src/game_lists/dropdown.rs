@@ -202,7 +202,17 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
         }
         "pick" => {
             if let Some((key, value)) = arg.split_once(' ') {
-                remember_setting(key, value);
+                if key == "drive_keys" {
+                    omsi_config::set_setting("gameplay", "drive-keys", value);
+                    let _ = omsi_config::save();
+                } else if matches!(key, "vr_scale" | "vr_head_smoothing_ms" | "vr_mirror_rate") {
+                    if let Some(v) = value.parse::<f64>().ok().filter(|v| v.is_finite()) {
+                        omsi_config::set_setting("vr", &key[3..].replace('_', "-"), v);
+                        let _ = omsi_config::save();
+                    }
+                } else {
+                    remember_setting(key, value);
+                }
                 reload_settings(app);
             }
         }
@@ -303,9 +313,9 @@ pub(super) fn value_text(v: &serde_json::Value) -> String {
 pub(super) fn same_value(a: &str, b: &str) -> bool {
     a == b
         || a.parse::<f64>()
-            .ok()
-            .zip(b.parse::<f64>().ok())
-            .is_some_and(|(x, y)| (x - y).abs() < 1e-6)
+        .ok()
+        .zip(b.parse::<f64>().ok())
+        .is_some_and(|(x, y)| (x - y).abs() < 1e-6)
 }
 
 pub(super) fn select_options(key: &str) -> Vec<(&'static str, &'static str)> {
@@ -489,7 +499,15 @@ pub(super) fn select_state(
     key: &str,
 ) -> (Vec<(&'static str, &'static str)>, Option<usize>, String) {
     let options = select_options(key);
-    let cur = value_text(file.get(key).unwrap_or(&serde_json::Value::Null));
+    let cur = if key == "drive_keys" {
+        omsi_config::get_string("gameplay", "drive-keys").unwrap_or_default()
+    } else if matches!(key, "vr_scale" | "vr_head_smoothing_ms" | "vr_mirror_rate") {
+        omsi_config::get_float("vr", &key[3..].replace('_', "-"))
+            .map(|v| v.to_string())
+            .unwrap_or_default()
+    } else {
+        value_text(file.get(key).unwrap_or(&serde_json::Value::Null))
+    };
     let at = options.iter().position(|o| same_value(o.0, &cur));
     (options, at, cur)
 }

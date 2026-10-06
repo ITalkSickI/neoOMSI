@@ -253,9 +253,9 @@ impl App {
         }
         if pressed
             && self
-                .bound_actions(code)
-                .iter()
-                .any(|a| a == "navigator_close")
+            .bound_actions(code)
+            .iter()
+            .any(|a| a == "navigator_close")
         {
             if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
                 n.toggle_map();
@@ -304,7 +304,7 @@ impl App {
         if let PhysicalKey::Code(code) = event_key {
             let pressed = pressed;
             // raycast camera: Left Alt switches between the middle of the screen and the cursor
-            if pressed && !repeat && code == KeyCode::AltLeft && self.settings.free_look {
+            if pressed && !repeat && code == KeyCode::AltLeft && omsi_config::get_bool("camera", "free_look").unwrap_or(false) {
                 if self.free_look {
                     self.free_look = false;
                 } else if self.raycast_active() {
@@ -355,15 +355,18 @@ impl App {
             if pressed
                 && !repeat
                 && self
-                    .bound_actions(code)
-                    .iter()
-                    .any(|a| a == "toggle_fullscreen")
+                .bound_actions(code)
+                .iter()
+                .any(|a| a == "toggle_fullscreen")
             {
                 self.game_action("toggle_fullscreen");
                 return;
             }
             #[cfg(windows)]
-            if pressed && !repeat && (self.vr.is_some() || self.settings.vr_requested()) {
+            if pressed && !repeat && (self.vr.is_some()
+                || (cfg!(windows)
+                && (omsi_config::get_bool("vr", "enabled").unwrap_or(false)
+                || omsi_cfg::env::var_os("OMSI_OPENXR").is_some()))) {
                 let modifier = omsi_content::input::chord(
                     self.keys.contains(&KeyCode::ShiftLeft)
                         || self.keys.contains(&KeyCode::ShiftRight),
@@ -423,9 +426,9 @@ impl App {
             if pressed
                 && !repeat
                 && self
-                    .bound_actions(code)
-                    .iter()
-                    .any(|a| a == "open_mainmenue")
+                .bound_actions(code)
+                .iter()
+                .any(|a| a == "open_mainmenue")
             {
                 self.open_game_menu();
                 return;
@@ -537,7 +540,7 @@ impl App {
                 let ctrl_alt_held = (self.keys.contains(&KeyCode::ControlLeft)
                     || self.keys.contains(&KeyCode::ControlRight))
                     && (self.keys.contains(&KeyCode::AltLeft)
-                        || self.keys.contains(&KeyCode::AltRight));
+                    || self.keys.contains(&KeyCode::AltRight));
                 if self.view != "free" && !repeat && !shift_held && !(ctrl_alt_held && pressed) {
                     if let Some(a) = fallback_action(code, wasd) {
                         p.axes.set(a, pressed);
@@ -585,7 +588,10 @@ impl App {
     pub(crate) fn vr_action(&mut self, name: &str) -> bool {
         if name == "vr_toggle_mode" {
             self.vr_zoom_active = false;
-            if !self.settings.vr_requested() {
+            if !(cfg!(windows)
+                && (omsi_config::get_bool("vr", "enabled").unwrap_or(false)
+                || omsi_cfg::env::var_os("OMSI_OPENXR").is_some()))
+            {
                 return false;
             }
             if self.vr.is_some() {
@@ -594,8 +600,8 @@ impl App {
             } else if let Some(renderer) = self.renderer.as_ref() {
                 match crate::openxr::Vr::new(
                     renderer,
-                    self.settings.vr_scale,
-                    self.settings.vr_desktop_mirror,
+                    omsi_config::get_float("vr", "scale").unwrap_or(0.65).clamp(0.5, 1.0) as f32,
+                    omsi_config::get_bool("vr", "desktop-mirror").unwrap_or(true),
                 ) {
                     Ok(vr) => {
                         self.vr = Some(vr);
@@ -628,14 +634,15 @@ impl App {
             }
             "vr_toggle_desktop_mirror" => {
                 let visible = self.vr.as_mut().unwrap().toggle_desktop_mirror();
-                self.settings.vr_desktop_mirror = visible;
+                omsi_config::set_setting("vr", "desktop-mirror", visible);
+                let _ = omsi_config::save();
                 self.service_msg = Some((
                     if visible {
                         "Desktop VR mirror on"
                     } else {
                         "Desktop VR mirror off"
                     }
-                    .into(),
+                        .into(),
                     2.0,
                 ));
             }
@@ -677,10 +684,10 @@ impl App {
                         let h = (p.vehicle.heading as f32).to_radians();
                         cam.position = p.vehicle.position
                             + glam::DVec3::new(
-                                -(h.sin() as f64) * 25.0,
-                                -(h.cos() as f64) * 25.0,
-                                30.0,
-                            );
+                            -(h.sin() as f64) * 25.0,
+                            -(h.cos() as f64) * 25.0,
+                            30.0,
+                        );
                         cam.yaw = p.vehicle.heading as f32;
                         cam.pitch = -45.0;
                     }

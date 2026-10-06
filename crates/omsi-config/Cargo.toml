@@ -1,0 +1,11 @@
+[package]
+name = "omsi-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Game settings: load/save as TOML, defaults in default_settings.rs, get_setting/set_setting"
+
+[dependencies]
+toml = "1"
+thiserror.workspace = true
+log.workspace = true

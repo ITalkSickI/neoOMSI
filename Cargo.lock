@@ -2567,6 +2567,7 @@ dependencies = [
  "objc2-io-kit",
  "omsi-audio",
  "omsi-cfg",
+ "omsi-config",
  "omsi-content",
  "omsi-geometry",
  "omsi-i18n",
@@ -2652,6 +2653,15 @@ dependencies = [
  "parking_lot",
  "rayon",
  "walkdir",
+]
+
+[[package]]
+name = "omsi-config"
+version = "0.2.0"
+dependencies = [
+ "log",
+ "thiserror 2.0.20",
+ "toml",
 ]
 
 [[package]]

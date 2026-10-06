@@ -26,6 +26,7 @@ winresource = "0.1"
 
 [dependencies]
 omsi-cfg = { path = "../omsi-cfg" }
+omsi-config = { path = "../omsi-config" }
 omsi-map = { path = "../omsi-map" }
 omsi-scenery = { path = "../omsi-scenery" }
 omsi-model = { path = "../omsi-model" }

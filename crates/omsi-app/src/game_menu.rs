@@ -496,8 +496,8 @@ impl App {
         // (a key changed is a key the player wants: the ready-made layouts would ignore it)
         if sec == 0 && self.args.drive_keys != "omsi" {
             self.args.drive_keys = "omsi".into();
-            self.settings.drive_keys = "omsi".into();
-            crate::game_lists::remember_setting("drive_keys", "omsi");
+            omsi_config::set_setting("gameplay", "drive-keys", "omsi");
+            let _ = omsi_config::save();
         }
         self.reopen_keys(sec, target);
     }
@@ -1002,9 +1002,9 @@ impl App {
                             | crate::game_lists::ListKind::Hofs
                             | crate::game_lists::ListKind::Spots
                     ) =>
-                {
-                    self.close_game_menu()
-                }
+                    {
+                        self.close_game_menu()
+                    }
                 None => self.menu_top = None,
             }
             return;
@@ -1468,9 +1468,9 @@ impl App {
     pub(crate) fn menu_item_off(&self, k: usize) -> bool {
         self.chooser.is_none()
             && self
-                .game_menu_items()
-                .get(k)
-                .is_some_and(|m| self.menu_disabled_ids().contains(&m.0))
+            .game_menu_items()
+            .get(k)
+            .is_some_and(|m| self.menu_disabled_ids().contains(&m.0))
     }
 
     pub(crate) fn menu_step(&self, from: usize, n: usize, down: bool) -> usize {
