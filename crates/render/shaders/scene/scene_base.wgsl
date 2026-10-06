@@ -1765,7 +1765,7 @@ fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>) -> vec4<f32> {
     let ndl = max(dot(n, camera.sun_dir.xyz), 0.0);
     // three lights like the original: direct sun (A), light from above (B), ambient (C)
     let from_above = 0.5 + 0.5 * n.z;
-    let shadow = sun_shadow(in.world, n, mode > 0.5 && mode < 1.5);
+    let shadow = sun_shadow(in.world, n, mode > 0.5 && mode < 1.5) * cloud_sun_visibility(in.world);
     // screen-space ambient occlusion darkens the indirect light (sky and ambient) in
     // corners, under the bus, between the seats - not the sun, which the shadow map handles
     var ao = 1.0;
