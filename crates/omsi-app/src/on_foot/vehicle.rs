@@ -324,7 +324,7 @@ impl App {
             return;
         }
         let listener = cam.position;
-        let muffled = self.in_cab;
+        let muffled = self.audio_in_cab();
         for q in self.placed.iter_mut() {
             let d = (q.vehicle.position - listener).length();
             if d > NEAR * 1.2 {

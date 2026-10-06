@@ -15,6 +15,7 @@ pub(crate) mod sound;
 pub mod soundset;
 mod files;
 mod parts;
+mod cabin;
 
 #[cfg(test)]
 mod tests {

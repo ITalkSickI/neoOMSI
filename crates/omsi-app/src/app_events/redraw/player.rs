@@ -706,7 +706,7 @@ impl App {
         if let Some(a) = self.audio.as_ref() {
             match self.player.as_ref() {
                 Some(p) => {
-                    let inside = self.in_cab;
+                    let inside = self.audio_in_cab();
                     if let Some(m) = self.radio.update(a, &p.vehicle, inside) {
                         self.service_msg = Some((m, 6.0));
                     }

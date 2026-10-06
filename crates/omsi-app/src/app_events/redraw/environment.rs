@@ -5,6 +5,7 @@ use super::*;
 impl App {
     /// METAR, the time of day, lamps, light maps, rain and the scripted objects. Gives the day's light for the picture.
     pub(super) fn redraw_environment(&mut self, f: &Frame) -> omsi_sim::Daylight {
+        let audio_inside = self.audio_in_cab();
         let Frame { dt, .. } = *f;
         self.tick_metar(dt);
         if !self.paused {
@@ -218,7 +219,7 @@ impl App {
                         .as_mut()
                         .map(|h| h.take_footfalls())
                         .unwrap_or_default();
-                    let inside = self.in_cab;
+                    let inside = audio_inside;
                     let __tm = Instant::now();
                     amb.update(
                         a,
@@ -283,7 +284,7 @@ impl App {
                 daylight.brightness,
                 &phase,
                 self.audio.as_ref(),
-                self.in_cab,
+                audio_inside,
             );
         }
         *self.profile.entry("scripted").or_default() += __t.elapsed().as_secs_f64();

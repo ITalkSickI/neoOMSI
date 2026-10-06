@@ -1829,12 +1829,15 @@ impl Player {
             // the camera decides which `[viewpoint]` entries are heard (the exterior engine
             // samples outside, the rain on the roof in the cab)
             ss.set_inside(inside && driven);
-            ss.set_muffled(inside);
+            let cabin = ss.prepare_listener_cabin(a, &xf,
+                &|i| v.trailers.get(i).map(|t| t.world_transform()));
+            let acoustic_inside = inside || cabin > 0.5;
+            ss.set_muffled(acoustic_inside);
             ss.set_listener_vehicle(listener_follows_bus && driven);
             // how open the bus is to the outside (doors, driver's window) for every outside
             // sound heard in it - this bus's own and the traffic's
             if driven {
-                omsi_audio::soundset::set_outside_open(if inside {
+                omsi_audio::soundset::set_outside_open(if acoustic_inside {
                     v.var("Snd_OutsideVol")
                 } else {
                     None
@@ -1905,7 +1908,9 @@ impl Player {
                     );
                     // the coupled parts' own sound configurations (the engine of a pusher
                     // articulated bus is in its rear section's)
+                    let mut connected_cabin = true;
                     for (i, t) in self.vehicle.trailers.iter().enumerate() {
+                        connected_cabin &= t.ty.def.couple_front_open_for_sound && !t.reversed;
                         let Some(rel) = &t.ty.def.sound else { continue };
                         let path = omsi_cfg::resolve_path(t.ty.def.dir(), rel);
                         match omsi_vehicle::SoundCfg::load(&path) {
@@ -1923,6 +1928,7 @@ impl Player {
                                     &dir,
                                 );
                                 part.set_hull(t.ty.def.bounding_box);
+                                part.set_cabin_connected(connected_cabin);
                                 ss.add_part(i, part);
                             }
                             Err(e) => log::warn!("{e}"),

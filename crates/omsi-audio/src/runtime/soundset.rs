@@ -46,6 +46,7 @@ pub struct SoundSet {
     /// listener stands against it - not a flag or a timer - decides how much bodywork lies
     /// between the listener and the sounds (see [`SoundSet::inside_factor`]).
     pub(super) hull: Option<([f32; 3], [f32; 3])>,
+    pub(super) cabin_connected: bool,
     /// What the leading vehicle's hull gave this frame, for the coupled parts.
     pub(super) hull_h: f32,
     pub(super) hull_override: Option<f32>,
@@ -106,6 +107,7 @@ impl SoundSet {
             inside_blend: 0.0,
             muffled_blend: 0.0,
             hull: None,
+            cabin_connected: false,
             hull_h: 0.0,
             hull_override: None,
             blend_at: None,
@@ -169,12 +171,7 @@ impl SoundSet {
         } else if let Some(h) = self.hull_override {
             h
         } else if let Some((c, half)) = self.hull {
-            let l = object_to_world.inverse().transform_point3(listener) - Vec3::from_array(c);
-            let d = (l.x.abs() - half[0])
-                .max(l.y.abs() - half[1])
-                .max(l.z.abs() - half[2]);
-            let t = ((0.25 - d) / 0.5).clamp(0.0, 1.0);
-            t * t * (3.0 - 2.0 * t)
+            super::cabin::hull_factor((c, half), *object_to_world, listener)
         } else {
             eased
         };
@@ -260,6 +257,16 @@ impl SoundSet {
         let mut s = Self::new(engine, cfg, dir);
         s.exterior = true;
         s.ai = true;
+        s
+    }
+
+    /// A world/scenery emitter, heard through the listener's cabin when muffled.
+    /// It is spatial/exterior like traffic, but keeps scenery's non-AI viewpoint rules.
+    pub fn new_world(engine: &dyn Playback, cfg: &SoundCfg, dir: &Path) -> SoundSet {
+        let mut s = Self::new(engine, cfg, dir);
+        s.exterior = true;
+        s.set_bus(crate::Bus::Ambience);
+        s.set_file_bus(crate::Bus::Ambience);
         s
     }
 

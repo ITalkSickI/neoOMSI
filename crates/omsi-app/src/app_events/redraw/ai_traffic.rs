@@ -5,6 +5,7 @@ use super::*;
 impl App {
     /// Tile streaming and the AI traffic.
     pub(super) fn redraw_traffic(&mut self, f: &Frame) {
+        let audio_inside = self.audio_in_cab();
         let Frame { dt, .. } = *f;
         let __t = Instant::now();
         self.drive_streaming();
@@ -144,7 +145,7 @@ impl App {
                     .as_ref()
                     .map(|w| street_condition(w, self.wetness))
                     .unwrap_or(0.0);
-                let muffled = self.in_cab;
+                let muffled = audio_inside;
                 // heard round the camera (the ear), not round the player's bus: a
                 // free camera following an AI bus lost its sound 250 m from the bus
                 let ear = self.camera.as_ref().map(|c| c.position).unwrap_or(center);

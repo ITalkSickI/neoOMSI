@@ -4,6 +4,7 @@ use super::*;
 
 impl App {
     pub(crate) fn tick_lan(&mut self, dt: f32) {
+        let audio_inside = self.audio_in_cab();
         let walker = self.walker_pose();
         let Some(lan) = self.lan.as_mut() else { return };
         let duty = self
@@ -14,7 +15,7 @@ impl App {
         let frame = lan::Frame {
             audio: self.audio.as_ref(),
             listener: self.camera.as_ref().map(|c| c.position),
-            muffled: self.in_cab || self.inside_remote.is_some(),
+            muffled: audio_inside || self.inside_remote.is_some(),
             riders: self.humans.as_ref().map(|h| h.riding()).unwrap_or(0),
             clock: Some(&self.clock),
             tour: self.duty.as_ref().map(|d| format!("{}/{}", d.line, d.tour)),
