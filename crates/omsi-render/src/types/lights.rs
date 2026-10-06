@@ -23,6 +23,7 @@ pub struct PointLight {
     pub mode: LightMode,
     pub occ_first: u32,
     pub occ_count: u32,
+    pub shadow_first: bool,
 }
 
 /// The cone of a screen's light (cos of the inner and outer half angle).
@@ -53,6 +54,7 @@ impl Default for PointLight {
             mode: LightMode::Both,
             occ_first: 0,
             occ_count: 0,
+            shadow_first: false,
         }
     }
 }

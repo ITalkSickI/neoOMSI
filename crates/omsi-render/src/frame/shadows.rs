@@ -6,7 +6,7 @@ pub const SHADOW_RANGE_CLOSE: f32 = 32.0;
 pub(crate) const SHADOW_CLOSE_MAX: u32 = 2048;
 
 pub(crate) const SPOT_SLOTS: usize = 8;
-pub(crate) const SPOT_DRAWS_PER_FRAME: usize = 4;
+pub(crate) const SPOT_DRAWS_PER_FRAME: usize = 8;
 pub(crate) const SPOT_REDRAW_AGE: u32 = 6;
 pub(crate) const SPOT_CAM_RANGE: f64 = 70.0;
 pub(crate) const SPOT_RANGE_MAX: f32 = 45.0;
@@ -94,7 +94,8 @@ impl Renderer {
                     far,
                 }
             };
-            let score = l.intensity.max(0.05) * far * far / (1.0 + (d * d) as f32);
+            let score = l.intensity.clamp(0.05, 3.0) * far * far / (1.0 + (d * d) as f32)
+                + if l.shadow_first { 1.0e9 } else { 0.0 };
             cands.push((score, i, pose));
         }
         cands.sort_by(|a, b| b.0.total_cmp(&a.0));
