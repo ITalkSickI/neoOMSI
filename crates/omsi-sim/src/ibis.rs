@@ -658,9 +658,8 @@ impl Sim {
             self.vm.run_frame(&p, &mut self.state, &mut self.host);
             self.t += STEP;
         }
-        self.host.fired_triggers.clear();
+        self.host.fired_sounds.clear();
         self.host.fired_trigger_vars.clear();
-        self.host.fired_file_triggers.clear();
         self.host.messages.clear();
     }
 
@@ -671,11 +670,11 @@ impl Sim {
     fn press(&mut self, key: &str) {
         let mode = self.var(self.mode);
         let p = self.program.clone();
-        self.host.fired_file_triggers.clear();
+        self.host.fired_sounds.clear();
         let at = self.t;
         self.vm
             .run_trigger(&p, key, &mut self.state, &mut self.host);
-        let announces = !self.host.fired_file_triggers.is_empty();
+        let announces = self.host.fired_sounds.iter().any(|s| s.file().is_some());
         self.presses.push(Press {
             at,
             key: key.to_string(),
@@ -915,10 +914,10 @@ impl Typist {
                     .mode
                     .and_then(|m| v.state.vars.get(m as usize).copied());
                 if press.mode.is_none() || mode == press.mode {
-                    let announced = v.host.fired_file_triggers.len();
+                    let announced = v.host.fired_sounds.len();
                     v.trigger(&press.key);
                     if press.quiet {
-                        v.host.fired_file_triggers.truncate(announced);
+                        v.host.fired_sounds.truncate(announced);
                     }
                     self.releases.push((self.t + HOLD, press.key.clone()));
                     self.next += 1;

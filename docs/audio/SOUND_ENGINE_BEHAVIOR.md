@@ -57,7 +57,7 @@ The behavior is exercised without an audio device by
 
 | Case | Input | Expected | Status | Evidence |
 |---|---|---|---|---|
-| `[viewpoint]` gating | entry tagged inside/outside, listener on the other side | **open question**: in the current `update` path the entry is *not* cut by the listener's side (only `report` uses the listener view mask). The intended behavior is described in the `view_mask` comment. | OPEN | `SoundSet::update_fired` uses `volume_side`, which builds the view from the entry's own bits; `report` uses `placement::view_mask` |
+| `[viewpoint]` gating | entry tagged inside/outside, listener on the other side | **open question**: in the current update path the entry is *not* cut by the listener's side (only `report` uses the listener view mask). The intended behavior is described in the `view_mask` comment. Behavior is unchanged by the Schritt-4 refactor and locked by a regression test. | OPEN | `RuntimeSound::update` -> `volume_side` builds the view from the entry's own bits; `report` uses `placement::view_mask`; test `viewpoint_gating_is_taken_from_the_entry_not_the_listener` |
 | AI-only entry | `[viewpoint]` bit 4 on a non-AI vehicle | not heard | CONFIRMED | `volume_side`: entry view `(viewpoint & 3) | ai<<2`; `runtime::conditions::volume` |
 | `Snd_OutsideVol` through-path | own bus, outside-only entry (`[viewpoint] 5`), listener in cab, variable set | played at the variable's value when over 0.01, else silent | CONFIRMED (when the listener view is supplied) | `runtime::conditions::volume`; TSound update 0x750340; `set_outside_open` |
 | `Snd_OutsideVol` scaling | doors/window open | "shut" keeps a quarter; open lets it through (`sound_volume.osc`) | PARTIAL | helper exists (`outside_gain`/`lowpass_of`, test-only) but is not wired into the update path |
@@ -66,9 +66,9 @@ The behavior is exercised without an audio device by
 
 | Case | Input | Expected | Status | Evidence |
 |---|---|---|---|---|
-| repeat in one frame | a trigger fired twice in one script frame | current code matches the trigger once per frame per entry; the second occurrence does not restart it again within the same update | PARTIAL | `SoundSet::update_fired` uses `find`; the per-host `fired_triggers` is a `Vec` and can hold duplicates |
-| trigger order across subsystems | player + AI + scenery triggers in one frame | order is fixed only by the redraw phase order (traffic -> player -> LAN -> scenery); there is no merged, sequenced event stream | OPEN | `app_events/redraw/mod.rs`; plan section 4 |
-| normal vs file trigger ordering | `(T.…)` and `(T.F.…)` in one frame | the two are kept in separate lists; relative order is not modeled | OPEN | `omsi-sim` `fired_triggers` vs `fired_file_triggers` |
+| repeat in one frame | a trigger fired twice in one script frame | the entry restarts once per frame; both firings survive as separate events (`runtime::event::SoundEvent`) | PARTIAL | `omsi-sim` `fired_sounds` is one ordered `Vec` and keeps duplicates; `SoundSet::update_events` still restarts once (the old `find` rule). Fixtures: `trigger.cfg`; tests `a_repeated_trigger_restarts_once_but_both_events_survive`, `two_identical_triggers_in_one_frame_start_one_voice` |
+| trigger order across subsystems | player + AI + scenery triggers in one frame | one ordered stream; each event carries `EventSource` and a within-source `seq`, so `(source, seq)` is the explicit redraw order traffic -> player -> LAN -> scenery | PARTIAL | `runtime::event::{EventSource, SoundEvent, ordered}`; subsystems feed `SoundSet::update_events`. The exact cross-subsystem rule stays OPEN |
+| normal vs file trigger ordering | `(T.…)` and `(T.F.…)` in one frame | normal and `(T.F.)` triggers are one ordered list (`omsi-sim` `fired_sounds`); `update_events` applies normal triggers then file triggers within the frame (as before) | PARTIAL | `omsi-sim` `FiredSound`; `SoundSet::update_events`. Relative application order stays OPEN |
 
 ## 5. Start phase, restart and end
 
@@ -86,8 +86,9 @@ The behavior is exercised without an audio device by
 |---|---|---|---|---|
 | missing file | file cannot be read | the entry is skipped and warned about once per file | CONFIRMED | `SoundSet::warn_missing_once`, `read_clip` |
 | `[checkloading]` | flag on an entry | **not evaluated at runtime** | OPEN | parsed in `omsi-vehicle/src/sound.rs`; no consumer |
-| `[onlyone]` | flag on a trigger entry | **scope open**: current code only checks the entry's own still-playing voice, not a file-wide or central registry | PARTIAL | `SoundSet::update_fired` `s.def.only_one && engine.is_playing(id)` |
-| reload after unload | tile/vehicle unloaded then loaded again | voices are stopped on unload; clips are re-read in the background | PARTIAL | `SoundSet::stop_all`, `AudioEngine::clips_ready`; logical playback state and asset cache are not yet separated |
+| `[onlyone]` | flag on a trigger entry | a central, file-keyed registry on the sound set: another entry of the same file reuses the running voice instead of restarting it. The exact scope (same file / same vehicle / global, and coupled parts) is OPEN. | PARTIAL | `RuntimeSound::update` consults `SoundSet`'s `OnlyOne` (file -> voice); fixture `onlyone.cfg`; tests `onlyone_is_central_per_file`, `onlyone_entries_share_a_single_voice` |
+| reload after unload | tile/vehicle unloaded then loaded again | voices are stopped on unload; a fixed file is read lazily and retried from the cache, so a reload needs no contradictory state. An event accepted while the clip loads starts when it arrives. | CONFIRMED (asset separation) | `RuntimeSound::{Asset, resolve_asset, pending}`; `SoundSet::update_events`; fixture `trigger.cfg`; tests `an_accepted_event_survives_an_asynchronous_load`, `a_triggered_event_not_loaded_yet_keeps_its_start` |
+| sound states | an entry's logical state | explicit `SoundState`: `NotLoaded`, `Loading`, `Ready`, `Running`, `Suppressed`, `Stopped`, `Ended`, apart from the asset cache. Renderer virtualization is not mirrored (a renderer swap cannot change runtime behavior). | CONFIRMED (model) | `runtime::sound::{Asset, SoundState}`; `SoundSet::state` |
 
 ## 7. Packs and budgets
 
@@ -124,3 +125,12 @@ before Block B freezes the rules:
 
 Once answered, each status above is updated to `CONFIRMED` with the comparison that
 settled it, and a fixture is added under `crates/omsi-audio/tests/fixtures/soundcfg/`.
+
+## Note on the Schritt-4 event stream
+
+The ordered stream (`runtime::event::SoundEvent`) and the explicit sound states
+(`runtime::sound::SoundState`) are the representation Schritt 4 adds; they do not answer the
+questions above by themselves. Each subsystem feeds one source-tagged stream
+(`omsi-app::sound_events::events_from`), and an entry's accepted start now survives an
+asynchronous asset load (`RuntimeSound::{Asset, resolve_asset, pending}`). The rule
+*outcomes* stay as they were until the comparisons above settle them.

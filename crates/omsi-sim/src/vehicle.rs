@@ -2168,9 +2168,8 @@ impl VehicleInstance {
     /// sounds and messages the triggers asked for.
     pub fn trial_triggers(&mut self, names: &[&str]) -> Vec<f32> {
         let (state, vm) = (self.state.clone(), self.vm.clone());
-        let (fired, fired_files, messages, time_written) = (
-            self.host.fired_triggers.len(),
-            self.host.fired_file_triggers.len(),
+        let (fired_sounds, messages, time_written) = (
+            self.host.fired_sounds.len(),
             self.host.messages.clone(),
             self.host.time_written,
         );
@@ -2181,9 +2180,8 @@ impl VehicleInstance {
         let out = self.state.vars.clone();
         self.state = state;
         self.vm = vm;
-        self.host.fired_triggers.truncate(fired);
+        self.host.fired_sounds.truncate(fired_sounds);
         self.host.fired_trigger_vars.truncate(fired_vars);
-        self.host.fired_file_triggers.truncate(fired_files);
         self.host.messages = messages;
         self.host.time_written = time_written;
         out

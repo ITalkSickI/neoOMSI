@@ -10302,7 +10302,13 @@ impl World {
                 }
             }
             // [sound] of scenery objects: crossing bells, ambient loops
-            let fired: Vec<String> = std::mem::take(&mut o.inst.host.fired_triggers);
+            let fired: Vec<omsi_sim::host::FiredSound> =
+                std::mem::take(&mut o.inst.host.fired_sounds);
+            let events = crate::sound_events::events_from(
+                omsi_audio::EventSource::Scenery,
+                &fired,
+                &[],
+            );
             // (out of earshot with nothing playing: nothing to do - finding the sound file
             // for each of a city's scripted objects every frame took 1.8 ms)
             let near = dist < 300.0 || o.sounds.is_some();
@@ -10329,7 +10335,7 @@ impl World {
                         o.pos,
                         o.xf,
                         &|n| inst.var(n),
-                        &fired,
+                        &events,
                     );
                 }
             }
@@ -10447,11 +10453,14 @@ impl World {
                     ss.stop_all(a);
                 }
                 // (what it fired out of earshot is not heard later)
-                script.lock().host.fired_triggers.clear();
+                script.lock().host.fired_sounds.clear();
                 continue;
             }
             let mut inst = script.lock();
-            let fired = std::mem::take(&mut inst.host.fired_triggers);
+            let fired: Vec<omsi_sim::host::FiredSound> =
+                std::mem::take(&mut inst.host.fired_sounds);
+            let events =
+                crate::sound_events::events_from(omsi_audio::EventSource::Scenery, &fired, &[]);
             if let Some(a) = audio {
                 let mut sounds = lamp.sounds.lock();
                 self.object_sounds(
@@ -10463,7 +10472,7 @@ impl World {
                     lamp.pos,
                     lamp.xf,
                     &|n| inst.var(n),
-                    &fired,
+                    &events,
                 );
             }
         }
@@ -10483,7 +10492,7 @@ impl World {
         pos: DVec3,
         xf: Mat4,
         var: &dyn Fn(&str) -> Option<f32>,
-        fired: &[String],
+        events: &[omsi_audio::SoundEvent],
     ) {
         if dist >= 300.0 {
             if let Some(mut ss) = sounds.take() {
@@ -10524,7 +10533,9 @@ impl World {
             // player's own bodywork and glass just like any other sound from outside the cabin
             ss.set_muffled(muffled);
             let xf = Mat4::from_translation(pos.as_vec3()) * xf;
-            ss.update(a, var, &xf, fired);
+            // scenery triggers carry no fire-time snapshot (its host keeps none): the
+            // fallback to the current variable is the previous behavior
+            ss.update_events(a, var, &xf, events, &|_| None);
         }
     }
 }

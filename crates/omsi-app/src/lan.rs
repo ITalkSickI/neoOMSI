@@ -2811,12 +2811,12 @@ fn sound_remote(
     muffled: bool,
     inside: bool,
 ) {
-    let fired: Vec<String> = std::mem::take(&mut rv.vehicle.host.fired_triggers);
-    let fired_files: Vec<(String, String)> =
-        std::mem::take(&mut rv.vehicle.host.fired_file_triggers);
+    let fired: Vec<omsi_sim::host::FiredSound> =
+        std::mem::take(&mut rv.vehicle.host.fired_sounds);
     let (Some(audio), Some(at)) = (audio, listener) else {
         return;
     };
+    let events = crate::sound_events::events_from(omsi_audio::EventSource::Lan, &fired, &[]);
     // A rider hears the bus's interior `[sound]`, not its exterior sounds muffled.
     let interior = inside.then_some(()).and(rv.table.interior.clone());
     if let Some((cfg, dir)) = interior {
@@ -2839,10 +2839,7 @@ fn sound_remote(
             ss.set_inside(true);
             ss.set_muffled(true);
             ss.set_listener_vehicle(true);
-            ss.update(audio, &|n| v.var(n), &xf, &fired);
-            for (t, f) in &fired_files {
-                ss.play_file_trigger(audio, t, f, &|n| v.var(n), &xf);
-            }
+            ss.update_events(audio, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
         }
         return;
     }
@@ -2886,18 +2883,20 @@ fn sound_remote(
     }
     let xf = rv.vehicle.world_transform();
     let v = &rv.vehicle;
+    let fired_normal: Vec<String> = events
+        .iter()
+        .filter(|e| !e.is_file())
+        .map(|e| e.trigger.clone())
+        .collect();
     for ss in rv.sounds.iter_mut() {
         ss.set_muffled(muffled);
-        ss.update(audio, &|n| v.var(n), &xf, &fired);
+        ss.update_events(audio, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
         ss.update_parts(
             audio,
             &|n| v.var(n),
             &|i| v.trailers.get(i).map(|t| t.world_transform()),
-            &fired,
+            &fired_normal,
         );
-        for (t, f) in &fired_files {
-            ss.play_file_trigger(audio, t, f, &|n| v.var(n), &xf);
-        }
     }
 }
 

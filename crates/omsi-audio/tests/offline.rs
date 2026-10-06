@@ -2,7 +2,7 @@
 //! so the mixer runs exactly as it would in the output callback - just into a buffer we can
 //! look at.
 
-use omsi_audio::{AudioEngine, Clip, SoundSet};
+use omsi_audio::{AudioEngine, Clip, EventSource, SoundEvent, SoundSet, SoundState};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -94,4 +94,82 @@ fn a_missing_file_plays_nothing_and_does_not_panic() {
     step(&mut set, &engine, &["ev_horn".to_string()], &mut out);
     assert_eq!(engine.voice_count(), 0);
     assert!(out.iter().all(|s| *s == 0.0));
+}
+
+fn events(names: &[&str]) -> Vec<SoundEvent> {
+    names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| SoundEvent::trigger(EventSource::Player, i as u32, *n))
+        .collect()
+}
+
+/// A trigger fired twice in one frame: both firings survive in the stream, but the entry
+/// restarts once (the current, OPEN rule).
+#[test]
+fn two_identical_triggers_in_one_frame_start_one_voice() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/trigger.cfg"));
+    let engine = engine_with(&cfg);
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let mut out = vec![0.0f32; BLOCK * 2];
+    engine.clock().advance(DT);
+    set.update_events(
+        &engine,
+        &|_| Some(1.0),
+        &glam::Mat4::IDENTITY,
+        &events(&["ev_horn", "ev_horn"]),
+        &|_| None,
+    );
+    engine.render_offline(&mut out);
+    assert_eq!(engine.voice_count(), 1, "restarted once, not twice");
+    assert_eq!(set.state(0), Some(SoundState::Running));
+}
+
+/// Two `[onlyone]` entries sharing one file: one firing starts one voice (central registry).
+#[test]
+fn onlyone_entries_share_a_single_voice() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/onlyone.cfg"));
+    let engine = engine_with(&cfg);
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let mut out = vec![0.0f32; BLOCK * 2];
+    engine.clock().advance(DT);
+    set.update_events(
+        &engine,
+        &|_| Some(1.0),
+        &glam::Mat4::IDENTITY,
+        &events(&["ev_beep"]),
+        &|_| None,
+    );
+    engine.render_offline(&mut out);
+    assert_eq!(engine.voice_count(), 1, "both entries share the file's voice");
+}
+
+/// A trigger accepted while its file is still loading starts when the clip arrives: an
+/// asynchronous load must not swallow an accepted event.
+#[test]
+fn a_triggered_event_not_loaded_yet_keeps_its_start() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/trigger.cfg"));
+    let engine = AudioEngine::new_offline(RATE, 2); // "horn.wav" not cached
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let mut out = vec![0.0f32; BLOCK * 2];
+    engine.clock().advance(DT);
+    set.update_events(
+        &engine,
+        &|_| Some(1.0),
+        &glam::Mat4::IDENTITY,
+        &events(&["ev_horn"]),
+        &|_| None,
+    );
+    engine.render_offline(&mut out);
+    assert_eq!(engine.voice_count(), 0, "not loaded yet");
+    assert_eq!(set.state(0), Some(SoundState::Loading));
+    // the background loader delivers the clip
+    for path in SoundSet::clip_paths(&cfg, Path::new("")) {
+        engine.cache_clip(path, clip(0.25));
+    }
+    engine.clock().advance(DT);
+    set.update_events(&engine, &|_| Some(1.0), &glam::Mat4::IDENTITY, &[], &|_| None);
+    engine.render_offline(&mut out);
+    assert_eq!(engine.voice_count(), 1, "the accepted event was not swallowed");
+    assert_eq!(set.state(0), Some(SoundState::Running));
 }

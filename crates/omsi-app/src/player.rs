@@ -1339,7 +1339,10 @@ impl Player {
                 }
                 omsi_sim::htmltex::HtmlRequest::FireEvent(name) => {
                     log::info!("HTML page: fireEvent {name}");
-                    self.vehicle.host.fired_triggers.push(name);
+                    self.vehicle
+                        .host
+                        .fired_sounds
+                        .push(omsi_sim::host::FiredSound::Trigger { name });
                 }
                 _ => {}
             }
@@ -1411,8 +1414,11 @@ impl Player {
                     log::info!("HTML page: announcement {file}");
                     self.vehicle
                         .host
-                        .fired_file_triggers
-                        .push(("ev_IBIS_Ansagen".to_string(), file));
+                        .fired_sounds
+                        .push(omsi_sim::host::FiredSound::File {
+                            name: "ev_IBIS_Ansagen".to_string(),
+                            file,
+                        });
                 }
                 omsi_sim::htmltex::HtmlRequest::ClearLine => {
                     if let Some((mut old, ..)) = self.ibis_typist.take() {
@@ -1807,13 +1813,14 @@ impl Player {
         listener_follows_bus: bool,
         driven: bool,
     ) {
-        let fired: Vec<String> = std::mem::take(&mut self.vehicle.host.fired_triggers);
+        let fired: Vec<omsi_sim::host::FiredSound> =
+            std::mem::take(&mut self.vehicle.host.fired_sounds);
         let fired_vars: Vec<(String, Vec<f32>)> =
             std::mem::take(&mut self.vehicle.host.fired_trigger_vars);
-        let fired_files: Vec<(String, String)> =
-            std::mem::take(&mut self.vehicle.host.fired_file_triggers);
-        for (t, f) in &fired_files {
-            log::info!("announcement: {t} -> {f}");
+        for s in &fired {
+            if let Some(f) = s.file() {
+                log::info!("announcement: {} -> {f}", s.name());
+            }
         }
         let html_sounds: Vec<(String, f32)> = std::mem::take(&mut self.vehicle.host.html_sounds);
         if let (Some(a), Some(ss)) = (audio, self.sounds.as_mut()) {
@@ -1833,25 +1840,25 @@ impl Player {
                     None
                 });
             }
-            // (the last time a trigger fired this frame: its sounds start with that moment)
-            let at_fire = |t: &str, n: &str| -> Option<f32> {
-                let vals = &fired_vars
-                    .iter()
-                    .rev()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(t))?
-                    .1;
-                v.var_slot(n).and_then(|i| vals.get(i).copied())
-            };
-            ss.update_fired(a, &|n| v.var(n), &xf, &fired, &at_fire);
+            // one ordered event stream (normal and `(T.F.)` triggers); a triggered sound
+            // reads its curve from the snapshot of the moment it fired
+            let events = crate::sound_events::events_from(
+                omsi_audio::EventSource::Player,
+                &fired,
+                &fired_vars,
+            );
+            ss.update_events(a, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
+            let fired_normal: Vec<String> = events
+                .iter()
+                .filter(|e| !e.is_file())
+                .map(|e| e.trigger.clone())
+                .collect();
             ss.update_parts(
                 a,
                 &|n| v.var(n),
                 &|i| v.trailers.get(i).map(|t| t.world_transform()),
-                &fired,
+                &fired_normal,
             );
-            for (t, f) in &fired_files {
-                ss.play_file_trigger(a, t, f, &|n| v.var(n), &xf);
-            }
             for (f, vol) in &html_sounds {
                 let path = omsi_cfg::resolve_path(v.ty.def.dir(), f);
                 ss.play_file_direct(a, &path, *vol);

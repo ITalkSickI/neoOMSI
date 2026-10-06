@@ -76,9 +76,26 @@ fn main() {
         });
         v.update(1.0 / 30.0);
         if let (Some(a), Some(ss)) = (audio.as_ref(), sounds.as_mut()) {
-            let fired = std::mem::take(&mut v.host.fired_triggers);
+            let fired = std::mem::take(&mut v.host.fired_sounds);
+            let events: Vec<omsi_audio::SoundEvent> = fired
+                .iter()
+                .enumerate()
+                .map(|(k, s)| match s {
+                    omsi_sim::host::FiredSound::Trigger { name } => {
+                        omsi_audio::SoundEvent::trigger(omsi_audio::EventSource::Player, k as u32, name)
+                    }
+                    omsi_sim::host::FiredSound::File { name, file } => {
+                        omsi_audio::SoundEvent::file(
+                            omsi_audio::EventSource::Player,
+                            k as u32,
+                            name,
+                            file,
+                        )
+                    }
+                })
+                .collect();
             let xf = v.world_transform();
-            ss.update(a, &|n| v.var(n), &xf, &fired);
+            ss.update_events(a, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
             if i % 30 == 0 {
                 println!("   audio voices: {}", a.voice_count());
             }
@@ -98,8 +115,9 @@ fn main() {
     println!(
         "sound triggers: {:?}",
         v.host
-            .fired_triggers
+            .fired_sounds
             .iter()
+            .map(|s| s.name())
             .collect::<std::collections::BTreeSet<_>>()
     );
     println!("messages: {:?}", v.host.messages);

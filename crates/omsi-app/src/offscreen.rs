@@ -1130,7 +1130,9 @@ pub(crate) fn run_offscreen(
                 match bus {
                     None => {
                         if let Some(p) = player.as_mut() {
-                            p.vehicle.host.fired_triggers.push("ev_Stamper".into());
+                            p.vehicle.host.fired_sounds.push(omsi_sim::host::FiredSound::Trigger {
+                                name: "ev_Stamper".into(),
+                            });
                         }
                     }
                     Some(id) => {
@@ -1138,7 +1140,9 @@ pub(crate) fn run_offscreen(
                             .as_mut()
                             .and_then(|t| t.cars.iter_mut().find(|c| c.id == id))
                         {
-                            c.vehicle.host.fired_triggers.push("ev_Stamper".into());
+                            c.vehicle.host.fired_sounds.push(omsi_sim::host::FiredSound::Trigger {
+                                name: "ev_Stamper".into(),
+                            });
                         }
                     }
                 }
@@ -1555,8 +1559,10 @@ pub(crate) fn run_offscreen(
                 settings.driver,
                 args.view == "driver",
             );
-            for (t, f) in std::mem::take(&mut player.vehicle.host.fired_file_triggers) {
-                log::info!("announcement: {t} -> {f}");
+            for s in std::mem::take(&mut player.vehicle.host.fired_sounds) {
+                if let Some(f) = s.file() {
+                    log::info!("announcement: {} -> {f}", s.name());
+                }
             }
             // OMSI_DEBUG_REST: where the bus came to rest against the ground under it (a
             // bus sunk into the road, or hanging over it, after spawning)
@@ -1960,8 +1966,7 @@ pub(crate) fn run_offscreen(
                                d: (f32, f32)|
                      -> (bool, Vec<f32>, Vec<f32>, Vec<String>) {
                         restore(v);
-                        v.host.fired_triggers.clear();
-                        v.host.fired_file_triggers.clear();
+                        v.host.fired_sounds.clear();
                         let mut exists = false;
                         if let Some(name) = name {
                             exists = v.trigger(name);
@@ -1979,12 +1984,10 @@ pub(crate) fn run_offscreen(
                         for _ in 0..6 {
                             v.update(0.05);
                         }
-                        let mut sounds: Vec<String> = std::mem::take(&mut v.host.fired_triggers);
-                        sounds.extend(
-                            std::mem::take(&mut v.host.fired_file_triggers)
-                                .into_iter()
-                                .map(|(t, _)| t),
-                        );
+                        let sounds: Vec<String> = std::mem::take(&mut v.host.fired_sounds)
+                            .into_iter()
+                            .map(|s| s.name().to_string())
+                            .collect();
                         (exists, held, v.state.vars.clone(), sounds)
                     };
                     let (_, idle_held, idle, idle_sounds) =

@@ -4,8 +4,9 @@
 
 use crate::clock::Clock;
 use crate::engine::Playback;
+use crate::runtime::event::SoundEvent;
 use crate::runtime::placement;
-use crate::runtime::sound::{warn_missing_once, EntryCtx, RuntimeSound};
+use crate::runtime::sound::{warn_missing_once, EntryCtx, OnlyOne, RuntimeSound, SoundState};
 use crate::voice::VoiceParams;
 use glam::{Mat4, Vec3};
 use omsi_vehicle::SoundCfg;
@@ -50,6 +51,9 @@ pub struct SoundSet {
     /// pusher like the MB C2 G that is where the engine is - and plays it on the triggers
     /// and variables of the scripts it shares with the front (see [`SoundSet::update_parts`]).
     pub parts: Vec<(usize, SoundSet)>,
+    /// The central `[onlyone]` registry of this set (file -> running voice). Rebuilt and
+    /// pruned every frame (see [`SoundSet::update_frame`]).
+    only_one: OnlyOne,
 }
 
 impl SoundSet {
@@ -69,15 +73,15 @@ impl SoundSet {
             .sounds
             .iter()
             .map(|def| {
-                // `[sound] N`: no fixed file, the script names one with `(T.F.trigger)`
+                // `[sound] N`: no fixed file, the script names one with `(T.F.trigger)`;
+                // a fixed file is read lazily on the first update (see `RuntimeSound`)
                 let dynamic = def.file.trim().parse::<i32>().is_ok();
-                let path = omsi_cfg::resolve_path(dir, &def.file);
-                let clip = if engine.enabled() && !dynamic {
-                    engine.load_clip(&path)
+                let path = if engine.enabled() && !dynamic {
+                    Some(omsi_cfg::resolve_path(dir, &def.file))
                 } else {
                     None
                 };
-                RuntimeSound::new(def.clone(), clip)
+                RuntimeSound::new(def.clone(), path)
             })
             .collect();
         SoundSet {
@@ -97,7 +101,13 @@ impl SoundSet {
             hull_override: None,
             blend_at: None,
             parts: Vec::new(),
+            only_one: OnlyOne::new(),
         }
+    }
+
+    /// The logical state of entry `index` (see [`SoundState`]).
+    pub fn state(&self, index: usize) -> Option<SoundState> {
+        self.sounds.get(index).map(|s| s.state())
     }
 
     /// Move the inside / muffled blends towards their targets (about 0.45 s for the whole
@@ -286,6 +296,7 @@ impl SoundSet {
             }
             s.clip = Some(clip.clone());
             s.voice = Some(engine.play(clip.clone(), params));
+            s.state = SoundState::Running;
         }
     }
 
@@ -337,6 +348,65 @@ impl SoundSet {
         triggers: &[String],
         at_fire: &dyn Fn(&str, &str) -> Option<f32>,
     ) {
+        self.update_frame(engine, var, object_to_world, triggers, at_fire);
+    }
+
+    /// One frame's **ordered event stream** (see [`crate::runtime::event`]): the normal
+    /// triggers and the `(T.F.)` file triggers are no longer two lists but events of one
+    /// stream, each tagged with its source, sequence and firing time. `slots` maps a script
+    /// variable name to its index in an event's variable snapshot, so a triggered entry
+    /// reads the value of the moment it fired. Existing callers keep using
+    /// [`SoundSet::update_fired`] + [`SoundSet::play_file_trigger`]; this is the unified
+    /// entry point the callers migrate to.
+    ///
+    /// Repeated events survive as separate entries. The current rule (trigger restarts an
+    /// entry once per frame; a file trigger restarts it each time) is unchanged, so the
+    /// behavior of two identical firings is exactly what it was - the stream only makes it
+    /// observable. The exact OMSI rule is OPEN (behavior doc section 4).
+    pub fn update_events(
+        &mut self,
+        engine: &dyn Playback,
+        var: &dyn Fn(&str) -> Option<f32>,
+        object_to_world: &Mat4,
+        events: &[SoundEvent],
+        slots: &dyn Fn(&str) -> Option<usize>,
+    ) {
+        if !engine.enabled() {
+            return;
+        }
+        let triggers: Vec<String> = events
+            .iter()
+            .filter(|e| !e.is_file())
+            .map(|e| e.trigger.clone())
+            .collect();
+        // the value of the moment it fired (the last snapshot for that trigger name,
+        // `TSound` update 0x750584); falls back to the current value in `update_frame`
+        let at_fire = |t: &str, n: &str| -> Option<f32> {
+            let slot = slots(n)?;
+            events
+                .iter()
+                .rev()
+                .find(|e| e.trigger.eq_ignore_ascii_case(t) && e.vars.is_some())
+                .and_then(|e| e.vars.as_ref()?.get(slot).copied())
+        };
+        self.update_frame(engine, var, object_to_world, &triggers, &at_fire);
+        for e in events.iter().filter(|e| e.is_file()) {
+            if let Some(file) = &e.file {
+                self.play_file_trigger(engine, &e.trigger, file, var, object_to_world);
+            }
+        }
+    }
+
+    /// The shared body of [`SoundSet::update`], [`SoundSet::update_fired`] and
+    /// [`SoundSet::update_events`]: evaluate every entry against the frame's variables.
+    fn update_frame(
+        &mut self,
+        engine: &dyn Playback,
+        var: &dyn Fn(&str) -> Option<f32>,
+        object_to_world: &Mat4,
+        triggers: &[String],
+        at_fire: &dyn Fn(&str, &str) -> Option<f32>,
+    ) {
         if !engine.enabled() {
             return;
         }
@@ -361,9 +431,14 @@ impl SoundSet {
             doppler,
             now,
         };
+        // The `[onlyone]` registry is per set: drop ids the mixer has already ended, then
+        // let every entry of this frame consult and update it.
+        let mut only_one = std::mem::take(&mut self.only_one);
+        only_one.retain(|_, id| engine.is_playing(*id));
         for s in self.sounds.iter_mut() {
-            s.update(engine, &cx);
+            s.update(engine, &cx, &mut only_one);
         }
+        self.only_one = only_one;
     }
 
     pub fn stop_all(&mut self, engine: &dyn Playback) {

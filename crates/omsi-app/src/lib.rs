@@ -45,6 +45,7 @@ mod scene;
 mod schedule;
 mod schedule_paper;
 mod settings;
+mod sound_events;
 mod threads;
 mod tiles;
 mod traffic;

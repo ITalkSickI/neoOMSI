@@ -24,5 +24,7 @@ pub use runtime::soundset;
 pub use assets::Clip;
 pub use clock::Clock;
 pub use engine::{AudioEngine, Playback};
+pub use runtime::event::{ordered, EventSource, SoundEvent};
+pub use runtime::sound::SoundState;
 pub use runtime::soundset::SoundSet;
 pub use voice::{DOPPLER, Listener, VoiceId, VoiceParams};

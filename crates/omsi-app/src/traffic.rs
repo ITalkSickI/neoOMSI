@@ -7118,35 +7118,33 @@ impl Traffic {
                     }
                 }
             }
-            let fired: Vec<String> = std::mem::take(&mut c.vehicle.host.fired_triggers);
+            let fired: Vec<omsi_sim::host::FiredSound> =
+                std::mem::take(&mut c.vehicle.host.fired_sounds);
             let fired_vars: Vec<(String, Vec<f32>)> =
                 std::mem::take(&mut c.vehicle.host.fired_trigger_vars);
-            let fired_files: Vec<(String, String)> =
-                std::mem::take(&mut c.vehicle.host.fired_file_triggers);
             c.vehicle.host.street_cond = street_cond;
             c.vehicle.set_engine_var("StreetCond", street_cond);
             if let Some(ss) = c.sounds.as_mut() {
                 ss.set_muffled(muffled);
                 let xf = c.vehicle.world_transform();
                 let v = &c.vehicle;
-                let at_fire = |t: &str, n: &str| -> Option<f32> {
-                    let vals = &fired_vars
-                        .iter()
-                        .rev()
-                        .find(|(k, _)| k.eq_ignore_ascii_case(t))?
-                        .1;
-                    v.var_slot(n).and_then(|i| vals.get(i).copied())
-                };
-                ss.update_fired(audio, &|n| v.var(n), &xf, &fired, &at_fire);
+                let events = crate::sound_events::events_from(
+                    omsi_audio::EventSource::Traffic,
+                    &fired,
+                    &fired_vars,
+                );
+                ss.update_events(audio, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
+                let fired_normal: Vec<String> = events
+                    .iter()
+                    .filter(|e| !e.is_file())
+                    .map(|e| e.trigger.clone())
+                    .collect();
                 ss.update_parts(
                     audio,
                     &|n| v.var(n),
                     &|i| v.trailers.get(i).map(|t| t.world_transform()),
-                    &fired,
+                    &fired_normal,
                 );
-                for (t, f) in &fired_files {
-                    ss.play_file_trigger(audio, t, f, &|n| v.var(n), &xf);
-                }
             }
         }
     }

@@ -11,6 +11,33 @@ use std::sync::Arc;
 /// How many stops a page's departures are kept for at the same time (`omsi.getDepartures`).
 pub const MAX_HTML_DEPARTURE_STOPS: usize = 8;
 
+/// A sound trigger fired this frame, in script order. Normal `(T.…)` and `(T.F.…)` file
+/// triggers are one stream; the audio runtime turns each into a source-tagged
+/// `omsi_audio::SoundEvent`. `fired_trigger_vars` keeps the variable snapshot of the
+/// moment a trigger fired, in the same order the snapshot triggers fired.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FiredSound {
+    Trigger { name: String },
+    File { name: String, file: String },
+}
+
+impl FiredSound {
+    /// The trigger name (the `T` of `(T.…)` and `(T.F.…)`).
+    pub fn name(&self) -> &str {
+        match self {
+            FiredSound::Trigger { name } | FiredSound::File { name, .. } => name,
+        }
+    }
+
+    /// The file of a `(T.F.…)` trigger, `None` for a normal one.
+    pub fn file(&self) -> Option<&str> {
+        match self {
+            FiredSound::File { file, .. } => Some(file),
+            FiredSound::Trigger { .. } => None,
+        }
+    }
+}
+
 /// `wearlifespan` of a vehicle that does not wear (OMSI: every AI vehicle, and the
 /// player's with the maintenance option "infinite").
 pub const AI_WEAR_LIFESPAN: f32 = 1.5e6;
@@ -70,14 +97,15 @@ pub struct VehicleHost {
     unknown_callbacks: Vec<String>,
     pub auto_clutch: f32,
     pub no_sound: f32,
-    pub fired_triggers: Vec<String>,
+    /// The sound triggers this frame, in the order the scripts fired them: normal `(T.…)`
+    /// triggers and `(T.F.…)` file triggers are one ordered stream (the audio runtime
+    /// consumes it as `omsi_audio::SoundEvent`s). See `docs/audio/SOUND_ENGINE_BEHAVIOR.md`.
+    pub fired_sounds: Vec<FiredSound>,
     /// Triggers (lower case) whose sounds read variables in their volume curves: when one
     /// fires, the variables of that moment are kept in `fired_trigger_vars` (the door's
     /// hit sound reads `doorSpeed_<n>`, which the script turns round right after it).
     pub snapshot_triggers: hashbrown::HashSet<String>,
     pub fired_trigger_vars: Vec<(String, Vec<f32>)>,
-    /// `(T.F.name)` triggers of this frame: (trigger, sound file relative to the sound folder).
-    pub fired_file_triggers: Vec<(String, String)>,
     pub messages: Vec<String>,
     /// Fonts registered by `GetFontIndex` (index = position), loaded through `font_lib`.
     pub fonts: FontTable,
@@ -907,11 +935,15 @@ impl Host for VehicleHost {
         if file.trim().is_empty() {
             return;
         }
-        self.fired_file_triggers
-            .push((name.to_string(), file.to_string()));
+        self.fired_sounds.push(FiredSound::File {
+            name: name.to_string(),
+            file: file.to_string(),
+        });
     }
     fn sound_trigger(&mut self, name: &str, _id: NameId) {
-        self.fired_triggers.push(name.to_string());
+        self.fired_sounds.push(FiredSound::Trigger {
+            name: name.to_string(),
+        });
     }
     fn sound_trigger_vars(&mut self, name: &str, id: NameId, vars: &[f32]) {
         self.sound_trigger(name, id);
