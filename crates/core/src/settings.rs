@@ -76,11 +76,11 @@ pub struct Settings {
     pub ui_scale_window: bool, // TODO: Migrate to new config lib | category: ui | default value: true
     pub clouds: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub pax_density: f32, // TODO: Migrate to new config lib | category: passengers | default value: 1.0
-    pub vol_ai: f32, // TODO: Migrate to new config lib | category: audio | default value: 1.0
-    pub vol_scenery: f32, // TODO: Migrate to new config lib | category: audio | default value: 1.0
+    pub vol_ai: f32, // Migrated
+    pub vol_scenery: f32, // Migrated
     pub mirror_size: u32, // TODO: Migrate to new config lib | category: graphics | default value: 256
     pub mirror_refresh: String, // TODO: Migrate to new config lib | category: graphics | default value: "full"
-    pub doppler: bool, // TODO: Migrate to new config lib | category: audio | default value: true
+    pub doppler: bool, // Migrated
     pub time_speed: f64, // Migrated
     pub time_sync: bool, // Migrated
     pub metar_sync: bool, // Migrated

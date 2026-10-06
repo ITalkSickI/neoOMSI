@@ -345,15 +345,15 @@ pub(crate) fn make_app(
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_AI.store(
-        settings.vol_ai.to_bits(),
+        (::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_SCENERY.store(
-        settings.vol_scenery.to_bits(),
+        (::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
     MIRROR_SIZE.store(settings.mirror_size, std::sync::atomic::Ordering::Relaxed);
-    ::audio::DOPPLER.store(settings.doppler, std::sync::atomic::Ordering::Relaxed);
+    ::audio::DOPPLER.store(::config::get_bool("audio", "doppler").unwrap_or(true), std::sync::atomic::Ordering::Relaxed);
     CLASSIC.store(
         settings.classic() && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
         std::sync::atomic::Ordering::Relaxed,

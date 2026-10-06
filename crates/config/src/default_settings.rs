@@ -63,6 +63,9 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]
     ("audio", "master-volume", Def::Float(1.0)),
+    ("audio", "ai-volume", Def::Float(1.0)),
+    ("audio", "scenery-volume", Def::Float(1.0)),
+    ("audio", "doppler", Def::Bool(true)),
     // [controller]
     ("controller", "deadzone", Def::Float(0.05)),
     ("controller", "ff_enabled", Def::Bool(true)),

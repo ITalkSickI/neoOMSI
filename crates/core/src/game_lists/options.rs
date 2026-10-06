@@ -170,8 +170,8 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "look_sens" => ::config::get_float("camera", "look_sens").unwrap_or(1.0) as f32,
         "ui_scale" => s.ui_scale,
         "ui_opacity" => s.ui_opacity,
-        "vol_ai" => s.vol_ai,
-        "vol_scenery" => s.vol_scenery,
+        "vol_ai" => ::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32,
+        "vol_scenery" => ::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32,
         "wheel_range" => ::config::get_float("controls", "wheel_range").unwrap_or(900.0) as f32,
         "wheel_lock" => ::config::get_float("controls", "wheel_lock").unwrap_or(0.0) as f32,
         "fov" => ::config::get_float("camera", "fov").unwrap_or(0.0) as f32,
@@ -289,12 +289,18 @@ pub(super) fn option_set(
             Some(("ui_opacity", app.settings.ui_opacity.to_string()))
         }
         "vol_ai" => {
-            app.settings.vol_ai = (v * 100.0).round() / 100.0;
-            Some(("vol_ai", app.settings.vol_ai.to_string()))
+            let v = (v * 100.0).round() / 100.0;
+            ::config::set_setting("audio", "ai-volume", v as f64);
+            let _ = ::config::save();
+            crate::startup::SOUND_AI.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+            None
         }
         "vol_scenery" => {
-            app.settings.vol_scenery = (v * 100.0).round() / 100.0;
-            Some(("vol_scenery", app.settings.vol_scenery.to_string()))
+            let v = (v * 100.0).round() / 100.0;
+            ::config::set_setting("audio", "scenery-volume", v as f64);
+            let _ = ::config::save();
+            crate::startup::SOUND_SCENERY.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+            None
         }
         "wheel_range" => {
             ::config::set_setting("controls", "wheel_range", v.round() as f64);
@@ -464,7 +470,7 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "crosshair" => ::config::get_bool("camera", "crosshair").unwrap_or(true),
         "vr" => ::config::get_bool("vr", "enabled").unwrap_or(false),
         "vr_desktop_mirror" => ::config::get_bool("vr", "desktop-mirror").unwrap_or(true),
-        "doppler" => s.doppler,
+        "doppler" => ::config::get_bool("audio", "doppler").unwrap_or(true),
         "steering_linear" => ::config::get_bool("controls", "steering_linear").unwrap_or(false),
         "old_steering" => ::config::get_bool("controls", "old_steering").unwrap_or(false),
         "red_steer_spd" => ::config::get_bool("controls", "red_steer_spd").unwrap_or(false),
@@ -787,8 +793,10 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "doppler" => {
-            app.settings.doppler = on;
-            Some(("doppler", bit))
+            ::config::set_setting("audio", "doppler", on);
+            let _ = ::config::save();
+            ::audio::DOPPLER.store(on, std::sync::atomic::Ordering::Relaxed);
+            None
         }
         "steering_linear" => {
             ::config::set_setting("controls", "steering_linear", on);
