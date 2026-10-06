@@ -1953,11 +1953,14 @@ impl TrafficLightController {
             }
             match p.jump_to {
                 Some(to) => {
-                    if to < p.time - 1e-6 {
-                        self.rewound.push(k);
+                    let target = (to as f64).rem_euclid(cycle);
+                    if to <= p.time + 1e-6 {
+                        if !self.rewound.contains(&k) {
+                            self.rewound.push(k);
+                        }
                     }
-                    self.time = (to as f64).rem_euclid(cycle);
-                    self.passed = None;
+                    self.time = target;
+                    self.passed = Some(k);
                     if left <= 0.0 {
                         return;
                     }
