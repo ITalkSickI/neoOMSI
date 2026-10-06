@@ -1,0 +1,97 @@
+//! Offline playback tests: a sound set driven without an audio device, on a manual clock,
+//! so the mixer runs exactly as it would in the output callback - just into a buffer we can
+//! look at.
+
+use omsi_audio::{AudioEngine, Clip, SoundSet};
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+const RATE: u32 = 48_000;
+const BLOCK: usize = 960; // 20 ms
+const DT: Duration = Duration::from_millis(20);
+
+fn cfg(text: &str) -> omsi_vehicle::SoundCfg {
+    omsi_vehicle::SoundCfg::parse(&omsi_cfg::CfgFile::from_str("sound.cfg", text))
+}
+
+/// A quiet constant clip, `seconds` long.
+fn clip(seconds: f32) -> Arc<Clip> {
+    let n = (RATE as f32 * seconds) as usize;
+    Arc::new(Clip {
+        sample_rate: RATE,
+        channels: 1,
+        samples: vec![16_384; n.max(1)],
+    })
+}
+
+fn engine_with(cfg: &omsi_vehicle::SoundCfg) -> AudioEngine {
+    let engine = AudioEngine::new_offline(RATE, 2);
+    for path in SoundSet::clip_paths(cfg, Path::new("")) {
+        engine.cache_clip(path, clip(0.25));
+    }
+    engine
+}
+
+fn step(set: &mut SoundSet, engine: &AudioEngine, triggers: &[String], out: &mut [f32]) {
+    engine.clock().advance(DT);
+    set.update(engine, &|_| Some(1.0), &glam::Mat4::IDENTITY, triggers);
+    engine.render_offline(out);
+}
+
+#[test]
+fn a_triggered_horn_plays_then_ends() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/trigger.cfg"));
+    let engine = engine_with(&cfg);
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let mut out = vec![0.0f32; BLOCK * 2];
+
+    // nothing fires it yet
+    step(&mut set, &engine, &[], &mut out);
+    assert_eq!(engine.voice_count(), 0, "no trigger, no horn");
+    assert!(out.iter().all(|s| *s == 0.0));
+
+    // the trigger starts it, and it is heard this block
+    step(&mut set, &engine, &["ev_horn".to_string()], &mut out);
+    assert_eq!(engine.voice_count(), 1, "the horn started");
+    assert!(out.iter().any(|s| s.abs() > 1e-3), "the horn is audible");
+
+    // the one-shot ends by itself after its clip
+    for _ in 0..20 {
+        step(&mut set, &engine, &[], &mut out);
+    }
+    assert_eq!(engine.voice_count(), 0, "the one-shot ended");
+}
+
+#[test]
+fn a_loop_keeps_playing_and_follows_its_pitch_variable() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/loop.cfg"));
+    let engine = engine_with(&cfg);
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let var = |n: &str| match n {
+        "fan_speed" => Some(1200.0),
+        _ => Some(1.0), // fan_on
+    };
+    let mut out = vec![0.0f32; BLOCK * 2];
+    engine.clock().advance(DT);
+    set.update(&engine, &var, &glam::Mat4::IDENTITY, &[]);
+    engine.render_offline(&mut out);
+
+    let playing = set.playing(&engine);
+    assert_eq!(playing.len(), 1, "the fan loop is on");
+    // 1200 * 44100 / 600 = 88200 Hz against the 48000 Hz clip
+    let pitch = playing[0].2;
+    assert!((pitch - 1.8375).abs() < 1e-3, "pitch {pitch}");
+    assert!(out.iter().any(|s| s.abs() > 1e-3), "the fan is audible");
+}
+
+#[test]
+fn a_missing_file_plays_nothing_and_does_not_panic() {
+    let cfg = cfg(include_str!("fixtures/soundcfg/trigger.cfg"));
+    let engine = AudioEngine::new_offline(RATE, 2); // nothing cached: "horn.wav" is missing
+    let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    let mut out = vec![0.0f32; BLOCK * 2];
+    step(&mut set, &engine, &["ev_horn".to_string()], &mut out);
+    assert_eq!(engine.voice_count(), 0);
+    assert!(out.iter().all(|s| *s == 0.0));
+}

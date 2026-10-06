@@ -4,7 +4,7 @@
 //! song titles a Shoutcast/Icecast server sends in between (ICY metadata) are taken out of
 //! the sound and kept as the status, and a connection that drops is made again.
 
-use crate::stream::StreamBuf;
+use crate::assets::stream::StreamBuf;
 use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
