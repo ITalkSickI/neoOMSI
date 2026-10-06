@@ -152,4 +152,8 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("vr", "head-smoothing-ms", Def::Float(0.0)),
     ("vr", "mirror-rate", Def::Float(16.0)),
     ("vr", "desktop-mirror", Def::Bool(true)),
+    // [launcher]
+    ("launcher", "rest", Def::Bool(false)),
+    ("launcher", "update_check", Def::Bool(true)),
+    ("launcher", "update_auto", Def::Bool(false)),
 ];

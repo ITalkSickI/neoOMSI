@@ -1498,7 +1498,14 @@ fn dsc_candidates(file: &Path, lang: &str) -> Vec<PathBuf> {
     }
     langs
         .into_iter()
-        .map(|l| file.with_file_name(format!("{stem}_{l}.dsc")))
+        .map(|l| {
+            let l = match l {
+                "en" => "ENG",
+                "de" => "DEU",
+                other => other,
+            };
+            file.with_file_name(format!("{stem}_{l}.dsc"))
+        })
         .collect()
 }
 
@@ -3646,7 +3653,7 @@ mod tests {
         assert_eq!(v["ai_unsched_factor"], 100);
         assert_eq!(v["time_speed"], "1");
         assert_eq!(v["mirror_refresh"], "full");
-        assert_eq!(v["launcher_rest"], true);
+        assert_eq!(v["launcher_rest"], false);
         assert_eq!(v["pax_prefer_seats"], false);
         assert_eq!(v["ui_scale"], 1.0);
         assert_eq!(current_settings(), v);

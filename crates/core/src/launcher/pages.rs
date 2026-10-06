@@ -2161,14 +2161,6 @@ fn general_tab(
         s,
         dirty,
         c.row(),
-        "The launcher rests while a game runs (gives the graphics card to the game)",
-        "launcher_rest",
-    );
-    toggle_setting(
-        ui,
-        s,
-        dirty,
-        c.row(),
         "Discord Rich Presence",
         "discord_status",
     );
@@ -5482,7 +5474,6 @@ mod settings_tests {
         let general = vec![
             "s-lang",
             "s-units",
-            "set-launcher_rest",
             "set-discord_status",
             "s-uiscale",
             "set-ui_scale_window",
