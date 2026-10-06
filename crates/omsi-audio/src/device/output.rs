@@ -56,7 +56,8 @@ impl DeviceOutput {
     }
 
     pub fn state(&self) -> DeviceState {
-        self.state.get()
+        if self.lost.load(Ordering::Relaxed) { DeviceState::Lost }
+        else { self.state.get() }
     }
 
     /// Record that the device went away (before a reopen attempt).
@@ -91,69 +92,85 @@ impl DeviceOutput {
 
     /// Open the default output device from now on, feeding it `render`. Returns whether a
     /// stream is playing; the state machine follows along (`Opening` -> `Open`/`NoDevice`/`Lost`).
+    pub fn close(&self) { self.stream.borrow_mut().take(); }
+
     pub fn open<F>(&self, render: F) -> bool
-    where
-        F: FnMut(&mut [f32]) + Send + 'static,
-    {
-        // (the old stream first: some drivers give a device to one stream at a time)
-        self.stream.borrow_mut().take();
-        self.state.set(self.state.get().opening());
+    where F: FnMut(&mut [f32]) + Send + 'static {
+        self.open_prepared(move || render)
+    }
+
+    /// Prepare the renderer only after rate/layout selection, outside any callback.
+    pub(crate) fn open_prepared<P, F>(&self, prepare: P) -> bool
+    where P: FnOnce() -> F, F: FnMut(&mut [f32]) + Send + 'static {
+        let previous = self.state();
+        self.close();
+        // The old callback is stopped. Clear its flags before creating the next stream;
+        // an error from the new stream must remain visible even during play().
+        self.lost.store(false, Ordering::Relaxed);
+        self.reopen.store(false, Ordering::Relaxed);
+        self.state.set(previous.opening());
         let host = cpal::default_host();
         let Some(dev) = host.default_output_device() else {
-            log::warn!("audio: no output device");
-            self.state.set(self.state.get().open_failed());
-            return false;
+            self.state.set(previous.open_failed()); self.clear_name(); return false;
         };
-        let name = dev
-            .description()
-            .map(|d| d.name().to_string())
-            .unwrap_or_default();
+        let name = dev.description().map(|d| d.name().to_string()).unwrap_or_default();
         let cfg = match dev.default_output_config() {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("audio: no output config on {name}: {e}");
-                self.state.set(self.state.get().open_failed());
-                return false;
+            Ok(c) if suitable(&c) => c,
+            _ => {
+                let candidate = dev.supported_output_configs().ok().and_then(|configs| {
+                    configs.filter(|c| c.channels() <= 2 && supported(c.sample_format()))
+                        .filter_map(|c| c.try_with_sample_rate(48000).or_else(|| c.try_with_sample_rate(44100)))
+                        .max_by_key(|c| (c.channels(), c.sample_format() == cpal::SampleFormat::F32))
+                });
+                let Some(c) = candidate else {
+                    log::warn!("audio: no suitable output format on {name}");
+                    self.state.set(previous.open_failed()); self.clear_name(); return false;
+                };
+                c
             }
         };
-        self.format
-            .set(cfg.sample_rate(), cfg.channels().max(1) as usize);
-        let reopen = self.reopen.clone();
-        let lost = self.lost.clone();
-        let mut render = render;
-        let stream = dev.build_output_stream(
-            cfg.config(),
-            move |data: &mut [f32], _| render(data),
-            move |e| {
-                // (a lost device only: a driver's hiccups are not worth a new stream)
-                if e.kind() == cpal::ErrorKind::DeviceNotAvailable {
-                    lost.store(true, Ordering::Relaxed);
-                    reopen.store(true, Ordering::Relaxed);
-                }
-                log::warn!("audio stream error: {e}");
-            },
-            None,
-        );
+        self.format.set(cfg.sample_rate(), cfg.channels() as usize);
+        let render = prepare();
+        let config = cfg.config();
+        let reopen = self.reopen.clone(); let lost = self.lost.clone();
+        use cpal::SampleFormat as S;
+        let stream = match cfg.sample_format() {
+            S::F32 => super::convert::build::<f32, _>(&dev, config, render, reopen, lost),
+            S::F64 => super::convert::build::<f64, _>(&dev, config, render, reopen, lost),
+            S::I8 => super::convert::build::<i8, _>(&dev, config, render, reopen, lost),
+            S::I16 => super::convert::build::<i16, _>(&dev, config, render, reopen, lost),
+            S::I32 => super::convert::build::<i32, _>(&dev, config, render, reopen, lost),
+            S::I64 => super::convert::build::<i64, _>(&dev, config, render, reopen, lost),
+            S::U8 => super::convert::build::<u8, _>(&dev, config, render, reopen, lost),
+            S::U16 => super::convert::build::<u16, _>(&dev, config, render, reopen, lost),
+            S::U32 => super::convert::build::<u32, _>(&dev, config, render, reopen, lost),
+            S::U64 => super::convert::build::<u64, _>(&dev, config, render, reopen, lost),
+            _ => unreachable!("suitable() checked the sample format"),
+        };
         match stream {
-            Ok(s) => {
-                if let Err(e) = s.play() {
-                    log::warn!("audio: cannot start stream: {e}");
+            Ok(stream) => {
+                if let Err(error) = stream.play() {
+                    log::warn!("audio: cannot start stream on {name}: {error}");
+                    self.state.set(previous.open_failed()); self.clear_name(); return false;
                 }
-                log::info!(
-                    "audio: playing on {name} ({} Hz, {} channels)",
-                    cfg.sample_rate(),
-                    cfg.channels()
-                );
-                *self.stream.borrow_mut() = Some(s);
-                *self.name.borrow_mut() = name;
-                self.state.set(self.state.get().opened());
-                true
+                log::info!("audio: playing on {name} ({} Hz, {} channels, {:?})",
+                    cfg.sample_rate(), cfg.channels(), cfg.sample_format());
+                *self.stream.borrow_mut() = Some(stream); *self.name.borrow_mut() = name;
+                self.state.set(DeviceState::Open); true
             }
-            Err(e) => {
-                log::warn!("audio: cannot open stream on {name}: {e}");
-                self.state.set(self.state.get().open_failed());
-                false
+            Err(error) => {
+                log::warn!("audio: cannot open stream on {name}: {error}");
+                self.state.set(previous.open_failed()); self.clear_name(); false
             }
         }
     }
+}
+
+fn supported(format: cpal::SampleFormat) -> bool {
+    use cpal::SampleFormat as S;
+    matches!(format, S::F32 | S::F64 | S::I8 | S::I16 | S::I32 | S::I64 | S::U8 | S::U16 | S::U32 | S::U64)
+}
+fn suitable(config: &cpal::SupportedStreamConfig) -> bool {
+    (1..=8).contains(&config.channels()) && (8000..=192000).contains(&config.sample_rate())
+        && supported(config.sample_format())
 }

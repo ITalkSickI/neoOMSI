@@ -10523,6 +10523,8 @@ impl World {
                         dist
                     );
                     let mut ss = omsi_audio::SoundSet::new(a, &cfg, &sdir);
+                    ss.set_bus(omsi_audio::Bus::Ambience);
+                    ss.set_file_bus(omsi_audio::Bus::Ambience);
                     ss.master = crate::sound_gain(&crate::SOUND_SCENERY);
                     *sounds = Some(ss);
                 }

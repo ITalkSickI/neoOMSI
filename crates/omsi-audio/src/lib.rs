@@ -28,3 +28,5 @@ pub use runtime::event::{ordered, EventSource, SoundEvent};
 pub use runtime::sound::SoundState;
 pub use runtime::soundset::SoundSet;
 pub use voice::{DOPPLER, Listener, VoiceId, VoiceParams};
+
+pub use engine::bus::Bus;

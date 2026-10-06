@@ -55,6 +55,7 @@ pub struct RuntimeSound {
     /// The resolved clip, if the asset is loaded (see [`Asset`]).
     pub(super) clip: Option<Arc<Clip>>,
     pub(super) voice: Option<VoiceId>,
+    pub(super) playback_bus: Option<crate::voice::bus::Bus>,
     /// The conditions held last frame (a `[noloop]` entry without a trigger plays once
     /// when they start to hold).
     pub(super) held: bool,
@@ -73,6 +74,7 @@ pub struct RuntimeSound {
 
 /// Everything one entry's update reads that is the same for every entry of a frame.
 pub(super) struct EntryCtx<'a> {
+    pub bus: crate::voice::bus::Bus,
     pub var: &'a dyn Fn(&str) -> Option<f32>,
     pub at_fire: &'a dyn Fn(&str, &str) -> Option<f32>,
     pub object_to_world: &'a Mat4,
@@ -80,6 +82,7 @@ pub(super) struct EntryCtx<'a> {
     pub triggers: &'a [String],
     pub ai: bool,
     pub exterior: bool,
+    pub inside: f32,
     /// How muffled a foreign bus's sound is by the listener's own bodywork (0..1): the
     /// inside/outside transmission for an `exterior` set, see [`crate::runtime::outside`].
     pub muffled: f32,
@@ -98,6 +101,7 @@ impl RuntimeSound {
             },
             clip: None,
             voice: None,
+            playback_bus: None,
             held: false,
             active_since: None,
             peak: 0.0,
@@ -208,6 +212,7 @@ impl RuntimeSound {
             master: cx.master,
         };
         let mut pre_master = 0.0;
+        let (body_gain, lowpass_hz) = outside::entry_transfer(&self.def, cx.exterior, cx.inside, cx.muffled);
         if let Some((record, script, through)) = split {
             // the inside/outside transmission: the own bus's `Snd_OutsideVol` share (folded
             // into `through`) times the bodywork the listener's own cabin puts between them
@@ -222,8 +227,10 @@ impl RuntimeSound {
             } else {
                 (record, script, through)
             };
-            let transmission = through * outside::outside_gain(cx.muffled, cx.exterior);
-            pre_master = record * script * transmission;
+            // Keep the established admission threshold separate from listening-only
+            // own-cabin transfer, so this adjustment does not change trigger lifetimes.
+            pre_master = record * script * through * outside::outside_gain(cx.muffled, cx.exterior);
+            let transmission = through * body_gain;
             level = Level::Omsi {
                 record,
                 script,
@@ -256,8 +263,12 @@ impl RuntimeSound {
             placement::place(self.def.pos, self.def.range, cx.exterior, cx.object_to_world);
         // the inside/outside timbre: a foreign bus heard from the cabin loses its edge as
         // the bodywork closes (the transmission level is separate, above)
-        let lowpass_hz = outside::lowpass_of(cx.muffled, cx.exterior);
+        let (spatial_blend, pan_width) = placement::cabin_spatial(self.def.pos, cx.exterior, cx.inside);
+        let bus = if fired { self.playback_bus = None; cx.bus }
+            else { self.playback_bus.unwrap_or(cx.bus) };
         let params = |looping: bool| MixParams {
+            spatial_blend,
+            bus,
             level,
             pitch: pitch.max(0.001),
             looping,
@@ -266,7 +277,7 @@ impl RuntimeSound {
             range: reach,
             lowpass_hz,
             important: self.def.important,
-            pan,
+            pan: pan * pan_width,
         };
         if !triggered && !self.def.no_loop {
             let params = params(true);

@@ -168,7 +168,7 @@ fn play(agent: &ureq::Agent, buf: &StreamBuf, url: &str) -> anyhow::Result<()> {
         if buf.is_closed() {
             return Ok(());
         }
-        while buf.buffered() > AHEAD && !buf.is_closed() {
+        while (buf.buffered() > AHEAD || buf.free_frames() < 8192) && !buf.is_closed() {
             std::thread::sleep(Duration::from_millis(100));
         }
         let packet = match format.next_packet() {

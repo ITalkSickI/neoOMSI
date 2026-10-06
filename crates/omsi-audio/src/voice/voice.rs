@@ -2,8 +2,8 @@
 //! per-block mixing of one voice into the output buffer. The reverb, limiter and cabin blend
 //! that surround this are the mixer's job (see [`crate::engine::mixer`]).
 
-use crate::assets::{stream::StreamBuf, Clip};
-use crate::dsp::{filter::LowPass, resample};
+use crate::assets::{stream::{StreamBuf, StreamReader}, Clip};
+use crate::dsp::{envelope::{self, Envelope}, filter::LowPass, resample};
 use crate::spatial::{self, Spatializer};
 use crate::voice::params::{Level, Listener, MixParams, VoiceId, DOPPLER};
 #[cfg(test)]
@@ -18,9 +18,17 @@ pub struct Voice {
     pub(crate) stream: Option<Arc<StreamBuf>>,
     params: MixParams,
     pos: f64,
+    kernel: Arc<resample::Kernel>,
+    seam: resample::Seam,
+    reader: Option<StreamReader>,
+    stream_last: [f32; 2],
+    envelope: Envelope,
+    cur_step: f64,
     finished: bool,
     /// Smoothed gain to avoid clicks.
     cur_gain: f32,
+    cur_pan: [f32; 2],
+    pan_ready: bool,
     /// One-pole low-pass filter state.
     lp: LowPass,
     /// The Doppler shift: the distance to the listener when the position last came, when,
@@ -29,38 +37,31 @@ pub struct Voice {
 }
 
 impl Voice {
-    /// A voice playing `clip`.
+    /// Direct construction is intended for tools; the mixer supplies its prebuilt kernel.
     pub fn clip_voice(id: VoiceId, clip: Arc<Clip>, params: MixParams) -> Voice {
-        Voice {
-            id,
-            clip,
-            stream: None,
-            params,
-            pos: 0.0,
-            finished: false,
-            cur_gain: 0.0,
-            lp: LowPass::default(),
-            doppler: (0.0, None, 1.0),
-        }
+        Self::clip_with_kernel(id, clip, params, Arc::new(resample::Kernel::default()))
     }
 
-    /// A voice playing what `stream` is fed with; the voice ends when the stream is closed.
+    pub(crate) fn clip_with_kernel(id: VoiceId, clip: Arc<Clip>, params: MixParams,
+        kernel: Arc<resample::Kernel>) -> Voice {
+        let seam = resample::Seam::new(&clip);
+        Voice { id, clip, seam, stream: None, params, pos: 0.0, kernel, reader: None, stream_last: [0.0; 2],
+            envelope: Envelope::default(), cur_step: 0.0, finished: false,
+            cur_gain: 0.0, cur_pan: [1.0; 2], pan_ready: false, lp: LowPass::default(), doppler: (0.0, None, 1.0) }
+    }
+
     pub fn stream_voice(id: VoiceId, stream: Arc<StreamBuf>, params: MixParams) -> Voice {
-        Voice {
-            id,
-            clip: Arc::new(Clip {
-                sample_rate: 44100,
-                channels: 2,
-                samples: Vec::new(),
-            }),
-            stream: Some(stream),
-            params,
-            pos: 0.0,
-            finished: false,
-            cur_gain: 0.0,
-            lp: LowPass::default(),
-            doppler: (0.0, None, 1.0),
-        }
+        Self::stream_with_kernel(id, stream, params, Arc::new(resample::Kernel::default()))
+    }
+
+    pub(crate) fn stream_with_kernel(id: VoiceId, stream: Arc<StreamBuf>, params: MixParams,
+        kernel: Arc<resample::Kernel>) -> Voice {
+        let reader = stream.reader();
+        let mut voice = Self::clip_with_kernel(id, stream.empty_clip.clone(), params, kernel);
+        voice.finished = reader.is_none();
+        voice.reader = reader;
+        voice.stream = Some(stream);
+        voice
     }
 
     pub fn id(&self) -> VoiceId {
@@ -87,6 +88,12 @@ impl Voice {
         self.finished = true;
     }
 
+    pub fn stop(&mut self) {
+
+        self.envelope.stop();
+
+    }
+
     /// A voice whose smoothed gain already sits at `params.gain` (tests that expect the
     /// block to carry a steady level from the first frame).
     #[cfg(test)]
@@ -94,6 +101,7 @@ impl Voice {
         let mix = MixParams::from(params);
         let mut v = Voice::clip_voice(id, clip, mix);
         v.cur_gain = mix.level.gain();
+        v.envelope.steady();
         v
     }
 
@@ -136,146 +144,106 @@ impl Voice {
             .position
             .map(|p| spatial::distance_gain(self.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
-        self.params.level.gain() * spatial
+        self.params.level.gain() * (1.0 + (spatial - 1.0) * self.params.spatial_blend.clamp(0.0, 1.0))
     }
 
     /// Move the voice on by `frames` output frames without mixing it (looping or ending as
     /// it would have).
     pub fn skip(&mut self, frames: usize, dev_rate: f64) {
         let nframes = self.clip.frames();
-        if nframes == 0 {
-            self.finished = true;
-            return;
+        if nframes == 0 { self.finished = true; return; }
+        let target = resample::step(self.params.pitch, self.doppler.2, self.clip.sample_rate, dev_rate);
+        if self.cur_step == 0.0 { self.cur_step = target; }
+        let k = envelope::coefficient(dev_rate as u32, 0.015) as f64;
+        for _ in 0..frames {
+            self.cur_step += (target - self.cur_step) * k;
+            self.pos += self.cur_step;
+            self.envelope.next(dev_rate as u32);
         }
-        let step = resample::step(
-            self.params.pitch,
-            self.doppler.2,
-            self.clip.sample_rate,
-            dev_rate,
-        );
-        self.pos += step * frames as f64;
         self.cur_gain = 0.0;
+        self.pan_ready = false;
         if self.pos >= nframes as f64 {
-            if self.params.looping {
-                self.pos %= nframes as f64;
-            } else {
-                self.finished = true;
-            }
+            if self.params.looping { self.pos %= nframes as f64; }
+            else { self.finished = true; }
         }
+        self.finished |= self.envelope.ended();
     }
 
-    /// Mix this voice into the interleaved output, `ch` channels at `rate`. Returns whether
-    /// this block was a stream underrun (the decoder held the buffer); the mixer counts those.
-    pub fn render_into(
-        &mut self,
-        out: &mut [f32],
-        ch: usize,
-        rate: u32,
-        listener: &Listener,
-        spatializer: &dyn Spatializer,
-    ) -> bool {
-        let dev_rate = rate as f64;
+    /// Stereo is mixed into front L/R; mono is the average of both panned channels.
+    /// Additional output channels remain silent (no guessed speaker ordering or LFE).
+    /// Returns true when any stream frame underruns; position is held during buffering.
+    pub fn render_into(&mut self, out: &mut [f32], ch: usize, rate: u32,
+        listener: &Listener, spatializer: &dyn Spatializer) -> bool {
         let frames = out.len() / ch;
-        let placed = spatializer.place(
-            self.params.position,
-            self.params.range,
-            self.params.pan,
-            listener.position,
-            listener.right,
-        );
-        // Documented legacy order: the level (record × script × transmission × set master,
-        // already clamped to 0 dB) is multiplied by the listener's global volume and only
-        // then *once* by the distance gain. A raw application gain takes the same path but
-        // is not clamped (the output limiter handles it). Frequency and pan are separate.
+        let placed = spatializer.place(self.params.position, self.params.range, self.params.pan,
+            listener.position, listener.right);
+        let distance = 1.0 + (placed.gain - 1.0) * self.params.spatial_blend.clamp(0.0, 1.0);
+        if !self.pan_ready {
+            self.cur_pan = [placed.left, placed.right];
+            self.pan_ready = true;
+        }
+        let pan_k = envelope::coefficient(rate, 0.025);
+        // Clamp the complete OMSI product once, then distance, bus gain, pan, filtering.
         let level = match self.params.level {
             Level::Raw(g) => g * listener.master,
             Level::Omsi { .. } => (self.params.level.product() * listener.master).clamp(0.0, 1.0),
         };
-        let target_gain = (level * placed.gain).max(0.0);
-        self.lp
-            .set_target(self.params.lowpass_hz, frames, rate as f32);
-        let lp_on = self.lp.is_on();
-        let lp_alpha = if lp_on {
-            self.lp.alpha(rate as f32)
-        } else {
-            1.0
-        };
-        if let Some(sb) = self.stream.clone() {
-            // The decoder lock is only tried, never waited on: a busy lock means one silent
-            // block for this voice, reported so the mixer can count it.
-            let Some(mut buf) = sb.try_lock() else {
-                return true;
-            };
-            if buf.closed {
-                self.finished = true;
-                return false;
-            }
-            let step = buf.rate as f64 / dev_rate;
-            for f in 0..frames {
-                self.cur_gain += (target_gain - self.cur_gain) * 0.0025;
-                // silence while the buffer fills (at the start, after a stall)
-                let Some((a, b)) = buf.pair() else { break };
-                let t = self.pos as f32;
-                let (l, r) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
-                let (l, r) = self.lp.process(l, r, lp_alpha);
-                let g = self.cur_gain;
-                out[f * ch] += l * g * placed.left;
-                if ch > 1 {
-                    out[f * ch + 1] += r * g * placed.right;
-                }
-                self.pos += step;
-                while self.pos >= 1.0 {
-                    self.pos -= 1.0;
-                    buf.advance();
-                }
-            }
-            return false;
-        }
-        let cch = self.clip.channels as usize;
+        let target_gain = if level.is_finite() { (level * distance).max(0.0) } else { 0.0 };
+        let gain_k = envelope::coefficient(rate, 0.005);
+        let pitch_k = envelope::coefficient(rate, 0.015) as f64;
+        self.lp.set_target(self.params.lowpass_hz, frames, rate as f32);
+        let target_step = resample::step(self.params.pitch, self.doppler.2, self.clip.sample_rate, rate as f64);
+        if self.cur_step == 0.0 { self.cur_step = target_step; }
         let nframes = self.clip.frames();
-        if nframes == 0 {
-            self.finished = true;
-            return false;
-        }
-        let step = resample::step(
-            self.params.pitch,
-            self.doppler.2,
-            self.clip.sample_rate,
-            dev_rate,
-        );
+        let mut stalled = false;
         for f in 0..frames {
-            // smooth gain over ~5 ms
-            self.cur_gain += (target_gain - self.cur_gain) * 0.005;
-            let mut i0 = self.pos as usize;
-            if i0 >= nframes {
-                if !self.params.looping {
-                    self.finished = true;
-                    break;
+            self.cur_gain += (target_gain - self.cur_gain) * gain_k;
+            self.cur_pan[0] += (placed.left - self.cur_pan[0]) * pan_k;
+            self.cur_pan[1] += (placed.right - self.cur_pan[1]) * pan_k;
+            self.cur_step += (target_step - self.cur_step) * pitch_k;
+            let fade = self.envelope.next(rate);
+            if self.envelope.ended() { self.finished = true; break; }
+            let (l, r, tail) = if let Some(reader) = self.reader.as_mut() {
+                if self.stream.as_ref().is_some_and(|s| s.is_closed()) {
+                    // close() also cancels the decoder immediately; fade the last decoded
+                    // frame for 3 ms rather than abruptly dropping a radio at full level.
+                    self.envelope.stop();
+                    (self.stream_last[0], self.stream_last[1], 1.0)
+                } else {
+                    let Some((l, r)) = reader.next(rate) else {
+                        stalled = true; self.cur_gain = 0.0; continue;
+                    };
+                    self.stream_last = [l, r];
+                    (l, r, 1.0)
                 }
-                // wrap and mix this output frame from the loop's start (skipping it left
-                // a silent frame at every turn of the loop: a click on every engine loop)
-                self.pos %= nframes as f64;
-                i0 = (self.pos as usize).min(nframes - 1);
-            }
-            let i1 = if i0 + 1 < nframes {
-                i0 + 1
-            } else if self.params.looping {
-                0
             } else {
-                i0
+                if nframes == 0 || self.clip.channels == 0 { self.finished = true; break; }
+                if self.pos >= nframes as f64 {
+                    if !self.params.looping { self.finished = true; break; }
+                    self.pos %= nframes as f64;
+                }
+                let (l, r) = self.kernel.frame_with_seam(&self.clip, self.pos, self.cur_step, self.params.looping, self.seam);
+                // Fade a natural one-shot tail in output time; looping clips retain phase.
+                let tail = if self.params.looping { 1.0 } else {
+                    ((nframes as f64 - self.pos - self.cur_step).max(0.0)
+                        / (self.cur_step * rate as f64 * 0.003)).min(1.0) as f32
+                };
+                self.pos += self.cur_step;
+                (l, r, tail)
             };
-            let t = (self.pos - i0 as f64) as f32;
-            let (l, r) = resample::frame(&self.clip, i0, i1, t, cch);
-            let (l, r) = self.lp.process(l, r, lp_alpha);
-            let g = self.cur_gain;
-            out[f * ch] += l * g * placed.left;
-            if ch > 1 {
-                out[f * ch + 1] += r * g * placed.right;
-            }
-            self.pos += step;
+            let (l, r) = self.lp.process(l, r, 0.0);
+            let gain = self.cur_gain * fade * tail;
+            let (l, r) = (l * gain * self.cur_pan[0], r * gain * self.cur_pan[1]);
+            if ch == 1 { out[f] += (l + r) * 0.5; }
+            else { out[f * ch] += l; out[f * ch + 1] += r; }
         }
-        false
+        // Retire at the exact end even if it coincides with a callback boundary.
+        if self.reader.is_none() && !self.params.looping && self.pos >= nframes as f64 {
+            self.finished = true;
+        }
+        stalled
     }
+
 }
 
 /// Read the outward `DOPPLER` switch once, for passing to [`Voice::apply_params`].
@@ -313,3 +281,7 @@ mod tests {
         assert!(passing.doppler.2 < 1.0);
     }
 }
+
+#[cfg(test)]
+#[path = "quality_tests.rs"]
+mod quality_tests;

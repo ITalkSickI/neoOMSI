@@ -1,6 +1,6 @@
 # Sound-Engine-Rework mit anschließender Steam-Audio-Integration
 
-**Status:** Planungsgrundlage  
+**Status:** Phase 1, Schritte 1–5 implementiert; Schritt 6 für lokale Tests vorbereitet (Abnahme offen)
 **Reihenfolge:** zuerst Sound-Engine-Rework, danach Steam Audio  
 **Leitentscheidung:** Die OMSI-Runtime und der Rust-Mixer bleiben die Sound Engine. CPAL übernimmt weiterhin die Geräteausgabe. Steam Audio ergänzt später die räumliche Verarbeitung und ersetzt weder SoundCfg-Auswertung noch Wiedergabeverwaltung oder Mixer.
 
@@ -110,6 +110,8 @@ OMSI-SoundPack-Zulassung und technische Rendererlimits bleiben zwei getrennte En
 **Abnahme:** Ein Wechsel des Renderers verändert keine Bedingungen, Sound-Auswahl oder Trigger-Lebensdauer. Budgetgrenzen haben dokumentierte Folgen und lassen sich mit vielen Fahrzeugen reproduzieren.
 
 ### 6. Allgemeine Klangqualität, Geräteausgabe und alle Aufrufer abschließen
+
+**Umsetzung 2026-10-06:** DSP, Geräteformate/Wiederverbindung, begrenzter Radio-Ring, WAV-Validierung und Busse sind implementiert. Audio-/Sim-Checks und alle 81 Audio-Tests bestehen; ein optimierter dev-release-Testbuild und synthetische Lastmessungen sind erstellt. Gesamt-/Produktions-Release-Prüfungen sowie repräsentative Hör-/Gerätevergleiche bleiben offen. Testablauf und Phasentor: [Stage-6-Testübergabe](audio/STAGE6_TESTING.md). Die offenen OMSI-Laufzeitfragen bleiben offen.
 
 Erst wenn Runtime und Legacy-Parameter stehen, werden die allgemeinen Qualitäts- und Robustheitsverbesserungen eingebaut:
 

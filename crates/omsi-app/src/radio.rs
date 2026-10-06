@@ -231,12 +231,13 @@ impl Radio {
                 let (name, url) = &self.stations[station];
                 log::info!("radio: station {} {name} ({url})", station + 1);
                 let buf = omsi_audio::radio::open(url);
-                let voice = audio.play_stream(
+                let voice = audio.play_stream_on_bus(
                     buf.clone(),
                     VoiceParams {
                         gain: 0.0,
                         ..Default::default()
                     },
+                    omsi_audio::Bus::Radio,
                 );
                 self.playing = Some(Playing {
                     station,

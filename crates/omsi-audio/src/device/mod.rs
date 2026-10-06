@@ -8,3 +8,5 @@ pub mod watcher;
 pub use output::DeviceOutput;
 pub use state::{DeviceState, OutputFormat};
 pub use watcher::watch_default_device;
+
+pub mod convert;

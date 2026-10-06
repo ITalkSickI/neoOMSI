@@ -43,6 +43,15 @@ pub(crate) fn place(
     }
 }
 
+/// Own non-3D recordings fill the cabin, rather than becoming point sources at the
+/// vehicle origin. Explicit 3D cabin sources retain direction, with reduced stereo width.
+/// Outside/foreign sources keep full positioning; the blend avoids a view-toggle jump.
+pub(crate) fn cabin_spatial(pos: Option<[f32; 3]>, exterior: bool, inside: f32) -> (f32, f32) {
+    let inside = if exterior { 0.0 } else { inside.clamp(0.0, 1.0) };
+    if pos.is_none() { (1.0 - inside, 1.0 - inside) }
+    else { (1.0, 1.0 - 0.65 * inside) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

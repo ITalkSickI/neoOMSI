@@ -155,14 +155,16 @@ impl Ambience {
                 if engine.is_playing(id) {
                     engine.set_params(id, params);
                 } else {
-                    self.rain_voice = Some(engine.play(clip, params));
+                    self.rain_voice = Some(engine.play_on_bus(clip, params, omsi_audio::Bus::Ambience));
                 }
             }
             (Some(id), false) => {
                 engine.stop(id);
                 self.rain_voice = None;
             }
-            (None, true) => self.rain_voice = Some(engine.play(clip, params)),
+            (None, true) => {
+                self.rain_voice = Some(engine.play_on_bus(clip, params, omsi_audio::Bus::Ambience))
+            }
             (None, false) => {}
         }
         self.last = format!("rain {gain:.2}");
@@ -235,7 +237,7 @@ impl Ambience {
                 important: false,
                 pan: 1.0,
             };
-            engine.play(clip, params);
+            engine.play_on_bus(clip, params, omsi_audio::Bus::Passenger);
             played += 1;
         }
         if played > 0 {

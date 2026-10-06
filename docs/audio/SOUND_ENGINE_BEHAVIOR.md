@@ -37,7 +37,7 @@ The behavior is exercised without an audio device by
 | `[noloop]` without trigger | one-shot entry | plays once, when its conditions **start** to hold | CONFIRMED | `SoundSet::update_fired`: `rising` starts a non-looping voice |
 | `[trigger]` entry | trigger fires | plays once from the start; **conditions are not evaluated**; a triggered `[loopsound]` is not looped | CONFIRMED | `volume` skips conditions when `triggers` is non-empty; TSound update |
 | `(T.F.trigger)` file trigger | script file trigger | the entry listening for `trigger` plays the named file | CONFIRMED | `SoundSet::play_file_trigger`; `omsi-sim` `fired_file_triggers` |
-| trigger volume read at fire | `[volcurve]` on a variable the script changes after firing | volume is read at the moment the trigger fires, not at frame end | CONFIRMED | `SoundSet::update_fired` `at_fire`; fixture `trigger.cfg`; `runtime::conditions` test |
+| trigger volume read at fire | `[volcurve]` on a variable the script changes after firing | volume is read at the moment the trigger fires, not at frame end; file triggers also use their own snapshot and initialize peak hold | CONFIRMED (implementation) | `SoundSet::update_events`; `runtime::files`; fixtures `trigger.cfg`; `quality_runtime.rs` (included in the 81 passing audio tests) |
 | triggered peak hold | triggered entry whose curve falls while it plays | volume never drops below its value since the trigger fired | CONFIRMED | `runtime::conditions::peak_hold`; TSound +0x2c / 0x7507bc |
 
 ## 2. Conditions, curves and variables
@@ -108,7 +108,7 @@ The behavior is exercised without an audio device by
 | pause | game paused | master is 0; the mixer keeps running; time base unchanged | PARTIAL | `redraw/player.rs` sets `master = 0` when paused; `Instant` is not replaced by simulation time |
 | player vehicle | own bus | 3D sounds pan and fade, but frame timing must not create Doppler pitch shifts | CONFIRMED | `SoundSet.listener_vehicle`, `doppler = !listener_vehicle` |
 | AI / other players | exterior sound set | non-3D entries are placed at the vehicle and fade with distance | CONFIRMED | `SoundSet::new_exterior`, `placement::place` |
-| trailers / coupled sets | coupled parts | each part's set updates with the leading vehicle's variables and triggers, at the part's transform | CONFIRMED | `SoundSet::update_parts`, `add_part` |
+| trailers / coupled sets | coupled parts | each part's set updates with the leading vehicle's variables and complete event stream (normal/file triggers and fire-time snapshots), at the part's transform | CONFIRMED | `SoundSet::update_parts`, `add_part` |
 
 ## 9. Legacy parameter split and renderer order
 
@@ -118,9 +118,9 @@ parts separately and only then calls `SetVolume` (hundredths of dB, clamped to 0
 `SetPan` and `SetFrequency`; distance is a separate 3D min-distance.
 
 ```text
-buffer = clamp01(record × script × transmission × set_master)   // OMSI buffer volume, 0 dB max
-final  = clamp01(buffer × listener_master)                      // global volume / pause
-sample = sample × final × distance_gain × pan × low-pass        // distance, direction, frequency separate
+final  = clamp01(record × script × transmission × set_master × listener_master)
+voice  = sample × final × distance_gain × pan → low-pass
+output = limiter(headroom × sum(bus_gain × bus_samples) → reverb)
 ```
 
 - `record` is the `[sound]`/`[loopsound]` recording level, `script` the product of the
@@ -134,9 +134,9 @@ sample = sample × final × distance_gain × pan × low-pass        // distance,
 - Distance and inside/outside apply exactly once: distance in `spatial`, the own-bus
   `Snd_OutsideVol` share in `conditions::split`, the bodywork/`Snd_OutsideVol` of a foreign
   set in `outside::{outside_gain, lowpass_of}`. The paths are disjoint by `exterior`.
-- Pan reproduces DirectSound's `SetPan`: one channel is damped relative to the other
-  (`spatial::pan_gains`), not both spread. The exact OMSI scale stays OPEN until a live
-  comparison (see below).
+- Pan uses near/far channel damping. Stage 6.1 bounds the listening preset to 12 dB
+  and narrows own-cabin sources after feedback about muted ears. The exact OMSI scale
+  stays OPEN; these listening adjustments are not new OMSI comparison evidence.
 - Frequency is `pitch_of` (loop rate, silent below 100 Hz), unchanged.
 
 ## Open items to resolve with live OMSI
@@ -173,3 +173,145 @@ questions above by themselves. Each subsystem feeds one source-tagged stream
 (`omsi-app::sound_events::events_from`), and an entry's accepted start now survives an
 asynchronous asset load (`RuntimeSound::{Asset, resolve_asset, pending}`). The rule
 *outcomes* stay as they were until the comparisons above settle them.
+
+## 10. Stage 6 rendering and output decisions
+
+These are neoOMSI quality/robustness decisions, not newly established OMSI rules.
+The implementation and all test targets compile; all 81 audio tests now execute and pass
+after the approved Windows SDK installation. Hearing/device QA is still pending. See `STAGE6_TESTING.md` for the handover.
+All nine live-OMSI questions above remain OPEN/PARTIAL; no comparison was available here.
+
+- **Resampling:** deterministic 32-tap Blackman-windowed sinc, 256 fractional phases,
+  25 quarter-octave cutoff bands; choose the next narrower band at each smoothed step.
+  Cutoff is 0.94 of source Nyquist at unity rate and reduced for decimation. Ratios are
+  bounded to 0.0001..64. Tables (~0.78 MiB/engine) and loop endpoint data are prepared
+  outside the callback. Finite kernels have limited stopband quality at extreme ratios;
+  the alias fixture establishes attenuation at 2:1, not ideal brick-wall filtering.
+  Radio retains fixed-rate linear stereo interpolation, with f32 decoded precision.
+- **Transitions:** gain uses a 5 ms exponential time constant, pitch 15 ms, filter
+  coefficient 120 ms (per sample), bus gain 20 ms. These are independent of callback
+  partition and device rate. Start/stop fades are finite 3 ms ramps; one-shots fade their
+  last 3 ms in output time. Logical `stop` is immediate to gameplay, but rendering retains
+  its brief tail. Radio close cancels decoding and fades the last decoded frame.
+- **Loops:** taps wrap without silent frames, including very short and fractional-pitch
+  loops. A seam exceeding twice the adjacent sample slope and 2% of full scale is
+  corrected over the last 1 ms (at most a quarter-loop); no samples are inserted/skipped.
+  This does not settle the OPEN random start offset question.
+- **Device formats/layout:** typed CPAL paths for f32/f64 and signed/unsigned 8/16/32/64
+  integer output. Unsupported defaults try an advertised mono/stereo 48/44.1 kHz format;
+  otherwise fail explicitly and retry. Hardware rates 8..192 kHz, 1..8 channels. Internal
+  processing is stereo; mono receives `(L+R)/2`. Multichannel devices receive front L/R,
+  with remaining channels silent, including LFE. There is no inferred surround/HRTF
+  placement. Conversion sanitizes nonfinite samples and clamps to the device range.
+- **Hardware lifecycle:** `enabled` means logical playback can run, even at startup without
+  hardware. `device_state()` distinguishes deliberate offline mode (`None`) from
+  `NoDevice/Opening/Open/Lost/Reopening`. The watcher also starts without a device;
+  `follow_device` retries failures at most once/second, even if the default name is
+  unchanged. Stream build **and play** must succeed before reporting Open. On switching,
+  stop the old callback, drain retirements, clear stale commands and rebuild the core
+  after selecting its format. Replay surviving voices once, ordered by id, restoring
+  listener/bus controls. Loops restart at zero; radio retains its bounded buffer. One-shots
+  started during an outage are discarded; those interrupted by loss are also discarded.
+  Ordinary default-device switching restarts still-active one-shots. Lost loops retain
+  their latest parameters and can be stopped before reconnection.
+- **Radio ring:** 524288 stereo frame slots (8 MiB at the Windows slot layout), with
+  per-frame sample rate and release/acquire indices. Producer writers serialize only
+  among themselves; the audio thread owns one exclusive reader and never takes their
+  lock or the status-string lock. Full buffers drop newest frames, counted by
+  `dropped_frames()`. The decoder throttles at 8 seconds ahead or fewer than 8192 free
+  slots. Initial prebuffer remains 1.5 seconds, increasing by 1 second/stall up to 6;
+  for high-rate input it is capped at 75% of ring capacity so it can always refill.
+  Underrun is silence, playback position held, followed by rebuffering. The engine
+  counts 256-frame render fragments with missing input. Format changes are marked per
+  frame, preventing samples of different rates from being interpolated together.
+- **WAV:** RIFF/chunk bounds, odd padding, required/duplicate chunks, byte rate, block
+  alignment, complete sample frames, channel count, sample rate and extensible GUID,
+  valid bits/channel mask are validated. Sources are mono/stereo PCM 8/16/24/32 and
+  IEEE float32, including their extensible forms. Nonfinite floats are rejected.
+  Preserve public `Clip { samples: Vec<i16>, ... }` and fleet/cache memory. Higher-bit
+  input rounds once through f64 instead of discarding low bits; the renderer and radio
+  keep f32 processing. A blanket f32 cache doubles existing PCM16 memory with no new
+  information and was deliberately avoided.
+- **Buses/headroom:** Vehicle 1.0, Ambience 0.8, Passenger 1.0, Announcement 1.0,
+  Radio 0.7, Interface 1.0; configurable with `set_bus_gain` (linear 0..2).
+  Defaults reserve 6 dB (`0.5`) before the master. The stereo-linked limiter attacks
+  immediately at 0.9, releases over 500 ms, and keeps channel ratios linked. Empty
+  buffers are valid. These mix gains follow the single legacy clamp and never change
+  runtime admission. Existing `VoiceParams` literals/API stay valid; raw parameter
+  updates retain the selected bus. File-trigger bus selection survives later runtime
+  updates (announcements by default, explicitly selectable); HTML playback uses Interface.
+- **Real-time bounds:** 200 mixed clip voices; 512 total voice slots including streams,
+  virtualized voices and fades. At capacity, starts are counted/rejected on the game side
+  or returned through the bounded reaper. Reaper backpressure retains rejected assets
+  and defers additional commands, without callback allocation or late playback. Complete
+  finished voices move to the reaper: final clip/ring/reader frees happen on the game
+  thread, including after stop/unload. Command drain/rejection/ranking/bus buffers and
+  reverb delay lines are prepared before rendering; ranking uses an unstable in-place
+  sort with an explicit index tie-break. No new unsafe, dependencies or mutable globals.
+
+### Producer audit
+
+| Producer | Routing / Stage 6 finding |
+|---|---|
+| Player / AI / LAN vehicles | Vehicle; existing ordered events and legacy split retained |
+| Trailer / coupled parts | Vehicle; now receive file events and fire-time snapshots through `update_parts_events` |
+| Scenery / lamps | Ambience for regular and file-trigger sounds; existing unloading still calls `stop_all` |
+| Weather / wet-road sounds | Rain -> Ambience; vehicle-authored wet-road entries remain Vehicle |
+| Footsteps / passenger dialogue | Passenger; raw `VoiceParams` shape preserved |
+| Script file announcements | Announcement; snapshot/peak and bus persist on subsequent frames |
+| Internet radio | Radio; bounded ring; raw updates retain routing; close has a short fade |
+| HTML `omsi.playSound` | Interface through `play_file_direct` |
+| Ticket stamper | Player/traffic stamps migrated to `FiredSound::Trigger` in `redraw/world.rs` |
+| Offscreen / simulation audio tools | Same façade and player path; second engine has independent bus/device state |
+
+### Phase gate
+
+Stage 6 is ready for local testing: all 81 audio tests pass, the optimized dev-release
+application builds and starts at its CLI, offline rendering succeeds and synthetic mixer
+CPU/process-memory measurements are recorded in `STAGE6_TESTING.md`. SDK import libraries
+are now available after explicit approval to install the Microsoft Build Tools/SDK.
+Phase 1 is **not yet accepted**: complete workspace/all-target checking, the production
+release profile, physical device switching, representative map/fleet hearing and performance,
+and the live OMSI decisions remain pending. The 500-source synthetic probe has an isolated
+8.48 ms peak against a 5.33 ms block deadline despite a 3.06 ms mean. Phase 2 / Steam Audio
+has not been started. No synthetic measurement is presented as a live map or OMSI comparison.
+
+## 11. Stage 6.1 listening corrections (2026-10-06)
+
+User hearing report: C2 EN 6/BVG and general playback had nearly muted ears, a brief loud
+entry before muffling, weak door-closing attenuation, and noisy/faint high-pitched tails
+on controls. The following are neoOMSI quality choices, not newly CONFIRMED OMSI rules:
+
+- **Panning:** retain near/far damping, but cap full broadband far-ear attenuation at
+  12 dB (amplitude >= 0.251). Quarter-side is now 3 dB rather than 25 dB. Normalize the
+  listener basis; interpolate channel gains with a 25 ms sample-time constant. Initialize
+  a new/resumed voice to its actual direction so it does not start centred then jump.
+- **Own cabin:** non-3D recordings smoothly become centred/local in the cabin. Explicit
+  3D recordings retain their distance curve but use 35% stereo width there. A declared
+  inside view overrides stale spawn-camera geometry. The geometry blend still applies
+  when approaching/leaving a hull from an outside view. Distance blending is transported
+  privately in MixParams and is also reflected in ranking/read-back; VoiceParams is stable.
+- **Door/body transfer:** own outside-only recordings use the existing 0.25..1.0 transfer
+  with Snd_OutsideVol and 450..7200 Hz low-pass shaping. Unknown opening defaults to shut
+  for this own-body path. Own inside-only recordings retain full level in the cab and
+  become quieter/duller outside (quarter level, 1200 Hz). Both-side/untagged recordings
+  remain unchanged. An explicit Snd_OutsideVol curve keeps its authored gain, avoiding
+  double attenuation. Transfer follows peak handling; established admission thresholds,
+  event ordering and logical viewpoint gating remain unchanged/OPEN.
+- **Initial state:** a newly loaded set starts at its current inside/muffled state;
+  only subsequent changes use the existing blend. Startup queues the user's volume
+  before any vehicle starts playing. These address the transient full-level entry.
+- **Resampling:** interpolate the two neighbouring fractional-phase coefficient rows
+  instead of rounding phase. This removes the sample-position staircase that can create
+  periodic high-frequency modulation. FIR size, cutoff bands and offline determinism
+  are retained. The listening report's exact squeak source still requires the user's test.
+- **Hall:** a cabin/bodywork hint no longer forces a 22% wet mix and invented room time
+  onto every button and loop. Explicit listener/world/trigger-box reverb remains supported.
+  A short control fixture verifies zero unrequested tail after its one-shot ends.
+
+All 90 audio tests pass (75 unit, 8 offline, 5 quality, 2 runtime). Door transfer, initial
+state, centred cabin playback, bounded/smoothed pan, fractional phase and transient tail
+have direct regressions. Legacy global-dependent door fixtures now use explicit inputs
+instead of racing each other's OUTSIDE_OPEN changes; no new globals/locks were added.
+The optimized 0.2.0-audio-stage6.1 EXE is handed to the user for confirmation of these
+subjective fixes. Physical C2 hearing and the open reference comparisons remain pending.

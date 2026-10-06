@@ -13,7 +13,8 @@ impl Reverb {
     const COMBS: [f32; 4] = [0.0297, 0.0371, 0.0411, 0.0437];
     const ALLPASS: [f32; 2] = [0.005, 0.0017];
 
-    pub fn process(&mut self, out: &mut [f32], ch: usize, rate: u32, rt60: f32, mix: f32) {
+    /// Called outside the callback, after the device format has been selected.
+    pub fn prepare(&mut self, ch: usize, rate: u32) {
         if self.rate != rate || self.lines.len() != ch {
             self.rate = rate;
             self.lines = (0..ch)
@@ -39,15 +40,16 @@ impl Reverb {
                 })
                 .collect();
         }
+    }
+
+    pub fn process(&mut self, out: &mut [f32], ch: usize, rate: u32, rt60: f32, mix: f32) {
+        if self.rate != rate || self.lines.len() != ch { self.prepare(ch, rate); }
         let frames = out.len() / ch;
         for c in 0..ch {
             let combs = &mut self.lines[c];
             let aps = &mut self.allpass[c];
             // feedback so that a comb decays by 60 dB in rt60 seconds
-            let gains: Vec<f32> = Self::COMBS
-                .iter()
-                .map(|d| 10f32.powf(-3.0 * d / rt60))
-                .collect();
+            let gains = Self::COMBS.map(|d| 10f32.powf(-3.0 * d / rt60));
             for f in 0..frames {
                 let x = out[f * ch + c];
                 let mut y = 0.0;

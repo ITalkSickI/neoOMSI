@@ -7134,16 +7134,12 @@ impl Traffic {
                     &fired_vars,
                 );
                 ss.update_events(audio, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
-                let fired_normal: Vec<String> = events
-                    .iter()
-                    .filter(|e| !e.is_file())
-                    .map(|e| e.trigger.clone())
-                    .collect();
-                ss.update_parts(
+                ss.update_parts_events(
                     audio,
                     &|n| v.var(n),
                     &|i| v.trailers.get(i).map(|t| t.world_transform()),
-                    &fired_normal,
+                    &events,
+                    &|n| v.var_slot(n),
                 );
             }
         }

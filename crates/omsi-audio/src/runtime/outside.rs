@@ -50,10 +50,10 @@ pub(super) fn merge_lowpass(a: f32, b: f32) -> f32 {
 /// and leaves the rest to the scripts' volume curves (`Snd_OutsideVol` and the like). We
 /// muffled every entry of it not tagged as a cabin sound alone - a blinker relay tagged
 /// for inside and out was cut to a quarter below 450 Hz, heard only with a door open.
-pub(super) fn lowpass_of(muffled: f32, exterior: bool) -> f32 {
+pub(super) fn lowpass_of(muffled: f32, exterior: bool, opening: Option<f32>) -> f32 {
     if muffled > 0.0 && exterior {
         // doors or the driver's window open let the outside in unfiltered
-        let shut = match outside_open() {
+        let shut = match opening {
             Some(o) => 450.0 * (1.0 + 30.0 * o.clamp(0.0, 0.5)),
             None => 450.0,
         };
@@ -68,13 +68,49 @@ pub(super) fn lowpass_of(muffled: f32, exterior: bool) -> f32 {
 /// open: "when doors are open, you can hear outside sounds louder"); a shut bus keeps a
 /// quarter, an open one all of it. Without the variable the level stays as it was.
 pub(super) fn outside_gain(muffled: f32, exterior: bool) -> f32 {
+    outside_gain_at(muffled, exterior, outside_open())
+}
+
+pub(super) fn outside_gain_at(muffled: f32, exterior: bool, opening: Option<f32>) -> f32 {
     if muffled > 0.0 && exterior {
-        let shut = match outside_open() {
+        let shut = match opening {
             Some(o) => (0.25 + 1.5 * o.clamp(0.0, 0.5)).min(1.0),
             None => 1.0,
         };
         1.0 + (shut - 1.0) * muffled
     } else {
         1.0
+    }
+}
+
+/// Continuous timbre/transfer for the own vehicle's inside/outside recordings. This is
+/// listening-tuned bodywork mixing, not a change to OPEN viewpoint admission semantics.
+/// Apply transmission once, after script/peak handling. If a curve explicitly already
+/// reads Snd_OutsideVol, leave its gain to that curve (filtering still models the body).
+pub(super) fn entry_transfer(def: &omsi_vehicle::SoundEntry, exterior: bool,
+    inside: f32, muffled: f32) -> (f32, f32) {
+    let opening = outside_open();
+    if exterior { return (outside_gain_at(muffled, true, opening), lowpass_of(muffled, true, opening)); }
+    entry_transfer_at(def, inside, opening)
+}
+
+pub(super) fn entry_transfer_at(def: &omsi_vehicle::SoundEntry,
+    inside: f32, opening: Option<f32>) -> (f32, f32) {
+    match def.viewpoint & 3 {
+        1 => {
+            let gain = if def.vol_curves.iter().any(|c| c.variable.eq_ignore_ascii_case("Snd_OutsideVol")) {
+                1.0
+            } else {
+                let shut = 0.25 + 1.5 * opening.unwrap_or(0.0).clamp(0.0, 0.5);
+                1.0 + (shut - 1.0) * inside.clamp(0.0, 1.0)
+            };
+            let shut_hz = 450.0 * (1.0 + 30.0 * opening.unwrap_or(0.0).clamp(0.0, 0.5));
+            (gain, lp_between(0.0, shut_hz, inside))
+        }
+        2 => {
+            let outside = 1.0 - inside.clamp(0.0, 1.0);
+            (1.0 - 0.75 * outside, lp_between(0.0, 1200.0, outside))
+        }
+        _ => (1.0, 0.0),
     }
 }

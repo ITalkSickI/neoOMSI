@@ -76,7 +76,9 @@ impl App {
                 match bus {
                     None => {
                         if let Some(p) = self.player.as_mut() {
-                            p.vehicle.host.fired_triggers.push("ev_Stamper".into());
+                            p.vehicle.host.fired_sounds.push(omsi_sim::host::FiredSound::Trigger {
+                                name: "ev_Stamper".into(),
+                            });
                         }
                     }
                     Some(id) => {
@@ -85,7 +87,9 @@ impl App {
                             .as_mut()
                             .and_then(|t| t.cars.iter_mut().find(|c| c.id == id))
                         {
-                            c.vehicle.host.fired_triggers.push("ev_Stamper".into());
+                            c.vehicle.host.fired_sounds.push(omsi_sim::host::FiredSound::Trigger {
+                                name: "ev_Stamper".into(),
+                            });
                         }
                     }
                 }

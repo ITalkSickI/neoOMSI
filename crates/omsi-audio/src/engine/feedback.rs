@@ -29,7 +29,7 @@ pub(crate) struct Counters {
     pub(crate) dropped_commands: AtomicU64,
     /// Parameter entries evicted to make room for an event.
     pub(crate) coalesced_evicted: AtomicU64,
-    /// Blocks a stream voice came out silent because the decoder lock was busy.
+    /// 256-frame render fragments in which a stream lacked buffered input.
     pub(crate) stream_underruns: AtomicU64,
     /// Voices retired to the game thread.
     pub(crate) retired: AtomicU64,
@@ -94,8 +94,13 @@ pub(crate) struct ActiveVoice {
 /// Voice ends reported by the audio thread. Bounded: on overflow the audio thread keeps the
 /// finished voice for one more block rather than allocating or dropping the id.
 pub(crate) struct Reaper {
-    inner: Mutex<Vec<VoiceId>>,
+    inner: Mutex<Vec<Retired>>,
     queued: AtomicUsize,
+}
+
+enum Retired {
+    Voice(Voice),
+    Rejected(super::commands::Command),
 }
 
 impl Reaper {
@@ -111,35 +116,47 @@ impl Reaper {
     }
 
     /// Audio thread: move finished voices out of the mixer list. Only voices whose id fits are
-    /// removed; the rest wait for the next block. The voice's `Arc`s are only decremented
-    /// here (the game's active map still holds one), so no expensive free happens.
+    /// moved in full (including assets and decoder-reader ownership); the rest wait for
+    /// the next block. No asset can be finally freed in the callback after stop/unload.
     pub(crate) fn retire_finished(&self, voices: &mut Vec<Voice>, counters: &Counters) {
         let Some(mut r) = self.inner.try_lock() else {
             counters.reaper_lock_misses.fetch_add(1, Ordering::Relaxed);
             return;
         };
-        voices.retain(|v| {
-            if v.is_finished() && r.len() < REAPER_CAPACITY {
-                r.push(v.id());
+        let mut i = 0;
+        while i < voices.len() {
+            if voices[i].is_finished() && r.len() < REAPER_CAPACITY {
+                r.push(Retired::Voice(voices.swap_remove(i)));
                 counters.retired.fetch_add(1, Ordering::Relaxed);
-                false
             } else {
-                if v.is_finished() {
-                    counters.reaper_overflow.fetch_add(1, Ordering::Relaxed);
-                }
-                true
+                if voices[i].is_finished() { counters.reaper_overflow.fetch_add(1, Ordering::Relaxed); }
+                i += 1;
             }
-        });
+        }
         self.queued.store(r.len(), Ordering::Relaxed);
     }
 
-    /// Game thread: take the reported voice ends (the `split_off` allocates on this side).
+    /// Hold rejected start assets until the game can free them. On a busy/full reaper
+    /// the core retains the command and defers draining more commands (bounded storage).
+    pub(crate) fn reject(&self, command: super::commands::Command)
+        -> Result<(), super::commands::Command> {
+        let Some(mut r) = self.inner.try_lock() else { return Err(command); };
+        if r.len() == REAPER_CAPACITY { return Err(command); }
+        r.push(Retired::Rejected(command));
+        self.queued.store(r.len(), Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Game thread: take the reported ids and destroy the retained voices/assets on this side.
     pub(crate) fn drain(&self) -> Vec<VoiceId> {
         let mut q = self.inner.lock();
         if q.is_empty() {
             return Vec::new();
         }
-        let out = q.split_off(0);
+        let out = q.drain(..).filter_map(|item| match item {
+            Retired::Voice(v) => Some(v.id()),
+            Retired::Rejected(c) => c.voice_id(),
+        }).collect();
         self.queued.store(0, Ordering::Relaxed);
         out
     }
@@ -158,7 +175,7 @@ impl super::AudioEngine {
             .position
             .map(|p| distance_gain(a.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
-        Some((a.params.into(), a.params.level.gain() * spatial))
+        Some((a.params.into(), a.params.level.gain() * (1.0 + (spatial - 1.0) * a.params.spatial_blend.clamp(0.0, 1.0))))
     }
 
     pub fn is_playing(&self, id: VoiceId) -> bool {

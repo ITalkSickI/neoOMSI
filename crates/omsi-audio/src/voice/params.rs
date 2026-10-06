@@ -99,6 +99,9 @@ impl Level {
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub struct MixParams {
+    /// Distance blend: 0 = local/centred cabin sound, 1 = fully spatial.
+    pub spatial_blend: f32,
+    pub bus: crate::voice::bus::Bus,
     /// The separate legacy level (see [`Level`]).
     pub level: Level,
     /// Playback speed relative to the clip's own rate (OMSI's playback frequency).
@@ -127,6 +130,8 @@ impl Default for MixParams {
 impl From<VoiceParams> for MixParams {
     fn from(p: VoiceParams) -> Self {
         MixParams {
+            spatial_blend: 1.0,
+            bus: crate::voice::bus::Bus::Vehicle,
             level: Level::Raw(p.gain),
             pitch: p.pitch,
             looping: p.looping,

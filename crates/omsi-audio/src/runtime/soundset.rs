@@ -6,9 +6,9 @@ use crate::clock::Clock;
 use crate::engine::Playback;
 use crate::runtime::event::SoundEvent;
 use crate::runtime::level::SOUND_MAXCOUNT;
-use crate::runtime::sound::{warn_missing_once, volume_side, EntryCtx, OnlyOne, RuntimeSound, SoundState};
-use crate::runtime::{outside, placement};
-use crate::voice::{Level, MixParams, VoiceParams};
+use crate::runtime::sound::{EntryCtx, OnlyOne, RuntimeSound, SoundState};
+
+
 use glam::{Mat4, Vec3};
 use omsi_vehicle::SoundCfg;
 use std::path::Path;
@@ -21,8 +21,10 @@ pub struct SoundSet {
     /// normal playback, a manual clock in tests and the offline renderer.
     pub(super) clock: Clock,
     pub master: f32,
+    pub(super) bus: crate::voice::bus::Bus,
+    pub(super) file_bus: crate::voice::bus::Bus,
     /// Folder of the sound config: files of `(T.F.)` triggers resolve against it.
-    dir: std::path::PathBuf,
+    pub(super) dir: std::path::PathBuf,
     /// Heard from outside: non-3D sounds sit at the vehicle origin and attenuate.
     pub(super) exterior: bool,
     /// The listener sits in this vehicle's interior (see [`SoundSet::set_inside`]).
@@ -42,10 +44,10 @@ pub struct SoundSet {
     /// The vehicle's hull as a box in its own space (centre, half size): where the
     /// listener stands against it - not a flag or a timer - decides how much bodywork lies
     /// between the listener and the sounds (see [`SoundSet::inside_factor`]).
-    hull: Option<([f32; 3], [f32; 3])>,
+    pub(super) hull: Option<([f32; 3], [f32; 3])>,
     /// What the leading vehicle's hull gave this frame, for the coupled parts.
-    hull_h: f32,
-    hull_override: Option<f32>,
+    pub(super) hull_h: f32,
+    pub(super) hull_override: Option<f32>,
     blend_at: Option<std::time::Instant>,
     /// The sound sets of the coupled parts (with the part's index among the vehicle's
     /// trailers): the rear section of an articulated bus has a `[sound]` of its own - on a
@@ -54,7 +56,7 @@ pub struct SoundSet {
     pub parts: Vec<(usize, SoundSet)>,
     /// The central `[onlyone]` registry of this set (file -> running voice). Rebuilt and
     /// pruned every frame (see [`SoundSet::update_frame`]).
-    only_one: OnlyOne,
+    pub(super) only_one: OnlyOne,
 }
 
 impl SoundSet {
@@ -89,6 +91,8 @@ impl SoundSet {
             sounds,
             clock: engine.clock(),
             master: 1.0,
+            bus: crate::voice::bus::Bus::Vehicle,
+            file_bus: crate::voice::bus::Bus::Announcement,
             dir: dir.to_path_buf(),
             exterior: false,
             inside: false,
@@ -113,12 +117,17 @@ impl SoundSet {
 
     /// Move the inside / muffled blends towards their targets (about 0.45 s for the whole
     /// way) and return them eased.
-    fn advance_blend(&mut self) -> (f32, f32) {
+    pub(super) fn advance_blend(&mut self) -> (f32, f32) {
         let now = self.clock.now();
-        let dt = self
-            .blend_at
-            .map_or(1.0, |t| now.saturating_duration_since(t).as_secs_f32())
-            .min(0.1);
+        // A freshly loaded set must start on the listener's current side. Starting
+        // its muffling at zero caused a loud exterior burst lasting several frames.
+        let Some(previous) = self.blend_at else {
+            self.blend_at = Some(now);
+            self.inside_blend = if self.inside { 1.0 } else { 0.0 };
+            self.muffled_blend = if self.muffled { 1.0 } else { 0.0 };
+            return (self.inside_blend, self.muffled_blend);
+        };
+        let dt = now.saturating_duration_since(previous).as_secs_f32().min(0.1);
         self.blend_at = Some(now);
         let step = dt / 0.45;
         let toward = |cur: f32, target: bool| {
@@ -148,8 +157,12 @@ impl SoundSet {
     /// How much the listener is inside the bodywork, 0..1, from where they stand: across
     /// the hull's wall it runs over half a metre, so walking through the door the sound changes
     /// with every step - and stands still when they do. Without a hull, the eased flag.
-    fn inside_factor(&mut self, eased: f32, object_to_world: &Mat4, listener: Vec3) -> f32 {
-        let h = if let Some(h) = self.hull_override {
+    pub(super) fn inside_factor(&mut self, eased: f32, object_to_world: &Mat4, listener: Vec3) -> f32 {
+        let h = if self.inside {
+            // A declared cab/passenger view is already inside, even on the first frame
+            // before the engine receives the spawned vehicle's new camera position.
+            1.0
+        } else if let Some(h) = self.hull_override {
             h
         } else if let Some((c, half)) = self.hull {
             let l = object_to_world.inverse().transform_point3(listener) - Vec3::from_array(c);
@@ -199,6 +212,8 @@ impl SoundSet {
     /// Attach the sound set of coupled part `index` (built like this one: [`SoundSet::new`]
     /// for the player's bus, [`SoundSet::new_exterior`] for the others).
     pub fn add_part(&mut self, index: usize, mut part: SoundSet) {
+        part.set_bus(self.bus);
+        part.set_file_bus(self.file_bus);
         part.inside = self.inside;
         part.muffled = self.muffled;
         part.inside_blend = self.inside_blend;
@@ -241,108 +256,6 @@ impl SoundSet {
         s.exterior = true;
         s.ai = true;
         s
-    }
-
-    /// Play the sound of a `(T.F.trigger)` event: the entry listening to `trigger`
-    /// plays `file` (relative to the sound folder) with its own volume and position.
-    pub fn play_file_trigger(
-        &mut self,
-        engine: &dyn Playback,
-        trigger: &str,
-        file: &str,
-        var: &dyn Fn(&str) -> Option<f32>,
-        object_to_world: &Mat4,
-    ) {
-        if !engine.enabled() || file.trim().is_empty() {
-            return;
-        }
-        let path = omsi_cfg::resolve_path(&self.dir, file);
-        let Some(clip) = engine.load_clip(&path) else {
-            warn_missing_once(trigger, &path);
-            return;
-        };
-        let ai = self.ai;
-        let (eased, muffled) = self.advance_blend();
-        self.inside_factor(eased, object_to_world, engine.listener_position());
-        let (exterior, master) = (self.exterior, self.master);
-        let lowpass_hz = outside::lowpass_of(muffled, exterior);
-        let now = self.clock.now();
-        let mut used = self
-            .sounds
-            .iter()
-            .filter(|s| s.voice.is_some_and(|id| engine.is_playing(id)))
-            .count();
-        for s in self.sounds.iter_mut() {
-            if !s
-                .def
-                .triggers
-                .iter()
-                .any(|d| d.eq_ignore_ascii_case(trigger))
-            {
-                continue;
-            }
-            // the runtime admission budget: a `(T.F.)` sound past `[sound_maxcount]` and with
-            // no voice of its own does not start
-            let running = s.voice.is_some_and(|id| engine.is_playing(id));
-            if !running && used >= SOUND_MAXCOUNT {
-                continue;
-            }
-            s.active_since = Some(now);
-            let Some((record, script, through)) = volume_side(&s.def, var, ai, 0.0, 1.0) else {
-                continue;
-            };
-            if !running {
-                used += 1;
-            }
-            let (position, reach, pan) =
-                placement::place(s.def.pos, s.def.range, exterior, object_to_world);
-            let params = MixParams {
-                level: Level::Omsi {
-                    record,
-                    script,
-                    transmission: through * outside::outside_gain(muffled, exterior),
-                    master,
-                },
-                pitch: 1.0,
-                looping: false,
-                position,
-                doppler: !self.listener_vehicle,
-                range: reach,
-                lowpass_hz,
-                important: s.def.important,
-                pan,
-            };
-            if let Some(id) = s.voice.take() {
-                engine.stop(id);
-            }
-            s.clip = Some(clip.clone());
-            s.voice = Some(engine.play_mix(clip.clone(), params));
-            s.state = SoundState::Running;
-        }
-    }
-
-    /// Play `path` once, non-spatial, at `volume` (0..1): a sound a page asks for
-    /// (`omsi.playSound`) that has no entry of its own in the `sound.cfg`.
-    pub fn play_file_direct(&mut self, engine: &dyn Playback, path: &Path, volume: f32) {
-        if !engine.enabled() {
-            return;
-        }
-        let Some(clip) = engine.load_clip(path) else {
-            warn_missing_once("playSound", path);
-            return;
-        };
-        let params = VoiceParams {
-            gain: volume.clamp(0.0, 1.0) * self.master,
-            pitch: 1.0,
-            looping: false,
-            position: None,
-            doppler: false,
-            range: 5.0,
-            lowpass_hz: 0.0,
-            important: false,
-            pan: 1.0,
-        };
-        engine.play(clip, params);
     }
 
     /// Per-frame update. `triggers` are the sound triggers fired by the scripts this frame.
@@ -413,7 +326,8 @@ impl SoundSet {
         self.update_frame(engine, var, object_to_world, &triggers, &at_fire);
         for e in events.iter().filter(|e| e.is_file()) {
             if let Some(file) = &e.file {
-                self.play_file_trigger(engine, &e.trigger, file, var, object_to_world);
+                let at_file = |n: &str| slots(n).and_then(|slot| e.vars.as_ref()?.get(slot).copied()).or_else(|| var(n));
+                self.play_file_trigger(engine, &e.trigger, file, &at_file, object_to_world);
             }
         }
     }
@@ -441,6 +355,7 @@ impl SoundSet {
         let ai = self.ai;
         let now = self.clock.now();
         let cx = EntryCtx {
+            bus: self.bus,
             var,
             at_fire,
             object_to_world,
@@ -448,6 +363,7 @@ impl SoundSet {
             triggers,
             ai,
             exterior,
+            inside,
             muffled,
             master,
             doppler,

@@ -192,7 +192,7 @@ impl App {
                 if let Some(a) = self.audio.as_ref() {
                     for line in voices {
                         if let Some(clip) = a.load_clip(&line.path) {
-                            a.play(
+                            a.play_on_bus(
                                 clip,
                                 omsi_audio::mixer::VoiceParams {
                                     gain: 1.0,
@@ -207,6 +207,7 @@ impl App {
                                     important: false,
                                     pan: 1.0,
                                 },
+                                omsi_audio::Bus::Passenger,
                             );
                         }
                     }

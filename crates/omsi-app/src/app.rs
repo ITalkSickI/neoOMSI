@@ -665,6 +665,12 @@ impl App {
                 match spawned {
                     Ok(mut p) => {
                         let audio = omsi_audio::AudioEngine::new();
+                        // Queue the user's master before any vehicle can start a voice;
+                        // the first redraw must not briefly play at the default full level.
+                        audio.set_listener(omsi_audio::Listener {
+                            master: if self.paused { 0.0 } else { self.settings.volume.clamp(0.0, 1.0) },
+                            ..Default::default()
+                        });
                         if let Some(p) = p.as_mut() {
                             p.vehicle.host.auto_clutch =
                                 if self.settings.auto_clutch { 1.0 } else { 0.0 };

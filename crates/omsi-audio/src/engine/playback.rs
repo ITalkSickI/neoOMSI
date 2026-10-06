@@ -32,7 +32,7 @@ pub trait Playback {
     fn load_clip(&self, path: &Path) -> Option<Arc<Clip>>;
     /// The clock the runtime runs on (so an offline engine stays reproducible).
     fn clock(&self) -> Clock;
-    /// Whether the engine plays at all (no device, or `OMSI_MUTE`).
+    /// Whether logical playback is enabled; hardware outages retain loops for reconnection.
     fn enabled(&self) -> bool;
 }
 

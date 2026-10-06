@@ -4,8 +4,10 @@
 //! voices; the game never reaches into it. The OMSI runtime talks to the engine through
 //! [`Playback`] instead of the concrete type (see [`crate::runtime`]).
 
+pub mod bus;
 pub mod commands;
 pub mod feedback;
+mod output;
 pub mod mixer;
 pub mod playback;
 
@@ -51,6 +53,8 @@ pub struct AudioEngine {
     /// replies; the audio thread keeps its own copy, fed by `SetListener`.
     listener: Cell<Listener>,
     next_id: AtomicU64,
+    bus_gains: Cell<[f32; bus::BUS_COUNT]>,
+    /// Logical playback is enabled even without hardware. Inspect `device_state()` for output.
     pub enabled: bool,
     clock: Clock,
 }
@@ -72,15 +76,13 @@ impl AudioEngine {
             active: RefCell::new(HashMap::new()),
             listener: Cell::new(Listener::default()),
             next_id: AtomicU64::new(1),
-            enabled: false,
+            bus_gains: Cell::new(bus::DEFAULT_GAINS),
+            enabled: true,
             clock,
         };
-        let enabled = engine.open_default();
-        let engine = AudioEngine { enabled, ..engine };
-        if enabled {
-            if let Some(d) = engine.device() {
-                watch_default_device(d.name(), Arc::downgrade(&d.reopen_flag()));
-            }
+        engine.open_default();
+        if let Some(d) = engine.device() {
+            watch_default_device(d.name(), Arc::downgrade(&d.reopen_flag()));
         }
         engine
     }
@@ -112,6 +114,7 @@ impl AudioEngine {
             active: RefCell::new(HashMap::new()),
             listener: Cell::new(Listener::default()),
             next_id: AtomicU64::new(1),
+            bus_gains: Cell::new(bus::DEFAULT_GAINS),
             enabled: true,
             clock,
         }
@@ -138,87 +141,6 @@ impl AudioEngine {
         }
     }
 
-    /// Build a fresh core and open the default output device on it. Used at start-up and when
-    /// the device is followed; on success the still-active voices are replayed.
-    fn open_default(&self) -> bool {
-        let Some(device) = self.device() else {
-            return false;
-        };
-        let mut core = AudioCore::new(
-            self.clock.clone(),
-            device.format(),
-            self.commands.clone(),
-            self.reaper.clone(),
-            self.counters.clone(),
-            mixer::muted(),
-        );
-        if !device.open(move |data| core.render(data)) {
-            return false;
-        }
-        // The old core (if any) ended its voices on drop; forget them before replaying the
-        // ones that were still active.
-        self.pump();
-        self.replay();
-        true
-    }
-
-    /// Re-issue the still-active voices on a fresh core, keeping their ids: a device change
-    /// does not turn a radio or an engine loop permanently silent. A looping clip restarts
-    /// near its beginning - the only observable effect of a device change.
-    fn replay(&self) {
-        self.commands.push(Command::SetListener(self.listener.get()));
-        let active = self.active.borrow();
-        for (&id, a) in active.iter() {
-            let cmd = match &a.asset {
-                VoiceAsset::Clip(c) => Command::Play {
-                    id,
-                    clip: c.clone(),
-                    params: a.params,
-                },
-                VoiceAsset::Stream(s) => Command::PlayStream {
-                    id,
-                    stream: s.clone(),
-                    params: a.params,
-                },
-            };
-            self.commands.push(cmd);
-            self.counters.replays.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    /// Follow the system's output: when its default device changed (headphones plugged in,
-    /// a Bluetooth headset connected) or the one played on went away, the stream is opened
-    /// again on the default device. Cheap; called every frame.
-    pub fn follow_device(&self) {
-        self.pump();
-        let Some(device) = self.device() else {
-            return;
-        };
-        if !self.enabled
-            || device.opened_age() < 1.0
-            || !device.reopen_flag().swap(false, Ordering::Relaxed)
-        {
-            return;
-        }
-        let lost = device.lost_flag().swap(false, Ordering::Relaxed);
-        device.mark_opened(Instant::now());
-        if lost {
-            device.note_lost();
-        } else {
-            device.note_default_changed();
-        }
-        let before = device.name();
-        if self.open_default() {
-            let now = device.name();
-            if now != before {
-                log::info!("audio: output moved from {before} to {now}");
-            }
-        } else {
-            // (no device right now: tried again when the watcher sees one)
-            device.clear_name();
-        }
-    }
-
     /// The game thread lets go of voices the audio thread has ended. Called at the top of
     /// every public method, so no caller needs a new hook.
     fn pump(&self) {
@@ -232,6 +154,12 @@ impl AudioEngine {
         let mut active = self.active.borrow_mut();
         for id in ids {
             active.remove(&id);
+        }
+    }
+
+    fn enqueue(&self, command: Command) {
+        if let Some(dropped) = self.commands.push(command) {
+            self.active.borrow_mut().remove(&dropped);
         }
     }
 
@@ -269,6 +197,13 @@ impl AudioEngine {
     pub fn play_mix(&self, clip: Arc<Clip>, params: MixParams) -> VoiceId {
         self.pump();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        if self.active.borrow().len() >= mixer::VOICE_CAPACITY {
+            self.counters.dropped_commands.fetch_add(1, Ordering::Relaxed);
+            return id;
+        }
+        if !self.output_available() && !params.looping {
+            return id;
+        }
         self.active.borrow_mut().insert(
             id,
             ActiveVoice {
@@ -276,6 +211,9 @@ impl AudioEngine {
                 asset: VoiceAsset::Clip(clip.clone()),
             },
         );
+        if !self.output_available() {
+            return id;
+        }
         if let Some(dropped) = self.commands.push(Command::Play { id, clip, params }) {
             self.active.borrow_mut().remove(&dropped);
         }
@@ -292,6 +230,10 @@ impl AudioEngine {
     pub fn play_stream_mix(&self, stream: Arc<StreamBuf>, params: MixParams) -> VoiceId {
         self.pump();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        if self.active.borrow().len() >= mixer::VOICE_CAPACITY {
+            self.counters.dropped_commands.fetch_add(1, Ordering::Relaxed);
+            return id;
+        }
         self.active.borrow_mut().insert(
             id,
             ActiveVoice {
@@ -299,6 +241,9 @@ impl AudioEngine {
                 asset: VoiceAsset::Stream(stream.clone()),
             },
         );
+        if !self.output_available() {
+            return id;
+        }
         if let Some(dropped) = self.commands.push(Command::PlayStream { id, stream, params }) {
             self.active.borrow_mut().remove(&dropped);
         }
@@ -309,7 +254,11 @@ impl AudioEngine {
     /// so the game never waits for a block being mixed. Given twice before that block, the
     /// later ones win.
     pub fn set_params(&self, id: VoiceId, params: VoiceParams) {
-        self.set_mix_params(id, params.into());
+        let mut mix = MixParams::from(params);
+        if let Some(a) = self.active.borrow().get(&id) {
+            mix.bus = a.params.bus;
+        }
+        self.set_mix_params(id, mix);
     }
 
     /// [`AudioEngine::set_params`] with the runtime's separate levels.
@@ -319,18 +268,25 @@ impl AudioEngine {
         if let Some(a) = self.active.borrow_mut().get_mut(&id) {
             a.params = params;
         }
-        self.commands.push(Command::SetParams { id, params, at });
+        if self.output_available() {
+            self.enqueue(Command::SetParams { id, params, at });
+        }
     }
 
     pub fn stop(&self, id: VoiceId) {
         self.pump();
         self.active.borrow_mut().remove(&id);
-        self.commands.push(Command::Stop { id });
+        if self.output_available() {
+            self.enqueue(Command::Stop { id });
+        }
     }
 
     pub fn set_cabin(&self, h: f32) {
         let at = self.clock.now();
-        self.commands.push(Command::SetCabin {
+        if !self.output_available() {
+            return;
+        }
+        self.enqueue(Command::SetCabin {
             h: h.clamp(0.0, 1.0),
             at,
         });
@@ -338,7 +294,9 @@ impl AudioEngine {
 
     pub fn set_listener(&self, l: Listener) {
         self.listener.set(l);
-        self.commands.push(Command::SetListener(l));
+        if self.output_available() {
+            self.enqueue(Command::SetListener(l));
+        }
     }
 }
 
@@ -352,7 +310,7 @@ mod tests {
     #[test]
     fn follows_the_output_device() {
         let e = AudioEngine::new();
-        if !e.enabled {
+        if e.device_state() != Some(crate::device::DeviceState::Open) {
             return;
         }
         let device = e.device().expect("a device engine keeps its device");

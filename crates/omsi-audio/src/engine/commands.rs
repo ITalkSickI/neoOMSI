@@ -45,6 +45,7 @@ pub(crate) enum Command {
         at: Instant,
     },
     SetListener(Listener),
+    SetBus { bus: crate::voice::bus::Bus, gain: f32 },
     SetCabin {
         h: f32,
         at: Instant,
@@ -53,13 +54,13 @@ pub(crate) enum Command {
 
 impl Command {
     /// The voice a dropped command was about (`None` for the global listener/cabin commands).
-    fn voice_id(&self) -> Option<VoiceId> {
+    pub(crate) fn voice_id(&self) -> Option<VoiceId> {
         match self {
             Command::Play { id, .. }
             | Command::PlayStream { id, .. }
             | Command::Stop { id }
             | Command::SetParams { id, .. } => Some(*id),
-            Command::SetListener(_) | Command::SetCabin { .. } => None,
+            Command::SetListener(_) | Command::SetBus { .. } | Command::SetCabin { .. } => None,
         }
     }
 }
@@ -72,7 +73,7 @@ pub(crate) struct CommandQueue {
 impl CommandQueue {
     pub(crate) fn new(counters: Arc<Counters>) -> CommandQueue {
         CommandQueue {
-            inner: Mutex::new(VecDeque::with_capacity(64)),
+            inner: Mutex::new(VecDeque::with_capacity(COMMAND_CAPACITY)),
             counters,
         }
     }
@@ -83,6 +84,11 @@ impl CommandQueue {
     pub(crate) fn push(&self, cmd: Command) -> Option<VoiceId> {
         let mut q = self.inner.lock();
         match cmd {
+            Command::SetBus { bus, gain } => {
+                if let Some(slot) = q.iter_mut().find(|c| matches!(c, Command::SetBus { bus: b, .. } if *b == bus)) {
+                    *slot = Command::SetBus { bus, gain }; return None;
+                }
+            }
             Command::SetListener(l) => {
                 if let Some(slot) = q.iter_mut().find(|c| matches!(c, Command::SetListener(_))) {
                     *slot = Command::SetListener(l);
@@ -120,6 +126,9 @@ impl CommandQueue {
         q.push_back(cmd);
         dropped.and_then(|c| c.voice_id())
     }
+
+    /// Game thread after the old device callback has stopped: discard stale commands.
+    pub(crate) fn clear(&self) { self.inner.lock().clear(); }
 
     /// Take everything queued for the block about to be mixed (audio thread; never blocks).
     /// `out` is a reused buffer so a steady-state render does not allocate.

@@ -16,7 +16,7 @@ pub struct Clip {
 
 impl Clip {
     pub fn frames(&self) -> usize {
-        self.samples.len() / self.channels as usize
+        self.samples.len() / self.channels.max(1) as usize
     }
 }
 

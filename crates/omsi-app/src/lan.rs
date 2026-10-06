@@ -2883,19 +2883,15 @@ fn sound_remote(
     }
     let xf = rv.vehicle.world_transform();
     let v = &rv.vehicle;
-    let fired_normal: Vec<String> = events
-        .iter()
-        .filter(|e| !e.is_file())
-        .map(|e| e.trigger.clone())
-        .collect();
     for ss in rv.sounds.iter_mut() {
         ss.set_muffled(muffled);
         ss.update_events(audio, &|n| v.var(n), &xf, &events, &|n| v.var_slot(n));
-        ss.update_parts(
+        ss.update_parts_events(
             audio,
             &|n| v.var(n),
             &|i| v.trailers.get(i).map(|t| t.world_transform()),
-            &fired_normal,
+            &events,
+            &|n| v.var_slot(n),
         );
     }
 }

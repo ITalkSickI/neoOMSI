@@ -5,3 +5,5 @@ pub mod filter;
 pub mod limiter;
 pub mod resample;
 pub mod reverb;
+
+pub mod envelope;

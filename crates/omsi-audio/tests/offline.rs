@@ -185,7 +185,7 @@ fn a_sound_on_the_right_damps_the_left_channel() {
     step(&mut set, &engine, &[], &mut out);
     let left: f32 = out.iter().step_by(2).map(|s| s * s).sum();
     let right: f32 = out.iter().skip(1).step_by(2).map(|s| s * s).sum();
-    assert!(right > left * 100.0, "left {left}, right {right}");
+    assert!(right > left * 4.0 && left > right * 0.04, "left {left}, right {right}");
 }
 
 /// A recording level over 1 is clamped only after the set master (OMSI's 0 dB buffer): the

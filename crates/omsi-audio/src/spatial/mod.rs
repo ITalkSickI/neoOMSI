@@ -1,6 +1,6 @@
 //! Where a voice sits relative to the listener: distance attenuation and stereo panning.
 //!
-//! This is the legacy OMSI / DirectSound model, kept behind [`Spatializer`] so that Phase 2
+//! This keeps legacy distance and listening-tuned stereo behind [`Spatializer`] so that Phase 2
 //! (Steam Audio) can add another implementation without the voice or runtime code changing.
 //! No Steam Audio here.
 
@@ -47,29 +47,20 @@ impl Spatializer for Legacy {
         let d = p - listener_pos;
         let dist = d.length().max(0.1);
         let gain = distance_gain(range, dist);
-        let side = d.normalize_or_zero().dot(listener_right);
+        let side = d.normalize_or_zero().dot(listener_right.normalize_or_zero());
         let (left, right) = pan_gains(side, pan);
         Placed { left, right, gain }
     }
 }
 
-/// The stereo pair of a spatial voice, reproducing DirectSound's `SetPan`: one channel is
-/// damped relative to the other by up to 100 dB, the other stays at full level. DirectSound
-/// takes hundredths of a decibel from -10000 (full left) to 10000 (full right), 0 centred
-/// (both channels at 0 dB). The reference's `TSound` update computes the direction and hands
-/// it to `SetPan` as an integer (`00750444`, vtable +0x40); the old `sqrt * 1.2` formula
-/// damped *both* channels and behaved differently. `side` is the direction along the
-/// listener's right (negative left, positive right), `amount` scales how far it pans.
-/// `hundredths_db` is clamped so the near channel never falls below 1.0 and the far one
-/// never goes below -100 dB.
+/// Keep the near ear at unity and limit broadband head shadow to 12 dB. Mapping a
+/// geometric side directly to DirectSound's entire +/-10000 range produced up to
+/// 100 dB of attenuation: even a small head turn effectively silenced one ear.
+/// This bounded stereo tuning follows listening feedback, not a confirmed OMSI pan scale.
 fn pan_gains(side: f32, amount: f32) -> (f32, f32) {
-    let pan = (side.clamp(-1.0, 1.0) * amount.clamp(0.0, 1.0) * 10_000.0).round();
-    let far = 10f32.powf(-pan.abs() / 2_000.0);
-    if pan >= 0.0 {
-        (far, 1.0)
-    } else {
-        (1.0, far)
-    }
+    let pan = side.clamp(-1.0, 1.0) * amount.clamp(0.0, 1.0);
+    let far = 10f32.powf(-12.0 * pan.abs() / 20.0);
+    if pan >= 0.0 { (far, 1.0) } else { (1.0, far) }
 }
 
 /// How loud a sound `dist` metres away arrives, with `range` its `[3d]` reference distance:
@@ -93,22 +84,15 @@ mod tests {
     }
 
     #[test]
-    fn pan_damps_one_channel_like_directsound() {
-        // centred: both channels full
+    fn panning_keeps_both_ears_audible_and_preserves_direction() {
         assert_eq!(pan_gains(0.0, 1.0), (1.0, 1.0));
-        // full left: only the right channel is damped, by 100 dB
-        let (left, right) = pan_gains(-1.0, 1.0);
-        assert_eq!(left, 1.0);
-        assert!((right - 1e-5).abs() < 1e-6, "right {right}");
-        // full right: only the left channel is damped
-        let (left, right) = pan_gains(1.0, 1.0);
-        assert!((left - 1e-5).abs() < 1e-6, "left {left}");
-        assert_eq!(right, 1.0);
-        // a quarter to the right: the left channel is damped by 25 dB, the right untouched
-        let (left, right) = pan_gains(0.25, 1.0);
-        assert!((left - 0.0562).abs() < 0.005, "left {left}");
-        assert_eq!(right, 1.0);
-        // `amount` 0 stays centred
+        for side in [-1.0, -0.5, -0.25, 0.0, 0.25, 0.5, 1.0] {
+            let (left, right) = pan_gains(side, 1.0);
+            assert!(left >= 0.25 && right >= 0.25);
+            assert_eq!(pan_gains(-side, 1.0), (right, left));
+            if side > 0.0 { assert!(right > left); }
+        }
+        assert!((pan_gains(0.25, 1.0).0 - 0.708).abs() < 0.001);
         assert_eq!(pan_gains(1.0, 0.0), (1.0, 1.0));
     }
 }
