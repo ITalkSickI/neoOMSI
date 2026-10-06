@@ -1,0 +1,10 @@
+[package]
+name = "model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "model.cfg parser: meshes, materials, animations, lights, text textures (unit mc_complobj)"
+
+[dependencies]
+legacy-config = { path = "../legacy-config" }
+log.workspace = true

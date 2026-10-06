@@ -1,6 +1,6 @@
 # Passengers
 
-Passenger simulation lives in `crates/omsi-app/src/humans/`.
+Passenger simulation lives in `../crates/core`.
 
 ## State and movement
 
@@ -31,7 +31,7 @@ poses. RealisticPax models are optional and load only when installed and selecte
 Run focused and workspace tests with:
 
 ```powershell
-cargo nextest run -p omsi-app --lib humans:: --locked
+cargo nextest run -p core --lib humans:: --locked
 cargo nextest run --workspace --locked
 ```
 

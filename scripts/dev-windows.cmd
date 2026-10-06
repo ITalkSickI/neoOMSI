@@ -9,4 +9,4 @@ if errorlevel 1 (
   echo Install Rust from https://rustup.rs using the MSVC toolchain, then run this script again.
   exit /b 1
 )
-cargo run --locked -p omsi-app --bin neoomsi -- %*
+cargo run --locked -p core --bin neoomsi -- %*

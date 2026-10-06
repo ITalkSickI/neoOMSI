@@ -416,7 +416,7 @@ Redrawing on every call wastes time on a slow phone.
 
 ## For developers
 
-The snapshot is built by `omsi_sim::vehicle_api` (`snapshot` and `depot`, both unit-tested
+The snapshot is built by `::simulation::vehicle_api` (`snapshot` and `depot`, both unit-tested
 without any game content) and handed to the backend through `HtmlRenderer::set_vehicle` and
 `set_depot`, which a backend may ignore. The requests from `setRoute`, `setLine`,
 `setDestination`, `clearLine` and `setNextStop` become `HtmlRequest` values that the game
@@ -430,7 +430,7 @@ it in the table above and in the module docs. Existing names stay stable within 
 version.
 
 What the engine itself understands is listed at the top of
-`crates/omsi-sim/src/htmlengine/mod.rs`. If you add a feature there, add it to the "What the
+`../crates/simulation`. If you add a feature there, add it to the "What the
 HTML engine supports" section here as well.
 
 ### Benchmark
@@ -440,7 +440,7 @@ frame, the pointer hit test) at 512x256, 1024x512 and 2048x1024. It is ignored i
 test run; start it in release mode, debug numbers mean nothing:
 
 ```
-cargo test -p omsi-sim --release --lib bench_htmlengine -- --ignored --nocapture
+cargo test -p simulation --release --lib bench_htmlengine -- --ignored --nocapture
 ```
 
 `HTMLBENCH_PAGE=path/to/page.html` measures your own page instead of `demo.html`, and

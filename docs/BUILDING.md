@@ -48,13 +48,13 @@ scripts\dev-windows.cmd --map maps/Grundorf/global.cfg
 Direct Cargo compilation is also supported:
 
 ```sh
-cargo build --release -p omsi-app
+cargo build --release -p core
 ```
 
 ## Binaries
 
-- `neoomsi` (`crates/omsi-app`) – The main simulator executable. Without arguments, it launches into the main launcher window.
-- `neoomsi-launcher` (`crates/omsi-launcher-core`) – Command-line interface for headless management, mod installation, and asset operations.
+- `neoomsi` (`../crates/core`) – The main simulator executable. Without arguments, it launches into the main launcher window.
+- `neoomsi-launcher` (`../crates/legacy-launcher-core`) – Command-line interface for headless management, mod installation, and asset operations.
 - `omsi-check` (`tools/omsi-check`) – Validation utility that verifies content integrity against an OMSI 2 installation.
 
 ## Running tests

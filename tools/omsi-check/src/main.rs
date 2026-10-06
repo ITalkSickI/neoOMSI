@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use clap::Parser;
-use omsi_cfg::{CfgFile, resolve_path};
-use omsi_script::{CompileInput, NullHost, State, Vm, compile};
+use ::legacy_config::{CfgFile, resolve_path};
+use ::legacy_script::{CompileInput, NullHost, State, Vm, compile};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -74,7 +74,7 @@ fn check_o3d(root: &Path, verbose: bool) {
     let ok = AtomicUsize::new(0);
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_o3d::load_mesh(p) {
+        .filter_map(|p| match ::legacy_o3d::load_mesh(p) {
             Ok(_) => {
                 ok.fetch_add(1, Ordering::Relaxed);
                 None
@@ -273,23 +273,23 @@ fn main() -> Result<()> {
                 .map(|e| e.eq_ignore_ascii_case("zip"))
                 .unwrap_or(false)
         {
-            match omsi_cfg::vfs::add_content_zip(&c) {
+            match ::legacy_config::vfs::add_content_zip(&c) {
                 Ok(m) => content.push(m),
                 Err(e) => eprintln!("{}: {e}", c.display()),
             }
         } else {
-            omsi_cfg::add_content_root(c.clone());
+            ::legacy_config::add_content_root(c.clone());
             content.push(c);
         }
     }
-    omsi_cfg::add_content_root(root.clone());
+    ::legacy_config::add_content_root(root.clone());
     if let [dir, name] = args.resolve.as_slice() {
         // the folder under the first root that has it (mods and archives first)
         let base = content
             .iter()
             .chain(std::iter::once(&root))
             .map(|r| resolve_path(r, dir))
-            .find(|p| omsi_cfg::vfs::is_dir(p))
+            .find(|p| ::legacy_config::vfs::is_dir(p))
             .unwrap_or_else(|| root.join(dir));
         let p = resolve_path(&base, name);
         println!(
@@ -297,10 +297,10 @@ fn main() -> Result<()> {
             name,
             base.display(),
             p.display(),
-            omsi_cfg::vfs::is_file(&p)
+            ::legacy_config::vfs::is_file(&p)
         );
         let tex =
-            omsi_texture::find_texture(name, &[base.as_path(), base.join("texture").as_path()]);
+            ::texture::find_texture(name, &[base.as_path(), base.join("texture").as_path()]);
         println!("texture {:?} -> {:?}", name, tex);
         return Ok(());
     }
@@ -388,7 +388,7 @@ fn check_models(root: &Path, verbose: bool) {
         .collect();
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_model::Model::load(p) {
+        .filter_map(|p| match ::model::Model::load(p) {
             Ok(m) => {
                 let unknown: Vec<String> = m
                     .unknown_keywords
@@ -444,7 +444,7 @@ fn check_scenery(root: &Path, verbose: bool) {
     let ignored = std::sync::atomic::AtomicUsize::new(0);
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_scenery::SceneryObject::load(p) {
+        .filter_map(|p| match ::scenery::SceneryObject::load(p) {
             Ok(o) => {
                 // `[collisionmesh]` is a misspelling OMSI ignores as well (it knows only
                 // `[collision_mesh]`): the original's own behaviour, noted, not a failure
@@ -487,7 +487,7 @@ fn check_scenery(root: &Path, verbose: bool) {
     let files = files_with_ext(root, &["sli"]);
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_scenery::Spline::load(p) {
+        .filter_map(|p| match ::scenery::Spline::load(p) {
             Ok(s) => {
                 if s.unknown_keywords.is_empty() && !s.profiles.is_empty() {
                     None
@@ -511,7 +511,7 @@ fn check_vehicles(root: &Path, verbose: bool) {
     let files = files_with_ext(root, &["bus", "ovh"]);
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_vehicle::Vehicle::load(p) {
+        .filter_map(|p| match ::legacy_vehicle::Vehicle::load(p) {
             Ok(v) => {
                 if v.unknown_keywords.is_empty() {
                     None
@@ -530,7 +530,7 @@ fn check_vehicles(root: &Path, verbose: bool) {
     let files = files_with_ext(root, &["hof"]);
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_vehicle::Hof::load(p) {
+        .filter_map(|p| match ::legacy_vehicle::Hof::load(p) {
             Ok(h) => {
                 if h.termini.is_empty() {
                     Some(format!("{}: no termini", rel(root, p)))
@@ -548,7 +548,7 @@ fn check_vehicles(root: &Path, verbose: bool) {
         .collect();
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_vehicle::SoundCfg::load(p) {
+        .filter_map(|p| match ::legacy_vehicle::SoundCfg::load(p) {
             Ok(s) => {
                 if s.unknown_keywords.is_empty() {
                     None
@@ -568,7 +568,7 @@ fn check_vehicles(root: &Path, verbose: bool) {
     let errors: Vec<String> = files
         .par_iter()
         .filter_map(|p| {
-            omsi_vehicle::vehicle::Train::load(p)
+            ::legacy_vehicle::vehicle::Train::load(p)
                 .err()
                 .map(|e| format!("{}: {e}", rel(root, p)))
         })
@@ -588,7 +588,7 @@ fn check_maps(root: &Path, verbose: bool) {
     let mut errors = Vec::new();
     let mut tiles_total = 0;
     for g in &globals {
-        match omsi_map::GlobalCfg::load(g) {
+        match ::map::GlobalCfg::load(g) {
             Ok(gc) => {
                 if !gc.unknown_keywords.is_empty() {
                     errors.push(format!(
@@ -602,12 +602,12 @@ fn check_maps(root: &Path, verbose: bool) {
                     .tiles
                     .par_iter()
                     .filter_map(|t| {
-                        let p = omsi_cfg::resolve_path(&dir, &t.file);
+                        let p = ::legacy_config::resolve_path(&dir, &t.file);
                         if !p.exists() {
                             // The original silently treats a listed-but-missing tile as empty.
                             return None;
                         }
-                        match omsi_map::Tile::load(&p) {
+                        match ::map::Tile::load(&p) {
                             Ok(tile) => {
                                 let mut errs = Vec::new();
                                 if !tile.unknown_keywords.is_empty() {
@@ -619,7 +619,7 @@ fn check_maps(root: &Path, verbose: bool) {
                                 }
                                 let terrain = p.with_extension("map.terrain");
                                 if terrain.exists() {
-                                    if let Err(e) = omsi_map::Terrain::load(&terrain) {
+                                    if let Err(e) = ::map::Terrain::load(&terrain) {
                                         errs.push(format!("{}: {e}", rel(root, &terrain)));
                                     }
                                 }
@@ -638,13 +638,13 @@ fn check_maps(root: &Path, verbose: bool) {
                 // calendar, ai lists, timetable
                 let cal = dir.join("Holidays.txt");
                 if cal.exists() {
-                    if let Err(e) = omsi_map::Calendar::load(&cal) {
+                    if let Err(e) = ::map::Calendar::load(&cal) {
                         errors.push(e.to_string());
                     }
                 }
                 let ai = dir.join("ailists.cfg");
                 if ai.exists() {
-                    match omsi_map::AiLists::load(&ai) {
+                    match ::map::AiLists::load(&ai) {
                         Ok(a) => {
                             if a.groups.is_empty() {
                                 errors.push(format!("{}: no AI groups", rel(root, &ai)));
@@ -653,7 +653,7 @@ fn check_maps(root: &Path, verbose: bool) {
                         Err(e) => errors.push(e.to_string()),
                     }
                 }
-                let tt = omsi_timetable::TimetableData::load(&dir);
+                let tt = ::timetable::TimetableData::load(&dir);
                 errors.extend(tt.errors.iter().cloned());
                 println!(
                     "  map {}: {} tiles, {} bus stops, {} station links, {} trips, {} tracks, {} lines",
@@ -677,7 +677,7 @@ fn check_maps(root: &Path, verbose: bool) {
         .collect();
     let errors: Vec<String> = chrono
         .par_iter()
-        .filter_map(|p| match omsi_map::Tile::load(p) {
+        .filter_map(|p| match ::map::Tile::load(p) {
             Ok(t) => {
                 if t.unknown_keywords.is_empty() {
                     None
@@ -706,7 +706,7 @@ fn check_misc(root: &Path, verbose: bool) {
             report($name, files.len(), &errors, verbose);
         }};
     }
-    simple!("owt", &["owt"], |p: &PathBuf| omsi_content::Weather::load(
+    simple!("owt", &["owt"], |p: &PathBuf| ::content::Weather::load(
         p
     )
     .err()
@@ -714,7 +714,7 @@ fn check_misc(root: &Path, verbose: bool) {
     simple!(
         "oft",
         &["oft"],
-        |p: &PathBuf| match omsi_content::Font::load_all(p) {
+        |p: &PathBuf| match ::content::Font::load_all(p) {
             Ok(f) if !f.is_empty() && f.iter().all(|f| !f.chars.is_empty()) => None,
             Ok(_) => Some("no fonts/chars".to_string()),
             Err(e) => Some(e.to_string()),
@@ -723,7 +723,7 @@ fn check_misc(root: &Path, verbose: bool) {
     simple!(
         "olf",
         &["olf"],
-        |p: &PathBuf| match omsi_content::Language::load(p) {
+        |p: &PathBuf| match ::content::Language::load(p) {
             Ok(l) if !l.strings.is_empty() => None,
             Ok(_) => Some("empty".to_string()),
             Err(e) => Some(e.to_string()),
@@ -732,44 +732,44 @@ fn check_misc(root: &Path, verbose: bool) {
     simple!(
         "otp",
         &["otp"],
-        |p: &PathBuf| match omsi_content::TicketPack::load(p) {
+        |p: &PathBuf| match ::content::TicketPack::load(p) {
             Ok(t) if !t.tickets.is_empty() => None,
             Ok(_) => Some("no tickets".to_string()),
             Err(e) => Some(e.to_string()),
         }
     );
     simple!("cti", &["cti"], |p: &PathBuf| {
-        omsi_content::tickets::TicketItems::load(p)
+        ::content::tickets::TicketItems::load(p)
             .err()
             .map(|e| e.to_string())
     });
     simple!(
         "hum",
         &["hum"],
-        |p: &PathBuf| match omsi_content::Human::load(p) {
+        |p: &PathBuf| match ::content::Human::load(p) {
             Ok(h) if !h.model.is_empty() && h.links.len() == 22 => None,
             Ok(_) => Some("incomplete".to_string()),
             Err(e) => Some(e.to_string()),
         }
     );
-    simple!("odr", &["odr"], |p: &PathBuf| omsi_content::Driver::load(p)
+    simple!("odr", &["odr"], |p: &PathBuf| ::content::Driver::load(p)
         .err()
         .map(|e| e.to_string()));
     simple!("osn", &["osn"], |p: &PathBuf| {
-        omsi_content::Situation::load(p)
+        ::content::Situation::load(p)
             .err()
             .map(|e| e.to_string())
     });
     simple!(
         "oop",
         &["oop"],
-        |p: &PathBuf| match omsi_content::Options::load(p) {
+        |p: &PathBuf| match ::content::Options::load(p) {
             Ok(o) if o.values.len() > 10 => None,
             Ok(o) => Some(format!("only {} options", o.values.len())),
             Err(e) => Some(e.to_string()),
         }
     );
-    simple!("ocu", &["ocu"], |p: &PathBuf| omsi_timetable::CarUse::load(
+    simple!("ocu", &["ocu"], |p: &PathBuf| ::timetable::CarUse::load(
         p
     )
     .err()
@@ -777,7 +777,7 @@ fn check_misc(root: &Path, verbose: bool) {
     let money: Vec<PathBuf> = files_with_ext(&root.join("Money"), &["cfg"]);
     let errors: Vec<String> = money
         .par_iter()
-        .filter_map(|p| match omsi_content::Currency::load(p) {
+        .filter_map(|p| match ::content::Currency::load(p) {
             Ok(c) if !c.coins.is_empty() => None,
             Ok(_) => Some(format!("{}: no coins", rel(root, p))),
             Err(e) => Some(format!("{}: {e}", rel(root, p))),
@@ -785,21 +785,17 @@ fn check_misc(root: &Path, verbose: bool) {
         .collect();
     report("money", money.len(), &errors, verbose);
     let mut errors = Vec::new();
-    match omsi_content::Envir::load(&root.join("envir.cfg")) {
+    match ::content::Envir::load(&root.join("envir.cfg")) {
         Ok(e) if !e.sky_textures[0].is_empty() => {}
         Ok(_) => errors.push("envir.cfg: no sky textures".into()),
         Err(e) => errors.push(e.to_string()),
     }
-    match omsi_content::KeyboardCfg::load(&root.join("Inputs/keyboard.cfg")) {
+    match ::content::KeyboardCfg::load(&root.join("Inputs/keyboard.cfg")) {
         Ok(k) if !k.game.is_empty() && !k.vehicles.is_empty() => {}
         Ok(_) => errors.push("keyboard.cfg: empty".into()),
         Err(e) => errors.push(e.to_string()),
     }
-    if let Err(e) = omsi_content::input::load_game_controllers(&root.join("Inputs/gamectrler.cfg"))
-    {
-        errors.push(e.to_string());
-    }
-    match omsi_content::Options::load(&root.join("options.cfg")) {
+    match ::content::Options::load(&root.join("options.cfg")) {
         Ok(o) if o.values.len() > 10 => {}
         Ok(_) => errors.push("options.cfg: too few".into()),
         Err(e) => errors.push(e.to_string()),
@@ -811,7 +807,7 @@ fn check_textures(root: &Path, verbose: bool) {
     let files = files_with_ext(root, &["dds", "bmp", "tga", "jpg", "png"]);
     let errors: Vec<String> = files
         .par_iter()
-        .filter_map(|p| match omsi_texture::decode_file(p) {
+        .filter_map(|p| match ::texture::decode_file(p) {
             Ok(img) if img.width > 0 && img.height > 0 => None,
             Ok(_) => Some(format!("{}: empty image", rel(root, p))),
             Err(e) => Some(e.to_string().replace(&root.display().to_string(), ".")),

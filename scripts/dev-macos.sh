@@ -7,4 +7,4 @@ export PATH="$HOME/.cargo/bin:$PATH"
 [ "$(uname -s)" = Darwin ] || { echo "Run this script on macOS." >&2; exit 1; }
 xcode-select -p >/dev/null 2>&1 || { echo "Run xcode-select --install, then run this script again." >&2; exit 1; }
 command -v cargo >/dev/null 2>&1 || { echo "Install Rust from https://rustup.rs, then run this script again." >&2; exit 1; }
-cargo run --locked -p omsi-app --bin neoomsi -- "$@"
+cargo run --locked -p core --bin neoomsi -- "$@"
