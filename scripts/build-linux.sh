@@ -8,7 +8,7 @@ cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 export PATH="$HOME/.cargo/bin:$PATH"
 command -v cargo >/dev/null 2>&1 || { echo "Install Rust from https://rustup.rs, then run this script again." >&2; exit 1; }
 export neoomsi_VERSION="${neoomsi_VERSION:-$(sh scripts/version.sh 2>/dev/null || echo 0.0.0)}"
-cargo build --locked --release -p omsi-app -p omsi-launcher-core
+cargo build --locked --release -p core -p legacy-launcher-core
 out=dist/linux
 mkdir -p "$out"   # (the folder is also the content folder: mods stay)
 cp target/release/neoomsi target/release/neoomsi-launcher "$out/"

@@ -12,7 +12,7 @@ command -v cargo >/dev/null 2>&1 || { echo "Install Rust from https://rustup.rs,
 target="${neoomsi_TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
 version="${neoomsi_VERSION:-$(sh scripts/version.sh 2>/dev/null || echo 0.0.0)}"
 export neoomsi_VERSION="$version"
-cargo build --locked --release --target "$target" -p omsi-app -p omsi-launcher-core
+cargo build --locked --release --target "$target" -p core -p legacy-launcher-core
 out=dist/macos
 app="$out/neoOMSI.app"
 # (only the bundle is replaced: the folders beside it are the content folder with the mods)

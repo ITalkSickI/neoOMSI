@@ -1,0 +1,13 @@
+[package]
+name = "geometry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Geometry generation: spline curves and profile extrusion, terrain meshes, object placement"
+
+[dependencies]
+map = { path = "../map" }
+scenery = { path = "../scenery" }
+legacy-o3d = { path = "../legacy-o3d" }
+glam.workspace = true
+log.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "legacy-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Compiler and virtual machine for OMSI's stack-based object scripts (.osc)"
+
+[dependencies]
+legacy-config = { path = "../legacy-config" }
+hashbrown.workspace = true
+thiserror.workspace = true
+log.workspace = true

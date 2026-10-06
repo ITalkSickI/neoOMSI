@@ -1,0 +1,26 @@
+[package]
+name = "simulation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Simulation runtime: vehicle instances with scripts and animations, system variables, clock"
+
+[dependencies]
+legacy-config = { path = "../legacy-config" }
+legacy-script = { path = "../legacy-script" }
+model = { path = "../model" }
+legacy-vehicle = { path = "../vehicle" }
+legacy-o3d = { path = "../legacy-o3d" }
+geometry = { path = "../geometry" }
+content = { path = "../content" }
+scenery = { path = "../scenery" }
+glam.workspace = true
+log.workspace = true
+anyhow.workspace = true
+hashbrown.workspace = true
+texture = { path = "../texture" }
+parking_lot = { workspace = true }
+ab_glyph = "0.2"
+
+[dev-dependencies]
+audio = { path = "../audio" }

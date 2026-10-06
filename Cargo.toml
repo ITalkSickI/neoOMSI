@@ -1,27 +1,28 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/omsi-cfg",
-    "crates/omsi-script",
-    "crates/omsi-o3d",
-    "crates/omsi-model",
-    "crates/omsi-scenery",
-    "crates/omsi-map",
-    "crates/omsi-vehicle",
-    "crates/omsi-timetable",
-    "crates/omsi-content",
-    "crates/omsi-texture",
-    "crates/omsi-geometry",
-    "crates/omsi-render",
-    "crates/omsi-sim",
-    "crates/omsi-audio",
-    "crates/omsi-net",
-    "crates/omsi-plugin",
-    "crates/omsi-plugin/demo",
-    "crates/omsi-i18n",
-    "crates/omsi-ui",
-    "crates/omsi-launcher-core",
-    "crates/omsi-app",
+    "crates/legacy-config",
+    "crates/config",
+    "crates/legacy-script",
+    "crates/legacy-o3d",
+    "crates/model",
+    "crates/scenery",
+    "crates/map",
+    "crates/vehicle",
+    "crates/timetable",
+    "crates/content",
+    "crates/texture",
+    "crates/geometry",
+    "crates/render",
+    "crates/simulation",
+    "crates/audio",
+    "crates/network",
+    "crates/legacy-plugin",
+    "crates/legacy-plugin/demo",
+    "crates/i18n",
+    "crates/user-interface",
+    "crates/legacy-launcher-core",
+    "crates/core",
     "tools/omsi-check",
 ]
 exclude = ["launcher/src-tauri"]
@@ -69,11 +70,11 @@ opt-level = 3
 debug = 0
 
 # our own crates that are slow at load time in dev
-[profile.dev.package.omsi-o3d]
+[profile.dev.package.legacy-o3d]
 opt-level = 3
-[profile.dev.package.omsi-texture]
+[profile.dev.package.texture]
 opt-level = 3
-[profile.dev.package.omsi-scenery]
+[profile.dev.package.scenery]
 opt-level = 3
 
 # A release-like build for local Windows testing. It keeps the normal optimisation level but

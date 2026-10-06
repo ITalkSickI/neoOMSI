@@ -1,6 +1,6 @@
 # Passengers
 
-Passenger simulation lives in `crates/omsi-app/src/humans/`.
+Passenger simulation lives in `../crates/core`.
 
 ## State and movement
 
@@ -37,7 +37,7 @@ movement keeps OMSI's entry-only choice.
 Run focused and workspace tests with:
 
 ```powershell
-cargo nextest run -p omsi-app --lib humans:: --locked
+cargo nextest run -p core --lib humans:: --locked
 cargo nextest run --workspace --locked
 ```
 
