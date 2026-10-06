@@ -1,5 +1,34 @@
-# Interface texts: the English text is the key (see omsi_ui::tr). _version 2: every
-# language of a text under it. `pt` is Brazilian Portuguese; `pt-pt` is European Portuguese.
+#
+# DO NOT USE THIS! Use the modern i18n -> `assets/i18n/language.json` (language = en, de etc.)
+# This file will be migrated to the modern i18n, but for now we'll keep it.
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+
 _version: 2
 
 "Steering view angle":
