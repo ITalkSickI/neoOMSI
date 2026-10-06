@@ -764,7 +764,7 @@ pub fn reset_dialog(l: &mut Launcher) {
         ButtonKind::Danger,
     ) {
         let language = l.state.settings.get("language").cloned();
-        l.state.settings = core::settings_from_text(None);
+        l.state.settings = core::default_settings();
         if let Some(lang) = language {
             l.state.settings["language"] = lang;
         }
@@ -5510,7 +5510,7 @@ mod settings_tests {
 
     /// Settings that show every row: Enhanced (Vanilla hides the shadows and effects), VR on.
     fn all_rows() -> Value {
-        let mut s = core::settings_from_text(None);
+        let mut s = core::default_settings();
         s["graphics"] = json!("enhanced");
         s["vr"] = json!(true);
         s
@@ -5598,7 +5598,7 @@ mod settings_tests {
 
     #[test]
     fn passenger_seat_preference_can_be_enabled_and_disabled() {
-        let mut s = core::settings_from_text(None);
+        let mut s = core::default_settings();
         assert_eq!(s["pax_prefer_seats"], json!(false));
         click(4, "set-pax_prefer_seats", &mut s);
         assert_eq!(s["pax_prefer_seats"], json!(true));

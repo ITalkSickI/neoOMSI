@@ -14,9 +14,7 @@ pub(super) fn settings_file() -> std::sync::Arc<serde_json::Value> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get_or_insert_with(|| {
-            let text =
-                std::fs::read_to_string(omsi_launcher_lib::data_dir().join("settings.cfg")).ok();
-            omsi_launcher_lib::settings_from_text(text.as_deref())
+            omsi_launcher_lib::current_settings()
         })
         .clone();
     let pending = PENDING_SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
@@ -145,7 +143,7 @@ pub(super) static MERGED_SETTINGS: std::sync::Mutex<Option<std::sync::Arc<serde_
 pub(super) static SETTINGS_CACHE: std::sync::Mutex<Option<serde_json::Value>> =
     std::sync::Mutex::new(None);
 
-/// Write one key of `~/.neoomsi/settings.cfg` (the launcher's file; the other lines
+/// Write one key of the settings file (the other keys
 /// stay as they are). The write is delayed a moment and joined with the ones that follow.
 pub(crate) fn remember_setting(key: &str, value: &str) {
     {

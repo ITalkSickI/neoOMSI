@@ -291,7 +291,7 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
             let _ = ::config::save();
             store_with(app, |v| {
                 let language = v.get("language").cloned();
-                *v = omsi_launcher_lib::settings_from_text(None);
+                *v = omsi_launcher_lib::default_settings();
                 if let Some(l) = language {
                     v["language"] = l;
                 }

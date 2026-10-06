@@ -1891,6 +1891,7 @@ name = "legacy-launcher-core"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "config",
  "content",
  "legacy-config",
  "legacy-vehicle",

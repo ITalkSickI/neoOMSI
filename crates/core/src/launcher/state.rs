@@ -241,7 +241,7 @@ pub struct State {
     pub profile: Option<core::Profile>,
     pub settings: serde_json::Value,
     pub settings_dirty: f32,
-    /// `settings.cfg` as last read or written here: a game changes it too (its Options
+    /// `settings.toml` as last read or written here: a game changes it too (its Options
     /// in the pause menu), and the launcher's copy from before must not be written back
     /// over that.
     settings_file: Option<String>,
@@ -291,7 +291,7 @@ impl State {
     pub fn new() -> State {
         let (tx, rx) = channel();
         let config = core::load_config();
-        let settings = core::get_settings().unwrap_or_else(|_| core::settings_from_text(None));
+        let settings = core::get_settings().unwrap_or_else(|_| core::default_settings());
         crate::ui_language(
             settings
                 .get("language")
@@ -382,8 +382,8 @@ impl State {
     pub fn in_game(&self) -> bool {
         self.queued_launch.is_some()
             || self
-                .launch_hold
-                .is_some_and(|t| t.elapsed().as_secs_f32() < 15.0)
+            .launch_hold
+            .is_some_and(|t| t.elapsed().as_secs_f32() < 15.0)
             || self.instances.iter().any(|i| i.running)
     }
 
@@ -604,9 +604,9 @@ impl State {
         };
         if !self.maps.is_empty()
             && !self
-                .maps
-                .iter()
-                .any(|m| m.file.eq_ignore_ascii_case(&info.map))
+            .maps
+            .iter()
+            .any(|m| m.file.eq_ignore_ascii_case(&info.map))
         {
             self.set_status(
                 format!(
@@ -835,6 +835,7 @@ impl State {
         }
         let now = read_settings_file();
         if now.is_some() && now != self.settings_file {
+            let _ = ::config::load();
             if let Ok(v) = core::get_settings() {
                 self.settings = v;
             }
@@ -1370,10 +1371,10 @@ impl State {
         // (a hand-picked depot file stays when the new bus has one of that name)
         let keep = self.choice.hof_manual
             && self.bus().is_some_and(|v| {
-                v.hofs
-                    .iter()
-                    .any(|h| h.eq_ignore_ascii_case(&self.choice.hof))
-            });
+            v.hofs
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(&self.choice.hof))
+        });
         if !keep {
             self.choice.hof_manual = false;
             self.choice.hof = self.default_hof();
@@ -1639,7 +1640,7 @@ mod crash_tests {
             &p,
             "[t INFO x] loading\n[t INFO neoomsi_game::app_events] game ends\n",
         )
-        .unwrap();
+            .unwrap();
         assert!(super::crash_of(&p).is_none());
         std::fs::write(&p, "[t ERROR ::render] the graphics device was lost (Unknown): Unexpected error variant\n[t INFO neoomsi_game::app_events] game ends\n").unwrap();
         assert!(super::crash_of(&p).unwrap().0.contains("device was lost"));
@@ -1651,5 +1652,5 @@ mod crash_tests {
 }
 
 fn read_settings_file() -> Option<String> {
-    std::fs::read_to_string(core::data_dir().join("settings.cfg")).ok()
+    std::fs::read_to_string(::config::default_path()).ok()
 }

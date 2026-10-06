@@ -1,7 +1,5 @@
 //! What the machine has and gives back: physical memory, the texture budget, and returning freed memory to the system.
 
-use super::*;
-
 /// Bytes of memory the machine has.
 pub(crate) fn physical_memory() -> Option<u64> {
     #[cfg(target_os = "macos")]

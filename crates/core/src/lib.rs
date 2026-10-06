@@ -188,7 +188,7 @@ pub(crate) fn launcher_statics() {
         (::config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    CLASSIC.store((::config::get_string("graphics", "graphics").as_deref() == Some("vanilla")), std::sync::atomic::Ordering::Relaxed);
+    CLASSIC.store(config::get_string("graphics", "graphics").as_deref() == Some("vanilla"), std::sync::atomic::Ordering::Relaxed);
     CLOUDS.store(
         ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
