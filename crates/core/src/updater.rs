@@ -317,33 +317,58 @@ pub fn latest() -> anyhow::Result<Option<Release>> {
     }
 }
 
-/// The newest offerable release of a list (or of a single release object).
+fn published(v: &serde_json::Value) -> &str {
+    v["published_at"]
+        .as_str()
+        .or_else(|| v["created_at"].as_str())
+        .unwrap_or("")
+}
+
 fn pick_release(v: &serde_json::Value, current: &str) -> anyhow::Result<Option<Release>> {
     let Some(list) = v.as_array() else {
         return parse_release(v, current);
     };
-    let mut best: Option<Release> = None;
-    for r in list {
-        if let Some(r) = parse_release(r, current)? {
-            // (the list is newest first: of equal versions the first stays)
+    let bare = |t: &str| t.trim_start_matches(['v', 'V']).to_string();
+    let current_time = list
+        .iter()
+        .find(|r| r["tag_name"].as_str().map(bare) == Some(bare(current)))
+        .map(published);
+    let mut best: Option<(Release, &str)> = None;
+    for raw in list {
+        if let Some(r) = parse_release_since(raw, current, current_time)? {
+            let time = published(raw);
             if best
                 .as_ref()
-                .map(|b| order(&r.version, &b.version).is_gt())
+                .map(|(b, bt)| {
+                    let o = order(&r.version, &b.version);
+                    o.is_gt() || (o.is_eq() && time > *bt)
+                })
                 .unwrap_or(true)
             {
-                best = Some(r);
+                best = Some((r, time));
             }
         }
     }
-    Ok(best)
+    Ok(best.map(|(r, _)| r))
 }
 
 fn parse_release(v: &serde_json::Value, current: &str) -> anyhow::Result<Option<Release>> {
+    parse_release_since(v, current, None)
+}
+
+fn parse_release_since(
+    v: &serde_json::Value,
+    current: &str,
+    current_time: Option<&str>,
+) -> anyhow::Result<Option<Release>> {
     let tag = v["tag_name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("the release has no tag"))?;
     let version = tag.trim_start_matches(['v', 'V']).to_string();
     if v["draft"].as_bool() == Some(true) || !newer(&version, current) {
+        return Ok(None);
+    }
+    if order(&version, current).is_eq() && current_time.is_some_and(|c| published(v) <= c) {
         return Ok(None);
     }
     let Some(want) = asset_name(&version) else {
@@ -608,9 +633,9 @@ fn unpack(zip: &Path, to: &Path) -> anyhow::Result<()> {
             .map(|c| c.as_os_str() == "__MACOSX")
             .unwrap_or(false)
             || rel
-                .file_name()
-                .map(|n| n.to_string_lossy().starts_with("._"))
-                .unwrap_or(false)
+            .file_name()
+            .map(|n| n.to_string_lossy().starts_with("._"))
+            .unwrap_or(false)
         {
             continue;
         }
@@ -904,6 +929,28 @@ mod tests {
     }
 
     #[test]
+    fn the_newest_nightly_is_picked_by_its_publish_time() {
+        let nightly = |hash: &str, at: &str| {
+            let version = format!("0.2.0-nightly.g{hash}");
+            serde_json::json!({
+                "tag_name": format!("v{version}"), "published_at": at,
+                "assets": [{"name": asset_name(&version).unwrap(), "browser_download_url": format!("https://x/{hash}"), "size": 1}]
+            })
+        };
+        let list = serde_json::json!([
+            nightly("bbbbbbbb", "2026-10-02T10:00:00Z"),
+            nightly("dddddddd", "2026-10-04T10:00:00Z"),
+            nightly("aaaaaaaa", "2026-10-01T10:00:00Z"),
+            nightly("cccccccc", "2026-10-03T10:00:00Z"),
+        ]);
+        let picked = |current: &str| pick_release(&list, current).unwrap().map(|r| r.version);
+        assert_eq!(picked("0.1.9").as_deref(), Some("0.2.0-nightly.gdddddddd"));
+        assert_eq!(picked("0.2.0-nightly.gaaaaaaaa").as_deref(), Some("0.2.0-nightly.gdddddddd"));
+        assert_eq!(picked("0.2.0-nightly.gcccccccc").as_deref(), Some("0.2.0-nightly.gdddddddd"));
+        assert_eq!(picked("0.2.0-nightly.gdddddddd"), None);
+    }
+
+    #[test]
     fn the_program_path_survives_the_swap() {
         assert_eq!(
             program_path(Path::new("/home/me/neoOMSI/neoomsi")),
@@ -953,7 +1000,7 @@ mod tests {
             dir.join(MANIFEST),
             "neoomsi\nneoomsi-launcher\nretired.dll\n",
         )
-        .unwrap();
+            .unwrap();
         // the new release
         let zip_path = root.join("new.zip");
         {
