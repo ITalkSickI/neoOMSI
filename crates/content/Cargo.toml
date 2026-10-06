@@ -1,0 +1,10 @@
+[package]
+name = "content"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Smaller OMSI content formats: weather, environment, fonts, languages, money, tickets, humans, drivers, situations, options, input maps"
+
+[dependencies]
+legacy-config = { path = "../legacy-config" }
+log.workspace = true

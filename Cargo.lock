@@ -245,6 +245,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "audio"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "cpal",
+ "env_logger",
+ "glam",
+ "hashbrown 0.17.1",
+ "legacy-config",
+ "legacy-vehicle",
+ "log",
+ "parking_lot",
+ "symphonia",
+ "ureq",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -597,6 +614,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "config"
+version = "0.2.0"
+dependencies = [
+ "log",
+ "thiserror 2.0.20",
+ "toml",
+]
+
+[[package]]
 name = "console"
 version = "0.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -619,6 +645,76 @@ name = "constant_time_eq"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+
+[[package]]
+name = "content"
+version = "0.2.0"
+dependencies = [
+ "legacy-config",
+ "log",
+]
+
+[[package]]
+name = "core"
+version = "0.2.0"
+dependencies = [
+ "ab_glyph",
+ "android_logger",
+ "anyhow",
+ "arboard",
+ "audio",
+ "bytemuck",
+ "clap",
+ "config",
+ "content",
+ "ct2rs",
+ "env_logger",
+ "geometry",
+ "getrandom 0.4.3",
+ "gilrs",
+ "glam",
+ "hashbrown 0.17.1",
+ "i18n",
+ "image",
+ "imgui",
+ "jni",
+ "legacy-config",
+ "legacy-launcher-core",
+ "legacy-o3d",
+ "legacy-plugin",
+ "legacy-script",
+ "legacy-vehicle",
+ "libc",
+ "log",
+ "map",
+ "model",
+ "ndk-context",
+ "network",
+ "objc2-core-foundation",
+ "objc2-io-kit",
+ "openxr",
+ "parking_lot",
+ "pollster 1.0.1",
+ "rayon",
+ "render",
+ "rfd",
+ "rustrict",
+ "scenery",
+ "serde",
+ "serde_json",
+ "sha2",
+ "simulation",
+ "texture",
+ "timetable",
+ "ureq",
+ "user-interface",
+ "wgpu",
+ "wgpu-hal",
+ "windows",
+ "winit",
+ "winresource",
+ "zip",
+]
 
 [[package]]
 name = "core-foundation"
@@ -1312,6 +1408,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "geometry"
+version = "0.2.0"
+dependencies = [
+ "glam",
+ "legacy-o3d",
+ "log",
+ "map",
+ "scenery",
+]
+
+[[package]]
 name = "gethostname"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1489,6 +1596,14 @@ checksum = "27f864f10dfb56725ce5ce5472bc52252c8f93a4ab86327122cebf62c5f59a17"
 dependencies = [
  "typenum",
  "zeroize",
+]
+
+[[package]]
+name = "i18n"
+version = "0.2.0"
+dependencies = [
+ "hashbrown 0.17.1",
+ "serde_json",
 ]
 
 [[package]]
@@ -1761,6 +1876,79 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
+name = "legacy-config"
+version = "0.2.0"
+dependencies = [
+ "encoding_rs",
+ "flate2",
+ "log",
+ "thiserror 2.0.20",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "legacy-launcher-core"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "content",
+ "legacy-config",
+ "legacy-vehicle",
+ "libc",
+ "map",
+ "model",
+ "network",
+ "rayon",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sevenz-rust2",
+ "timetable",
+ "unrar-rs",
+ "windows",
+ "winresource",
+ "zip",
+]
+
+[[package]]
+name = "legacy-o3d"
+version = "0.2.0"
+dependencies = [
+ "encoding_rs",
+ "glam",
+ "legacy-config",
+ "log",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "legacy-plugin"
+version = "0.2.0"
+dependencies = [
+ "libloading 0.9.0",
+ "log",
+ "mlua",
+]
+
+[[package]]
+name = "legacy-script"
+version = "0.2.0"
+dependencies = [
+ "hashbrown 0.17.1",
+ "legacy-config",
+ "log",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "legacy-vehicle"
+version = "0.2.0"
+dependencies = [
+ "legacy-config",
+ "log",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1904,6 +2092,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
 
 [[package]]
+name = "map"
+version = "0.2.0"
+dependencies = [
+ "legacy-config",
+ "log",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1977,6 +2174,14 @@ dependencies = [
  "lua-src",
  "luajit-src",
  "pkg-config",
+]
+
+[[package]]
+name = "model"
+version = "0.2.0"
+dependencies = [
+ "legacy-config",
+ "log",
 ]
 
 [[package]]
@@ -2104,6 +2309,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "network"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "libc",
+ "log",
+ "ring",
+ "sha2",
+ "tungstenite",
+ "ureq",
 ]
 
 [[package]]
@@ -2542,332 +2760,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "omsi-app"
-version = "0.2.0"
-dependencies = [
- "ab_glyph",
- "android_logger",
- "anyhow",
- "arboard",
- "bytemuck",
- "clap",
- "ct2rs",
- "env_logger",
- "getrandom 0.4.3",
- "gilrs",
- "glam",
- "hashbrown 0.17.1",
- "image",
- "imgui",
- "jni",
- "libc",
- "log",
- "ndk-context",
- "objc2-core-foundation",
- "objc2-io-kit",
- "omsi-audio",
- "omsi-cfg",
- "omsi-content",
- "omsi-geometry",
- "omsi-i18n",
- "omsi-launcher-core",
- "omsi-map",
- "omsi-model",
- "omsi-net",
- "omsi-o3d",
- "omsi-plugin",
- "omsi-render",
- "omsi-scenery",
- "omsi-script",
- "omsi-sim",
- "omsi-texture",
- "omsi-timetable",
- "omsi-ui",
- "omsi-vehicle",
- "openxr",
- "parking_lot",
- "pollster 1.0.1",
- "rayon",
- "rfd",
- "rustrict",
- "serde",
- "serde_json",
- "sha2",
- "ureq",
- "wgpu",
- "wgpu-hal",
- "windows",
- "winit",
- "winresource",
- "zip",
-]
-
-[[package]]
-name = "omsi-audio"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "cpal",
- "env_logger",
- "glam",
- "hashbrown 0.17.1",
- "log",
- "omsi-cfg",
- "omsi-vehicle",
- "parking_lot",
- "symphonia",
- "ureq",
-]
-
-[[package]]
-name = "omsi-cfg"
-version = "0.2.0"
-dependencies = [
- "encoding_rs",
- "flate2",
- "log",
- "thiserror 2.0.20",
- "unicode-normalization",
-]
-
-[[package]]
 name = "omsi-check"
 version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "content",
  "env_logger",
+ "legacy-config",
+ "legacy-o3d",
+ "legacy-script",
+ "legacy-vehicle",
  "log",
- "omsi-cfg",
- "omsi-content",
- "omsi-map",
- "omsi-model",
- "omsi-o3d",
- "omsi-scenery",
- "omsi-script",
- "omsi-sim",
- "omsi-texture",
- "omsi-timetable",
- "omsi-vehicle",
+ "map",
+ "model",
  "parking_lot",
  "rayon",
+ "scenery",
+ "simulation",
+ "texture",
+ "timetable",
  "walkdir",
-]
-
-[[package]]
-name = "omsi-content"
-version = "0.2.0"
-dependencies = [
- "log",
- "omsi-cfg",
 ]
 
 [[package]]
 name = "omsi-demo-plugin"
 version = "0.2.0"
-
-[[package]]
-name = "omsi-geometry"
-version = "0.2.0"
-dependencies = [
- "glam",
- "log",
- "omsi-map",
- "omsi-o3d",
- "omsi-scenery",
-]
-
-[[package]]
-name = "omsi-i18n"
-version = "0.2.0"
-dependencies = [
- "hashbrown 0.17.1",
- "serde_json",
-]
-
-[[package]]
-name = "omsi-launcher-core"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "libc",
- "omsi-cfg",
- "omsi-content",
- "omsi-map",
- "omsi-model",
- "omsi-net",
- "omsi-timetable",
- "omsi-vehicle",
- "rayon",
- "rfd",
- "serde",
- "serde_json",
- "sevenz-rust2",
- "unrar-rs",
- "windows",
- "winresource",
- "zip",
-]
-
-[[package]]
-name = "omsi-map"
-version = "0.2.0"
-dependencies = [
- "log",
- "omsi-cfg",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "omsi-model"
-version = "0.2.0"
-dependencies = [
- "log",
- "omsi-cfg",
-]
-
-[[package]]
-name = "omsi-net"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "libc",
- "log",
- "ring",
- "sha2",
- "tungstenite",
- "ureq",
-]
-
-[[package]]
-name = "omsi-o3d"
-version = "0.2.0"
-dependencies = [
- "encoding_rs",
- "glam",
- "log",
- "omsi-cfg",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "omsi-plugin"
-version = "0.2.0"
-dependencies = [
- "libloading 0.9.0",
- "log",
- "mlua",
-]
-
-[[package]]
-name = "omsi-render"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "glam",
- "hashbrown 0.17.1",
- "log",
- "naga",
- "omsi-cfg",
- "omsi-geometry",
- "omsi-texture",
- "pollster 1.0.1",
- "rayon",
- "wgpu",
- "windows",
- "winit",
-]
-
-[[package]]
-name = "omsi-scenery"
-version = "0.2.0"
-dependencies = [
- "log",
- "omsi-cfg",
- "omsi-model",
-]
-
-[[package]]
-name = "omsi-script"
-version = "0.2.0"
-dependencies = [
- "hashbrown 0.17.1",
- "log",
- "omsi-cfg",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "omsi-sim"
-version = "0.2.0"
-dependencies = [
- "ab_glyph",
- "anyhow",
- "glam",
- "hashbrown 0.17.1",
- "log",
- "omsi-audio",
- "omsi-cfg",
- "omsi-content",
- "omsi-geometry",
- "omsi-model",
- "omsi-o3d",
- "omsi-scenery",
- "omsi-script",
- "omsi-texture",
- "omsi-vehicle",
- "parking_lot",
-]
-
-[[package]]
-name = "omsi-texture"
-version = "0.2.0"
-dependencies = [
- "hashbrown 0.17.1",
- "image",
- "log",
- "omsi-cfg",
- "parking_lot",
- "rayon",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "omsi-timetable"
-version = "0.2.0"
-dependencies = [
- "log",
- "omsi-cfg",
-]
-
-[[package]]
-name = "omsi-ui"
-version = "0.2.0"
-dependencies = [
- "ab_glyph",
- "bytemuck",
- "glam",
- "hashbrown 0.17.1",
- "image",
- "log",
- "naga",
- "omsi-i18n",
- "omsi-render",
- "omsi-texture",
- "pollster 1.0.1",
- "resvg",
- "rustrict",
- "wgpu",
-]
-
-[[package]]
-name = "omsi-vehicle"
-version = "0.2.0"
-dependencies = [
- "log",
- "omsi-cfg",
-]
 
 [[package]]
 name = "once_cell"
@@ -3348,6 +3266,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "render"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "geometry",
+ "glam",
+ "hashbrown 0.17.1",
+ "legacy-config",
+ "log",
+ "naga",
+ "pollster 1.0.1",
+ "rayon",
+ "texture",
+ "wgpu",
+ "windows",
+ "winit",
+]
+
+[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3567,6 +3505,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scenery"
+version = "0.2.0"
+dependencies = [
+ "legacy-config",
+ "log",
+ "model",
+]
+
+[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3725,6 +3672,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a9c6883ca9c3c7c90e888de77b7a5c849c779d25d74a1269b0218b14e8b136c"
 dependencies = [
  "log",
+]
+
+[[package]]
+name = "simulation"
+version = "0.2.0"
+dependencies = [
+ "ab_glyph",
+ "anyhow",
+ "audio",
+ "content",
+ "geometry",
+ "glam",
+ "hashbrown 0.17.1",
+ "legacy-config",
+ "legacy-o3d",
+ "legacy-script",
+ "legacy-vehicle",
+ "log",
+ "model",
+ "parking_lot",
+ "scenery",
+ "texture",
 ]
 
 [[package]]
@@ -3993,6 +3962,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "texture"
+version = "0.2.0"
+dependencies = [
+ "hashbrown 0.17.1",
+ "image",
+ "legacy-config",
+ "log",
+ "parking_lot",
+ "rayon",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4030,6 +4012,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "timetable"
+version = "0.2.0"
+dependencies = [
+ "legacy-config",
+ "log",
 ]
 
 [[package]]
@@ -4338,6 +4328,26 @@ dependencies = [
  "http",
  "httparse",
  "log",
+]
+
+[[package]]
+name = "user-interface"
+version = "0.2.0"
+dependencies = [
+ "ab_glyph",
+ "bytemuck",
+ "glam",
+ "hashbrown 0.17.1",
+ "i18n",
+ "image",
+ "log",
+ "naga",
+ "pollster 1.0.1",
+ "render",
+ "resvg",
+ "rustrict",
+ "texture",
+ "wgpu",
 ]
 
 [[package]]

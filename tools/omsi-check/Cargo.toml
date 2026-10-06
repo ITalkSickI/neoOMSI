@@ -6,17 +6,17 @@ license.workspace = true
 description = "Loads every content file of an OMSI 2 installation with the new loaders and reports failures"
 
 [dependencies]
-omsi-cfg = { path = "../../crates/omsi-cfg" }
-omsi-script = { path = "../../crates/omsi-script" }
-omsi-o3d = { path = "../../crates/omsi-o3d" }
-omsi-model = { path = "../../crates/omsi-model" }
-omsi-scenery = { path = "../../crates/omsi-scenery" }
-omsi-map = { path = "../../crates/omsi-map" }
-omsi-vehicle = { path = "../../crates/omsi-vehicle" }
-omsi-timetable = { path = "../../crates/omsi-timetable" }
-omsi-content = { path = "../../crates/omsi-content" }
-omsi-texture = { path = "../../crates/omsi-texture" }
-omsi-sim = { path = "../../crates/omsi-sim" }
+legacy-config = { path = "../../crates/legacy-config" }
+legacy-script = { path = "../../crates/legacy-script" }
+legacy-o3d = { path = "../../crates/legacy-o3d" }
+model = { path = "../../crates/model" }
+scenery = { path = "../../crates/scenery" }
+map = { path = "../../crates/map" }
+legacy-vehicle = { path = "../../crates/vehicle" }
+timetable = { path = "../../crates/timetable" }
+content = { path = "../../crates/content" }
+texture = { path = "../../crates/texture" }
+simulation = { path = "../../crates/simulation" }
 parking_lot.workspace = true
 anyhow.workspace = true
 clap.workspace = true

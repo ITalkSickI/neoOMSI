@@ -1,0 +1,10 @@
+[package]
+name = "timetable"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Timetables: TTData (bus stops, station links, trips, tracks, lines) and car_use files (units mc_timetable, mc_station)"
+
+[dependencies]
+legacy-config = { path = "../legacy-config" }
+log.workspace = true
