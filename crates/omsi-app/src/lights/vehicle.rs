@@ -35,6 +35,7 @@ pub fn vehicle_lights(
         }
         c.brightness *= ec.gain;
         c.size *= ec.size.max(0.0);
+        c.spread = ec.spread.max(0.05);
         c.color = [
             c.color[0] * ec.color[0],
             c.color[1] * ec.color[1],
@@ -204,9 +205,18 @@ pub fn vehicle_lights(
         let sp = cfg.spill;
         let tilt = (INTERIOR_SPILL_TILT + sp.tilt_add).to_radians();
         let cone = [
-            (INTERIOR_SPILL_INNER + sp.inner_add).clamp(1.0, 179.0).to_radians().cos(),
-            (INTERIOR_SPILL_OUTER + sp.outer_add).clamp(1.0, 179.0).to_radians().cos(),
+            ((INTERIOR_SPILL_INNER + sp.inner_add) * sp.spread.max(0.05))
+                .clamp(1.0, 179.0)
+                .to_radians()
+                .cos(),
+            ((INTERIOR_SPILL_OUTER + sp.outer_add) * sp.spread.max(0.05))
+                .clamp(1.0, 179.0)
+                .to_radians()
+                .cos(),
         ];
+        let per_section = ((INTERIOR_SPILL_SLOTS / sp.vehicles.max(1) as usize)
+            / (1 + v.trailers.len()))
+            .max(2);
         let spill_r = spill_radius(&sp);
         for (model, _bb, xf, origin) in sections {
             let mut lit: Vec<usize> = (0..model.interior_lights.len())
@@ -218,14 +228,16 @@ pub fn vehicle_lights(
             if lit.is_empty() {
                 continue;
             }
-            if lit.len() > INTERIOR_SPILL_MAX {
-                let all = std::mem::take(&mut lit);
-                let n = all.len();
-                lit = (0..INTERIOR_SPILL_MAX)
-                    .map(|k| all[k * n / INTERIOR_SPILL_MAX])
-                    .collect();
-            }
-            let strength = night.clamp(0.0, 1.0) * sp.gain;
+            lit.sort_by(|a, b| {
+                model.interior_lights[*a].pos[1].total_cmp(&model.interior_lights[*b].pos[1])
+            });
+            let total = lit.len();
+            let chosen = (per_section / 2).max(1).min(total);
+            let lit: Vec<usize> = (0..chosen)
+                .map(|k| lit[(2 * k + 1) * total / (2 * chosen)])
+                .collect();
+            let share = total as f32 / chosen as f32;
+            let strength = night.clamp(0.0, 1.0) * sp.gain * share;
             for li in lit {
                 let il = &model.interior_lights[li];
                 let ic = interior_cfg(li);
@@ -234,17 +246,10 @@ pub fn vehicle_lights(
                 let color = (col * (1.0 - INTERIOR_SPILL_WHITE)
                     + Vec3::splat(col.max_element()) * INTERIOR_SPILL_WHITE)
                     .to_array();
-                // a lamp near the middle shines to both sides, one off-centre to its own
-                let sides: &[Vec3] = if at.x.abs() < 0.3 {
-                    &[Vec3::X, -Vec3::X]
-                } else if at.x > 0.0 {
-                    &[Vec3::X]
-                } else {
-                    &[-Vec3::X]
-                };
+                let sides = [Vec3::X, -Vec3::X];
                 let gain = INTERIOR_SPILL_LAMP * ic.gain * strength / sides.len() as f32;
                 for out in sides {
-                    let dir = (*out * tilt.cos() - Vec3::Z * tilt.sin()).normalize();
+                    let dir = (out * tilt.cos() - Vec3::Z * tilt.sin()).normalize();
                     lights.push(PointLight {
                         position: origin + xf.transform_point3(at).as_dvec3(),
                         radius: spill_r,

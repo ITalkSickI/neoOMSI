@@ -47,17 +47,37 @@ pub fn corona_light(c: &Corona, dark: f32) -> Option<PointLight> {
     if c.beam || c.halo || c.flags & 8 != 0 || c.brightness <= 0.01 {
         return None;
     }
-    let out = if c.direction.length_squared() > 1e-6 {
+    let sc = settings().src;
+    if !sc.on {
+        return None;
+    }
+    let faces = c.direction.length_squared() > 1e-6;
+    let out = if faces {
         c.direction.normalize() * SRC_OUTSET
     } else {
         Vec3::ZERO
     };
+    let radius = SRC_RADIUS
+        * (0.6 + 0.4 * c.size.clamp(0.0, 1.0))
+        * c.spread.max(0.05)
+        * sc.spread.max(0.05);
+    let (direction, cone) = if sc.directional && faces {
+        let half = |deg: f32| (deg.clamp(1.0, 179.0) * 0.5).to_radians().cos();
+        (
+            c.direction.normalize(),
+            [half(sc.inner.min(sc.outer)), half(sc.outer)],
+        )
+    } else {
+        (Vec3::ZERO, [1.0, 0.0])
+    };
     Some(PointLight {
         position: c.position + out.as_dvec3(),
-        radius: SRC_RADIUS * (0.6 + 0.4 * c.size.clamp(0.0, 1.0)),
+        radius,
         color: c.color,
-        intensity: c.brightness.min(1.5) * SRC_GAIN * dark,
-        core: SRC_CORE,
+        intensity: c.brightness.min(1.5) * SRC_GAIN * dark * sc.gain,
+        core: (SRC_CORE * sc.core.max(0.01)).min(radius),
+        direction,
+        cone,
         mode: LightMode::Both,
         ..Default::default()
     })

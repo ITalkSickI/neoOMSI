@@ -133,6 +133,7 @@ pub(super) fn spots_panel(
         ui.slider("Intensity x##sp", 0.0, 4.0, &mut m.gain);
         ui.slider("Range x##sp", 0.1, 4.0, &mut m.range);
         ui.slider("Core x##sp", 0.1, 4.0, &mut m.core);
+        ui.slider("Spread x (cone width)##sp", 0.2, 3.0, &mut m.spread);
         ui.slider("Inner Angle +deg##sp", -20.0, 60.0, &mut m.inner_add);
         ui.slider("Outer Angle +deg##sp", -40.0, 90.0, &mut m.outer_add);
         ui.slider("Tilt +deg (down)##sp", -30.0, 60.0, &mut m.tilt_add);
@@ -160,6 +161,23 @@ pub(super) fn spots_panel(
         return;
     };
     if ui.collapsing_header("Outside Light Sources", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+        ui.text("All outside sources (global)");
+        let m = &mut s.src;
+        ui.checkbox("Sources throw light##src", &mut m.on);
+        ui.slider("Intensity x##src", 0.0, 4.0, &mut m.gain);
+        ui.slider("Spread x (how far)##src", 0.1, 4.0, &mut m.spread);
+        ui.slider("Core x##src", 0.1, 4.0, &mut m.core);
+        ui.checkbox("Only the way it faces (cone)##src", &mut m.directional);
+        if m.directional {
+            ui.slider("Inner Angle (deg)##src", 1.0, 179.0, &mut m.inner);
+            ui.slider("Outer Angle (deg)##src", 1.0, 179.0, &mut m.outer);
+        } else {
+            ui.text_disabled("Everywhere (all round)");
+        }
+        if ui.button("Reset Source Light##src") {
+            *m = crate::lights::SourceCfg::DEFAULT;
+        }
+        ui.separator();
         if ui.button("Reset Outside Sources") {
             crate::lights::reset_exterior_cfg();
         }
@@ -184,6 +202,7 @@ pub(super) fn spots_panel(
                 c.off = !on;
                 ui.slider(format!("Intensity x##el{i}"), 0.0, 4.0, &mut c.gain);
                 ui.slider(format!("Size x##el{i}"), 0.0, 4.0, &mut c.size);
+                ui.slider(format!("Spread x##el{i}"), 0.1, 4.0, &mut c.spread);
                 ui.slider(format!("Right (m)##el{i}"), -3.0, 3.0, &mut c.shift[0]);
                 ui.slider(format!("Forward (m)##el{i}"), -3.0, 3.0, &mut c.shift[1]);
                 ui.slider(format!("Height (m)##el{i}"), -3.0, 3.0, &mut c.shift[2]);

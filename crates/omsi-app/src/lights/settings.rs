@@ -119,6 +119,7 @@ pub(crate) struct SpillCfg {
     pub inner_add: f32,
     pub outer_add: f32,
     pub tilt_add: f32,
+    pub spread: f32,
     pub reach: f32,
     pub vehicles: i32,
     pub marker: bool,
@@ -133,6 +134,7 @@ impl SpillCfg {
         inner_add: 0.0,
         outer_add: 0.0,
         tilt_add: 0.0,
+        spread: 1.0,
         reach: SPILL_RANGE as f32,
         vehicles: SPILL_VEHICLES as i32,
         marker: false,
@@ -170,8 +172,32 @@ impl Spot2Cfg {
 }
 
 #[derive(Clone, Copy)]
+pub(crate) struct SourceCfg {
+    pub on: bool,
+    pub gain: f32,
+    pub spread: f32,
+    pub core: f32,
+    pub directional: bool,
+    pub inner: f32,
+    pub outer: f32,
+}
+
+impl SourceCfg {
+    pub(crate) const DEFAULT: Self = Self {
+        on: true,
+        gain: 0.077,
+        spread: 0.1,
+        core: 0.530,
+        directional: false,
+        inner: 60.0,
+        outer: 140.0,
+    };
+}
+
+#[derive(Clone, Copy)]
 pub(crate) struct LightSettings {
     pub spill: SpillCfg,
+    pub src: SourceCfg,
     pub spot2: Spot2Cfg,
     pub lamp_light: LampLightCfg,
     pub map_spot: MapSpotCfg,
@@ -214,6 +240,7 @@ pub(crate) struct LightSettings {
 impl LightSettings {
     pub(crate) const DEFAULT: Self = Self {
         spill: SpillCfg::DEFAULT,
+        src: SourceCfg::DEFAULT,
         spot2: Spot2Cfg::DEFAULT,
         lamp_light: LampLightCfg::DEFAULT,
         map_spot: MapSpotCfg::DEFAULT,
@@ -271,6 +298,7 @@ pub(crate) struct ExteriorCfg {
     pub off: bool,
     pub gain: f32,
     pub size: f32,
+    pub spread: f32,
     pub color: [f32; 3],
     pub shift: [f32; 3],
 }
@@ -280,6 +308,7 @@ impl ExteriorCfg {
         off: false,
         gain: 1.0,
         size: 1.0,
+        spread: 1.0,
         color: [1.0, 1.0, 1.0],
         shift: [0.0; 3],
     };

@@ -95,6 +95,7 @@ pub struct Corona {
     pub beam: bool,
     pub beam_width: f32,
     pub halo: bool,
+    pub spread: f32,
 }
 
 impl Default for Corona {
@@ -115,6 +116,7 @@ impl Default for Corona {
             beam: false,
             beam_width: 0.0,
             halo: false,
+            spread: 1.0,
         }
     }
 }

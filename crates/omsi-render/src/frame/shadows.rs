@@ -94,8 +94,16 @@ impl Renderer {
                     far,
                 }
             };
-            let score = l.intensity.clamp(0.05, 3.0) * far * far / (1.0 + (d * d) as f32)
-                + if l.shadow_first { 1.0e9 } else { 0.0 };
+            let score = if l.shadow_first {
+                let held = st.slots.iter().any(|sl| {
+                    sl.seen.is_some_and(|s| {
+                        (s.pos - pose.pos).length() < 2.5 && s.dir.dot(pose.dir) > 0.7
+                    })
+                });
+                1.0e6 + (SPOT_CAM_RANGE - d).max(0.0) as f32 + if held { 30.0 } else { 0.0 }
+            } else {
+                l.intensity.clamp(0.05, 3.0) * far * far / (1.0 + (d * d) as f32)
+            };
             cands.push((score, i, pose));
         }
         cands.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -189,7 +197,12 @@ impl Renderer {
         for (ci, (_, li, pose)) in cands.iter().enumerate() {
             if let Some(k) = assign[ci] {
                 if let Some(d) = slots[k].drawn {
-                    if (d.pos - pose.pos).length() < 0.5 && d.dir.dot(pose.dir) > 0.98 {
+                    let (tol, cos) = if scene.lights[*li].shadow_first {
+                        (2.0, 0.9)
+                    } else {
+                        (0.5, 0.98)
+                    };
+                    if (d.pos - pose.pos).length() < tol && d.dir.dot(pose.dir) > cos {
                         out[*li] = k as u32 + 1;
                     }
                 }
