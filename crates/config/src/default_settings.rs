@@ -111,6 +111,7 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("graphics", "min_obj_size", Def::Float(0.013)),
     ("graphics", "max_obj_dist", Def::Float(-1.0)),
     ("graphics", "map_detail", Def::Int(-1)),
+    ("graphics", "view_distance", Def::Float(0.0)),
     ("graphics", "mirror_size", Def::Int(256)),
     ("graphics", "mirror_refresh", Def::Str("full")),
     ("graphics", "led_glow", Def::Int(6)),

@@ -240,6 +240,10 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                         ::config::set_setting("vr", &key[3..].replace('_', "-"), v);
                         let _ = ::config::save();
                     }
+                } else if ::config::DEFAULTS.iter().any(|(c, k, _)| *c == "graphics" && *k == key) {
+                    gfx_set(key, &serde_json::json!(value));
+                    let _ = ::config::save();
+                    invalidate_settings();
                 } else {
                     remember_setting(key, value);
                 }

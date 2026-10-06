@@ -728,6 +728,12 @@ pub fn reset_dialog(l: &mut Launcher) {
         if let Some(lang) = language {
             l.state.settings["language"] = lang;
         }
+        for (cat, key, _) in ::config::DEFAULTS {
+            if *cat == "graphics" {
+                ::config::reset_setting(cat, key);
+            }
+        }
+        let _ = ::config::save();
         l.state.settings_dirty = 0.3;
         l.pages.confirm_reset = false;
         l.state
@@ -911,8 +917,22 @@ fn graphics_profiles_block(ui: &mut Ui, s: &mut Value, dirty: &mut f32, c: &mut 
     });
 }
 
-/// How the game looks and how fast it runs.
-fn graphics_tab(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
+/// How the game looks and how fast it runs. The rows work on the config's `[graphics]`
+/// (shown as the JSON the rows know); what they changed is written back into it.
+fn graphics_tab(ui: &mut Ui, s: &mut Value, _dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
+    let mut g = crate::game_lists::gfx_view();
+    if let Some(m) = s.get("texture_memory_auto") {
+        g["texture_memory_auto"] = m.clone();
+    }
+    let before = g.clone();
+    let mut changed = 0.0;
+    let used = graphics_tab_rows(ui, &mut g, &mut changed, cols);
+    g.as_object_mut().map(|o| o.remove("texture_memory_auto"));
+    crate::game_lists::gfx_store(&before, &g);
+    used
+}
+
+fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
     let mut c = Col::new(ui, cols[0], "Graphics");
     // Quality presets, first: they set most of what follows. (OMSI's own
     // option_presets/*.oop are named after the PCs of their day - "PC 2006", "X10 high",

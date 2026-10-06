@@ -719,8 +719,8 @@ impl Launcher {
         }
         if let Some(o) = other {
             unsafe { std::env::set_var("OMSI_BACKEND", o) };
-            self.state.settings["graphics_api"] = serde_json::json!(o);
-            self.state.settings_dirty = 0.3;
+            ::config::set_setting("graphics", "graphics_api", o);
+            let _ = ::config::save();
         }
         self.surface = None;
         self.gpu = None;

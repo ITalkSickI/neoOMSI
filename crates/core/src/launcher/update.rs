@@ -455,13 +455,7 @@ impl Launcher {
                 false,
             );
         }
-        let api = self
-            .state
-            .settings
-            .get("graphics_api")
-            .and_then(|v| v.as_str())
-            .unwrap_or("auto")
-            .to_string();
+        let api = ::config::get_string("graphics", "graphics_api").unwrap_or_else(|| "auto".into());
         if lost
             && cfg!(windows)
             && api != "dx12"
@@ -473,8 +467,8 @@ impl Launcher {
             ButtonKind::Normal,
         )
         {
-            self.state.settings["graphics_api"] = serde_json::json!("dx12");
-            self.state.settings_dirty = 0.3;
+            ::config::set_setting("graphics", "graphics_api", "dx12");
+            let _ = ::config::save();
             self.state.crash = None;
             self.state.set_status("The game draws with DirectX 12 from the next start (Settings → Graphics API to change it back).", false);
         }

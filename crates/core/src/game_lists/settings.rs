@@ -21,15 +21,98 @@ pub(super) fn settings_file() -> std::sync::Arc<serde_json::Value> {
         .clone();
     let pending = PENDING_SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
     apply_pending(&mut v, &pending.0);
+    gfx_overlay(&mut v);
     let v = std::sync::Arc::new(v);
     *merged = Some(v.clone());
     v
 }
 
 /// Forget the file as read (and the merged copy of it): it is read again on the next ask.
-fn invalidate_settings() {
+pub(super) fn invalidate_settings() {
     *SETTINGS_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *MERGED_SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+pub(crate) fn gfx_view() -> serde_json::Value {
+    use ::config::Value as T;
+    let mut o = serde_json::Map::new();
+    for (cat, key, _) in ::config::DEFAULTS {
+        if *cat != "graphics" {
+            continue;
+        }
+        let v = match ::config::get_setting(cat, key) {
+            Some(T::Boolean(b)) => serde_json::json!(b),
+            Some(T::Integer(i)) if *key == "map_detail" && i < 0 => serde_json::json!("auto"),
+            Some(T::Integer(i)) => serde_json::json!(i),
+            Some(T::Float(f)) if f <= 0.0 && matches!(*key, "render_scale" | "view_distance") => {
+                serde_json::json!("auto")
+            }
+            Some(T::Float(f)) if f < 0.0 && *key == "max_obj_dist" => serde_json::json!("auto"),
+            Some(T::Float(f)) => serde_json::json!(f),
+            Some(T::String(s)) => serde_json::json!(s),
+            _ => continue,
+        };
+        o.insert((*key).to_string(), v);
+    }
+    serde_json::Value::Object(o)
+}
+
+/// Put the config's graphics on top of the launcher's JSON.
+pub(crate) fn gfx_overlay(v: &mut serde_json::Value) {
+    if let serde_json::Value::Object(o) = gfx_view() {
+        for (k, x) in o {
+            v[k.as_str()] = x;
+        }
+    }
+}
+
+/// Write one graphics setting (as the JSON pages hold it) into the config.
+pub(crate) fn gfx_set(key: &str, v: &serde_json::Value) {
+    use ::config::Value as T;
+    if !::config::DEFAULTS.iter().any(|(c, k, _)| *c == "graphics" && *k == key) {
+        return;
+    }
+    let text = match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        other => other.to_string(),
+    };
+    if text == "auto" {
+        ::config::reset_setting("graphics", key);
+        return;
+    }
+    let value = match ::config::get_setting("graphics", key) {
+        Some(T::Boolean(_)) => T::Boolean(text == "true" || text == "1"),
+        Some(T::String(_)) => T::String(text),
+        Some(T::Float(_)) => match text.parse::<f64>() {
+            Ok(f) => T::Float(f),
+            Err(_) => return,
+        },
+        _ => match text.parse::<i64>() {
+            Ok(i) => T::Integer(i),
+            Err(_) => match text.parse::<f64>() {
+                Ok(f) => T::Float(f),
+                Err(_) => return,
+            },
+        },
+    };
+    ::config::set_setting("graphics", key, value);
+}
+
+/// Write what changed between `before` and `after` of the graphics into the config file.
+pub(crate) fn gfx_store(before: &serde_json::Value, after: &serde_json::Value) {
+    let Some(o) = after.as_object() else { return };
+    let mut any = false;
+    for (k, x) in o {
+        if before.get(k) != Some(x) {
+            gfx_set(k, x);
+            any = true;
+        }
+    }
+    if any {
+        let _ = ::config::save();
+        invalidate_settings();
+    }
 }
 
 pub(super) fn store_with(app: &mut App, change: impl FnOnce(&mut serde_json::Value)) {
@@ -37,7 +120,10 @@ pub(super) fn store_with(app: &mut App, change: impl FnOnce(&mut serde_json::Val
     let Ok(mut v) = omsi_launcher_lib::get_settings() else {
         return;
     };
+    gfx_overlay(&mut v);
+    let before = v.clone();
     change(&mut v);
+    gfx_store(&before, &v);
     invalidate_settings();
     match omsi_launcher_lib::save_settings(&v) {
         Ok(()) => reload_settings(app),
