@@ -1,10 +1,11 @@
 //! Audio.
 //!
 //! The crate is layered, each layer only depending on the ones below it:
-//! `runtime` (OMSI rules) -> `engine` (façade + shared mixer state) -> `voice` (state and
-//! per-block rendering) -> `dsp` (resampling, filters, limiter, reverb), with `assets`,
+//! `runtime` (OMSI rules) -> `engine` (façade, command/feedback channels) -> `voice` (state
+//! and per-block rendering) -> `dsp` (resampling, filters, limiter, reverb), with `assets`,
 //! `device` and `spatial` at the leaves. The runtime decides *what* is heard; the engine
-//! decides *how* it sounds; `device` keeps the cpal output apart from both.
+//! decides *how* it sounds; `device` keeps the cpal output apart from both. The engine sends
+//! only bounded commands to the audio thread, which owns the voices and DSP state alone.
 
 pub mod assets;
 pub mod clock;

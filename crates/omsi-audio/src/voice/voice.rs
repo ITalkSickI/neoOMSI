@@ -161,7 +161,8 @@ impl Voice {
         }
     }
 
-    /// Mix this voice into the interleaved output, `ch` channels at `rate`.
+    /// Mix this voice into the interleaved output, `ch` channels at `rate`. Returns whether
+    /// this block was a stream underrun (the decoder held the buffer); the mixer counts those.
     pub fn render_into(
         &mut self,
         out: &mut [f32],
@@ -169,7 +170,7 @@ impl Voice {
         rate: u32,
         listener: &Listener,
         spatializer: &dyn Spatializer,
-    ) {
+    ) -> bool {
         let dev_rate = rate as f64;
         let frames = out.len() / ch;
         let placed = spatializer.place(
@@ -189,10 +190,14 @@ impl Voice {
             1.0
         };
         if let Some(sb) = self.stream.clone() {
-            let mut buf = sb.lock();
+            // The decoder lock is only tried, never waited on: a busy lock means one silent
+            // block for this voice, reported so the mixer can count it.
+            let Some(mut buf) = sb.try_lock() else {
+                return true;
+            };
             if buf.closed {
                 self.finished = true;
-                return;
+                return false;
             }
             let step = buf.rate as f64 / dev_rate;
             for f in 0..frames {
@@ -213,13 +218,13 @@ impl Voice {
                     buf.advance();
                 }
             }
-            return;
+            return false;
         }
         let cch = self.clip.channels as usize;
         let nframes = self.clip.frames();
         if nframes == 0 {
             self.finished = true;
-            return;
+            return false;
         }
         let step = resample::step(
             self.params.pitch,
@@ -258,6 +263,7 @@ impl Voice {
             }
             self.pos += step;
         }
+        false
     }
 }
 

@@ -6,5 +6,5 @@ pub mod state;
 pub mod watcher;
 
 pub use output::DeviceOutput;
-pub use state::OutputFormat;
+pub use state::{DeviceState, OutputFormat};
 pub use watcher::watch_default_device;

@@ -1,39 +1,212 @@
-//! Read-back from the mixer: what a voice plays with now and how loud it arrives, whether it
-//! is still playing, and the listener's place. The game uses these instead of reaching into
-//! the voice list.
+//! The game-side view of playback, and the two bounded channels the audio thread uses to
+//! report back. The audio thread owns the voices; the game keeps its own authoritative map of
+//! the voices it started (id, parameters, asset), so `is_playing`/`voice_state`/`voice_count`
+//! never touch the audio-thread state. When the audio thread ends a voice on its own (a
+//! one-shot reaching its end, a stream closing, a device going away) it enqueues the id on the
+//! [`Reaper`]; the game drains that (see [`super::AudioEngine::pump`]) and forgets the voice,
+//! which is also where the large `Arc<Clip>`/`Arc<StreamBuf>` are finally let go - never on the
+//! audio thread.
 
+use crate::assets::{clip::Clip, stream::StreamBuf};
 use crate::spatial::distance_gain;
-use crate::voice::{VoiceId, VoiceParams};
+use crate::voice::{Voice, VoiceId, VoiceParams};
 use glam::Vec3;
+use parking_lot::Mutex;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
+
+/// Voice ends the reaper holds before the mixer keeps a finished voice in its list for one
+/// more block. That path never allocates and never loses a retirement, it only defers it.
+pub(crate) const REAPER_CAPACITY: usize = 1024;
+
+/// Fault counters of the real-time path. Written by the callback (relaxed, no allocation,
+/// no blocking) and read by the game; the offline tests assert on them.
+#[derive(Default)]
+pub(crate) struct Counters {
+    /// The command queue was locked by the game when the callback wanted to drain it.
+    pub(crate) command_lock_misses: AtomicU64,
+    /// Events dropped because the queue was full of events (see `commands`).
+    pub(crate) dropped_commands: AtomicU64,
+    /// Parameter entries evicted to make room for an event.
+    pub(crate) coalesced_evicted: AtomicU64,
+    /// Blocks a stream voice came out silent because the decoder lock was busy.
+    pub(crate) stream_underruns: AtomicU64,
+    /// Voices retired to the game thread.
+    pub(crate) retired: AtomicU64,
+    /// The reaper buffer was full; the voice is retired again next block.
+    pub(crate) reaper_overflow: AtomicU64,
+    /// The reaper was locked by the game when the callback wanted to retire.
+    pub(crate) reaper_lock_misses: AtomicU64,
+    /// Voices re-issued after a device change (see `AudioEngine::replay`).
+    pub(crate) replays: AtomicU64,
+}
+
+impl Counters {
+    pub(crate) fn snapshot(&self) -> AudioStats {
+        AudioStats {
+            command_lock_misses: self.command_lock_misses.load(Ordering::Relaxed),
+            dropped_commands: self.dropped_commands.load(Ordering::Relaxed),
+            coalesced_evicted: self.coalesced_evicted.load(Ordering::Relaxed),
+            stream_underruns: self.stream_underruns.load(Ordering::Relaxed),
+            retired: self.retired.load(Ordering::Relaxed),
+            reaper_overflow: self.reaper_overflow.load(Ordering::Relaxed),
+            reaper_lock_misses: self.reaper_lock_misses.load(Ordering::Relaxed),
+            replays: self.replays.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// A snapshot of the real-time counters, for tests and diagnostics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AudioStats {
+    pub command_lock_misses: u64,
+    pub dropped_commands: u64,
+    pub coalesced_evicted: u64,
+    pub stream_underruns: u64,
+    pub retired: u64,
+    pub reaper_overflow: u64,
+    pub reaper_lock_misses: u64,
+    pub replays: u64,
+}
+
+impl AudioStats {
+    /// Whether the real-time path had to drop or defer anything since the engine started.
+    pub fn clean(&self) -> bool {
+        self.dropped_commands == 0
+            && self.coalesced_evicted == 0
+            && self.stream_underruns == 0
+            && self.reaper_overflow == 0
+    }
+}
+
+/// What a voice reads: a decoded clip, or the buffer of a live stream.
+pub(crate) enum VoiceAsset {
+    Clip(Arc<Clip>),
+    Stream(Arc<StreamBuf>),
+}
+
+/// One voice the game started, as the game remembers it.
+pub(crate) struct ActiveVoice {
+    pub(crate) params: VoiceParams,
+    pub(crate) asset: VoiceAsset,
+}
+
+/// Voice ends reported by the audio thread. Bounded: on overflow the audio thread keeps the
+/// finished voice for one more block rather than allocating or dropping the id.
+pub(crate) struct Reaper {
+    inner: Mutex<Vec<VoiceId>>,
+    queued: AtomicUsize,
+}
+
+impl Reaper {
+    pub(crate) fn new() -> Reaper {
+        Reaper {
+            inner: Mutex::new(Vec::with_capacity(REAPER_CAPACITY)),
+            queued: AtomicUsize::new(0),
+        }
+    }
+
+    pub(crate) fn has_pending(&self) -> bool {
+        self.queued.load(Ordering::Relaxed) > 0
+    }
+
+    /// Audio thread: move finished voices out of the mixer list. Only voices whose id fits are
+    /// removed; the rest wait for the next block. The voice's `Arc`s are only decremented
+    /// here (the game's active map still holds one), so no expensive free happens.
+    pub(crate) fn retire_finished(&self, voices: &mut Vec<Voice>, counters: &Counters) {
+        let Some(mut r) = self.inner.try_lock() else {
+            counters.reaper_lock_misses.fetch_add(1, Ordering::Relaxed);
+            return;
+        };
+        voices.retain(|v| {
+            if v.is_finished() && r.len() < REAPER_CAPACITY {
+                r.push(v.id());
+                counters.retired.fetch_add(1, Ordering::Relaxed);
+                false
+            } else {
+                if v.is_finished() {
+                    counters.reaper_overflow.fetch_add(1, Ordering::Relaxed);
+                }
+                true
+            }
+        });
+        self.queued.store(r.len(), Ordering::Relaxed);
+    }
+
+    /// Game thread: take the reported voice ends (the `split_off` allocates on this side).
+    pub(crate) fn drain(&self) -> Vec<VoiceId> {
+        let mut q = self.inner.lock();
+        if q.is_empty() {
+            return Vec::new();
+        }
+        let out = q.split_off(0);
+        self.queued.store(0, Ordering::Relaxed);
+        out
+    }
+}
 
 impl super::AudioEngine {
     /// What a voice plays with now, and how loud it arrives at the listener (gain after
-    /// distance), while it plays.
+    /// distance), while it plays. Read from the game's own view, never from the mixer.
     pub fn voice_state(&self, id: VoiceId) -> Option<(VoiceParams, f32)> {
-        let listener = *self.shared.listener.lock();
-        let voices = self.shared.voices.lock();
-        let v = voices.iter().find(|v| v.id() == id && !v.is_finished())?;
-        let spatial = v
-            .params()
+        self.pump();
+        let listener = self.listener.get();
+        let active = self.active.borrow();
+        let a = active.get(&id)?;
+        let spatial = a
+            .params
             .position
-            .map(|p| distance_gain(v.params().range, (p - listener.position).length()))
+            .map(|p| distance_gain(a.params.range, (p - listener.position).length()))
             .unwrap_or(1.0);
-        Some((v.params(), v.params().gain * spatial))
+        Some((a.params, a.params.gain * spatial))
     }
 
     pub fn is_playing(&self, id: VoiceId) -> bool {
-        self.shared
-            .voices
-            .lock()
-            .iter()
-            .any(|v| v.id() == id && !v.is_finished())
+        self.pump();
+        self.active.borrow().contains_key(&id)
     }
 
     pub fn listener_position(&self) -> Vec3 {
-        self.shared.listener.lock().position
+        self.listener.get().position
     }
 
     pub fn voice_count(&self) -> usize {
-        self.shared.voices.lock().len()
+        self.pump();
+        self.active.borrow().len()
+    }
+
+    /// The real-time counters since the engine started (see [`AudioStats`]).
+    pub fn stats(&self) -> AudioStats {
+        self.counters.snapshot()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_reaper_defers_when_the_buffer_is_full() {
+        let counters = Counters::default();
+        let reaper = Reaper::new();
+        let mut voices: Vec<Voice> = Vec::new();
+        let clip = Arc::new(Clip {
+            sample_rate: 48_000,
+            channels: 1,
+            samples: vec![0; 4],
+        });
+        for id in 0..(REAPER_CAPACITY as u64 + 3) {
+            let mut v = Voice::clip_voice(id, clip.clone(), VoiceParams::default());
+            v.finish();
+            voices.push(v);
+        }
+        reaper.retire_finished(&mut voices, &counters);
+        assert_eq!(reaper.drain().len(), REAPER_CAPACITY);
+        assert_eq!(voices.len(), 3, "the rest wait for the next block");
+        assert_eq!(counters.reaper_overflow.load(Ordering::Relaxed), 3);
+        // the next block retires the leftovers
+        reaper.retire_finished(&mut voices, &counters);
+        assert_eq!(reaper.drain().len(), 3);
+        assert!(voices.is_empty());
     }
 }

@@ -62,8 +62,10 @@ impl Default for StreamBuf {
 }
 
 impl StreamBuf {
-    pub(crate) fn lock(&self) -> MutexGuard<'_, StreamInner> {
-        self.inner.lock()
+    /// The audio thread's view: never waits for the decoder. `None` means the decoder holds
+    /// the buffer right now; the voice comes out silent for this block (a defined underrun).
+    pub(crate) fn try_lock(&self) -> Option<MutexGuard<'_, StreamInner>> {
+        self.inner.try_lock()
     }
 
     /// Add decoded frames at `rate`. A new rate (another station, a stream that changed
