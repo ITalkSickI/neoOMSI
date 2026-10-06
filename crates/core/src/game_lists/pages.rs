@@ -424,11 +424,10 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
     ));
     let graphics: Vec<(String, String)> = vec![
         preset_row(
-            &file,
             "Quality preset",
             "Sets most of the graphics options at once",
         ),
-        (!omsi_launcher_lib::graphics_profiles().is_empty()).then(|| {
+        (!::config::get_subs("graphics_profiles").is_empty()).then(|| {
             opens(
                 "Load graphics profile",
                 "Applies a graphics profile saved in the launcher",
@@ -671,7 +670,7 @@ pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
             "noop".to_string(),
         )];
     };
-    let names = crate::describe::names(&app.args.root, &app.settings.language);
+    let names = crate::describe::names(&app.args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
     let head = |t: &str, n: usize| {
         (
             row(&t.to_uppercase(), 'i', &n.to_string(), "", None),
@@ -1049,7 +1048,7 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             "METAR sync",
             "The weather follows the real METAR report",
         ));
-        let src = if app.settings.metar_station.is_empty() {
+        let src = if ::config::get_string("gameplay", "metar_station").unwrap_or_default().is_empty() {
             format!("{} ({})", app.metar_station(), ::user_interface::tr("automatic"))
         } else {
             app.metar_station()

@@ -20,23 +20,31 @@ python tools/realistic-pax/build.py --omsi "C:/Steam/steamapps/common/OMSI 2"
 
 `fetch.py` downloads about 3.5 GB of source assets into `.cache/`; `build.py` writes to
 `build/RealisticPax` or the directory passed to `--out`. After changing weights or voices,
-`build.py --hums-only` updates the `.hum` files without Blender. Copy the output to
-`<content folder>/Packs/RealisticPax` and select **Settings → Gameplay → Passenger models →
-Realistic** in the launcher. The pack is optional and applies on the next start.
-Without it, installed OMSI passenger models remain in use.
+`build.py --hums-only` updates the `.hum` files without Blender.
+
+Players do not run any of this: the launcher downloads the pack (**Settings → Gameplay →
+Download the realistic passengers**) from the release tagged `realistic-pax-v1`, checks it
+against the SHA-256 GitHub lists and installs it into `<content folder>/Packs/RealisticPax`.
+To publish a new pack:
+
+1. Build it and run `python tools/realistic-pax/build.py --package`, which writes
+   `build/RealisticPax-v<N>.zip` (with `RealisticPax/pack.json` saying version `N`).
+2. Upload that file to a GitHub release tagged `realistic-pax-v<N>`, as a pre-release (not
+   marked latest).
+3. For a new version, raise `PACK_VERSION` in `build.py` and `TAG`, `FILE` and `VERSION` in
+   `crates/omsi-app/src/pax_pack.rs`; the launcher then offers installed older packs an
+   update. A pack copied in by hand has no `pack.json` and is left alone.
 
 ## Licences
 
-Nothing of the avatars is in the neoOMSI repository or its releases: `fetch.py` downloads
-them and the pack is built on your machine.
+Nothing of the avatars is in the neoOMSI repository or the program's releases: the pack is a
+release file of its own that the launcher downloads on request.
 
 | Source | Licence | In the pack |
 | --- | --- | --- |
 | [Microsoft Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) avatars | MIT | `rocketbox/`, `LICENSE-Rocketbox.md` |
 | MakeHuman base mesh, targets and system assets ([MakeHuman](http://www.makehumancommunity.org)) | CC0 1.0 | `generated/`, `LICENSE-MakeHuman.txt` |
 | [MPFB](https://static.makehumancommunity.org/mpfb/) Blender add-on | GPL-3.0-or-later | nothing: it only runs in Blender while building |
-| Your OMSI 2 installation's passenger `.hum` files | OMSI 2's | every `.hum`, with body, age and voice changed |
+| OMSI 2's passenger `.hum` files | OMSI 2's | nothing: `build.py` writes each `.hum` itself and takes only a few numbers of the one it replaces (seat height, step, voice, age) |
 
-Because the `.hum` files are derived from OMSI 2's, a built pack is for your own use and must
-not be redistributed. The scripts in this folder are part of neoOMSI and GPL-3.0-or-later like
-the rest of its source.
+The scripts in this folder are part of neoOMSI and GPL-3.0-or-later like the rest of its source.

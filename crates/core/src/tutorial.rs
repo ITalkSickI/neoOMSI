@@ -72,7 +72,7 @@ impl Tutorial {
     /// folder is missing).
     pub fn load(root: &Path, number: usize, lang: &str) -> Option<Tutorial> {
         let dir = root.join("Tutorials").join(number.to_string());
-        let lang_dir = [lang, "ENG", "DEU"]
+        let lang_dir = [lang, "en", "de"]
             .iter()
             .map(|l| dir.join(l))
             .find(|d| d.is_dir())?;

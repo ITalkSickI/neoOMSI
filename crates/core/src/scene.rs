@@ -198,7 +198,7 @@ fn is_led_name(name: &str) -> bool {
             || t.starts_with("ledpanel")
             || t.starts_with("ledanzeige")
             || t.strip_prefix("led")
-                .is_some_and(|r| !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()))
+            .is_some_and(|r| !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()))
     })
 }
 
@@ -208,8 +208,8 @@ fn is_led_name(name: &str) -> bool {
 fn is_white_lightmap(rgba: &[u8]) -> bool {
     !rgba.is_empty()
         && rgba
-            .chunks_exact(4)
-            .all(|p| p[0] >= 242 && p[1] >= 242 && p[2] >= 242)
+        .chunks_exact(4)
+        .all(|p| p[0] >= 242 && p[1] >= 242 && p[2] >= 242)
 }
 
 /// [`is_white_lightmap`] of the light map `name` (found in `dirs`, read once per file);
@@ -263,7 +263,7 @@ impl ObjectType {
             self.camera
                 .get_or_init(|| crate::camera_arm::classify(self)),
         )
-        .filter(|s| s.blocks)
+            .filter(|s| s.blocks)
     }
 
     /// (definition, pivot) per loaded mesh, for the scenery script runtime.
@@ -615,10 +615,10 @@ const OMSI_SURFACE_LIFT: f32 = 0.08;
 fn scenery_draw_position(authored: DVec3, surface: bool) -> DVec3 {
     authored
         + if surface {
-            DVec3::Z * OMSI_SURFACE_LIFT as f64
-        } else {
-            DVec3::ZERO
-        }
+        DVec3::Z * OMSI_SURFACE_LIFT as f64
+    } else {
+        DVec3::ZERO
+    }
 }
 
 /// Whether a scenery object is drawn with the roads' `OMSI_SURFACE_LIFT`: a `[surface]`
@@ -651,9 +651,9 @@ fn scenery_render_phase(kind: ::scenery::sco::RenderType) -> RenderPhase {
 fn overhead_only(def: &::scenery::sli::Spline) -> bool {
     !def.profiles.is_empty()
         && def
-            .profiles
-            .iter()
-            .all(|p| !p.points.is_empty() && p.points.iter().all(|q| q.z >= SPLINE_OVERHEAD))
+        .profiles
+        .iter()
+        .all(|p| !p.points.is_empty() && p.points.iter().all(|q| q.z >= SPLINE_OVERHEAD))
 }
 
 /// Which `parklist_p` a car park draws from: its first map string, as a number (Omsi.exe
@@ -2988,7 +2988,12 @@ impl World {
             root: root.to_path_buf(),
             global,
             map_dir,
-            map_detail: crate::settings::map_detail(root),
+            map_detail: match ::config::get_int("graphics", "map_detail").unwrap_or(-1) {
+                d if d >= 0 => d as u8,
+                _ => ::content::options::Options::load(&root.join("options.cfg"))
+                    .map(|o| o.i32("maxcomplexity_map", 2).clamp(0, 255) as u8)
+                    .unwrap_or(2),
+            },
             parklist: Mutex::new(HashMap::new()),
             mirror_textures: Mutex::new(Vec::new()),
             chrono_dirs: parking_lot::RwLock::new(chrono_dirs),
@@ -3039,7 +3044,7 @@ impl World {
             light_maps_generation: std::sync::atomic::AtomicU64::new(0),
             light_map_atlas: Mutex::new(None),
             parked_live: std::sync::atomic::AtomicUsize::new(0),
-            parked_max: crate::settings::Settings::load().ai_max_parked as i64,
+            parked_max: ::config::get_int("ai", "max_parked").unwrap_or(0),
             signal_routes,
             particle_objects: Mutex::new(HashMap::new()),
             fonts: Arc::new(Mutex::new(::simulation::texttex::FontLibrary::new(root))),
@@ -4344,10 +4349,10 @@ impl World {
                 let drivable = st.def.paths.iter().any(|pd| pd.kind == 0 || pd.kind == 1);
                 let overlay = !st.def.profiles.is_empty()
                     && st
-                        .def
-                        .profiles
-                        .iter()
-                        .all(|p| st.def.textures.get(p.texture).is_some_and(|t| t.alpha == 2));
+                    .def
+                    .profiles
+                    .iter()
+                    .all(|p| st.def.textures.get(p.texture).is_some_and(|t| t.alpha == 2));
                 // A spline's visible profile is not necessarily a ground surface: power
                 // cables and overhead trim have horizontal quads, and in the raster they cut
                 // the ground up to their own height and stood in for the surface there. Only
@@ -4393,9 +4398,9 @@ impl World {
                 .map(|o| f.contains(o.as_str()))
                 .unwrap_or(true)
                 && !skip_object
-                    .as_ref()
-                    .map(|s| f.contains(s.as_str()))
-                    .unwrap_or(false)
+                .as_ref()
+                .map(|s| f.contains(s.as_str()))
+                .unwrap_or(false)
         };
         // [object]
         for o in &tile.objects {
@@ -4585,8 +4590,8 @@ impl World {
         // parked cars stands
         let full = self.parked_max < 0
             || (self.parked_max > 0
-                && self.parked_live.load(std::sync::atomic::Ordering::Relaxed) as i64
-                    >= self.parked_max);
+            && self.parked_live.load(std::sync::atomic::Ordering::Relaxed) as i64
+            >= self.parked_max);
         if h % 4 == 0 || full {
             stats.lock().empty_spaces += 1;
             return None;
@@ -5411,9 +5416,9 @@ impl World {
                 && crate::tiles::names_traffic_light(&o.extra)
                 && ot.dynamic_textures.is_empty()
                 && !ot
-                    .meshes
-                    .iter()
-                    .any(|(_, _, ov)| ov.iter().any(|m| !m.item && m.freetex.is_some()));
+                .meshes
+                .iter()
+                .any(|(_, _, ov)| ov.iter().any(|m| !m.item && m.freetex.is_some()));
             let lamp = if ot.sco.is_traffic_light || child_lamp {
                 let named = o.extra.first().map(|s| s.trim()).filter(|s| !s.is_empty());
                 let index = named.map(|s| ::legacy_config::parse_f64(s) as usize).unwrap_or(0);
@@ -5869,11 +5874,11 @@ impl World {
                                 && th > ts.road_height(k) + 0.03
                                 && th < ts.road_height(k) + 1.5
                                 && !ts.cut_at(
-                                    (i as f32 + 0.5) * cell,
-                                    (j as f32 + 0.5) * cell,
-                                    th,
-                                    surface_flush(),
-                                )
+                                (i as f32 + 0.5) * cell,
+                                (j as f32 + 0.5) * cell,
+                                th,
+                                surface_flush(),
+                            )
                             {
                                 OVER_ROAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 if let Ok(mut w) = OVER_ROAD_AT.lock() {
@@ -6414,7 +6419,7 @@ impl World {
                               scene: &mut Scene,
                               name: &str,
                               t: &mut TypeGpu|
-                 -> Option<TextureId> {
+                              -> Option<TextureId> {
                     let (id, path) = gpu.texture(renderer, scene, name, &dirs, images)?;
                     t.textures.push(path);
                     Some(id)
@@ -6957,8 +6962,8 @@ impl World {
         let out_of_time = |done_some: bool| {
             done_some
                 && deadline
-                    .map(|d| std::time::Instant::now() >= d)
-                    .unwrap_or(false)
+                .map(|d| std::time::Instant::now() >= d)
+                .unwrap_or(false)
         };
         macro_rules! instance {
             ($id:expr) => {{
@@ -7369,10 +7374,10 @@ impl World {
                         let mat = tr.material;
                         let xf = Mat4::from_rotation_z((-heading).to_radians() as f32)
                             * Mat4::from_scale(glam::Vec3::new(
-                                *width as f32,
-                                *width as f32,
-                                *height as f32,
-                            ));
+                            *width as f32,
+                            *width as f32,
+                            *height as f32,
+                        ));
                         let _ =
                             instance!(renderer.add_instance(scene, tree_mesh, *pos, xf, vec![mat]));
                         pl.trees += 1;
@@ -7442,8 +7447,8 @@ impl World {
                     // schemes and its strings can name [matl_freetex] pictures.
                     let needs_own_script = lamp.is_none()
                         || ot.meshes.iter().any(|(_, _, overrides)| {
-                            overrides.iter().any(|o| !o.item && o.freetex.is_some())
-                        });
+                        overrides.iter().any(|o| !o.item && o.freetex.is_some())
+                    });
                     // (a model with `[htmltexture]` pages or `[matl_freetex]` needs a script instance to feed them,
                     // also when the object has no script of its own)
                     let has_pages = lamp.is_none() && !ot.model.html_textures.is_empty();
@@ -7647,7 +7652,7 @@ impl World {
                                     .filter(|o| {
                                         !o.item
                                             && ::simulation::vehicle::override_slot(o3d_mats, o)
-                                                == Some(slot)
+                                            == Some(slot)
                                     })
                                     .collect();
                                 let mut extra =
@@ -7733,10 +7738,10 @@ impl World {
                                     let scripted_text = lamp.is_none()
                                         && tt.variable.trim().parse::<usize>().is_err()
                                         && ot
-                                            .program
-                                            .as_ref()
-                                            .map(|p| p.str_var(tt.variable.trim()).is_some())
-                                            .unwrap_or(false);
+                                        .program
+                                        .as_ref()
+                                        .map(|p| p.str_var(tt.variable.trim()).is_some())
+                                        .unwrap_or(false);
                                     if scripted_text {
                                         let atlas = self.fonts.lock().get(&tt.font, &|p| {
                                             ::texture::decode_file(p)
@@ -8975,12 +8980,12 @@ impl World {
                 .map(|s| s.shape.heap_bytes())
                 .sum::<usize>()
                 + st.drive
-                    .iter()
-                    .map(|d| match d {
-                        StagedDrive::HeightProfiles(mesh, _) => mesh.heap_bytes(),
-                        StagedDrive::DrawnMesh { mesh, .. } => mesh.heap_bytes(),
-                    })
-                    .sum::<usize>()
+                .iter()
+                .map(|d| match d {
+                    StagedDrive::HeightProfiles(mesh, _) => mesh.heap_bytes(),
+                    StagedDrive::DrawnMesh { mesh, .. } => mesh.heap_bytes(),
+                })
+                .sum::<usize>()
                 + st.base_terrain.heights.capacity() * 4;
             staged_bytes += st
                 .meshes
@@ -9164,8 +9169,8 @@ impl World {
             let mut last = self.budget_checked.lock();
             if !force
                 && last
-                    .map(|t| t.elapsed().as_secs_f32() < 1.0)
-                    .unwrap_or(false)
+                .map(|t| t.elapsed().as_secs_f32() < 1.0)
+                .unwrap_or(false)
             {
                 return 0;
             }
@@ -9381,9 +9386,9 @@ impl World {
         // after each streaming burst just to discover that the tail cannot shrink.
         if instances > 0
             && gpu
-                .free_instances
-                .values()
-                .any(|l| l.0.iter().any(|r| r.0 == instances - 1))
+            .free_instances
+            .values()
+            .any(|l| l.0.iter().any(|r| r.0 == instances - 1))
         {
             let free: hashbrown::HashSet<usize> = gpu
                 .free_instances
@@ -9488,10 +9493,10 @@ fn show_edit(renderer: &Renderer, scene: &mut Scene, eo: &EditObject, e: ObjectE
     let rot = Mat4::from_rotation_z(-(e.turned.to_radians() as f32)) * eo.xf;
     let at = eo.pos + e.moved
         - if e.deleted {
-            DVec3::Z * 10_000.0
-        } else {
-            DVec3::ZERO
-        };
+        DVec3::Z * 10_000.0
+    } else {
+        DVec3::ZERO
+    };
     for inst in &eo.instances {
         renderer.set_transform(scene, *inst, at, rot);
     }
@@ -9881,10 +9886,10 @@ impl World {
                 }
                 let xf = o.xf
                     * o.inst
-                        .mesh_transforms
-                        .get(mi)
-                        .copied()
-                        .unwrap_or(Mat4::IDENTITY);
+                    .mesh_transforms
+                    .get(mi)
+                    .copied()
+                    .unwrap_or(Mat4::IDENTITY);
                 let Some(hit) = ::geometry::ray_mesh_hit(local, dir, data, &xf) else {
                     continue;
                 };
@@ -11039,8 +11044,8 @@ pub(crate) fn is_null_texture(name: &str) -> bool {
     let n = name.trim();
     n.is_empty()
         || Path::new(&n.replace('\\', "/"))
-            .file_stem()
-            .is_some_and(|s| s.eq_ignore_ascii_case("null"))
+        .file_stem()
+        .is_some_and(|s| s.eq_ignore_ascii_case("null"))
 }
 
 fn scenery_texture_key(name: &str) -> String {
@@ -11788,9 +11793,9 @@ impl VariantSlot {
         }
         if change_picks_item(x)
             || self
-                .more_vars
-                .iter()
-                .any(|v| var(v).is_some_and(change_picks_item))
+            .more_vars
+            .iter()
+            .any(|v| var(v).is_some_and(change_picks_item))
         {
             item
         } else {
@@ -12184,8 +12189,8 @@ fn vehicle_texture_names(
                     .filter(|_| o.envmap.is_some())
                     .map(|t| subst(&t)),
             ]
-            .into_iter()
-            .flatten()
+                .into_iter()
+                .flatten()
             {
                 push(name, &dirs);
             }
@@ -12299,12 +12304,12 @@ impl World {
             .for_each(|(vt, scheme)| p.prefetch(vt, *scheme));
         self.textures.held_bytes()
             + self
-                .vehicle_ready
-                .lock()
-                .textures
-                .values()
-                .map(|t| t.0.bytes() as usize)
-                .sum::<usize>()
+            .vehicle_ready
+            .lock()
+            .textures
+            .values()
+            .map(|t| t.0.bytes() as usize)
+            .sum::<usize>()
     }
 
     /// Textures the thread that draws has to read itself are read the quick way and
@@ -12517,8 +12522,8 @@ impl World {
                 s.users == 0
                     && !keep.contains(*k)
                     && s.idle_since
-                        .map(|t| now.duration_since(t) >= idle)
-                        .unwrap_or(false)
+                    .map(|t| now.duration_since(t) >= idle)
+                    .unwrap_or(false)
             })
             .map(|(k, _)| k.clone())
             .collect();
@@ -14046,9 +14051,9 @@ mod tests {
         let model = ::model::Model::parse(&::legacy_config::CfgFile::from_str(
             "model.cfg",
             concat!(
-                "[mesh]\nterminal.o3d\n[matl]\nblack.bmp\n0\n",
-                "[matl_change]\nblack.bmp\n0\npower\n[matl_item]\n",
-                "[matl_nightmap]\nblack.bmp\n[matl_freetex]\nblack.bmp\nscreen\n",
+            "[mesh]\nterminal.o3d\n[matl]\nblack.bmp\n0\n",
+            "[matl_change]\nblack.bmp\n0\npower\n[matl_item]\n",
+            "[matl_nightmap]\nblack.bmp\n[matl_freetex]\nblack.bmp\nscreen\n",
             ),
         ));
         let defs: Vec<&MaterialDef> = model.meshes[0].materials.iter().collect();
@@ -14932,22 +14937,22 @@ fn road_surface_name(file: &str) -> bool {
     }
     stem.starts_with("str_")
         || tokens.iter().any(|t| {
-            [
-                "str",
-                "strasse",
-                "straße",
-                "road",
-                "roads",
-                "street",
-                "streets",
-                "fahrbahn",
-                "pflaster",
-                "kopfstein",
-                "cobble",
-            ]
+        [
+            "str",
+            "strasse",
+            "straße",
+            "road",
+            "roads",
+            "street",
+            "streets",
+            "fahrbahn",
+            "pflaster",
+            "kopfstein",
+            "cobble",
+        ]
             .contains(t)
-                || t.starts_with("asph")
-        })
+            || t.starts_with("asph")
+    })
 }
 
 /// The horizontal road surfaces actually drawn by a pathless spline: lateral bounds and
@@ -14957,8 +14962,8 @@ fn road_sections(file: &str, def: &::scenery::sli::Spline) -> Vec<(f32, f32, f32
     let name = file.to_ascii_lowercase();
     if def.only_editor
         || [
-            "gehweg", "radweg", "fahrrad", "tram", "strab", "gleis", "rail", "parking",
-        ]
+        "gehweg", "radweg", "fahrrad", "tram", "strab", "gleis", "rail", "parking",
+    ]
         .iter()
         .any(|s| name.contains(s))
         || def.paths.iter().any(|p| p.kind == 2)
@@ -15134,8 +15139,8 @@ fn is_street_sign(file: &str) -> bool {
         "roadsignname",
         "roadname",
     ]
-    .iter()
-    .any(|k| name.contains(k))
+        .iter()
+        .any(|k| name.contains(k))
 }
 
 /// Load only the crossing field, also used by the mesh-free navigation pass.

@@ -310,7 +310,7 @@ impl App {
                         .player
                         .as_ref()
                         .map(|p| (p.vehicle.var(arg), p.vehicle.str_var(arg)));
-                    let names = describe::names(&self.args.root, &self.settings.language);
+                    let names = describe::names(&self.args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
                     let shown = self
                         .hover
                         .as_deref()

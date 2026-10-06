@@ -222,7 +222,6 @@ pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
     if cfg!(target_os = "macos") {
         return vec![wgpu::Backends::METAL];
     }
-    let settings = crate::settings::Settings::load();
     let wanted = if cfg!(windows)
         && (::config::get_bool("vr", "enabled").unwrap_or(false)
         || ::legacy_config::env::var_os("OMSI_OPENXR").is_some()) {
@@ -230,7 +229,7 @@ pub(crate) fn backend_order() -> Vec<wgpu::Backends> {
     } else {
         ::legacy_config::env::var("OMSI_BACKEND")
             .ok()
-            .unwrap_or(settings.graphics_api)
+            .unwrap_or_else(|| ::config::get_string("graphics", "graphics_api").unwrap_or_else(|| "auto".into()).trim().to_ascii_lowercase())
     };
     let all: Vec<wgpu::Backends> = if cfg!(windows) {
         vec![wgpu::Backends::DX12, wgpu::Backends::VULKAN]

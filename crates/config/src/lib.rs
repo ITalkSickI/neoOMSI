@@ -164,6 +164,21 @@ pub fn get_table_sub(category: &str, sub: &str) -> Vec<(String, Value)> {
         .unwrap_or_default()
 }
 
+pub fn get_subs(category: &str) -> Vec<String> {
+    state()
+        .table
+        .get(category)
+        .and_then(|c| c.as_table())
+        .map(|t| t.iter().filter(|(_, v)| v.is_table()).map(|(k, _)| k.clone()).collect())
+        .unwrap_or_default()
+}
+
+pub fn remove_sub(category: &str, sub: &str) {
+    if let Some(t) = state().table.get_mut(category).and_then(|c| c.as_table_mut()) {
+        t.remove(sub);
+    }
+}
+
 pub fn reset_setting(category: &str, key: &str) {
     let default = DEFAULTS
         .iter()

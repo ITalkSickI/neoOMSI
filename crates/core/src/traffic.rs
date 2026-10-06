@@ -83,7 +83,7 @@ impl Passing {
     fn clear_at(&self, half_width: f32) -> f32 {
         self.until
             + self.back
-                * ::simulation::traffic::ramp_progress_for(self.side, half_width + ONCOMING_ROOM)
+            * ::simulation::traffic::ramp_progress_for(self.side, half_width + ONCOMING_ROOM)
     }
 }
 
@@ -784,10 +784,10 @@ fn player_reach_ahead(half_len: f32, speed: f32, horizon: f32, fwd: DVec2, way_d
     let same_way = way_dir.length() > 0.5 && way_dir.normalize().dot(fwd) > 0.5;
     half_len as f64
         + if same_way {
-            0.0
-        } else {
-            (speed.max(0.0) * horizon) as f64
-        }
+        0.0
+    } else {
+        (speed.max(0.0) * horizon) as f64
+    }
 }
 
 /// How much track an AI rail vehicle keeps behind it (m): a long train's length.
@@ -1034,9 +1034,9 @@ impl Traffic {
                 !g.is_depot
                     && g.hof.is_none()
                     && !g
-                        .vehicles
-                        .iter()
-                        .any(|v| v.file.to_ascii_lowercase().ends_with(".zug"))
+                    .vehicles
+                    .iter()
+                    .any(|v| v.file.to_ascii_lowercase().ends_with(".zug"))
             }) {
                 let lname = g.name.trim().to_ascii_lowercase();
                 let uvg = match &unscheduled {
@@ -1129,9 +1129,9 @@ impl Traffic {
                         .filter(|&i| {
                             net.lanes[i].kind == LaneKind::Street
                                 && net.lanes[i]
-                                    .points
-                                    .iter()
-                                    .any(|q| (q.truncate() - p.truncate()).length() < r)
+                                .points
+                                .iter()
+                                .any(|q| (q.truncate() - p.truncate()).length() < r)
                         })
                         .collect()
                 }
@@ -1237,13 +1237,13 @@ impl Traffic {
                 lane.traffic_light.is_some()
                     && lane.source == 2
                     && net.prev.get(l).is_some_and(|ps| {
-                        ps.iter().any(|&p| {
-                            let q = &net.lanes[p];
-                            q.source == 2
-                                && q.traffic_light.is_some()
-                                && q.key.map(|k| (k.tile, k.id)) == lane.key.map(|k| (k.tile, k.id))
-                        })
+                    ps.iter().any(|&p| {
+                        let q = &net.lanes[p];
+                        q.source == 2
+                            && q.traffic_light.is_some()
+                            && q.key.map(|k| (k.tile, k.id)) == lane.key.map(|k| (k.tile, k.id))
                     })
+                })
             })
             .count();
         log::info!(
@@ -1296,8 +1296,10 @@ impl Traffic {
             first_yield: None,
             first_passer: None,
             density_curve: world.global.traffic_density_road.clone(),
-            unsched_factor: crate::settings::Settings::load().ai_unsched_factor,
-            max_scheduled: crate::settings::Settings::load().ai_max_scheduled,
+            unsched_factor: ::config::get_float("ai", "unsched_factor").unwrap_or(1.0) as f32,
+            max_scheduled: ::config::get_int("ai", "max_scheduled")
+                .and_then(|v| u32::try_from(v).ok())
+                .unwrap_or(0),
             viewer: None,
             occluders: None,
             walkers: Vec::new(),
@@ -1669,7 +1671,7 @@ impl Traffic {
                 &self.density_curve,
                 (self.day_time.rem_euclid(86400.0) / 3600.0) as f32,
             )
-            .clamp(0.0, 2.0);
+                .clamp(0.0, 2.0);
         }
         let groups: Vec<usize> = (0..self.groups.len())
             .filter(|&g| {
@@ -2031,11 +2033,11 @@ impl Traffic {
                 && !c.gone
                 && !c.is_bus()
                 && self
-                    .net
-                    .lanes
-                    .get(c.state.lane)
-                    .map(|l| l.kind == LaneKind::Street)
-                    .unwrap_or(false);
+                .net
+                .lanes
+                .get(c.state.lane)
+                .map(|l| l.kind == LaneKind::Street)
+                .unwrap_or(false);
             let remove = if unloaded {
                 true
             } else if at_edge {
@@ -2048,10 +2050,10 @@ impl Traffic {
                 false
             } else if at_end
                 && (!c.is_bus()
-                    || self.hidden(world, p, r)
-                    || (c.stopped > 8.0 && from_eye > 180.0)
-                    || c.stopped > 150.0
-                    || (c.stopped > 25.0 && queued.contains(&c.id) && from_eye > 25.0))
+                || self.hidden(world, p, r)
+                || (c.stopped > 8.0 && from_eye > 180.0)
+                || c.stopped > 150.0
+                || (c.stopped > 25.0 && queued.contains(&c.id) && from_eye > 25.0))
             {
                 // (and in view too once others wait behind it: a fire engine at the end of a
                 // dead-end street held a queue of fourteen cars for two and a half minutes)
@@ -2155,9 +2157,9 @@ impl Traffic {
             .filter(|l| {
                 l.kind == LaneKind::Street
                     && l.points
-                        .first()
-                        .map(|p| (*p - center).length() < self.spawn_radius)
-                        .unwrap_or(false)
+                    .first()
+                    .map(|p| (*p - center).length() < self.spawn_radius)
+                    .unwrap_or(false)
             })
             .map(|l| {
                 if l.no_cars {
@@ -2490,11 +2492,11 @@ impl Traffic {
                     !through
                         || kind != LaneKind::Street
                         || self
-                            .net
-                            .reach
-                            .get(*i)
-                            .map(|r| *r >= ::simulation::traffic::DEAD_END)
-                            .unwrap_or(true)
+                        .net
+                        .reach
+                        .get(*i)
+                        .map(|r| *r >= ::simulation::traffic::DEAD_END)
+                        .unwrap_or(true)
                 })
                 // as many cars on a lane as metres of it (times its density): counted per
                 // lane, the many short lanes of a junction drew the cars into the town's
@@ -2527,14 +2529,14 @@ impl Traffic {
                 !c.is_bus()
                     && !c.gone
                     && counted_near
-                        .map(|(p, r)| (c.vehicle.position - p).length() < r)
-                        .unwrap_or(true)
+                    .map(|(p, r)| (c.vehicle.position - p).length() < r)
+                    .unwrap_or(true)
                     && self
-                        .net
-                        .lanes
-                        .get(c.state.lane)
-                        .map(|l| l.kind == kind)
-                        .unwrap_or(false)
+                    .net
+                    .lanes
+                    .get(c.state.lane)
+                    .map(|l| l.kind == kind)
+                    .unwrap_or(false)
             })
             .count();
         let mut count = unscheduled;
@@ -2544,7 +2546,7 @@ impl Traffic {
             let lane = candidates[cumulative
                 .partition_point(|&c| c < x)
                 .min(candidates.len() - 1)]
-            .0;
+                .0;
             let s = (self.rand_f() * (self.net.lanes[lane].length() as f64 - 6.0)) as f32 + 3.0;
             let (p, _) = self.net.lanes[lane].at(s);
             let rel = p - center;
@@ -2577,10 +2579,10 @@ impl Traffic {
                 );
                 along > 0.0
                     && along
-                        < 20.0
-                            + (c.state.speed * c.state.speed / (2.0 * c.state.decel.max(1.0)))
-                                as f64
-                                * 1.5
+                    < 20.0
+                    + (c.state.speed * c.state.speed / (2.0 * c.state.decel.max(1.0)))
+                    as f64
+                    * 1.5
                     && across < 3.0
             });
             if in_front_of_someone {
@@ -2728,9 +2730,9 @@ impl Traffic {
                 && world.has_ground(p.x, p.y)
                 && self.may_appear(world, p)
                 && !self
-                    .cars
-                    .iter()
-                    .any(|c| (c.vehicle.position - p).length() < 14.0)
+                .cars
+                .iter()
+                .any(|c| (c.vehicle.position - p).length() < 14.0)
                 && self.spawn_clear(&ty, p, h);
             if ok {
                 let d = self.dormant.swap_remove(i);
@@ -2828,7 +2830,7 @@ impl Traffic {
             let lane = outside[cumulative
                 .partition_point(|&c| c < x)
                 .min(outside.len() - 1)]
-            .0;
+                .0;
             let s = (self.rand_f() * (self.net.lanes[lane].length() as f64 - 4.0)) as f32 + 2.0;
             let Some(ty) = self.pick_type(LaneKind::Street, Some(lane)) else {
                 continue;
@@ -2938,12 +2940,12 @@ impl Traffic {
         // (`OMSI_AI_WAY_ONLY=1`: on the way and the plain sampler, as before - A/B runs)
         vehicle.contact = (kind == LaneKind::Street
             && ::legacy_config::env::var_os("OMSI_AI_WAY_ONLY").is_none())
-        .then(|| {
-            std::sync::Arc::new(crate::scene::DriveGround {
-                terrains: world.terrains.clone(),
-                surfaces: world.surfaces.clone(),
-            }) as std::sync::Arc<dyn ::simulation::rigid::Ground>
-        });
+            .then(|| {
+                std::sync::Arc::new(crate::scene::DriveGround {
+                    terrains: world.terrains.clone(),
+                    surfaces: world.surfaces.clone(),
+                }) as std::sync::Arc<dyn ::simulation::rigid::Ground>
+            });
         vehicle.apply_paint_vars(scheme);
         let render = world.add_vehicle_shared(renderer, scene, &ty, scheme, None);
         let trailer_renders =
@@ -3201,11 +3203,11 @@ impl Traffic {
         // the options' [AIMaxCountScheduled]: no more timetable vehicles than that at once
         if self.max_scheduled > 0
             && self
-                .cars
-                .iter()
-                .filter(|c| c.is_bus() || !c.state.route.is_empty())
-                .count()
-                >= self.max_scheduled as usize
+            .cars
+            .iter()
+            .filter(|c| c.is_bus() || !c.state.route.is_empty())
+            .count()
+            >= self.max_scheduled as usize
         {
             return None;
         }
@@ -3385,8 +3387,8 @@ impl Traffic {
                     // (two paths of one junction meeting: `junction_stop` sorts that out)
                     if f == from
                         || self.net.crossings[from]
-                            .iter()
-                            .any(|c| c.other == f && c.merge)
+                        .iter()
+                        .any(|c| c.other == f && c.merge)
                     {
                         continue;
                     }
@@ -3422,9 +3424,9 @@ impl Traffic {
                         let first = t_them < t_me - 0.4
                             || (kept && t_them < t_me + 1.0)
                             || ((t_them - t_me).abs() <= 0.4
-                                && !kept
-                                && other.merge_after != Some(self.cars[i].id)
-                                && j < i);
+                            && !kept
+                            && other.merge_after != Some(self.cars[i].id)
+                            && j < i);
                         if first {
                             // behind it at the joint; while it is not past yet, wait at the
                             // joint itself rather than behind a car that is still beside
@@ -3533,8 +3535,8 @@ impl Traffic {
                 // good, and the street behind with them (Spandau's Klosterstrasse).
                 if o.speed < 0.3
                     && self.cars[j]
-                        .lead_info
-                        .is_some_and(|(id, _)| id == self.cars[i].id)
+                    .lead_info
+                    .is_some_and(|(id, _)| id == self.cars[i].id)
                 {
                     return true;
                 }
@@ -4727,8 +4729,8 @@ impl Traffic {
         // queued behind someone who is not through the junction yet: no claim
         let queued = !jn.inside
             && lead
-                .map(|l| l.speed < 1.0 && l.gap < entry - st.front + 3.0)
-                .unwrap_or(false);
+            .map(|l| l.speed < 1.0 && l.gap < entry - st.front + 3.0)
+            .unwrap_or(false);
         let a_me = st.accel;
         // decided already (a claim from the frames before), or past the point where it could
         // still stop without an emergency brake
@@ -4819,14 +4821,14 @@ impl Traffic {
                     let stalled = (o.stopped > 4.0 && o.state.speed < 0.1)
                         || o.crawl >= 8.0
                         || (o.state.speed < 1.5
-                            && o.lead_info.is_some_and(|(lid, gap)| {
-                                gap < 8.0
-                                    && self
-                                        .cars
-                                        .iter()
-                                        .find(|x| x.id == lid)
-                                        .is_some_and(|x| x.state.speed < 1.0)
-                            }));
+                        && o.lead_info.is_some_and(|(lid, gap)| {
+                        gap < 8.0
+                            && self
+                            .cars
+                            .iter()
+                            .find(|x| x.id == lid)
+                            .is_some_and(|x| x.state.speed < 1.0)
+                    }));
                     let claimed = reservations
                         .get(&m)
                         .map(|r| r.contains(&j))
@@ -4837,10 +4839,10 @@ impl Traffic {
                     // way further on still rolls through here on its way to its line)
                     let waits_short = o.light_hold
                         || (o.yielding
-                            && !claimed
-                            && o.wait_at
-                                .map(|w| w - 0.6 <= dj - c.other_before)
-                                .unwrap_or(false));
+                        && !claimed
+                        && o.wait_at
+                        .map(|w| w - 0.6 <= dj - c.other_before)
+                        .unwrap_or(false));
                     // (it arrives in `t_j` seconds)
                     let t_j = crossing_arrival(&o.state, theirs, claimed, waits_short, stalled);
                     if is_on && theirs <= 0.3 {
@@ -4850,7 +4852,7 @@ impl Traffic {
                         let theirs_in = -theirs;
                         let ahead = mine_in > 0.0
                             && (mine_in > theirs_in + 0.3
-                                || ((mine_in - theirs_in).abs() <= 0.3 && me_id > o.id));
+                            || ((mine_in - theirs_in).abs() <= 0.3 && me_id > o.id));
                         if !ahead {
                             hard = true;
                             if explain {
@@ -4987,7 +4989,7 @@ impl Traffic {
                 let o = &self.cars[j];
                 (o.yielding || o.state.speed < 0.3)
                     && (wait > o.state.yield_time + 0.05
-                        || ((wait - o.state.yield_time).abs() <= 0.05 && self.cars[i].id < o.id))
+                    || ((wait - o.state.yield_time).abs() <= 0.05 && self.cars[i].id < o.id))
             });
             if wins {
                 blocked = false;
@@ -5193,8 +5195,8 @@ impl Traffic {
             let v = c.state.speed;
             along > 0.0
                 && along
-                    < (c.state.front + rear + 15.0 + v * v / (2.0 * c.state.decel.max(1.0)) * 1.5)
-                        as f64
+                < (c.state.front + rear + 15.0 + v * v / (2.0 * c.state.decel.max(1.0)) * 1.5)
+                as f64
                 && across < 3.0
                 && (rel.z).abs() < 4.0
         });
@@ -5406,11 +5408,11 @@ impl Traffic {
             .filter(|c| {
                 !c.state.route.is_empty()
                     && self
-                        .net
-                        .lanes
-                        .get(c.state.lane)
-                        .map(|l| l.kind == ::simulation::traffic::LaneKind::Rail)
-                        .unwrap_or(false)
+                    .net
+                    .lanes
+                    .get(c.state.lane)
+                    .map(|l| l.kind == ::simulation::traffic::LaneKind::Rail)
+                    .unwrap_or(false)
             })
             .map(|c| {
                 let here = self.net.lanes[c.state.lane].key.map(|k| k.id).unwrap_or(-1);
@@ -5482,11 +5484,11 @@ impl Traffic {
             let st = &c.state;
             if st.route.is_empty()
                 || self
-                    .net
-                    .lanes
-                    .get(st.lane)
-                    .map(|l| l.kind != ::simulation::traffic::LaneKind::Rail)
-                    .unwrap_or(true)
+                .net
+                .lanes
+                .get(st.lane)
+                .map(|l| l.kind != ::simulation::traffic::LaneKind::Rail)
+                .unwrap_or(true)
             {
                 continue;
             }
@@ -5722,9 +5724,9 @@ impl Traffic {
                 .filter(|(_, j)| {
                     self.cars[*j].state.lane != self.cars[i].state.lane
                         && !self.cars[i]
-                            .state
-                            .upcoming()
-                            .any(|u| u == self.cars[*j].state.lane)
+                        .state
+                        .upcoming()
+                        .any(|u| u == self.cars[*j].state.lane)
                 })
                 .map(|(_, j)| self.cars[j].id);
             self.cars[i].merge_after = merging;
@@ -5772,8 +5774,8 @@ impl Traffic {
             if let Some((_, Some(j))) = lead {
                 if j < self.cars.len()
                     && self.cars[i].ignore_lead.is_some_and(|(id, until)| {
-                        id == self.cars[j].id && (self.time as f64) < until
-                    })
+                    id == self.cars[j].id && (self.time as f64) < until
+                })
                 {
                     lead = None;
                 }
@@ -5872,10 +5874,10 @@ impl Traffic {
                             let keep = swerving
                                 && car.squeeze == Some(o.id)
                                 && (o.state.speed < 2.0
-                                    || along
-                                        < o.state.front
-                                            + st.front
-                                            + st.speed * st.speed / (2.0 * st.decel.max(1.0)));
+                                || along
+                                < o.state.front
+                                + st.front
+                                + st.speed * st.speed / (2.0 * st.decel.max(1.0)));
                             if !standing && !keep {
                                 continue;
                             }
@@ -5939,10 +5941,10 @@ impl Traffic {
                 .map(|(l, who)| {
                     l.speed.abs() < 0.3
                         && match who {
-                            Some(usize::MAX) => player.map(|p| p.4.abs() < 0.3).unwrap_or(false),
-                            Some(j) if j < self.cars.len() => self.cars[j].at_stop(),
-                            _ => false,
-                        }
+                        Some(usize::MAX) => player.map(|p| p.4.abs() < 0.3).unwrap_or(false),
+                        Some(j) if j < self.cars.len() => self.cars[j].at_stop(),
+                        _ => false,
+                    }
                 })
                 .unwrap_or(false);
             // It stops `pass_room` short of it (the room its own steering needs to get out
@@ -5956,17 +5958,17 @@ impl Traffic {
                     let st = &car.state;
                     let real = l.gap
                         + if who == Some(usize::MAX) {
-                            PLAYER_BOX_MARGIN
-                        } else {
-                            0.0
-                        };
+                        PLAYER_BOX_MARGIN
+                    } else {
+                        0.0
+                    };
                     // (a timetable bus queueing for its own stop is not going round it)
                     let queues = car
                         .next_stop()
                         .map(|(ri, ss)| {
                             ri >= st.route_index
                                 && st.route_distance(&self.net, ri, ss)
-                                    < real + obstacle_len + st.front + 15.0
+                                < real + obstacle_len + st.front + 15.0
                         })
                         .unwrap_or(false);
                     let want = if queues {
@@ -6119,16 +6121,16 @@ impl Traffic {
                     && self.first_yield.is_none()
                     && !car.is_bus()
                     && junction
-                        .as_ref()
-                        .map(|j| {
-                            j.lanes.iter().all(|l| {
-                                self.net.lanes[l.0].traffic_light.is_none()
-                                    && self.net.prev[l.0]
-                                        .iter()
-                                        .all(|&p| self.net.lanes[p].traffic_light.is_none())
-                            })
+                    .as_ref()
+                    .map(|j| {
+                        j.lanes.iter().all(|l| {
+                            self.net.lanes[l.0].traffic_light.is_none()
+                                && self.net.prev[l.0]
+                                .iter()
+                                .all(|&p| self.net.lanes[p].traffic_light.is_none())
                         })
-                        .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
                 {
                     self.first_yield = Some((car.id, self.time));
                 }
@@ -6190,9 +6192,9 @@ impl Traffic {
                     let wanted = self.stop_wishes.as_ref().map(|(alighting, waiting)| {
                         alighting.contains(&car.id)
                             || service
-                                .stops
-                                .front()
-                                .is_some_and(|s| waiting.contains(&s.id))
+                            .stops
+                            .front()
+                            .is_some_and(|s| waiting.contains(&s.id))
                     });
                     let ctx = crate::bus_service::Ctx {
                         wanted,
@@ -6582,8 +6584,8 @@ impl Traffic {
             // flickered on a strict "slower".)
             let priority_warning = car.vehicle.var("TrafficPriority").is_some_and(|v| v > 0.5)
                 && (lead_now
-                    .is_some_and(|l| l.gap < PRIORITY_WARN_GAP && l.speed < car.state.speed + 0.5)
-                    || stop_at.is_some_and(|x| x - car.state.front < PRIORITY_WARN_GAP));
+                .is_some_and(|l| l.gap < PRIORITY_WARN_GAP && l.speed < car.state.speed + 0.5)
+                || stop_at.is_some_and(|x| x - car.state.front < PRIORITY_WARN_GAP));
             frames[i] = Some(AiFrame {
                 speed: car.state.speed,
                 odometer: car.state.odometer,
@@ -7092,8 +7094,8 @@ impl Traffic {
                     // the clips are read in the background the first time; silent till then
                     let ready = audio.clips_ready(&::audio::SoundSet::clip_paths(&cfg, &dir))
                         && parts.iter().all(|(_, part, dir)| {
-                            audio.clips_ready(&::audio::SoundSet::clip_paths(part, dir))
-                        });
+                        audio.clips_ready(&::audio::SoundSet::clip_paths(part, dir))
+                    });
                     if ready {
                         let number = c.vehicle.number();
                         let mut ss = ::audio::SoundSet::new_exterior(
@@ -7198,10 +7200,10 @@ impl Traffic {
         let touches = |o: &::simulation::collision::Obb| bodies.iter().any(|b| b.overlaps(o));
         self.keep_clear.iter().any(|o| touches(o))
             || self
-                .cars
-                .iter()
-                .filter(|c| (c.vehicle.position - pos).length() < reach)
-                .any(|c| vehicle_bodies(&c.vehicle).iter().any(|o| touches(o)))
+            .cars
+            .iter()
+            .filter(|c| (c.vehicle.position - pos).length() < reach)
+            .any(|c| vehicle_bodies(&c.vehicle).iter().any(|o| touches(o)))
     }
 
     /// The lanes the other way along one-way paths `lanes` (see `Schedule`'s route
@@ -7420,7 +7422,7 @@ impl Traffic {
                     ::simulation::collision::Obb::from_box(bb, c.vehicle.position, c.vehicle.heading)
                         .moving(v, mass, id),
                 )
-                .chain(rear)
+                    .chain(rear)
             })
             .collect()
     }
@@ -8184,9 +8186,9 @@ impl Traffic {
             .filter(|l| {
                 l.traffic_light.is_some()
                     && l.points
-                        .first()
-                        .map(|p| (*p - near).truncate().length() < radius)
-                        .unwrap_or(false)
+                    .first()
+                    .map(|p| (*p - near).truncate().length() < radius)
+                    .unwrap_or(false)
             })
             .filter_map(|l| l.traffic_light.map(|t| t.0))
             .collect();

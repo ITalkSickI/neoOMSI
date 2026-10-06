@@ -189,8 +189,8 @@ impl App {
             w.set_ime_allowed(false);
         }
         if code.len() == 4 && code.chars().all(|c| c.is_ascii_alphabetic()) {
-            self.settings.metar_station = code.clone();
-            crate::game_lists::remember_setting("metar_station", &code);
+            ::config::set_setting("gameplay", "metar_station", code.clone());
+            let _ = ::config::save();
             self.metar_rx = None;
             self.metar_once = false;
             self.metar_next = 0.0;

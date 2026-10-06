@@ -110,7 +110,7 @@ struct Words {
 
 fn words(lang: &str) -> Words {
     match lang.to_ascii_uppercase().as_str() {
-        "DEU" | "DE" | "GER" => Words {
+        "de" | "DE" | "GER" => Words {
             kmh: "km/h",
             days: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
             off_route: "Abseits der Route",

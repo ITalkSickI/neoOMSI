@@ -23,8 +23,8 @@ impl ControlNames {
         // (OMSI's cockpit names are in English, German and French: every other language
         // reads the English ones - the interface around them is translated)
         let lang = match language_code(lang).as_str() {
-            l @ ("DEU" | "FRA") => l.to_string(),
-            _ => "ENG".to_string(),
+            l @ ("de" | "FRA") => l.to_string(),
+            _ => "en".to_string(),
         };
         let mut texts = HashMap::new();
         let mut dirs = ::legacy_config::content_dirs("Languages");
@@ -105,11 +105,11 @@ impl ControlNames {
         ] {
             if let Some(base) = strip_suffix_ci(event, suffix) {
                 if let Some(t) = self.official(base) {
-                    return format!("{t}{}", if self.lang == "ENG" { extra } else { "" });
+                    return format!("{t}{}", if self.lang == "en" { extra } else { "" });
                 }
             }
         }
-        if self.lang == "DEU" {
+        if self.lang == "de" {
             return humanize(event);
         }
         translate(event)
@@ -131,7 +131,7 @@ impl ControlNames {
 
     /// A part of the bus that is not a control, from its mesh file name.
     pub fn part(&self, mesh_stem: &str) -> String {
-        if self.lang == "DEU" {
+        if self.lang == "de" {
             return humanize(mesh_stem);
         }
         translate(mesh_stem)
@@ -813,7 +813,7 @@ mod tests {
 
     fn eng() -> ControlNames {
         ControlNames::from_table(
-            "ENG",
+            "en",
             &[
                 ("cp_batterietrennschalter_toggle", "Electricity On/Off"),
                 ("parking_brake_toggle", "Parking Brake On/Off"),
@@ -937,7 +937,7 @@ mod tests {
     #[test]
     fn german_setting_keeps_german() {
         let n = ControlNames::from_table("deutsch", &[]);
-        assert_eq!(n.lang, "DEU");
+        assert_eq!(n.lang, "de");
         assert_eq!(n.control("cp_spiegelheizung_toggle"), "Spiegelheizung");
     }
 }

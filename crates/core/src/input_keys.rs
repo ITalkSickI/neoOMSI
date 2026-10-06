@@ -973,9 +973,9 @@ impl App {
                 )
             })
             .unwrap_or((0.0, 0.0));
-        if self.settings.mouse_steering != on {
-            self.settings.mouse_steering = on;
-            crate::game_lists::remember_setting("mouse_steering", if on { "1" } else { "0" });
+        if ::config::get_bool("controls", "mouse_steering").unwrap_or(false) != on {
+            ::config::set_setting("controls", "mouse_steering", on);
+            let _ = ::config::save();
         }
     }
 

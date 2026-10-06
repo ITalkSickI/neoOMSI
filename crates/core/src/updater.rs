@@ -267,7 +267,7 @@ pub fn asset_name(version: &str) -> Option<String> {
 
 // --- the release ----------------------------------------------------------------------------
 
-fn agent() -> ureq::Agent {
+pub(crate) fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_connect(Some(std::time::Duration::from_secs(15)))
         .timeout_recv_response(Some(std::time::Duration::from_secs(60)))
@@ -277,7 +277,7 @@ fn agent() -> ureq::Agent {
 }
 
 /// A URL's body: `file://` read from the disk (tests), anything else over HTTP(S).
-fn fetch_text(url: &str) -> anyhow::Result<String> {
+pub(crate) fn fetch_text(url: &str) -> anyhow::Result<String> {
     if let Some(p) = url.strip_prefix("file://") {
         return Ok(std::fs::read_to_string(p)?);
     }
@@ -289,7 +289,7 @@ fn fetch_text(url: &str) -> anyhow::Result<String> {
     Ok(r.into_body().read_to_string()?)
 }
 
-fn short_error(e: &ureq::Error) -> String {
+pub(crate) fn short_error(e: &ureq::Error) -> String {
     match e {
         ureq::Error::StatusCode(code) => format!("the server answered {code}"),
         other => format!("no connection ({other})"),
@@ -317,33 +317,58 @@ pub fn latest() -> anyhow::Result<Option<Release>> {
     }
 }
 
-/// The newest offerable release of a list (or of a single release object).
+fn published(v: &serde_json::Value) -> &str {
+    v["published_at"]
+        .as_str()
+        .or_else(|| v["created_at"].as_str())
+        .unwrap_or("")
+}
+
 fn pick_release(v: &serde_json::Value, current: &str) -> anyhow::Result<Option<Release>> {
     let Some(list) = v.as_array() else {
         return parse_release(v, current);
     };
-    let mut best: Option<Release> = None;
-    for r in list {
-        if let Some(r) = parse_release(r, current)? {
-            // (the list is newest first: of equal versions the first stays)
+    let bare = |t: &str| t.trim_start_matches(['v', 'V']).to_string();
+    let current_time = list
+        .iter()
+        .find(|r| r["tag_name"].as_str().map(bare) == Some(bare(current)))
+        .map(published);
+    let mut best: Option<(Release, &str)> = None;
+    for raw in list {
+        if let Some(r) = parse_release_since(raw, current, current_time)? {
+            let time = published(raw);
             if best
                 .as_ref()
-                .map(|b| order(&r.version, &b.version).is_gt())
+                .map(|(b, bt)| {
+                    let o = order(&r.version, &b.version);
+                    o.is_gt() || (o.is_eq() && time > *bt)
+                })
                 .unwrap_or(true)
             {
-                best = Some(r);
+                best = Some((r, time));
             }
         }
     }
-    Ok(best)
+    Ok(best.map(|(r, _)| r))
 }
 
 fn parse_release(v: &serde_json::Value, current: &str) -> anyhow::Result<Option<Release>> {
+    parse_release_since(v, current, None)
+}
+
+fn parse_release_since(
+    v: &serde_json::Value,
+    current: &str,
+    current_time: Option<&str>,
+) -> anyhow::Result<Option<Release>> {
     let tag = v["tag_name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("the release has no tag"))?;
     let version = tag.trim_start_matches(['v', 'V']).to_string();
     if v["draft"].as_bool() == Some(true) || !newer(&version, current) {
+        return Ok(None);
+    }
+    if order(&version, current).is_eq() && current_time.is_some_and(|c| published(v) <= c) {
         return Ok(None);
     }
     let Some(want) = asset_name(&version) else {
@@ -380,7 +405,7 @@ fn parse_release(v: &serde_json::Value, current: &str) -> anyhow::Result<Option<
 
 /// Where downloads wait (the data folder: the program's own folder is only written when the
 /// new files go in).
-fn download_dir() -> PathBuf {
+pub(crate) fn download_dir() -> PathBuf {
     let d = omsi_launcher_lib::data_dir().join("updates");
     let _ = std::fs::create_dir_all(&d);
     d
@@ -388,24 +413,47 @@ fn download_dir() -> PathBuf {
 
 /// Download the release file to `to`, with the progress in `status`, and check it.
 fn download(r: &Release, to: &Path, status: &Mutex<Status>) -> anyhow::Result<()> {
+    fetch_file(
+        &r.asset_url,
+        r.size,
+        r.sha256.as_deref(),
+        to,
+        &mut |done, total| {
+            *lock(status) = Status::Downloading {
+                release: r.clone(),
+                done,
+                total,
+            }
+        },
+    )
+}
+
+/// `url` (or `file://`) to `to`, through a `.part` file, checked against its size and its
+/// SHA-256 when they are known.
+pub(crate) fn fetch_file(
+    url: &str,
+    size: u64,
+    sha256: Option<&str>,
+    to: &Path,
+    progress: &mut dyn FnMut(u64, u64),
+) -> anyhow::Result<()> {
     use sha2::Digest;
     let part = to.with_extension("part");
     let mut hasher = sha2::Sha256::new();
     let mut out = std::fs::File::create(&part)?;
-    let (mut reader, total): (Box<dyn Read>, u64) =
-        if let Some(p) = r.asset_url.strip_prefix("file://") {
-            let f = std::fs::File::open(p)?;
-            let n = f.metadata()?.len();
-            (Box::new(f), n)
-        } else {
-            let resp = agent()
-                .get(&r.asset_url)
-                .header("Accept", "application/octet-stream")
-                .call()
-                .map_err(|e| anyhow::anyhow!("{}", short_error(&e)))?;
-            let n = resp.body().content_length().unwrap_or(r.size);
-            (Box::new(resp.into_body().into_reader()), n)
-        };
+    let (mut reader, total): (Box<dyn Read>, u64) = if let Some(p) = url.strip_prefix("file://") {
+        let f = std::fs::File::open(p)?;
+        let n = f.metadata()?.len();
+        (Box::new(f), n)
+    } else {
+        let resp = agent()
+            .get(url)
+            .header("Accept", "application/octet-stream")
+            .call()
+            .map_err(|e| anyhow::anyhow!("{}", short_error(&e)))?;
+        let n = resp.body().content_length().unwrap_or(size);
+        (Box::new(resp.into_body().into_reader()), n)
+    };
     let mut buf = vec![0u8; 256 * 1024];
     let mut done = 0u64;
     loop {
@@ -416,30 +464,47 @@ fn download(r: &Release, to: &Path, status: &Mutex<Status>) -> anyhow::Result<()
         out.write_all(&buf[..n])?;
         hasher.update(&buf[..n]);
         done += n as u64;
-        *lock(status) = Status::Downloading {
-            release: r.clone(),
-            done,
-            total: total.max(done),
-        };
+        progress(done, total.max(done));
     }
     out.flush()?;
     drop(out);
-    if r.size > 0 && done != r.size {
-        anyhow::bail!("the download stopped at {} of {} bytes", done, r.size);
+    if size > 0 && done != size {
+        anyhow::bail!("the download stopped at {} of {} bytes", done, size);
     }
-    if let Some(want) = &r.sha256 {
+    if let Some(want) = sha256 {
         let got: String = hasher
             .finalize()
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        if &got != want {
+        if got != want {
             let _ = std::fs::remove_file(&part);
             anyhow::bail!("the downloaded file is damaged (SHA-256 {got}, GitHub lists {want})");
         }
     }
     std::fs::rename(&part, to)?;
     Ok(())
+}
+
+/// A file of the release tagged `tag`: its address, size and SHA-256 as GitHub lists them.
+pub(crate) fn release_file(tag: &str, name: &str) -> anyhow::Result<(String, u64, Option<String>)> {
+    let url = format!("https://api.github.com/repos/{REPO}/releases/tags/{tag}");
+    let v: serde_json::Value = serde_json::from_str(&fetch_text(&url)?)?;
+    let a = v["assets"]
+        .as_array()
+        .and_then(|a| a.iter().find(|a| a["name"].as_str() == Some(name)))
+        .ok_or_else(|| anyhow::anyhow!("the release {tag} has no {name}"))?;
+    Ok((
+        a["browser_download_url"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("{name} has no address"))?
+            .to_string(),
+        a["size"].as_u64().unwrap_or(0),
+        a["digest"]
+            .as_str()
+            .and_then(|d| d.strip_prefix("sha256:"))
+            .map(|h| h.to_ascii_lowercase()),
+    ))
 }
 
 fn download_and_install(r: &Release, status: &Mutex<Status>) -> anyhow::Result<()> {
@@ -592,7 +657,7 @@ fn old_of(p: &Path) -> PathBuf {
 }
 
 /// Unpack `zip` into `to` (a fresh folder), with the files' Unix modes and links.
-fn unpack(zip: &Path, to: &Path) -> anyhow::Result<()> {
+pub(crate) fn unpack(zip: &Path, to: &Path) -> anyhow::Result<()> {
     let _ = std::fs::remove_dir_all(to);
     std::fs::create_dir_all(to)?;
     let mut a = zip::ZipArchive::new(std::fs::File::open(zip)?)?;
@@ -608,9 +673,9 @@ fn unpack(zip: &Path, to: &Path) -> anyhow::Result<()> {
             .map(|c| c.as_os_str() == "__MACOSX")
             .unwrap_or(false)
             || rel
-                .file_name()
-                .map(|n| n.to_string_lossy().starts_with("._"))
-                .unwrap_or(false)
+            .file_name()
+            .map(|n| n.to_string_lossy().starts_with("._"))
+            .unwrap_or(false)
         {
             continue;
         }
@@ -904,6 +969,28 @@ mod tests {
     }
 
     #[test]
+    fn the_newest_nightly_is_picked_by_its_publish_time() {
+        let nightly = |hash: &str, at: &str| {
+            let version = format!("0.2.0-nightly.g{hash}");
+            serde_json::json!({
+                "tag_name": format!("v{version}"), "published_at": at,
+                "assets": [{"name": asset_name(&version).unwrap(), "browser_download_url": format!("https://x/{hash}"), "size": 1}]
+            })
+        };
+        let list = serde_json::json!([
+            nightly("bbbbbbbb", "2026-10-02T10:00:00Z"),
+            nightly("dddddddd", "2026-10-04T10:00:00Z"),
+            nightly("aaaaaaaa", "2026-10-01T10:00:00Z"),
+            nightly("cccccccc", "2026-10-03T10:00:00Z"),
+        ]);
+        let picked = |current: &str| pick_release(&list, current).unwrap().map(|r| r.version);
+        assert_eq!(picked("0.1.9").as_deref(), Some("0.2.0-nightly.gdddddddd"));
+        assert_eq!(picked("0.2.0-nightly.gaaaaaaaa").as_deref(), Some("0.2.0-nightly.gdddddddd"));
+        assert_eq!(picked("0.2.0-nightly.gcccccccc").as_deref(), Some("0.2.0-nightly.gdddddddd"));
+        assert_eq!(picked("0.2.0-nightly.gdddddddd"), None);
+    }
+
+    #[test]
     fn the_program_path_survives_the_swap() {
         assert_eq!(
             program_path(Path::new("/home/me/neoOMSI/neoomsi")),
@@ -953,7 +1040,7 @@ mod tests {
             dir.join(MANIFEST),
             "neoomsi\nneoomsi-launcher\nretired.dll\n",
         )
-        .unwrap();
+            .unwrap();
         // the new release
         let zip_path = root.join("new.zip");
         {

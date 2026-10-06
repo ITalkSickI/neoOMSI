@@ -206,7 +206,8 @@ pub(crate) fn spawn_player(
     }
     let mut host = ::simulation::VehicleHost::new(start_clock(args));
     // the maintenance condition of the options (AI vehicles never wear)
-    host.wear_lifespan = settings::Settings::load().wear_lifespan();
+    host.wear_lifespan = [1.5e6, 0.01, 0.1, 1.0, 10.0]
+        [::config::get_int("gameplay", "maintenance").unwrap_or(0).clamp(0, 4) as usize];
     host.hof = find_hof(args, world, &vt);
     host.font_lib = Some(world.fonts.clone());
     if !world.ticket_pack.trim().is_empty() {
@@ -275,8 +276,8 @@ pub(crate) fn spawn_player(
                     pos.y,
                     pos.z + 1.5,
                 )
-                .below
-                .is_none()
+                    .below
+                    .is_none()
                 {
                     // nothing under the place at all (the marker came out under the ground):
                     // on the ground above, not in the void under the map
@@ -411,7 +412,7 @@ pub(crate) fn spawn_player(
     let terrains = world.terrains.clone();
     let surfaces = world.surfaces.clone();
     vehicle.contact = Some(Arc::new(scene::DriveGround { terrains, surfaces }));
-    let objects = settings::Settings::load().collision_objects;
+    let objects = ::config::get_bool("gameplay", "collision_objects").unwrap_or(true);
     vehicle.collision = objects.then(|| world.collision.lock().clone());
     vehicle.wheel_walls = objects;
     // a rail vehicle rides the track (its position comes from the rails, not the tyres)
@@ -508,13 +509,29 @@ pub(crate) fn spawn_player(
         head_omega: Vec3::ZERO,
         steer_look: 0.0,
         seat: Vec3::ZERO,
-        mirror_offsets: settings::mirror_offsets(&vt.def.path),
+        mirror_offsets: {
+            let mut out: Vec<[f32; 2]> = Vec::new();
+            let bus = vt.def.path.to_string_lossy().to_ascii_lowercase();
+            for (i, v) in ::config::get_table_sub("mirrors", &bus) {
+                let (Ok(i), Some((y, p))) = (i.parse::<usize>(), v.as_str().and_then(|v| v.split_once(','))) else {
+                    continue;
+                };
+                if i > 64 {
+                    continue;
+                }
+                if out.len() <= i {
+                    out.resize(i + 1, [0.0; 2]);
+                }
+                out[i] = [y.trim().parse().unwrap_or(0.0), p.trim().parse().unwrap_or(0.0)];
+            }
+            out
+        },
         mirrors_dirty: false,
         take_change: false,
         toggled_up: Default::default(),
-        momentary_gears: settings::Settings::load().momentary_gears,
-        auto_ibis: settings::Settings::load().auto_ibis,
-        auto_shift: settings::Settings::load().auto_shift,
+        momentary_gears: ::config::get_bool("gameplay", "momentary_gears").unwrap_or(false),
+        auto_ibis: ::config::get_bool("gameplay", "auto_ibis").unwrap_or(false),
+        auto_shift: ::config::get_bool("gameplay", "auto_shift").unwrap_or(false),
         auto_shift_wait: 0.0,
         auto_shift_idle: 0.0,
         side_lights_by_l: false,
@@ -526,7 +543,7 @@ pub(crate) fn spawn_player(
         ibis_background: false,
         arm: Default::default(),
         blinker_key_state: 0,
-        blinker_cancel: settings::Settings::load().blinker_cancel,
+        blinker_cancel: ::config::get_bool("controls", "blinker_cancel").unwrap_or(true),
     };
     for _ in 0..3 {
         p.vehicle.update(1.0 / 30.0);
@@ -626,9 +643,9 @@ pub(crate) fn spawn_player(
                 .map(|f| {
                     !f.is_empty()
                         && def
-                            .file
-                            .to_ascii_lowercase()
-                            .contains(&f.to_ascii_lowercase())
+                        .file
+                        .to_ascii_lowercase()
+                        .contains(&f.to_ascii_lowercase())
                 })
                 .unwrap_or(false)
             {

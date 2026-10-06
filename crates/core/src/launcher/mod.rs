@@ -149,6 +149,7 @@ pub struct Launcher {
     ime: bool,
     /// Updates from the GitHub releases (see `crate::updater`, `update.rs`).
     pub update: crate::updater::Updater,
+    pub pax_pack: crate::pax_pack::PaxPack,
     #[cfg(not(target_os = "android"))]
     discord: Option<crate::discord::Discord>,
     #[cfg(not(target_os = "android"))]
@@ -223,6 +224,7 @@ impl Launcher {
             page_max: 0.0,
             ime: false,
             update: Default::default(),
+            pax_pack: crate::pax_pack::PaxPack::new(crate::startup::content_dir()),
             #[cfg(not(target_os = "android"))]
             discord: None,
             #[cfg(not(target_os = "android"))]
@@ -314,11 +316,10 @@ impl Launcher {
             return;
         };
         if self.renderer.is_none() {
-            let settings = crate::settings::Settings::load();
             let renderer = match crate::startup::window_renderer(
                 &mut self.instance,
                 &window,
-                showroom_options(&settings),
+                showroom_options(),
             ) {
                 Ok(r) => r,
                 Err(e) => {
@@ -349,7 +350,7 @@ impl Launcher {
             size.height.max(1),
             true,
         )
-        .ok();
+            .ok();
         self.last = Instant::now();
     }
 }
@@ -414,11 +415,10 @@ impl ApplicationHandler for Launcher {
                 return;
             }
         };
-        let settings = crate::settings::Settings::load();
         let renderer = match crate::startup::window_renderer(
             &mut self.instance,
             &window,
-            showroom_options(&settings),
+            showroom_options(),
         ) {
             Ok(r) => r,
             Err(e) => {
@@ -721,8 +721,8 @@ impl Launcher {
         }
         if let Some(o) = other {
             unsafe { std::env::set_var("OMSI_BACKEND", o) };
-            self.state.settings["graphics_api"] = serde_json::json!(o);
-            self.state.settings_dirty = 0.3;
+            ::config::set_setting("graphics", "graphics_api", o);
+            let _ = ::config::save();
         }
         self.surface = None;
         self.gpu = None;
@@ -744,9 +744,9 @@ impl Launcher {
             .unwrap_or(true);
         let launching = self.state.queued_launch.is_some()
             || self
-                .state
-                .launch_hold
-                .is_some_and(|at| at.elapsed().as_secs_f32() < 15.0);
+            .state
+            .launch_hold
+            .is_some_and(|at| at.elapsed().as_secs_f32() < 15.0);
         let game_running = self.state.instances.iter().any(|i| i.running);
         let presence = crate::discord::Presence::for_launcher(enabled, launching, game_running);
         if presence.is_none() {
@@ -804,18 +804,7 @@ impl Launcher {
 
     /// Looked at while a game runs (see `awake_in_game`): drawn and answering as usual.
     fn awake(&self) -> bool {
-        // (the player asked the launcher not to rest while a game runs: it is always awake)
-        !self.rests() || (self.awake_in_game && self.focused && self.state.queued_launch.is_none())
-    }
-
-    /// Whether the launcher gives the graphics device up while a game runs (#834: the setting
-    /// "The launcher rests while a game runs"; on by default).
-    fn rests(&self) -> bool {
-        self.state
-            .settings
-            .get("launcher_rest")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true)
+        self.awake_in_game && self.focused && self.state.queued_launch.is_none()
     }
 
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
@@ -1273,8 +1262,8 @@ impl Launcher {
         if mobile {
             if self.page == Page::Setup
                 && !::legacy_config::missing_original_essentials(std::path::Path::new(
-                    &self.state.config.root,
-                ))
+                &self.state.config.root,
+            ))
                 .is_empty()
                 && self.phone.page.is_none()
             {
@@ -1629,12 +1618,28 @@ impl Launcher {
 
 /// The showroom's renderer: a bus on a floor needs none of the game's costly passes - no
 /// ambient occlusion, a small shadow map, 4x MSAA for the edges whatever the game uses.
-fn showroom_options(settings: &crate::settings::Settings) -> ::render::RenderOptions {
-    ::render::RenderOptions {
-        msaa: 4,
-        ssao: false,
-        shadow_size: 1024,
-        render_scale: 1.0,
-        ..settings.render_options()
-    }
+fn showroom_options() -> ::render::RenderOptions {
+    let mut o = ::render::RenderOptions {
+        msaa: ::config::get_int("graphics", "msaa").unwrap_or(4) as u32,
+        anisotropy: ::config::get_int("graphics", "anisotropy").unwrap_or(8) as u16,
+        shadow_size: ::config::get_int("graphics", "shadow_size").unwrap_or(2048) as u32,
+        ssao: ::config::get_bool("graphics", "ssao").unwrap_or(true),
+        render_scale: ::config::get_float("graphics", "render_scale").unwrap_or(0.0) as f32,
+        compress_textures: ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
+        fxaa: ::config::get_string("graphics", "post_aa").as_deref() != Some("off"),
+        min_obj_size: ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32,
+        max_obj_dist: match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
+            d if d >= 0.0 => d,
+            _ => ::config::get_float("graphics", "view_distance").filter(|v| *v > 0.0).map(|v| v as f32).unwrap_or(900.0),
+        },
+        omsi_shadow_casters: ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi"),
+        shadow_blobs: ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
+        reflections: ::config::get_bool("graphics", "reflections").unwrap_or(true),
+        no_enhanced: ::config::get_string("graphics", "graphics").as_deref() != Some("enhanced"),
+    };
+    o.msaa = 4;
+    o.ssao = false;
+    o.shadow_size = 1024;
+    o.render_scale = 1.0;
+    o
 }

@@ -197,7 +197,7 @@ fn gdi_line_height(ascent: f32, descent: f32) -> u32 {
 fn tt_labels() -> &'static (String, String) {
     static LABELS: OnceLock<(String, String)> = OnceLock::new();
     LABELS.get_or_init(|| {
-        let lang = crate::settings::Settings::load().language;
+        let lang = ::config::get_string("ui", "language").unwrap_or_else(|| "en".into());
         let find = |lang: &str| {
             ::legacy_config::content_dirs("Languages")
                 .into_iter()
@@ -206,7 +206,7 @@ fn tt_labels() -> &'static (String, String) {
                         .ok()
                 })
         };
-        let l = find(&lang).or_else(|| find("ENG"));
+        let l = find(&lang).or_else(|| find("en"));
         let get = |key: &str, default: &str| {
             l.as_ref()
                 .and_then(|l| l.strings.get(key))

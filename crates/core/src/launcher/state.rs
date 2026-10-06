@@ -62,7 +62,7 @@ pub enum Msg {
     Join(serde_json::Value),
     Server {
         address: String,
-        info: Result<::network::ws::ServerInfo, String>,
+        info: Result<network::ws::ServerInfo, String>,
     },
     /// A background job stopped on an error of its own (a panic): whatever it was loading
     /// is not coming.
@@ -80,18 +80,18 @@ pub struct ServerEntry {
 }
 
 /// A code host's status page (its gateway is the session's port + 10).
-fn host_status(code: &str) -> Result<::network::ws::ServerInfo, String> {
-    let c = ::network::SessionCode::decode(code)?;
+fn host_status(code: &str) -> Result<network::ws::ServerInfo, String> {
+    let c = network::SessionCode::decode(code)?;
     for a in c.addrs().into_iter().take(3) {
-        if let Ok(i) = ::network::ws::query(
+        if let Ok(i) = network::ws::query(
             &format!("http://{}:{}", a.ip(), a.port().saturating_add(10)),
             false,
         ) {
             return Ok(i);
         }
     }
-    match ::network::bridge::lookup_tunnel(c.session) {
-        Some(url) => ::network::ws::query(&url, false),
+    match network::bridge::lookup_tunnel(c.session) {
+        Some(url) => network::ws::query(&url, false),
         None => Err("the host did not answer".into()),
     }
 }
@@ -100,13 +100,13 @@ fn host_status(code: &str) -> Result<::network::ws::ServerInfo, String> {
 fn with_official(mut list: Vec<ServerEntry>) -> Vec<ServerEntry> {
     if !list
         .iter()
-        .any(|s| ::network::official::is_alias(&s.address))
+        .any(|s| network::official::is_alias(&s.address))
     {
         list.insert(
             0,
             ServerEntry {
-                name: ::network::official::NAME.into(),
-                address: ::network::official::ALIAS.into(),
+                name: network::official::NAME.into(),
+                address: network::official::ALIAS.into(),
             },
         );
     }
@@ -241,7 +241,7 @@ pub struct State {
     pub profile: Option<core::Profile>,
     pub settings: serde_json::Value,
     pub settings_dirty: f32,
-    /// `settings.cfg` as last read or written here: a game changes it too (its Options
+    /// `settings.toml` as last read or written here: a game changes it too (its Options
     /// in the pause menu), and the launcher's copy from before must not be written back
     /// over that.
     settings_file: Option<String>,
@@ -249,6 +249,8 @@ pub struct State {
     pub keybindings_error: String,
     pub instances: Vec<core::Instance>,
     pub queued_launch: Option<core::Duty>,
+    pub pax_changed: Option<u64>,
+    pub restarting: Vec<core::Instance>,
     /// Start was pressed: the graphics device stays given up until the list of games has the
     /// game started (its process, once it is known), 15 s at most.
     pub launch_hold: Option<Instant>,
@@ -280,7 +282,7 @@ pub struct State {
     /// one the Drive page is joined to now (its address).
     pub servers: Vec<ServerEntry>,
     pub server_info:
-        std::collections::HashMap<String, (Instant, Result<::network::ws::ServerInfo, String>)>,
+        std::collections::HashMap<String, (Instant, Result<network::ws::ServerInfo, String>)>,
     pub server_asked: std::collections::HashMap<String, Instant>,
     pub joined_server: Option<String>,
     tx: Sender<Msg>,
@@ -291,12 +293,12 @@ impl State {
     pub fn new() -> State {
         let (tx, rx) = channel();
         let config = core::load_config();
-        let settings = core::get_settings().unwrap_or_else(|_| core::settings_from_text(None));
+        let settings = core::get_settings().unwrap_or_else(|_| core::default_settings());
         crate::ui_language(
             settings
                 .get("language")
                 .and_then(|x| x.as_str())
-                .unwrap_or("ENG"),
+                .unwrap_or("en"),
         );
         let keybindings = core::get_keybindings().unwrap_or(serde_json::Value::Null);
         let choice = Choice::load();
@@ -324,6 +326,8 @@ impl State {
             keybindings_error: String::new(),
             instances: Vec::new(),
             queued_launch: None,
+            pax_changed: None,
+            restarting: Vec::new(),
             launch_hold: None,
             launched_pid: None,
             crash: None,
@@ -382,8 +386,8 @@ impl State {
     pub fn in_game(&self) -> bool {
         self.queued_launch.is_some()
             || self
-                .launch_hold
-                .is_some_and(|t| t.elapsed().as_secs_f32() < 15.0)
+            .launch_hold
+            .is_some_and(|t| t.elapsed().as_secs_f32() < 15.0)
             || self.instances.iter().any(|i| i.running)
     }
 
@@ -536,7 +540,7 @@ impl State {
         let t = self.choice.lan_addr.clone();
         self.spawn(move || Msg::Join(core::check_join(&t)));
         // the host's status (its buses): at the code's addresses, else through its tunnel
-        if ::network::looks_like_code(&self.choice.lan_addr) {
+        if network::looks_like_code(&self.choice.lan_addr) {
             let code = self.choice.lan_addr.clone();
             self.spawn(move || Msg::Server {
                 info: host_status(&code),
@@ -588,7 +592,7 @@ impl State {
             .insert(address.to_string(), Instant::now());
         let a = address.to_string();
         self.spawn(move || Msg::Server {
-            info: ::network::ws::query(&a, true),
+            info: network::ws::query(&a, true),
             address: a,
         });
     }
@@ -604,9 +608,9 @@ impl State {
         };
         if !self.maps.is_empty()
             && !self
-                .maps
-                .iter()
-                .any(|m| m.file.eq_ignore_ascii_case(&info.map))
+            .maps
+            .iter()
+            .any(|m| m.file.eq_ignore_ascii_case(&info.map))
         {
             self.set_status(
                 format!(
@@ -621,7 +625,7 @@ impl State {
         self.choice.lan_mode = "join".into();
         // (a server added by its bare address is joined where it answered: its web gateway)
         let bare =
-            ::network::ws::ws_url(address).is_none() && !::network::official::is_alias(address);
+            network::ws::ws_url(address).is_none() && !network::official::is_alias(address);
         self.choice.lan_addr = if bare && !info.reached_at.is_empty() {
             info.reached_at.clone()
         } else {
@@ -662,6 +666,38 @@ impl State {
         });
     }
 
+    pub fn games_with_old_passengers(&self) -> bool {
+        old_passengers(self.pax_changed, &self.instances)
+    }
+
+    pub fn restart_games(&mut self) {
+        for i in to_restart(self.pax_changed, &self.instances, &self.restarting) {
+            if !self.stopping.contains(&i.pid) {
+                self.stop(i.pid);
+            }
+            self.restarting.push(i);
+        }
+    }
+
+    fn restart_next(&mut self) {
+        if self.queued_launch.is_some()
+            || self
+                .launch_hold
+                .is_some_and(|t| t.elapsed().as_secs_f32() < 15.0)
+            || !all_ended(&self.restarting, &self.stopping, &self.instances)
+        {
+            return;
+        }
+        if !self.save_pending_settings() {
+            self.restarting.clear();
+            return;
+        }
+        if let Some(i) = self.restarting.pop() {
+            self.set_status("Starting the game again with the new passengers…", false);
+            self.queued_launch = Some(core::Duty::again(&i));
+        }
+    }
+
     pub fn stop(&mut self, pid: u32) {
         self.stopping.insert(pid);
         self.spawn(move || Msg::Stopped {
@@ -689,7 +725,7 @@ impl State {
         if !self.save_pending_settings() {
             return;
         }
-        if !::legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
+        if !legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
             .is_empty()
         {
             self.set_status(
@@ -760,6 +796,7 @@ impl State {
             season: Some(c.season.clone()).filter(|s| s != "auto"),
             tutorial: None,
             situation: None,
+            again: None,
         }
     }
 
@@ -835,6 +872,7 @@ impl State {
         }
         let now = read_settings_file();
         if now.is_some() && now != self.settings_file {
+            let _ = config::load();
             if let Ok(v) = core::get_settings() {
                 self.settings = v;
             }
@@ -865,50 +903,13 @@ impl State {
     }
 
     /// Work done each frame: results of background work, the regular poll, saving.
-    fn follow_clock(&mut self) {
-        let on = |k: &str| {
-            self.settings
-                .get(k)
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        };
-        let (time, date, year) = (
-            on("use_real_time"),
-            on("use_real_date"),
-            on("use_real_year"),
-        );
-        if !time && !date {
-            return;
-        }
-        let Some((y, mo, d, h, m)) = core::local_now() else {
-            return;
-        };
-        if time {
-            self.choice.time = h * 60 + m;
-        }
-        if date {
-            let y = if year {
-                y
-            } else {
-                self.choice
-                    .date
-                    .get(..4)
-                    .and_then(|x| x.parse().ok())
-                    .unwrap_or(y)
-            };
-            let today = format!("{y:04}-{mo:02}-{d:02}");
-            if self.choice.date != today {
-                self.choice.date = today;
-                self.load_lines();
-            }
-        }
-    }
-
     pub fn update(&mut self, dt: f32) {
         while let Ok(m) = self.rx.try_recv() {
             self.handle(m);
         }
-        self.follow_clock();
+        if !self.restarting.is_empty() {
+            self.restart_next();
+        }
         self.poll_t -= dt;
         if self.poll_t <= 0.0 {
             self.poll_t = 2.5;
@@ -1069,7 +1070,7 @@ impl State {
                 self.loading_content = false;
                 self.content_first = false;
                 self.content_done();
-                if ::legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
+                if legacy_config::missing_original_essentials(std::path::Path::new(&self.config.root))
                     .is_empty()
                 {
                     self.set_status(format!("{e}\nSet the OMSI 2 folder under Setup."), true);
@@ -1274,7 +1275,10 @@ impl State {
                 match result {
                     Ok(true) => self.set_status(format!("Game {pid} ended by itself."), false),
                     Ok(false) => self.set_status(format!("Game {pid} did not end by itself and was killed - this run is not saved."), true),
-                    Err(e) => self.set_status(e, true),
+                    Err(e) => {
+                        self.restarting.retain(|r| r.pid != pid);
+                        self.set_status(e, true)
+                    }
                 }
                 self.poll_now();
             }
@@ -1341,10 +1345,10 @@ impl State {
     /// 92), which the bus has, else its first.
     pub fn default_hof(&self) -> String {
         let on_date = self.map().and_then(|m| {
-            let dir = ::legacy_config::resolve_path(std::path::Path::new(&self.config.root), &m.file);
-            ::map::ailists::depot_hof_on(
+            let dir = legacy_config::resolve_path(std::path::Path::new(&self.config.root), &m.file);
+            map::ailists::depot_hof_on(
                 dir.parent()?,
-                ::map::ailists::date_code(&self.choice.date)?,
+                map::ailists::date_code(&self.choice.date)?,
             )
         });
         let want = on_date
@@ -1370,10 +1374,10 @@ impl State {
         // (a hand-picked depot file stays when the new bus has one of that name)
         let keep = self.choice.hof_manual
             && self.bus().is_some_and(|v| {
-                v.hofs
-                    .iter()
-                    .any(|h| h.eq_ignore_ascii_case(&self.choice.hof))
-            });
+            v.hofs
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(&self.choice.hof))
+        });
         if !keep {
             self.choice.hof_manual = false;
             self.choice.hof = self.default_hof();
@@ -1493,7 +1497,7 @@ pub fn short_map(m: &str) -> String {
 pub fn root_problem(root: &str) -> String {
     let root = root.trim();
     let p = std::path::Path::new(root);
-    let missing = ::legacy_config::missing_original_essentials(p);
+    let missing = legacy_config::missing_original_essentials(p);
     if root.is_empty() {
         "The original OMSI 2 was not found automatically: choose its folder (the one with Omsi.exe, maps and Vehicles in it) under Setup and press Save.".to_string()
     } else if !p.exists() {
@@ -1622,6 +1626,57 @@ mod launch_tests {
         // (Start pressed, the game not started yet)
         assert!(!super::game_listed(None, &[game(7, true)]));
     }
+
+    #[test]
+    fn a_restart_takes_only_the_games_with_the_old_passengers_and_waits_for_all_of_them() {
+        let at = |id: &str, pid, running, started| Instance {
+            id: id.into(),
+            started,
+            ..game(pid, running)
+        };
+        let games = [
+            at("a", 1, true, 100),
+            at("b", 2, true, 150),
+            at("new", 3, true, 250),
+            at("ended", 4, false, 100),
+        ];
+        let ids = |v: &[Instance]| v.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+        let old = super::to_restart(Some(200), &games, &[]);
+        assert_eq!(ids(&old), ["a", "b"]);
+        assert!(super::to_restart(Some(200), &games, &old).is_empty());
+        assert!(super::to_restart(None, &games, &[]).is_empty());
+
+        let mut stopping: std::collections::HashSet<u32> = [1].into();
+        assert!(!super::all_ended(&old, &stopping, &games));
+        stopping.clear();
+        assert!(!super::all_ended(&old, &stopping, &games), "still listed as running");
+        let after = [
+            at("a", 1, false, 100),
+            at("b", 2, true, 150),
+            at("new", 3, true, 250),
+        ];
+        assert!(!super::all_ended(&old, &stopping, &after));
+        let after = [
+            at("a", 1, false, 100),
+            at("b", 2, false, 150),
+            at("new", 3, true, 250),
+        ];
+        assert!(super::all_ended(&old, &stopping, &after), "the newer game keeps running");
+    }
+
+    #[test]
+    fn only_a_game_started_before_the_passengers_changed_has_the_old_ones() {
+        let at = |pid, running, started| Instance {
+            started,
+            ..game(pid, running)
+        };
+        assert!(!super::old_passengers(None, &[at(1, true, 100)]));
+        assert!(super::old_passengers(Some(200), &[at(1, true, 100)]));
+        assert!(!super::old_passengers(
+            Some(200),
+            &[at(1, true, 250), at(2, false, 100)]
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -1639,7 +1694,7 @@ mod crash_tests {
             &p,
             "[t INFO x] loading\n[t INFO neoomsi_game::app_events] game ends\n",
         )
-        .unwrap();
+            .unwrap();
         assert!(super::crash_of(&p).is_none());
         std::fs::write(&p, "[t ERROR ::render] the graphics device was lost (Unknown): Unexpected error variant\n[t INFO neoomsi_game::app_events] game ends\n").unwrap();
         assert!(super::crash_of(&p).unwrap().0.contains("device was lost"));
@@ -1650,6 +1705,37 @@ mod crash_tests {
     }
 }
 
+fn has_old_passengers(changed: Option<u64>, game: &core::Instance) -> bool {
+    changed.is_some_and(|t| game.running && game.started < t)
+}
+
+fn old_passengers(changed: Option<u64>, games: &[core::Instance]) -> bool {
+    games.iter().any(|i| has_old_passengers(changed, i))
+}
+
+fn to_restart(
+    changed: Option<u64>,
+    games: &[core::Instance],
+    restarting: &[core::Instance],
+) -> Vec<core::Instance> {
+    games
+        .iter()
+        .filter(|i| has_old_passengers(changed, i))
+        .filter(|i| !restarting.iter().any(|r| r.id == i.id))
+        .cloned()
+        .collect()
+}
+
+fn all_ended(
+    restarting: &[core::Instance],
+    stopping: &std::collections::HashSet<u32>,
+    games: &[core::Instance],
+) -> bool {
+    restarting.iter().all(|r| {
+        !stopping.contains(&r.pid) && !games.iter().any(|i| i.id == r.id && i.running)
+    })
+}
+
 fn read_settings_file() -> Option<String> {
-    std::fs::read_to_string(core::data_dir().join("settings.cfg")).ok()
+    std::fs::read_to_string(config::default_path()).ok()
 }

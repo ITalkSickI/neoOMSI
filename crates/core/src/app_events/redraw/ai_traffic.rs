@@ -91,10 +91,10 @@ impl App {
                     w.fog.0 < 600.0
                         || (kind != 0 && rate > 0.05)
                         || w.clouds
-                            .0
-                            .trim()
-                            .to_ascii_lowercase()
-                            .starts_with("overcast")
+                        .0
+                        .trim()
+                        .to_ascii_lowercase()
+                        .starts_with("overcast")
                 })
                 .unwrap_or(false);
             // Omsi switches the AI's lights on below a light value of 0.75, before
@@ -131,7 +131,7 @@ impl App {
                 *self.profile.entry(k).or_default() += v;
             }
             if let Some(p) = self.player.as_mut() {
-                p.vehicle.dynamic_boxes = if self.settings.collision_vehicles {
+                p.vehicle.dynamic_boxes = if ::config::get_bool("gameplay", "collision_vehicles").unwrap_or(true) {
                     t.boxes(p.vehicle.position, 80.0)
                 } else {
                     Vec::new()
