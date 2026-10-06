@@ -585,6 +585,46 @@ fn toggle_setting(ui: &mut Ui, s: &mut Value, dirty: &mut f32, r: Rect, label: &
     }
 }
 
+/// A select on a `[graphics]` value of the config (the options' values are the config's).
+fn cfg_sel(ui: &mut Ui, name: &str, r: Rect, label: &str, key: &str, options: &[(&str, &str)]) {
+    ui.label(Rect::new(r.x, r.y, r.w * 0.45, r.h), label);
+    let cur = crate::game_lists::gfx_text(key);
+    let mut labels: Vec<String> = options.iter().map(|o| o.1.to_string()).collect();
+    let mut values: Vec<String> = options.iter().map(|o| o.0.to_string()).collect();
+    let mut sel = values.iter().position(|v| {
+        *v == cur
+            || v.parse::<f64>()
+            .ok()
+            .zip(cur.parse::<f64>().ok())
+            .is_some_and(|(a, b)| (a - b).abs() < 1e-6)
+    });
+    if sel.is_none() && !cur.is_empty() {
+        // a value written by hand gets an entry of its own
+        labels.push(cur.clone());
+        values.push(cur);
+        sel = Some(values.len() - 1);
+    }
+    let mut sel = sel.unwrap_or(0);
+    if ui.select(
+        name,
+        Rect::new(r.x + r.w * 0.45, r.y, r.w * 0.55, r.h),
+        &mut sel,
+        &labels,
+    ) {
+        crate::game_lists::gfx_set(key, &values[sel]);
+        let _ = ::config::save();
+    }
+}
+
+/// A switch on a `[graphics]` value of the config.
+fn cfg_toggle(ui: &mut Ui, r: Rect, label: &str, key: &str) {
+    let mut v = ::config::get_bool("graphics", key).unwrap_or(false);
+    if ui.toggle(&format!("set-{key}"), r, &mut v, label) {
+        ::config::set_setting("graphics", key, v);
+        let _ = ::config::save();
+    }
+}
+
 /// The settings page's tabs: what one has come to change.
 pub const SETTINGS_TABS: [&str; 6] = [
     "Graphics", "Driving", "Camera", "Sound", "Gameplay", "General",
@@ -799,7 +839,7 @@ fn settings_tab(
     cols: [Rect; 2],
 ) -> [f32; 2] {
     match tab {
-        0 => graphics_tab(ui, s, dirty, cols),
+        0 => graphics_tab(ui, s, cols),
         1 => driving_tab(ui, s, dirty, out, cols),
         2 => camera_tab(ui, s, dirty, out, cols),
         3 => sound_tab(ui, s, dirty, cols),
@@ -813,7 +853,6 @@ fn settings_tab(
 struct GfxProfileUi {
     name: String,
     sel: usize,
-    list: Option<Vec<String>>,
     msg: String,
 }
 
@@ -821,15 +860,12 @@ thread_local! {
     static GFX_PROFILES: std::cell::RefCell<GfxProfileUi> = std::cell::RefCell::new(GfxProfileUi::default());
 }
 
-/// Save, load and delete the graphics settings as named profiles.
-fn graphics_profiles_block(ui: &mut Ui, s: &mut Value, dirty: &mut f32, c: &mut Col) {
+/// Save, load and delete the graphics settings as named profiles (`[graphics_profiles.<name>]`).
+fn graphics_profiles_block(ui: &mut Ui, c: &mut Col) {
     GFX_PROFILES.with(|g| {
         let mut g = g.borrow_mut();
         let g = &mut *g;
-        let names: Vec<String> = g
-            .list
-            .get_or_insert_with(|| core::graphics_profiles().into_keys().collect())
-            .clone();
+        let names = ::config::get_subs("graphics_profiles");
         g.sel = g.sel.min(names.len().saturating_sub(1));
         let labels: Vec<String> = if names.is_empty() {
             vec!["No saved profiles".to_string()]
@@ -858,14 +894,13 @@ fn graphics_profiles_block(ui: &mut Ui, s: &mut Value, dirty: &mut f32, c: &mut 
         ) && !names.is_empty()
         {
             let name = names[g.sel].clone();
-            match core::graphics_profiles().get(&name) {
-                Some(p) => {
-                    core::apply_graphics_profile(p, s);
-                    *dirty = 0.3;
-                    g.msg = format!("Loaded \"{name}\".");
+            for (k, v) in ::config::get_table_sub("graphics_profiles", &name) {
+                if ::config::DEFAULTS.iter().any(|(c, key, _)| *c == "graphics" && *key == k) {
+                    ::config::set_setting("graphics", &k, v);
                 }
-                None => g.msg = format!("\"{name}\" is gone."),
             }
+            let _ = ::config::save();
+            g.msg = format!("Loaded \"{name}\".");
         }
         if ui.button(
             "s-gp-del",
@@ -876,11 +911,9 @@ fn graphics_profiles_block(ui: &mut Ui, s: &mut Value, dirty: &mut f32, c: &mut 
         ) && !names.is_empty()
         {
             let name = names[g.sel].clone();
-            g.msg = match core::delete_graphics_profile(&name) {
-                Ok(()) => format!("Deleted \"{name}\"."),
-                Err(e) => format!("{e:#}"),
-            };
-            g.list = None;
+            ::config::remove_sub("graphics_profiles", &name);
+            let _ = ::config::save();
+            g.msg = format!("Deleted \"{name}\".");
         }
         let r = c.row();
         ui.text_input("s-gp-name", r, &mut g.name, "Profile name", None);
@@ -892,17 +925,33 @@ fn graphics_profiles_block(ui: &mut Ui, s: &mut Value, dirty: &mut f32, c: &mut 
             Some("save"),
             ButtonKind::Primary,
         ) {
-            g.msg = match core::save_graphics_profile(&g.name, s) {
-                Ok(name) => {
-                    g.name = name.clone();
-                    g.list = None;
-                    if let Some(i) = core::graphics_profiles().keys().position(|k| *k == name) {
-                        g.sel = i;
+            let name: String = g
+                .name
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .chars()
+                .take(40)
+                .collect();
+            if name.is_empty() {
+                g.msg = "Give the profile a name.".to_string();
+            } else {
+                for (cat, key, _) in ::config::DEFAULTS {
+                    if *cat == "graphics"
+                        && let Some(v) = ::config::get_setting("graphics", key)
+                    {
+                        ::config::set_setting_sub("graphics_profiles", &name, key, v);
                     }
-                    format!("Saved \"{name}\".")
                 }
-                Err(e) => format!("{e:#}"),
-            };
+                let _ = ::config::save();
+                g.sel = ::config::get_subs("graphics_profiles")
+                    .iter()
+                    .position(|k| *k == name)
+                    .unwrap_or(0);
+                g.msg = format!("Saved \"{name}\".");
+                g.name = name;
+            }
         }
         if !g.msg.is_empty() {
             c.y += ui.paragraph(
@@ -917,85 +966,17 @@ fn graphics_profiles_block(ui: &mut Ui, s: &mut Value, dirty: &mut f32, c: &mut 
     });
 }
 
-/// How the game looks and how fast it runs. The rows work on the config's `[graphics]`
-/// (shown as the JSON the rows know); what they changed is written back into it.
-fn graphics_tab(ui: &mut Ui, s: &mut Value, _dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
-    let mut g = crate::game_lists::gfx_view();
-    if let Some(m) = s.get("texture_memory_auto") {
-        g["texture_memory_auto"] = m.clone();
-    }
-    let before = g.clone();
-    let mut changed = 0.0;
-    let used = graphics_tab_rows(ui, &mut g, &mut changed, cols);
-    g.as_object_mut().map(|o| o.remove("texture_memory_auto"));
-    crate::game_lists::gfx_store(&before, &g);
-    used
-}
-
-fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2]) -> [f32; 2] {
+/// How the game looks and how fast it runs: the config's `[graphics]`, row by row.
+fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
     let mut c = Col::new(ui, cols[0], "Graphics");
     // Quality presets, first: they set most of what follows. (OMSI's own
     // option_presets/*.oop are named after the PCs of their day - "PC 2006", "X10 high",
     // "Chicago Recommended" - which read as random words here.)
-    let presets: [(&str, serde_json::Value); 4] = [
-        (
-            "Low",
-            json!({"msaa": 1, "anisotropy": 2, "shadow_size": 1024, "ssao": false, "shadows": false, "detail_textures": false, "clouds": false, "view_distance": "600", "min_obj_size": 0.03, "max_obj_dist": "500", "mirror_size": 128, "mirror_refresh": "eco", "render_scale": "0.75", "texture_memory": 800}),
-        ),
-        (
-            "Medium",
-            json!({"msaa": 2, "anisotropy": 4, "shadow_size": 2048, "ssao": false, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "900", "min_obj_size": 0.02, "max_obj_dist": "750", "mirror_size": 256, "mirror_refresh": "eco", "render_scale": "auto", "texture_memory": 1200}),
-        ),
-        (
-            "High",
-            json!({"msaa": 4, "anisotropy": 8, "shadow_size": 2048, "ssao": true, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "auto", "min_obj_size": 0.013, "max_obj_dist": "auto", "mirror_size": 256, "mirror_refresh": "full", "render_scale": "auto", "texture_memory": 0}),
-        ),
-        (
-            "Ultra",
-            json!({"msaa": 4, "anisotropy": 8, "shadow_size": 4096, "ssao": true, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "2000", "min_obj_size": 0.005, "max_obj_dist": "1500", "mirror_size": 512, "mirror_refresh": "full", "render_scale": "auto", "texture_memory": 0}),
-        ),
-    ];
     {
-        // the preset the settings match now, else "Custom"
-        let matches = |p: &serde_json::Value| {
-            p.as_object()
-                .map(|o| {
-                    o.iter().all(|(k, v)| {
-                        let cur = get(s, k);
-                        cur == v
-                            || cur
-                            .as_f64()
-                            .zip(v.as_f64())
-                            .map(|(a, b)| (a - b).abs() < 1e-6)
-                            .unwrap_or(false)
-                            || cur
-                            .as_str()
-                            .zip(v.as_f64())
-                            .map(|(a, b)| {
-                                a.parse::<f64>()
-                                    .map(|a| (a - b).abs() < 1e-6)
-                                    .unwrap_or(false)
-                            })
-                            .unwrap_or(false)
-                            || cur
-                            .as_f64()
-                            .zip(v.as_str())
-                            .map(|(a, b)| {
-                                b.parse::<f64>()
-                                    .map(|b| (a - b).abs() < 1e-6)
-                                    .unwrap_or(false)
-                            })
-                            .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false)
-        };
+        let presets = crate::game_lists::PRESETS;
         let mut labels: Vec<String> = presets.iter().map(|p| p.0.to_string()).collect();
         labels.push("Custom".to_string());
-        let mut sel = presets
-            .iter()
-            .position(|p| matches(&p.1))
-            .unwrap_or(presets.len());
+        let mut sel = crate::game_lists::preset_now().unwrap_or(presets.len());
         let r = c.row();
         ui.label(Rect::new(r.x, r.y, r.w * 0.45, r.h), "Quality preset");
         if ui.select(
@@ -1003,20 +984,16 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             Rect::new(r.x + r.w * 0.45, r.y, r.w * 0.55, r.h),
             &mut sel,
             &labels,
-        ) && sel < presets.len()
+        ) && let Some(p) = presets.get(sel)
         {
-            if let Some(obj) = presets[sel].1.as_object() {
-                for (k, v) in obj {
-                    s[k.as_str()] = v.clone();
-                }
-                *dirty = 0.3;
+            for (k, v) in p.1 {
+                crate::game_lists::gfx_set(k, v);
             }
+            let _ = ::config::save();
         }
     }
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-graphics",
         c.row(),
         "Graphics",
@@ -1028,11 +1005,9 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
         ],
     );
     // Vanilla draws what OMSI 2 draws: no sun shadows, ambient occlusion or detail grain
-    let classic = get(s, "graphics").as_str() == Some("vanilla");
-    sel_setting(
+    let classic = ::config::get_string("graphics", "graphics").as_deref() == Some("vanilla");
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-msaa",
         c.row(),
         "Anti-aliasing",
@@ -1044,16 +1019,14 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             ("8", "8x MSAA"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-scale",
         c.row(),
         "Render scale",
         "render_scale",
         &[
-            ("auto", "Auto"),
+            ("0", "Auto"),
             ("1", "100%"),
             ("0.85", "85%"),
             ("0.75", "75%"),
@@ -1061,10 +1034,8 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             ("0.5", "50%"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-af",
         c.row(),
         "Anisotropic",
@@ -1078,22 +1049,22 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
         ],
     );
     if !classic {
-        sel_setting(
+        cfg_sel(
             ui,
-            s,
-            dirty,
             "s-shadow",
             c.row(),
             "Shadow map",
             "shadow_size",
             &[("1024", "1024"), ("2048", "2048"), ("4096", "4096")],
         );
-        toggle_setting(ui, s, dirty, c.row(), "Ambient occlusion", "ssao");
-        toggle_setting(ui, s, dirty, c.row(), "Sun shadows", "shadows");
-        sel_setting(
+        cfg_toggle(
             ui,
-            s,
-            dirty,
+            c.row(), "Ambient occlusion", "ssao");
+        cfg_toggle(
+            ui,
+            c.row(), "Sun shadows", "shadows");
+        cfg_sel(
+            ui,
             "s-casters",
             c.row(),
             "Shadows cast by",
@@ -1103,10 +1074,8 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
                 ("omsi", "[shadow] meshes, as OMSI"),
             ],
         );
-        toggle_setting(
+        cfg_toggle(
             ui,
-            s,
-            dirty,
             c.row(),
             "Detail texturing up close",
             "detail_textures",
@@ -1115,7 +1084,7 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
         // mip chain the panel's picture and its mask are held at - 0 point-samples them,
         // the sharpest dots and the worst shimmer; higher holds them at the level the
         // screen footprint asks for at most)
-        let mut led = get(s, "led_glow").as_i64().unwrap_or(6) as f32;
+        let mut led = ::config::get_int("graphics", "led_glow").unwrap_or(6) as f32;
         if ui.slider(
             "s-led",
             c.row(),
@@ -1132,10 +1101,10 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
                 }
             },
         ) {
-            s["led_glow"] = json!(led.round() as i64);
-            *dirty = 0.3;
+            ::config::set_setting("graphics", "led_glow", led.round() as i64);
+            let _ = ::config::save();
         }
-        let mut nm = get(s, "nightmap_glow").as_i64().unwrap_or(6) as f32;
+        let mut nm = ::config::get_int("graphics", "nightmap_glow").unwrap_or(6) as f32;
         if ui.slider(
             "s-nightmap",
             c.row(),
@@ -1152,10 +1121,10 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
                 }
             },
         ) {
-            s["nightmap_glow"] = json!(nm.round() as i64);
-            *dirty = 0.3;
+            ::config::set_setting("graphics", "nightmap_glow", nm.round() as i64);
+            let _ = ::config::save();
         }
-        let mut atmo = get(s, "atmosphere_brightness").as_f64().unwrap_or(1.0) as f32;
+        let mut atmo = ::config::get_float("graphics", "atmosphere_brightness").unwrap_or(1.0) as f32;
         if ui.slider(
             "s-atmo",
             c.row(),
@@ -1166,10 +1135,10 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             "Atmosphere brightness",
             &|v| format!("{v:.2}"),
         ) {
-            s["atmosphere_brightness"] = json!((atmo / 0.05).round() * 0.05);
-            *dirty = 0.3;
+            ::config::set_setting("graphics", "atmosphere_brightness", ((atmo / 0.05).round() * 0.05) as f64);
+            let _ = ::config::save();
         }
-        let mut mip = get(s, "led_mips").as_f64().unwrap_or(1.3) as f32;
+        let mut mip = ::config::get_float("graphics", "led_mips").unwrap_or(1.3) as f32;
         if ui.slider(
             "s-led-mip",
             c.row(),
@@ -1186,37 +1155,37 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
                 }
             },
         ) {
-            s["led_mips"] = json!((mip / 0.05).round() * 0.05);
-            *dirty = 0.3;
+            ::config::set_setting("graphics", "led_mips", ((mip / 0.05).round() * 0.05) as f64);
+            let _ = ::config::save();
         }
     }
     // (the models' `[isshadow]` blob is what OMSI draws under a vehicle in every graphics
     // mode, the vanilla one included, so its switch is not part of the extras above)
-    toggle_setting(
+    cfg_toggle(
         ui,
-        s,
-        dirty,
         c.row(),
         "OMSI's shadow meshes (under vehicles)",
         "shadow_blobs",
     );
-    toggle_setting(
+    cfg_toggle(
         ui,
-        s,
-        dirty,
         c.row(),
         "Reflection maps (paint, chrome, glass)",
         "reflections",
     );
-    toggle_setting(ui, s, dirty, c.row(), "Clouds", "clouds");
+    cfg_toggle(
+        ui,
+        c.row(), "Clouds", "clouds");
     let left = c.used();
     let mut c = Col::new(ui, cols[1], "Display");
-    toggle_setting(ui, s, dirty, c.row(), "Fullscreen", "fullscreen");
-    toggle_setting(ui, s, dirty, c.row(), "V-sync", "vsync");
-    sel_setting(
+    cfg_toggle(
         ui,
-        s,
-        dirty,
+        c.row(), "Fullscreen", "fullscreen");
+    cfg_toggle(
+        ui,
+        c.row(), "V-sync", "vsync");
+    cfg_sel(
+        ui,
         "s-fps",
         c.row(),
         "Frame limit",
@@ -1234,10 +1203,8 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
     // (a Mac has Metal only; elsewhere a driver's Vulkan that misbehaves, or a card without
     // it, is got round here)
     if cfg!(windows) {
-        sel_setting(
+        cfg_sel(
             ui,
-            s,
-            dirty,
             "s-api",
             c.row(),
             "Graphics API",
@@ -1250,32 +1217,28 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
         );
     }
     c.section(ui, "World & memory");
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-mapdetail",
         c.row(),
         "Map complexity",
         "map_detail",
         &[
-            ("auto", "OMSI setting"),
+            ("-1", "OMSI setting"),
             ("0", "Low"),
             ("1", "Normal"),
             ("2", "Full"),
             ("255", "All authored levels"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-view",
         c.row(),
         "View distance",
         "view_distance",
         &[
-            ("auto", "Default (1200 m)"),
+            ("0", "Default (1200 m)"),
             ("600", "600 m - fastest"),
             ("900", "900 m"),
             ("1200", "1200 m"),
@@ -1284,16 +1247,14 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             ("2500", "2500 m"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-maxobj",
         c.row(),
         "Object distance",
         "max_obj_dist",
         &[
-            ("auto", "Automatic"),
+            ("-1", "Automatic"),
             ("500", "500 m"),
             ("750", "750 m"),
             ("900", "900 m"),
@@ -1301,10 +1262,8 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             ("3000", "3000 m"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-minobj",
         c.row(),
         "Small objects",
@@ -1316,10 +1275,8 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             ("0.03", "Few (fastest)"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-mirror",
         c.row(),
         "Mirrors",
@@ -1332,10 +1289,8 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
             ("1024", "Very high (1024)"),
         ],
     );
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-mirror-refresh",
         c.row(),
         "Real-time reflections",
@@ -1373,26 +1328,22 @@ fn graphics_tab_rows(ui: &mut Ui, s: &mut Value, dirty: &mut f32, cols: [Rect; 2
         ("4000", "4 GB"),
         ("6000", "6 GB"),
     ];
-    sel_setting(
+    cfg_sel(
         ui,
-        s,
-        dirty,
         "s-texmem",
         c.row(),
         "Texture memory",
         "texture_memory",
         &opts,
     );
-    toggle_setting(
+    cfg_toggle(
         ui,
-        s,
-        dirty,
         c.row(),
         "Compress textures on loading",
         "texture_compression",
     );
     c.section(ui, "Profiles");
-    graphics_profiles_block(ui, s, dirty, &mut c);
+    graphics_profiles_block(ui, &mut c);
     [left, c.used()]
 }
 

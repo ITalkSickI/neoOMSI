@@ -99,15 +99,15 @@ pub(crate) fn dropdown_for(app: &App, row: usize, id: &str) -> Option<Dropdown> 
                 .collect()
         }
         "preset" => {
-            current = preset_now(&settings_file());
-            presets()
+            current = preset_now();
+            PRESETS
                 .iter()
                 .enumerate()
                 .map(|(i, p)| (tr(p.0), format!("preset {i}")))
                 .collect()
         }
-        "gfxprofile" => omsi_launcher_lib::graphics_profiles()
-            .into_keys()
+        "gfxprofile" => ::config::get_subs("graphics_profiles")
+            .into_iter()
             .map(|n| (n.clone(), format!("gfxprofile {n}")))
             .collect(),
         "reset" => vec![
@@ -241,9 +241,8 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                         let _ = ::config::save();
                     }
                 } else if ::config::DEFAULTS.iter().any(|(c, k, _)| *c == "graphics" && *k == key) {
-                    gfx_set(key, &serde_json::json!(value));
+                    gfx_set(key, value);
                     let _ = ::config::save();
-                    invalidate_settings();
                 } else {
                     remember_setting(key, value);
                 }
@@ -254,47 +253,50 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
             }
         }
         "preset" => {
-            if let Some(p) = arg
-                .trim()
-                .parse::<usize>()
-                .ok()
-                .and_then(|i| presets().into_iter().nth(i))
-            {
-                store_with(app, |v| {
-                    if let Some(o) = p.1.as_object() {
-                        for (k, x) in o {
-                            v[k.as_str()] = x.clone();
-                        }
-                    }
-                });
+            if let Some(p) = arg.trim().parse::<usize>().ok().and_then(|i| PRESETS.get(i)) {
+                for (k, v) in p.1 {
+                    gfx_set(k, v);
+                }
+                let _ = ::config::save();
             }
         }
         "gfxprofile" => {
             let name = arg.trim();
-            match omsi_launcher_lib::graphics_profiles().get(name) {
-                Some(p) => {
-                    store_with(app, |v| omsi_launcher_lib::apply_graphics_profile(p, v));
-                    sync_live(app);
-                    LIST_DIRTY.store(true, std::sync::atomic::Ordering::Relaxed);
-                    app.service_msg = Some((
-                        format!(
-                            "Graphics profile \"{name}\" loaded: graphics settings apply when the game starts the next time"
-                        ),
-                        5.0,
-                    ));
+            let profile = ::config::get_table_sub("graphics_profiles", name);
+            if profile.is_empty() {
+                app.service_msg = Some((format!("Graphics profile \"{name}\" not found"), 4.0))
+            } else {
+                for (k, v) in profile {
+                    if ::config::DEFAULTS.iter().any(|(c, key, _)| *c == "graphics" && *key == k) {
+                        ::config::set_setting("graphics", &k, v);
+                    }
                 }
-                None => {
-                    app.service_msg = Some((format!("Graphics profile \"{name}\" not found"), 4.0))
-                }
+                let _ = ::config::save();
+                sync_live(app);
+                LIST_DIRTY.store(true, std::sync::atomic::Ordering::Relaxed);
+                app.service_msg = Some((
+                    format!(
+                        "Graphics profile \"{name}\" loaded: graphics settings apply when the game starts the next time"
+                    ),
+                    5.0,
+                ));
             }
         }
-        "reset_all" => store_with(app, |v| {
-            let language = v.get("language").cloned();
-            *v = omsi_launcher_lib::settings_from_text(None);
-            if let Some(l) = language {
-                v["language"] = l;
+        "reset_all" => {
+            for (cat, key, _) in ::config::DEFAULTS {
+                if *cat == "graphics" {
+                    ::config::reset_setting(cat, key);
+                }
             }
-        }),
+            let _ = ::config::save();
+            store_with(app, |v| {
+                let language = v.get("language").cloned();
+                *v = omsi_launcher_lib::settings_from_text(None);
+                if let Some(l) = language {
+                    v["language"] = l;
+                }
+            })
+        }
         _ => {}
     }
 }
@@ -369,7 +371,7 @@ pub(super) fn select_options(key: &str) -> Vec<(&'static str, &'static str)> {
             ("8", "8x MSAA"),
         ],
         "render_scale" => vec![
-            ("auto", "Auto"),
+            ("0", "Auto"),
             ("1", "Off (no upscaler)"),
             ("0.85", "85%"),
             ("0.75", "75%"),
@@ -392,14 +394,14 @@ pub(super) fn select_options(key: &str) -> Vec<(&'static str, &'static str)> {
             ("1000", "Unlimited"),
         ],
         "map_detail" => vec![
-            ("auto", "OMSI setting"),
+            ("-1", "OMSI setting"),
             ("0", "Low"),
             ("1", "Normal"),
             ("2", "Full"),
             ("255", "All authored levels"),
         ],
         "view_distance" => vec![
-            ("auto", "Default (900 m)"),
+            ("0", "Default (900 m)"),
             ("600", "600 m - fastest"),
             ("900", "900 m"),
             ("1200", "1200 m"),
@@ -408,7 +410,7 @@ pub(super) fn select_options(key: &str) -> Vec<(&'static str, &'static str)> {
             ("2500", "2500 m"),
         ],
         "max_obj_dist" => vec![
-            ("auto", "Automatic"),
+            ("-1", "Automatic"),
             ("500", "500 m"),
             ("750", "750 m"),
             ("900", "900 m"),
@@ -564,6 +566,8 @@ pub(super) fn select_state(
         ::config::get_float("vr", &key[3..].replace('_', "-"))
             .map(|v| v.to_string())
             .unwrap_or_default()
+    } else if ::config::DEFAULTS.iter().any(|(c, k, _)| *c == "graphics" && *k == key) {
+        gfx_text(key)
     } else {
         value_text(file.get(key).unwrap_or(&serde_json::Value::Null))
     };
@@ -587,46 +591,11 @@ pub(super) fn select_row(
     Some((row(name, 'o', &label, desc, None), format!("sel {key}")))
 }
 
-pub(super) fn presets() -> [(&'static str, serde_json::Value); 4] {
-    [
-        (
-            "Low",
-            serde_json::json!({"msaa": 1, "anisotropy": 2, "shadow_size": 1024, "ssao": false, "shadows": false, "detail_textures": false, "clouds": false, "view_distance": "600", "min_obj_size": 0.03, "max_obj_dist": "500", "mirror_size": 128, "render_scale": "0.75", "texture_memory": 800}),
-        ),
-        (
-            "Medium",
-            serde_json::json!({"msaa": 2, "anisotropy": 4, "shadow_size": 2048, "ssao": false, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "900", "min_obj_size": 0.02, "max_obj_dist": "750", "mirror_size": 256, "render_scale": "auto", "texture_memory": 1200}),
-        ),
-        (
-            "High",
-            serde_json::json!({"msaa": 4, "anisotropy": 8, "shadow_size": 2048, "ssao": true, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "auto", "min_obj_size": 0.013, "max_obj_dist": "auto", "mirror_size": 256, "render_scale": "auto", "texture_memory": 0}),
-        ),
-        (
-            "Ultra",
-            serde_json::json!({"msaa": 4, "anisotropy": 8, "shadow_size": 4096, "ssao": true, "shadows": true, "detail_textures": true, "clouds": true, "view_distance": "2000", "min_obj_size": 0.005, "max_obj_dist": "1500", "mirror_size": 512, "render_scale": "auto", "texture_memory": 0}),
-        ),
-    ]
-}
-
-pub(super) fn preset_now(file: &serde_json::Value) -> Option<usize> {
-    presets().iter().position(|p| {
-        p.1.as_object().is_some_and(|o| {
-            o.iter().all(|(k, v)| {
-                same_value(
-                    &value_text(v),
-                    &value_text(file.get(k).unwrap_or(&serde_json::Value::Null)),
-                )
-            })
-        })
-    })
-}
-
 pub(super) fn preset_row(
-    file: &serde_json::Value,
     name: &str,
     desc: &str,
 ) -> Option<(String, String)> {
     let label =
-        ::user_interface::tr(preset_now(file).map(|i| presets()[i].0).unwrap_or("Custom")).into_owned();
+        ::user_interface::tr(preset_now().map(|i| PRESETS[i].0).unwrap_or("Custom")).into_owned();
     Some((row(name, 'o', &label, desc, None), "preset".to_string()))
 }

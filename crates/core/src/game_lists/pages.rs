@@ -424,11 +424,10 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
     ));
     let graphics: Vec<(String, String)> = vec![
         preset_row(
-            &file,
             "Quality preset",
             "Sets most of the graphics options at once",
         ),
-        (!omsi_launcher_lib::graphics_profiles().is_empty()).then(|| {
+        (!::config::get_subs("graphics_profiles").is_empty()).then(|| {
             opens(
                 "Load graphics profile",
                 "Applies a graphics profile saved in the launcher",
