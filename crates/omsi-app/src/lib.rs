@@ -92,15 +92,9 @@ mod weather_setup;
 mod world_ctl;
 mod world_load;
 
-rust_i18n::i18n!("locales");
-const _LOCALES: &str = include_str!("../locales/app.yml");
-
 pub(crate) fn ui_language(code: &str) {
-    omsi_ui::i18n::set_lookup(|lang, text| {
-        _rust_i18n_try_translate(lang, text).map(|t| t.into_owned())
-    });
     let iso = omsi_launcher_lib::language_iso(code);
-    omsi_ui::i18n::set_language(iso);
+    omsi_i18n::set_language(iso);
     omsi_sim::vehicle_api::set_locale(iso);
 }
 

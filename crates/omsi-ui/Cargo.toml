@@ -14,6 +14,7 @@ ab_glyph = "0.2"
 resvg = { version = "0.48", default-features = false }
 hashbrown.workspace = true
 pollster.workspace = true
+omsi-i18n = { path = "../omsi-i18n" }
 omsi-render = { path = "../omsi-render" }
 omsi-texture = { path = "../omsi-texture" }
 rustrict = "0.7"

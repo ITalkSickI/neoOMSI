@@ -506,11 +506,11 @@ mod tests {
         let languages = ["de"];
         for language in languages {
             for key in keys {
-                let translated = crate::_rust_i18n_try_translate(language, key);
+                let translated = omsi_i18n::lookup(language, key);
                 assert!(
                     translated
                         .as_ref()
-                        .is_some_and(|text| !text.trim().is_empty() && text.as_ref() != key),
+                        .is_some_and(|text| !text.trim().is_empty() && text.as_str() != key),
                     "Missing navigator translation: {language} / {key}"
                 );
             }

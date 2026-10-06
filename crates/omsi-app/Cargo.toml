@@ -51,6 +51,7 @@ env_logger.workspace = true
 rayon.workspace = true
 omsi-net = { path = "../omsi-net" }
 omsi-ui = { path = "../omsi-ui" }
+omsi-i18n = { path = "../omsi-i18n" }
 omsi-launcher-core = { path = "../omsi-launcher-core" }
 serde = { version = "1", features = ["derive"] }
 hashbrown.workspace = true
@@ -62,7 +63,6 @@ rustrict = "0.7"
 gilrs = "0.11"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 sha2 = "0.11"
-rust-i18n = "4"
 imgui = { version = "0.12", optional = true }
 bytemuck = { workspace = true, optional = true }
 # updates: the release archives from GitHub
