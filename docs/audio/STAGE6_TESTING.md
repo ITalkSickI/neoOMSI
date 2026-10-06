@@ -126,3 +126,25 @@ requires testing. These short probes are not an uninterrupted-playback guarantee
 Raw retest CSV: `out/audio-stage6-1/`. Focus hearing QA on both-ear engine balance,
 closed/open doors, fresh vehicle entries and control-noise/faint squeak reports; see
 `STAGE6_SPIELTEST.md` and behavior section 11 for the exact corrections.
+
+## Listening test 6.3
+
+95 audio tests pass. Interior Announcement-bus entries (including untagged C2 file triggers) transmit through the source bus's body when heard outside, with source-script opening control, distance falloff and no restart on camera/door changes. See SOUND_ENGINE_BEHAVIOR.md. Dev-release app build and a separate package are provided; in-game acoustic acceptance remains pending. The package includes the optional C2 click recordings from 6.2.
+
+## Listening test 6.4
+
+99 audio tests pass. Outside PA transmission is reduced from 0.35/2200 Hz closed
+and 1.0/9000 Hz open to 0.08/900 Hz and 0.30/4000 Hz. Interior PA receives a dedicated
+25% wet, 0.45 s Schroeder return with 4500 Hz wet damping, while its direct share is
+reduced. Tail/decay, bypass, outside dry output, bus mute, pause, callback partitions
+and the previous runtime regressions are verified. The effect buffers are prepared
+outside callbacks, idle effect processing is skipped after decay, and raw VoiceParams
+remains unchanged. Hall is not automatically detected in recordings; a dry launcher
+and SoundSet setter allow bypass. Matching OMSI or real-bus listening remains open.
+
+Short 6.4 dev-release probe, 48 kHz / 256 frames, active PA and world hall:
+100 voices plus 5 auxiliary: mean 1.7333 ms, p95 1.8406 ms, max 3.0128 ms.
+200 plus 5 auxiliary: mean 3.3163 ms, p95 3.5647 ms, max 4.3145 ms.
+Both are below the 5.3333 ms block duration in this short run; zero reported command
+drops and radio underruns. This synthetic probe is not a real-map deadline guarantee.
+CSV: out/audio-stage6-4/load-100.csv and load-200.csv.

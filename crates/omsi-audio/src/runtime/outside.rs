@@ -114,3 +114,35 @@ pub(super) fn entry_transfer_at(def: &omsi_vehicle::SoundEntry,
         _ => (1.0, 0.0),
     }
 }
+
+/// Interior PA heard through the announcing bus's bodywork. Read its opening from
+/// its scripts even when the listener is outside (the global is the listener's bus).
+/// Explicit outside/both-side entries keep their authored transmission. No added hall.
+pub(super) fn announcement_transfer(def: &omsi_vehicle::SoundEntry, exterior: bool,
+    inside: f32, muffled: f32, source_opening: Option<f32>) -> (f32, f32) {
+    let base = entry_transfer(def, exterior, inside, muffled);
+    if !matches!(def.viewpoint & 3, 0 | 2) { return base; }
+    let source = announcement_transfer_at(def, if exterior { 0.0 } else { inside }, source_opening);
+    // For foreign vehicles base models entry through the listener's own cabin; source
+    // models exit through the announcing cabin. For the own bus replace its old transfer.
+    if exterior { (base.0 * source.0, merge_lowpass(base.1, source.1)) } else { source }
+}
+
+pub(super) fn announcement_transfer_at(def: &omsi_vehicle::SoundEntry,
+    inside: f32, source_opening: Option<f32>) -> (f32, f32) {
+    let outside = 1.0 - inside.clamp(0.0, 1.0);
+    let open = source_opening.filter(|v| v.is_finite()).unwrap_or(0.0).clamp(0.0, 0.5) * 2.0;
+    let gain = if def.vol_curves.iter().any(|c| c.variable.eq_ignore_ascii_case("Snd_OutsideVol")) {
+        1.0
+    // A door opening improves leakage; it does not move the PA speaker outside.
+    // Closed/open source gain is -22/-10.5 dB before spatial distance attenuation.
+    } else { 1.0 + ((0.08 + 0.22 * open) - 1.0) * outside };
+    (gain, lp_between(0.0, 900.0 + 3100.0 * open, outside))
+}
+
+pub(super) fn announcement_reverb(def: &omsi_vehicle::SoundEntry, bus: crate::Bus,
+    exterior: bool, inside: f32, mix: f32) -> f32 {
+    if bus == crate::Bus::Announcement && !exterior && matches!(def.viewpoint & 3, 0 | 2) {
+        mix.clamp(0.0, 0.5) * inside.clamp(0.0, 1.0)
+    } else { 0.0 }
+}

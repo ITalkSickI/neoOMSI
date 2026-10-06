@@ -61,11 +61,15 @@ impl SoundSet {
             }
             let (position, reach, pan) =
                 placement::place(s.def.pos, s.def.range, exterior, object_to_world);
-            let (body_gain, lowpass_hz) = outside::entry_transfer(&s.def, exterior, inside, muffled);
+            let (body_gain, lowpass_hz) = if self.file_bus == crate::Bus::Announcement {
+                outside::announcement_transfer(&s.def, exterior, inside, muffled, var("Snd_OutsideVol"))
+            } else { outside::entry_transfer(&s.def, exterior, inside, muffled) };
             let (spatial_blend, pan_width) = placement::cabin_spatial(s.def.pos, exterior, inside);
             s.peak = record * script * through;
             s.playback_bus = Some(self.file_bus);
             let params = MixParams {
+                cabin_reverb: outside::announcement_reverb(&s.def, self.file_bus, exterior,
+                    inside, self.announcement_reverb),
                 spatial_blend,
                 bus: self.file_bus,
                 level: Level::Omsi {

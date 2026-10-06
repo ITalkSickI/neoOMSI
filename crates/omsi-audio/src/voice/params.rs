@@ -102,6 +102,8 @@ pub struct MixParams {
     /// Distance blend: 0 = local/centred cabin sound, 1 = fully spatial.
     pub spatial_blend: f32,
     pub bus: crate::voice::bus::Bus,
+    /// Interior PA wet fraction, 0..0.5; raw voices default to dry.
+    pub cabin_reverb: f32,
     /// The separate legacy level (see [`Level`]).
     pub level: Level,
     /// Playback speed relative to the clip's own rate (OMSI's playback frequency).
@@ -132,6 +134,7 @@ impl From<VoiceParams> for MixParams {
         MixParams {
             spatial_blend: 1.0,
             bus: crate::voice::bus::Bus::Vehicle,
+            cabin_reverb: 0.0,
             level: Level::Raw(p.gain),
             pitch: p.pitch,
             looping: p.looping,

@@ -43,6 +43,16 @@ impl Reverb {
     }
 
     pub fn process(&mut self, out: &mut [f32], ch: usize, rate: u32, rt60: f32, mix: f32) {
+        self.process_mix(out, ch, rate, rt60, 1.0, mix);
+    }
+
+    /// Wet-only return for a dedicated effect send; caller mixes the dry path once.
+    pub fn process_wet(&mut self, out: &mut [f32], ch: usize, rate: u32, rt60: f32) {
+        self.process_mix(out, ch, rate, rt60, 0.0, 1.0);
+    }
+
+    fn process_mix(&mut self, out: &mut [f32], ch: usize, rate: u32, rt60: f32,
+        dry: f32, wet: f32) {
         if self.rate != rate || self.lines.len() != ch { self.prepare(ch, rate); }
         let frames = out.len() / ch;
         for c in 0..ch {
@@ -68,7 +78,7 @@ impl Reverb {
                     *i = (*i + 1) % buf.len();
                     y = d - v * 0.5;
                 }
-                out[f * ch + c] = x + y * mix;
+                out[f * ch + c] = x * dry + y * wet;
             }
         }
     }

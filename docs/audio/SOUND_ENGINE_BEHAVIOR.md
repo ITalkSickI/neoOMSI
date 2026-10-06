@@ -307,6 +307,57 @@ on controls. The following are neoOMSI quality choices, not newly CONFIRMED OMSI
   are retained. The listening report's exact squeak source still requires the user's test.
 - **Hall:** a cabin/bodywork hint no longer forces a 22% wet mix and invented room time
   onto every button and loop. Explicit listener/world/trigger-box reverb remains supported.
+
+### Interior announcements heard from outside (test 6.3)
+
+The requested outside sound is transmission of the existing interior PA through the
+vehicle, rather than a new exterior loudspeaker. Announcement-bus file events and their
+subsequent runtime updates treat untagged and inside-only entries as interior recordings.
+This covers the tested C2's untagged `ev_IBIS_Ansagen` file entry. With the listener inside
+the source cabin there is no added body transfer. As tuned in 6.4, outside a closed body
+leaves 0.08 gain and a 900 Hz one-pole low-pass; `Snd_OutsideVol` from the *source vehicle's*
+current script state opens this to 0.30 gain and 4000 Hz at 0.5. An open door still leaks
+less PA level than listening inside. Missing/nonfinite values use the closed
+fallback. The source's opening is read even when the listener is outside; the global
+opening still describes the listener's cabin, not another vehicle's doors.
+
+Existing camera/hull blends and per-sample gain/pan/filter smoothing apply. The same
+one-shot continues across viewpoint and door changes, with its held trigger peak and
+Announcement routing intact. Normal world position and distance attenuation still apply.
+Foreign PA first exits its source body and can additionally enter the listener's cabin;
+these are separate physical paths. Explicit outside/both-side entries retain their existing
+transfer, and explicit `Snd_OutsideVol` volume curves do not receive duplicate source gain.
+The rule applies to Announcement-bus entries, not arbitrary fixed sounds on Vehicle or
+HTML direct playback on Interface. Test 6.3 had no dedicated PA hall; 6.4 adds it as described
+below. There is no detection/removal of recorded hall. These constants are listening defaults, not a geometric opening simulation or
+verified OMSI acoustic measurements. The user's real-bus hearing acceptance remains open.
+
+Validation: 95 audio tests pass, including file-event output energy/treble attenuation,
+source opening while outside, distance falloff and a running PA surviving camera/door
+changes without restart. Test package 6.3 retains the optional C2 click overrides from 6.2.
+
+### Short interior PA hall (test 6.4)
+
+Only own interior Announcement-bus entries with inside/untagged viewpoints excite a
+dedicated Schroeder room return. Default wet fraction is 0.25, RT60 0.45 s, with 4500 Hz
+wet-return damping. The voice sends the wet share and removes that share from the direct
+path, rather than adding hall on top of an unchanged direct level. Send changes smooth
+over 20 ms and follow the existing inside blend. Outside/foreign voices do not excite
+this interior room; a running PA leaving the cabin fades the return over 20 ms. Short
+tails continue after source retirement. The return follows Announcement bus gain, headroom
+and limiter; pause suppresses it. A silent effect is skipped after two seconds of decay.
+Buffers and delays are preallocated before callback use; no new dependency, unsafe code
+or mutable global is introduced. The previous all-sound cabin preset remains removed.
+
+This is an adjustable listening preset, not Steam Audio geometry simulation or verified
+OMSI room acoustics. Already reverberant recordings are not detected automatically:
+`SoundSet::set_announcement_reverb(0.0)` bypasses additional PA hall for that set and its
+parts; `OMSI_ANNOUNCEMENT_REVERB=0` selects dry playback at set construction. Values clamp
+to 0..0.5, default 0.25. Test package 6.4 includes a dry launcher for direct comparison.
+99 audio tests pass, including PA tail/decay, reduced direct component, dry outside
+playback, bypass, bus mute, pause, and output equivalence across callback partitions.
+The synthetic load example now exercises an active PA hall alongside the existing world
+hall. Subjective matching to OMSI and the user's real-bus volume reference remain open.
   A short control fixture verifies zero unrequested tail after its one-shot ends.
 
 All 90 audio tests pass (75 unit, 8 offline, 5 quality, 2 runtime). Door transfer, initial

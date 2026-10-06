@@ -17,6 +17,11 @@ impl SoundSet {
         self.file_bus = bus;
         for (_, part) in &mut self.parts { part.set_file_bus(bus); }
     }
+    /// Additional interior PA hall. Use zero for recordings already containing hall.
+    pub fn set_announcement_reverb(&mut self, mix: f32) {
+        self.announcement_reverb = if mix.is_finite() { mix.clamp(0.0, 0.5) } else { 0.0 };
+        for (_, part) in &mut self.parts { part.set_announcement_reverb(self.announcement_reverb); }
+    }
     pub fn update_parts_events(&mut self, engine: &dyn Playback,
         var: &dyn Fn(&str) -> Option<f32>, part_to_world: &dyn Fn(usize) -> Option<Mat4>,
         events: &[SoundEvent], slots: &dyn Fn(&str) -> Option<usize>) {

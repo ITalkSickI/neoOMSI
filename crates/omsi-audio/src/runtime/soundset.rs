@@ -23,6 +23,7 @@ pub struct SoundSet {
     pub master: f32,
     pub(super) bus: crate::voice::bus::Bus,
     pub(super) file_bus: crate::voice::bus::Bus,
+    pub(super) announcement_reverb: f32,
     /// Folder of the sound config: files of `(T.F.)` triggers resolve against it.
     pub(super) dir: std::path::PathBuf,
     /// Heard from outside: non-3D sounds sit at the vehicle origin and attenuate.
@@ -93,6 +94,9 @@ impl SoundSet {
             master: 1.0,
             bus: crate::voice::bus::Bus::Vehicle,
             file_bus: crate::voice::bus::Bus::Announcement,
+            announcement_reverb: omsi_cfg::env::var("OMSI_ANNOUNCEMENT_REVERB").ok()
+                .and_then(|s| s.parse::<f32>().ok()).filter(|v| v.is_finite())
+                .unwrap_or(0.25).clamp(0.0, 0.5),
             dir: dir.to_path_buf(),
             exterior: false,
             inside: false,
@@ -214,6 +218,7 @@ impl SoundSet {
     pub fn add_part(&mut self, index: usize, mut part: SoundSet) {
         part.set_bus(self.bus);
         part.set_file_bus(self.file_bus);
+        part.set_announcement_reverb(self.announcement_reverb);
         part.inside = self.inside;
         part.muffled = self.muffled;
         part.inside_blend = self.inside_blend;
@@ -356,6 +361,7 @@ impl SoundSet {
         let now = self.clock.now();
         let cx = EntryCtx {
             bus: self.bus,
+            announcement_reverb: self.announcement_reverb,
             var,
             at_fire,
             object_to_world,

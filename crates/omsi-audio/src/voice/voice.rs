@@ -27,6 +27,7 @@ pub struct Voice {
     finished: bool,
     /// Smoothed gain to avoid clicks.
     cur_gain: f32,
+    cur_reverb: f32,
     cur_pan: [f32; 2],
     pan_ready: bool,
     /// One-pole low-pass filter state.
@@ -47,7 +48,7 @@ impl Voice {
         let seam = resample::Seam::new(&clip);
         Voice { id, clip, seam, stream: None, params, pos: 0.0, kernel, reader: None, stream_last: [0.0; 2],
             envelope: Envelope::default(), cur_step: 0.0, finished: false,
-            cur_gain: 0.0, cur_pan: [1.0; 2], pan_ready: false, lp: LowPass::default(), doppler: (0.0, None, 1.0) }
+            cur_gain: 0.0, cur_reverb: 0.0, cur_pan: [1.0; 2], pan_ready: false, lp: LowPass::default(), doppler: (0.0, None, 1.0) }
     }
 
     pub fn stream_voice(id: VoiceId, stream: Arc<StreamBuf>, params: MixParams) -> Voice {
@@ -174,6 +175,12 @@ impl Voice {
     /// Returns true when any stream frame underruns; position is held during buffering.
     pub fn render_into(&mut self, out: &mut [f32], ch: usize, rate: u32,
         listener: &Listener, spatializer: &dyn Spatializer) -> bool {
+        self.render_with_reverb(out, ch, rate, listener, spatializer, None)
+    }
+
+    pub(crate) fn render_with_reverb(&mut self, out: &mut [f32], ch: usize, rate: u32,
+        listener: &Listener, spatializer: &dyn Spatializer,
+        mut send: Option<&mut [f32]>) -> bool {
         let frames = out.len() / ch;
         let placed = spatializer.place(self.params.position, self.params.range, self.params.pan,
             listener.position, listener.right);
@@ -190,6 +197,10 @@ impl Voice {
         };
         let target_gain = if level.is_finite() { (level * distance).max(0.0) } else { 0.0 };
         let gain_k = envelope::coefficient(rate, 0.005);
+        let reverb_k = envelope::coefficient(rate, 0.02);
+        let reverb_target = if send.is_some() && self.params.bus == crate::Bus::Announcement {
+            self.params.cabin_reverb.clamp(0.0, 0.5)
+        } else { 0.0 };
         let pitch_k = envelope::coefficient(rate, 0.015) as f64;
         self.lp.set_target(self.params.lowpass_hz, frames, rate as f32);
         let target_step = resample::step(self.params.pitch, self.doppler.2, self.clip.sample_rate, rate as f64);
@@ -197,6 +208,7 @@ impl Voice {
         let nframes = self.clip.frames();
         let mut stalled = false;
         for f in 0..frames {
+            self.cur_reverb += (reverb_target - self.cur_reverb) * reverb_k;
             self.cur_gain += (target_gain - self.cur_gain) * gain_k;
             self.cur_pan[0] += (placed.left - self.cur_pan[0]) * pan_k;
             self.cur_pan[1] += (placed.right - self.cur_pan[1]) * pan_k;
@@ -234,8 +246,13 @@ impl Voice {
             let (l, r) = self.lp.process(l, r, 0.0);
             let gain = self.cur_gain * fade * tail;
             let (l, r) = (l * gain * self.cur_pan[0], r * gain * self.cur_pan[1]);
-            if ch == 1 { out[f] += (l + r) * 0.5; }
-            else { out[f * ch] += l; out[f * ch + 1] += r; }
+            let wet = if let Some(buffer) = send.as_deref_mut() {
+                if ch == 1 { buffer[f] += (l + r) * 0.5 * self.cur_reverb; }
+                else { buffer[f * ch] += l * self.cur_reverb; buffer[f * ch + 1] += r * self.cur_reverb; }
+                self.cur_reverb
+            } else { 0.0 };
+            if ch == 1 { out[f] += (l + r) * 0.5 * (1.0 - wet); }
+            else { out[f * ch] += l * (1.0 - wet); out[f * ch + 1] += r * (1.0 - wet); }
         }
         // Retire at the exact end even if it coincides with a callback boundary.
         if self.reader.is_none() && !self.params.looping && self.pos >= nframes as f64 {

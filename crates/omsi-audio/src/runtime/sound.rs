@@ -75,6 +75,7 @@ pub struct RuntimeSound {
 /// Everything one entry's update reads that is the same for every entry of a frame.
 pub(super) struct EntryCtx<'a> {
     pub bus: crate::voice::bus::Bus,
+    pub announcement_reverb: f32,
     pub var: &'a dyn Fn(&str) -> Option<f32>,
     pub at_fire: &'a dyn Fn(&str, &str) -> Option<f32>,
     pub object_to_world: &'a Mat4,
@@ -212,7 +213,12 @@ impl RuntimeSound {
             master: cx.master,
         };
         let mut pre_master = 0.0;
-        let (body_gain, lowpass_hz) = outside::entry_transfer(&self.def, cx.exterior, cx.inside, cx.muffled);
+        let bus = if fired { self.playback_bus = None; cx.bus }
+            else { self.playback_bus.unwrap_or(cx.bus) };
+        let (body_gain, lowpass_hz) = if bus == crate::Bus::Announcement {
+            outside::announcement_transfer(&self.def, cx.exterior, cx.inside, cx.muffled,
+                (cx.var)("Snd_OutsideVol"))
+        } else { outside::entry_transfer(&self.def, cx.exterior, cx.inside, cx.muffled) };
         if let Some((record, script, through)) = split {
             // the inside/outside transmission: the own bus's `Snd_OutsideVol` share (folded
             // into `through`) times the bodywork the listener's own cabin puts between them
@@ -264,9 +270,9 @@ impl RuntimeSound {
         // the inside/outside timbre: a foreign bus heard from the cabin loses its edge as
         // the bodywork closes (the transmission level is separate, above)
         let (spatial_blend, pan_width) = placement::cabin_spatial(self.def.pos, cx.exterior, cx.inside);
-        let bus = if fired { self.playback_bus = None; cx.bus }
-            else { self.playback_bus.unwrap_or(cx.bus) };
         let params = |looping: bool| MixParams {
+            cabin_reverb: outside::announcement_reverb(&self.def, bus, cx.exterior,
+                cx.inside, cx.announcement_reverb),
             spatial_blend,
             bus,
             level,

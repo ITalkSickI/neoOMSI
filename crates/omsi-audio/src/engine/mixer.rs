@@ -48,6 +48,13 @@ pub(crate) struct AudioCore {
     cabin: (f32, Instant),
     cabin_s: f32,
     reverb: Reverb,
+    pa_reverb: Reverb,
+    pa_send: [f32; BLOCK_FRAMES * 2],
+    pa_return: f32,
+    pa_return_target: f32,
+    pa_tail_frames: usize,
+    pa_damping: [f32; 2],
+    pa_damping_alpha: f32,
     limiter: Limiter,
     spatial: Legacy,
     muted: bool,
@@ -77,6 +84,8 @@ impl AudioCore {
         let cabin = (0.0, clock.now());
         let mut reverb = Reverb::default();
         reverb.prepare(2, format.sample_rate());
+        let mut pa_reverb = Reverb::default();
+        pa_reverb.prepare(2, format.sample_rate());
         AudioCore {
             voices: Vec::with_capacity(VOICE_CAPACITY),
             kernel: Arc::new(Kernel::default()),
@@ -87,6 +96,10 @@ impl AudioCore {
             cabin,
             cabin_s: 0.0,
             reverb,
+            pa_reverb, pa_send: [0.0; BLOCK_FRAMES * 2], pa_return: 1.0, pa_return_target: 1.0,
+            pa_tail_frames: 0,
+            pa_damping: [0.0; 2],
+            pa_damping_alpha: 1.0 - (-std::f32::consts::TAU * 4500.0 / format.sample_rate() as f32).exp(),
             limiter: Limiter::default(),
             spatial: Legacy,
             muted,
@@ -213,24 +226,58 @@ impl AudioCore {
         let _cab = cab;
         let (rt, mix) = (listener.reverb_time, listener.reverb_mix);
         let bus_k = envelope::coefficient(rate, 0.02);
+        // Hold return visibility after a voice ends so its room tail can finish. While
+        // an announcement runs outside, smoothly hide the interior return.
+        let mut pa_active = false;
+        let mut pa_inside = false;
+        for voice in &self.voices {
+            if !voice.is_finished() && voice.params().bus == crate::Bus::Announcement {
+                pa_active = true;
+                pa_inside |= voice.params().cabin_reverb > 0.001;
+            }
+        }
+        if pa_active { self.pa_return_target = if pa_inside { 1.0 } else { 0.0 }; }
         let mut stalls = 0u64;
         for chunk in out.chunks_mut(BLOCK_FRAMES * ch) {
             let count = chunk.len() / ch;
             let samples = count * 2;
             for bus in &mut self.buses { bus[..samples].fill(0.0); }
+            self.pa_send[..samples].fill(0.0);
             for (i, voice) in self.voices.iter_mut().enumerate() {
                 if voice.is_finished() { continue; }
                 if !voice.is_stream() && mixed && !self.keep[i] { voice.skip(count, dev_rate); continue; }
                 let bus = voice.params().bus as usize;
-                if voice.render_into(&mut self.buses[bus][..samples], 2, rate, &listener, &self.spatial) { stalls += 1; }
+                let send = if bus == crate::Bus::Announcement as usize {
+                    Some(&mut self.pa_send[..samples])
+                } else { None };
+                if voice.render_with_reverb(&mut self.buses[bus][..samples], 2, rate,
+                    &listener, &self.spatial, send) { stalls += 1; }
+            }
+            // Process silence during the tail too, but do not charge ordinary traffic
+            // for an idle PA effect. Two seconds is >4 RT60 intervals at this preset.
+            if self.pa_send[..samples].iter().any(|x| x.abs() > 1e-10) { self.pa_tail_frames = rate as usize * 2; }
+            if self.pa_tail_frames > 0 {
+                self.pa_reverb.process_wet(&mut self.pa_send[..samples], 2, rate, 0.45);
+                for frame in self.pa_send[..samples].chunks_exact_mut(2) {
+                    for c in 0..2 {
+                        self.pa_damping[c] += (frame[c] - self.pa_damping[c]) * self.pa_damping_alpha;
+                        frame[c] = self.pa_damping[c];
+                    }
+                }
+                self.pa_tail_frames = self.pa_tail_frames.saturating_sub(count);
             }
             self.stereo[..samples].fill(0.0);
             for f in 0..count {
+                self.pa_return += (self.pa_return_target - self.pa_return) * bus_k;
                 for bus in 0..BUS_COUNT {
                     self.bus_gains[bus] += (self.bus_targets[bus] - self.bus_gains[bus]) * bus_k;
                     for c in 0..2 {
                         self.stereo[f * 2 + c] += self.buses[bus][f * 2 + c] * self.bus_gains[bus] * HEADROOM;
                     }
+                }
+                let pa_gain = self.bus_gains[crate::Bus::Announcement as usize] * HEADROOM * self.pa_return;
+                if listener.master > 0.0 {
+                    for c in 0..2 { self.stereo[f * 2 + c] += self.pa_send[f * 2 + c] * pa_gain; }
                 }
             }
             if mix > 0.001 && rt > 0.05 {

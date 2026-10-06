@@ -78,3 +78,26 @@ mit zwei bereinigten lokalen C2-Blinkeraufnahmen. EXE und `Vehicles`-Unterordner
 zusammen lassen. Die Klicks sind kuerzer und dunkler; die Originalinstallation
 bleibt erhalten. Details und Messungen: [C2_BLINKER_FIEPEN.md](C2_BLINKER_FIEPEN.md).
 90 Audio-Tests sind bestanden; beide Override-Pfade wurden im Offline-Mixer geprueft.
+
+## Innenansage bei Aussenkamera: Testpaket 6.3
+
+`dist/windows-audio-stage6-3/neoomsi.exe` behaelt die C2-Klickkorrektur aus 6.2.
+Eine normale Innenansage starten und waehrenddessen nach draussen wechseln:
+Sie bleibt hoerbar, klingt durch geschlossene Karosserie leiser und dumpfer.
+Tueren/Fenster oeffnen: mehr Pegel und Hoehen. Abstand zum Bus vergroessern:
+Die Ansage wird leiser. Zurueck innen: normaler Klang ohne zusaetzlichen Hall.
+95 Audio-Tests bestanden; die Abstimmung im echten Spiel ist noch zu hoeren.
+
+## Ansagenhall und staerkere Aussendaempfung: Testpaket 6.4
+
+`dist/windows-audio-stage6-4/neoomsi.exe` enthaelt kurzen Hall nur fuer Innenansagen
+(25 Prozent Wet, RT60 0,45 s, gedaempfte Hoehen im Hall). Der direkte Anteil wird
+abgesenkt. Auf raeumlichen Nachlauf nach Wort-/Satzenden und Sprachverstaendlichkeit
+achten; Motor/Schalter sollen weiterhin ohne diesen Ansagenhall bleiben.
+Draussen betraegt die Karosserieuebertragung jetzt 0,08/900 Hz bei geschlossenem
+Bus und 0,30/4000 Hz bei maximaler Skript-Oeffnung, vor der Entfernungsdaempfung.
+Die Aussenwiedergabe soll deutlich leiser sein als in 6.3, auch bei offenen Tueren.
+`Ansagen-ohne-Zusatzhall.cmd` erlaubt einen trockenen Vergleich und Aufnahmen mit
+bereits enthaltenem Hall; eine automatische Erkennung gibt es nicht.
+99 Audio-Tests bestanden. OMSI-Klanggleichheit und reale Lautstaerke sind weiterhin
+per Hoertest zu pruefen. Die C2-Klickkorrekturen sind im Paket erhalten.

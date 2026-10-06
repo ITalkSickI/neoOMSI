@@ -15,6 +15,7 @@ fn coupled_parts_receive_file_events_and_their_fire_time_level() {
     let engine = AudioEngine::new_offline(48000, 2); cache(&engine);
     let cfg = config("0");
     let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+    set.set_inside(true);
     set.add_part(1, SoundSet::new(&engine, &cfg, Path::new("")));
     let events = [SoundEvent::file(EventSource::Player, 0, "announce", "voice.wav").with_vars(vec![0.75])];
     let current = |_: &str| Some(0.0); let slots = |_: &str| Some(0);

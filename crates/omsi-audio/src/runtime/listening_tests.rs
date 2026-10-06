@@ -68,3 +68,33 @@ fn a_declared_cab_view_is_inside_before_the_spawn_camera_arrives() {
     set.set_inside(false);
     assert_eq!(set.inside_factor(0.0, &glam::Mat4::IDENTITY, glam::Vec3::splat(1000.0)), 0.0);
 }
+
+#[test]
+fn interior_pa_reaches_outside_softly_and_doors_open_its_timbre() {
+    for viewpoint in [0, 2] {
+        let def = SoundEntry { viewpoint, ..Default::default() };
+        let closed = outside::announcement_transfer_at(&def, 0.0, Some(0.0));
+        let opened = outside::announcement_transfer_at(&def, 0.0, Some(0.5));
+        assert!((closed.0 - 0.08).abs() < 1e-6);
+        assert!((closed.1 - 900.0).abs() < 0.01);
+        assert!((opened.0 - 0.30).abs() < 1e-6);
+        assert!((opened.1 - 4000.0).abs() < 0.02);
+        assert_eq!(outside::announcement_transfer_at(&def, 1.0, Some(0.0)), (1.0, 0.0));
+        assert_eq!(outside::announcement_transfer_at(&def, 0.0, None), closed);
+    }
+}
+
+#[test]
+fn announcement_curves_keep_authored_gain_without_duplicate_door_attenuation() {
+    let def = SoundEntry { vol_curves: vec![omsi_vehicle::VolCurve {
+        variable: "Snd_OutsideVol".into(), points: vec![(0.0, 0.2), (0.5, 1.0)] }],
+        ..Default::default() };
+    let (gain, cutoff) = outside::announcement_transfer_at(&def, 0.0, Some(0.0));
+    assert_eq!(gain, 1.0);
+    assert!((cutoff - 900.0).abs() < 0.01);
+    for viewpoint in [1, 3] {
+        let explicit = SoundEntry { viewpoint, ..Default::default() };
+        assert_eq!(outside::announcement_transfer(&explicit, false, 0.0, 0.0, None),
+            outside::entry_transfer(&explicit, false, 0.0, 0.0));
+    }
+}

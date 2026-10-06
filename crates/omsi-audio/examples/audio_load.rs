@@ -20,7 +20,11 @@ fn main() {
     }
     // Environment, passenger speech and radio share the same headroom in a dense street.
     for bus in [Bus::Ambience, Bus::Passenger, Bus::Announcement, Bus::Radio, Bus::Interface] {
-        engine.play_on_bus(clip.clone(), VoiceParams { gain: 0.02, looping: true, ..Default::default() }, bus);
+        let mut mix = omsi_audio::voice::MixParams::from(VoiceParams {
+            gain: 0.02, looping: true, ..Default::default() });
+        mix.bus = bus;
+        if bus == Bus::Announcement { mix.cabin_reverb = 0.25; }
+        engine.play_mix(clip.clone(), mix);
     }
     engine.set_listener(Listener { reverb_time: 0.8, reverb_mix: 0.2, ..Default::default() });
     let mut out = [0.0; FRAMES * 2];
