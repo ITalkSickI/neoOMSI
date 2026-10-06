@@ -37,25 +37,25 @@ pub struct Settings {
     pub collision_vehicles: bool, // Migrated
     pub collision_objects: bool, // Migrated
     pub collision_pedestrians: bool, // Migrated
-    pub head_movement: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
-    pub driverview_smooth: bool, // TODO: Migrate to new config lib | category: gameplay | default value: true
+    pub head_movement: bool, // Migrated
+    pub driverview_smooth: bool, // Migrated
     pub hands_in_cab: bool, // Migrated
     pub alt_view: bool, // Migrated
-    pub free_look: bool, // TODO: Migrate to new config lib | category: gameplay | default value: false
+    pub free_look: bool, // Migrated
     pub crosshair: bool, // Migrated
     pub render_scale: f32, // TODO: Migrate to new config lib | category: graphics | default value: 0.0
     pub language: String, // Migrated
     pub units: String, // Migrated
-    pub pax_voices: String, // TODO: Migrate to new config lib | category: passengers | default value: "all"
-    pub pax_models: String, // TODO: Migrate to new config lib | category: passengers | default value: "omsi"
-    pub pax_motion: String, // TODO: Migrate to new config lib | category: passengers | default value: "natural"
-    pub pax_ik: bool, // TODO: Migrate to new config lib | category: passengers | default value: true
-    pub nav_arrows: bool, // TODO: Migrate to new config lib | category: navigator | default value: false
-    pub nav_ai: bool, // TODO: Migrate to new config lib | category: navigator | default value: true
-    pub nav_topbar: bool, // TODO: Migrate to new config lib | category: navigator | default value: true
-    pub nav_turn: bool, // TODO: Migrate to new config lib | category: navigator | default value: true
-    pub nav_stoplist: bool, // TODO: Migrate to new config lib | category: navigator | default value: true
-    pub nav_stops_ext: bool, // TODO: Migrate to new config lib | category: navigator | default value: false
+    pub pax_voices: String, // Migrated
+    pub pax_models: String, // Migrated
+    pub pax_motion: String, // Migrated
+    pub pax_ik: bool, // Migrated
+    pub nav_arrows: bool, // Migrated
+    pub nav_ai: bool, // Migrated
+    pub nav_topbar: bool, // Migrated
+    pub nav_turn: bool, // Migrated
+    pub nav_stoplist: bool, // Migrated
+    pub nav_stops_ext: bool, // Migrated
     pub texture_compression: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
     pub texture_memory: u32, // TODO: Migrate to new config lib | category: graphics | default value: 0
     pub auto_clutch: bool, // Migrated
@@ -75,7 +75,7 @@ pub struct Settings {
     pub ui_scale: f32, // Migrated
     pub ui_scale_window: bool, // Migrated
     pub clouds: bool, // TODO: Migrate to new config lib | category: graphics | default value: true
-    pub pax_density: f32, // TODO: Migrate to new config lib | category: passengers | default value: 1.0
+    pub pax_density: f32, // Migrated
     pub vol_ai: f32, // Migrated
     pub vol_scenery: f32, // Migrated
     pub mirror_size: u32, // TODO: Migrate to new config lib | category: graphics | default value: 256

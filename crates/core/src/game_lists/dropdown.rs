@@ -218,6 +218,9 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                         ::config::set_setting("ai", &key[3..], v);
                         let _ = ::config::save();
                     }
+                } else if matches!(key, "pax_voices" | "pax_models" | "pax_motion") {
+                    ::config::set_setting("passengers", &key[4..], value);
+                    let _ = ::config::save();
                 } else if key == "language" {
                     ::config::set_setting("ui", "language", crate::describe::language_code(value));
                     let _ = ::config::save();
@@ -242,7 +245,7 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                 }
                 reload_settings(app);
                 if key == "language" {
-                    crate::ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
+                    crate::ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
                 }
             }
         }
@@ -541,6 +544,8 @@ pub(super) fn select_state(
         ::config::get_int("ai", &key[3..])
             .map(|v| v.to_string())
             .unwrap_or_default()
+    } else if matches!(key, "pax_voices" | "pax_models" | "pax_motion") {
+        ::config::get_string("passengers", &key[4..]).unwrap_or_default()
     } else if key == "language" {
         ::config::get_string("ui", "language").unwrap_or_default()
     } else if key == "units" {

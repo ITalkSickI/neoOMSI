@@ -201,7 +201,7 @@ pub(crate) fn prepare(
     mut args: Args,
     bare: bool,
 ) -> Result<Option<(Args, Option<server::ServerCfg>)>> {
-    ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
+    ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
     let server_cfg = match args.server.clone() {
         Some(p) => match server::prepare(&mut args, &p) {
             Ok(c) => Some(c),
@@ -269,7 +269,7 @@ pub(crate) fn prepare(
             Err(e) => log::warn!("content folder {}: {e}", c.display()),
         }
     }
-    if settings::Settings::load().pax_models == "realistic" {
+    if ::config::get_string("passengers", "models").unwrap_or_else(|| "omsi".into()) == "realistic" {
         if let Some(content) = content_dir() {
             let pack = content.join("Packs/RealisticPax");
             if pack.join("Humans").is_dir() {

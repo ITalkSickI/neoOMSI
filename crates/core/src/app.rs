@@ -738,12 +738,12 @@ impl App {
                     &::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into()),
                 ));
                 if let Some(n) = self.navigator.as_mut() {
-                    n.arrows = self.settings.nav_arrows;
-                    n.show_ai = self.settings.nav_ai;
-                    n.show_topbar = self.settings.nav_topbar;
-                    n.show_turn = self.settings.nav_turn;
-                    n.show_stoplist = self.settings.nav_stoplist;
-                    n.schedule = self.settings.nav_stops_ext;
+                    n.arrows = ::config::get_bool("navigator", "arrows").unwrap_or(false);
+                    n.show_ai = ::config::get_bool("navigator", "ai").unwrap_or(true);
+                    n.show_topbar = ::config::get_bool("navigator", "topbar").unwrap_or(true);
+                    n.show_turn = ::config::get_bool("navigator", "turn").unwrap_or(true);
+                    n.show_stoplist = ::config::get_bool("navigator", "stoplist").unwrap_or(true);
+                    n.schedule = ::config::get_bool("navigator", "stops_ext").unwrap_or(false);
                 }
                 if let Some(d) = self.args.driver.as_deref() {
                     self.career = career::Career::load(&self.args.root, d);
@@ -756,14 +756,14 @@ impl App {
                     h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
                     h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
                     h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
-                    h.voices = match self.settings.pax_voices.as_str() {
+                    h.voices = match ::config::get_string("passengers", "voices").unwrap_or_else(|| "all".into()).as_str() {
                         "off" => 2,
                         "tickets" => 1,
                         _ => 0,
                     };
-                    let ik = self.args.pax_ik.unwrap_or(self.settings.pax_ik);
+                    let ik = self.args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true));
                     h.set_ik(ik);
-                    h.set_natural(self.settings.pax_motion == "natural");
+                    h.set_natural(::config::get_string("passengers", "motion").unwrap_or_else(|| "natural".into()) == "natural");
                     if let Some(p) = self.player.as_mut() {
                         h.set_cabin(&mut p.vehicle);
                         h.ticket_key = ticket_key_name(&self.args.root, &p.bindings);

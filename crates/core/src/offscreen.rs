@@ -161,8 +161,8 @@ pub(crate) fn run_offscreen(
         .unwrap_or_default();
     let mut humans_off = if args.passengers || args.lan_join.is_some() {
         let mut h = humans::Humans::new(&args.root);
-        h.set_ik(args.pax_ik.unwrap_or(settings.pax_ik));
-        h.set_natural(settings.pax_motion == "natural");
+        h.set_ik(args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true)));
+        h.set_natural(::config::get_string("passengers", "motion").unwrap_or_else(|| "natural".into()) == "natural");
         if lan_off.as_ref().is_some_and(|lan| {
             lan.role == ::network::Role::Client && lan.welcome.is_some() && lan.rejected.is_none()
         }) {
@@ -174,7 +174,7 @@ pub(crate) fn run_offscreen(
         h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
         h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
         h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
-        h.voices = match settings.pax_voices.as_str() {
+        h.voices = match ::config::get_string("passengers", "voices").unwrap_or_else(|| "all".into()).as_str() {
             "off" => 2,
             "tickets" => 1,
             _ => 0,
@@ -191,7 +191,7 @@ pub(crate) fn run_offscreen(
         h.density = world
             .global
             .passenger_density((parse_time(&args.time) / 3600.0) as f32)
-            * settings.pax_density;
+            * ::config::get_float("passengers", "density").unwrap_or(1.0) as f32;
         h.time_of_day = parse_time(&args.time);
         h.stop_targets = schedule.as_ref().map(|s| s.stop_targets());
         h.stop_names = schedule.as_ref().map(|s| s.stop_names());
@@ -1076,7 +1076,7 @@ pub(crate) fn run_offscreen(
             h.density = world
                 .global
                 .passenger_density((run_clock.time / 3600.0) as f32)
-                * settings.pax_density;
+                * ::config::get_float("passengers", "density").unwrap_or(1.0) as f32;
             h.time_of_day = run_clock.time;
             // populate stops near every LAN player every 2 seconds, as app_events.rs
             // does every 2 s near the local player.  At startup `center` is ZERO (no
@@ -1871,7 +1871,7 @@ pub(crate) fn run_offscreen(
                     );
                     log::info!(
                         "  switch '{ev}' at screen ({sx:.0}, {sy:.0}): {}",
-                        describe::names(&args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into())).control(ev)
+                        describe::names(&args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into())).control(ev)
                     );
                     switches.push((ev.clone(), sx, sy));
                 }
@@ -3035,11 +3035,11 @@ pub(crate) fn run_offscreen(
             let mut nav =
                 navigator::Navigator::new(true, ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32, &::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into()));
             nav.schedule = ::legacy_config::env::var_os("OMSI_NAV_SCHEDULE").is_some();
-            nav.show_ai = settings.nav_ai;
-            nav.show_topbar = settings.nav_topbar;
-            nav.show_turn = settings.nav_turn;
-            nav.show_stoplist = settings.nav_stoplist;
-            nav.schedule |= settings.nav_stops_ext;
+            nav.show_ai = ::config::get_bool("navigator", "ai").unwrap_or(true);
+            nav.show_topbar = ::config::get_bool("navigator", "topbar").unwrap_or(true);
+            nav.show_turn = ::config::get_bool("navigator", "turn").unwrap_or(true);
+            nav.show_stoplist = ::config::get_bool("navigator", "stoplist").unwrap_or(true);
+            nav.schedule |= ::config::get_bool("navigator", "stops_ext").unwrap_or(false);
             if ::legacy_config::env::var_os("OMSI_NAV_MAP").is_some() {
                 nav.toggle_map();
             }
@@ -3054,7 +3054,7 @@ pub(crate) fn run_offscreen(
                 nav.set_route(&key, lanes, true, g);
             }
             let (outside_temp, inside_temp) = app_events::vehicle_temperatures(p);
-            let ui_lang = ::config::get_string("ui", "language").unwrap_or_else(|| "en".into());
+            let ui_lang = ::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into());
             let ui_units = ::config::get_string("ui", "units").unwrap_or_else(|| "metric".into());
             let frame = navigator::NavFrame {
                 traffic: traffic.as_ref(),

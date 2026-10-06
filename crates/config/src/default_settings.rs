@@ -70,8 +70,21 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("ui", "chat", Def::Bool(true)),
     ("ui", "tooltips", Def::Bool(true)),
     ("ui", "name_tags", Def::Bool(true)),
-    ("ui", "language", Def::Str("en")),
+    ("ui", "language", Def::Str("ENG")),
     ("ui", "units", Def::Str("metric")),
+    // [navigator]
+    ("navigator", "arrows", Def::Bool(false)),
+    ("navigator", "ai", Def::Bool(true)),
+    ("navigator", "topbar", Def::Bool(true)),
+    ("navigator", "turn", Def::Bool(true)),
+    ("navigator", "stoplist", Def::Bool(true)),
+    ("navigator", "stops_ext", Def::Bool(false)),
+    // [passengers]
+    ("passengers", "voices", Def::Str("all")),
+    ("passengers", "models", Def::Str("omsi")),
+    ("passengers", "motion", Def::Str("natural")),
+    ("passengers", "ik", Def::Bool(true)),
+    ("passengers", "density", Def::Float(1.0)),
     // [graphics]
     ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]

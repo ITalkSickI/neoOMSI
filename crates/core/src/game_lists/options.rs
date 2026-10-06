@@ -156,7 +156,7 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
     Some(match verb {
         "speed" => ::config::get_float("gameplay", "time_speed").unwrap_or(1.0) as f32,
         "traffic" => app.traffic.as_ref()?.target as f32,
-        "pax" => s.pax_density,
+        "pax" => ::config::get_float("passengers", "density").unwrap_or(1.0) as f32,
         "volume" => ::config::get_float("audio", "master-volume").unwrap_or(1.0) as f32,
         "led_glow" => s.led_glow as f32,
         "nightmap_glow" => s.nightmap_glow as f32,
@@ -223,8 +223,9 @@ pub(super) fn option_set(
             None
         }
         "pax" => {
-            app.settings.pax_density = v;
-            Some(("pax_density", v.to_string()))
+            ::config::set_setting("passengers", "density", v as f64);
+            let _ = ::config::save();
+            None
         }
         "volume" => {
             ::config::set_setting("audio", "master-volume", v);
@@ -416,20 +417,20 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
                 app.navigator.as_ref().is_some_and(|n| n.enabled)
             }
         }
-        "nav_ai" => app.navigator.as_ref().map_or(s.nav_ai, |n| n.show_ai),
+        "nav_ai" => app.navigator.as_ref().map_or(::config::get_bool("navigator", "ai").unwrap_or(true), |n| n.show_ai),
         "nav_topbar" => app
             .navigator
             .as_ref()
-            .map_or(s.nav_topbar, |n| n.show_topbar),
-        "nav_turn" => app.navigator.as_ref().map_or(s.nav_turn, |n| n.show_turn),
+            .map_or(::config::get_bool("navigator", "topbar").unwrap_or(true), |n| n.show_topbar),
+        "nav_turn" => app.navigator.as_ref().map_or(::config::get_bool("navigator", "turn").unwrap_or(true), |n| n.show_turn),
         "nav_stoplist" => app
             .navigator
             .as_ref()
-            .map_or(s.nav_stoplist, |n| n.show_stoplist),
+            .map_or(::config::get_bool("navigator", "stoplist").unwrap_or(true), |n| n.show_stoplist),
         "nav_stops_ext" => app
             .navigator
             .as_ref()
-            .map_or(s.nav_stops_ext, |n| n.schedule),
+            .map_or(::config::get_bool("navigator", "stops_ext").unwrap_or(false), |n| n.schedule),
         "shadows" => s.shadows,
         "head" => ::config::get_bool("camera", "head_movement").unwrap_or(true),
         "cam_smooth" => ::config::get_bool("camera", "smooth").unwrap_or(true),
@@ -454,10 +455,10 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "headtrack" => ::config::get_bool("camera", "head_tracking").unwrap_or(false),
         "timetable_win" => app.timetable,
         "info_bar" => app.info_bar,
-        "nav_arrows" => app.navigator.as_ref().map_or(s.nav_arrows, |n| n.arrows),
+        "nav_arrows" => app.navigator.as_ref().map_or(::config::get_bool("navigator", "arrows").unwrap_or(false), |n| n.arrows),
         "exact_fare" => ::config::get_bool("gameplay", "exact_fare").unwrap_or(true),
         "pax_prefer_seats" => ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false),
-        "pax_ik" => app.args.pax_ik.unwrap_or(s.pax_ik),
+        "pax_ik" => app.args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true)),
         "collision_pedestrians" => ::config::get_bool("gameplay", "collision_pedestrians").unwrap_or(true),
         "ssao" => s.ssao,
         "detail_textures" => s.detail_textures,
@@ -509,36 +510,41 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             if let Some(n) = app.navigator.as_mut() {
                 n.show_ai = on;
             }
-            app.settings.nav_ai = on;
-            Some(("nav_ai", bit))
+            ::config::set_setting("navigator", "ai", on);
+            let _ = ::config::save();
+            None
         }
         "nav_topbar" => {
             if let Some(n) = app.navigator.as_mut() {
                 n.show_topbar = on;
             }
-            app.settings.nav_topbar = on;
-            Some(("nav_topbar", bit))
+            ::config::set_setting("navigator", "topbar", on);
+            let _ = ::config::save();
+            None
         }
         "nav_turn" => {
             if let Some(n) = app.navigator.as_mut() {
                 n.show_turn = on;
             }
-            app.settings.nav_turn = on;
-            Some(("nav_turn", bit))
+            ::config::set_setting("navigator", "turn", on);
+            let _ = ::config::save();
+            None
         }
         "nav_stoplist" => {
             if let Some(n) = app.navigator.as_mut() {
                 n.show_stoplist = on;
             }
-            app.settings.nav_stoplist = on;
-            Some(("nav_stoplist", bit))
+            ::config::set_setting("navigator", "stoplist", on);
+            let _ = ::config::save();
+            None
         }
         "nav_stops_ext" => {
             if let Some(n) = app.navigator.as_mut() {
                 n.schedule = on;
             }
-            app.settings.nav_stops_ext = on;
-            Some(("nav_stops_ext", bit))
+            ::config::set_setting("navigator", "stops_ext", on);
+            let _ = ::config::save();
+            None
         }
         "shadows" => {
             app.settings.shadows = on;
@@ -712,8 +718,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "nav_arrows" => {
-            app.settings.nav_arrows = on;
-            Some(("nav_arrows", bit))
+            ::config::set_setting("navigator", "arrows", on);
+            let _ = ::config::save();
+            None
         }
         "exact_fare" => {
             ::config::set_setting("gameplay", "exact_fare", on);
@@ -726,8 +733,9 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             None
         }
         "pax_ik" => {
-            app.settings.pax_ik = on;
-            Some(("pax_ik", bit))
+            ::config::set_setting("passengers", "ik", on);
+            let _ = ::config::save();
+            None
         }
         "collision_pedestrians" => {
             ::config::set_setting("gameplay", "collision_pedestrians", on);

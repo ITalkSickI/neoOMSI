@@ -39,7 +39,7 @@ impl App {
             h.density = w
                 .global
                 .passenger_density((self.clock.time / 3600.0) as f32)
-                * self.settings.pax_density;
+                * ::config::get_float("passengers", "density").unwrap_or(1.0) as f32;
             h.time_of_day = self.clock.time;
             h.delay = self
                 .duty
