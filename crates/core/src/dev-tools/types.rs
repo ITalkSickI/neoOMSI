@@ -104,6 +104,14 @@ pub(crate) struct Extra {
     pub lan: Option<LanInfo>,
     pub tours: Vec<TourRow>,
     pub quicksave: bool,
+    pub profile: Vec<(&'static str, f64)>,
+    pub frames: u32,
+    pub traffic: Option<TrafficPerf>,
+}
+
+pub(crate) struct TrafficPerf {
+    pub cars: usize,
+    pub dormant: usize,
 }
 
 pub(crate) enum Action {

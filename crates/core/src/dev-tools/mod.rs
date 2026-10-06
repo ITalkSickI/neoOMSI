@@ -9,6 +9,7 @@ mod lights_ui;
 mod menu;
 mod net;
 mod overlays;
+mod perf;
 mod types;
 mod util;
 mod vehicle_editor;
@@ -37,6 +38,7 @@ struct Show {
     lan: bool,
     walk: bool,
     translation: bool,
+    perf: bool,
 }
 
 pub(crate) struct DevTools {
@@ -60,6 +62,7 @@ pub(crate) struct DevTools {
     release: Vec<String>,
     editor: vehicle_editor::VehicleEditor,
     tr_tool: translation::TranslationTool,
+    perf: perf::PerfTool,
 }
 
 impl DevTools {
@@ -102,6 +105,7 @@ impl DevTools {
                 lan: false,
                 walk: false,
                 translation: false,
+                perf: false,
             },
             actions: Vec::new(),
             connect_addr: String::new(),
@@ -112,6 +116,7 @@ impl DevTools {
             release: Vec::new(),
             editor: vehicle_editor::VehicleEditor::new(),
             tr_tool: translation::TranslationTool::new(),
+            perf: perf::PerfTool::new(),
             box_radius: 25.0,
         }
     }
@@ -157,6 +162,7 @@ impl DevTools {
             io.font_global_scale = scale.max(1.0);
             io.delta_time = (snap.dt_ms / 1000.0).clamp(0.0001, 0.25);
         }
+        self.perf.update(extra, snap.dt_ms);
         self.ensure_gpu(r);
         let mut mode = self.mode;
         {
@@ -171,6 +177,7 @@ impl DevTools {
             let cockpit_filter = &mut self.cockpit_filter;
             let editor = &mut self.editor;
             let tr_tool = &mut self.tr_tool;
+            let perf_tool = &mut self.perf;
             let ui = self.ctx.new_frame();
 
             if *show_boxes {
@@ -212,6 +219,7 @@ impl DevTools {
             net::lan(ui, &mut show.lan, lan_port, actions);
             walk::window(ui, &mut show.walk, extra);
             translation::window(ui, &mut show.translation, tr_tool);
+            perf::window(ui, &mut show.perf, perf_tool, snap, extra);
         }
         if mode != self.mode {
             self.mode = mode;

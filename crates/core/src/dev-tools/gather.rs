@@ -258,6 +258,12 @@ impl crate::App {
             lan,
             tours,
             quicksave,
+            profile: self.profile.iter().map(|(k, v)| (*k, *v)).collect(),
+            frames: self.total_frames,
+            traffic: self.traffic.as_ref().map(|t| TrafficPerf {
+                cars: t.cars.len(),
+                dormant: t.dormant.len(),
+            }),
         }
     }
 

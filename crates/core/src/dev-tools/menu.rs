@@ -109,6 +109,13 @@ pub(super) fn draw(
                 show.graphics = !show.graphics;
             }
             if ui
+                .menu_item_config("Performance")
+                .selected(show.perf)
+                .build()
+            {
+                show.perf = !show.perf;
+            }
+            if ui
                 .menu_item_config("Light Settings")
                 .selected(show.lights)
                 .build()
