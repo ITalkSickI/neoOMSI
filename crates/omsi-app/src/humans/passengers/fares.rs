@@ -175,7 +175,7 @@ impl Humans {
         if p.ticket == TicketAction::Stamp {
             if p.fare_phase == FarePhase::Validating
                 && !p.reach
-                && (p.movement == Movement::AtTarget || p.timer <= 0.0)
+                && p.movement == Movement::AtTarget
             {
                 let pp = self.pax_mut(i).unwrap();
                 pp.movement = Movement::Turning;
@@ -183,6 +183,12 @@ impl Humans {
                 pp.target_bus = true;
                 pp.reach = true;
                 pp.timer = STAMP_TIME;
+            } else if p.fare_phase == FarePhase::Validating && !p.reach && p.timer <= 0.0 {
+                self.route_to_place(i, bn);
+                let pp = self.pax_mut(i).unwrap();
+                pp.pt = bn.cabin.stamper.and_then(|s| s.0);
+                pp.ticket = TicketAction::None;
+                pp.fare_phase = FarePhase::None;
             } else if p.fare_phase == FarePhase::Validating && p.reach && p.timer < STAMP_RELEASE {
                 // the validator stamps
                 self.stamped.push(bn.id);
