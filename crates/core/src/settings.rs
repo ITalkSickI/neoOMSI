@@ -31,9 +31,9 @@ pub struct Settings {
     pub volume: f32, // Migrated
     pub post_aa: String, // TODO: Migrate to new config lib | category: graphics | default value: "fxaa"
     pub maintenance: u8, // Migrated
-    pub ai_unsched_factor: f32, // TODO: Migrate to new config lib | category: ai | default value: 1.0
-    pub ai_max_scheduled: u32, // TODO: Migrate to new config lib | category: ai | default value: 0
-    pub ai_max_parked: i32, // TODO: Migrate to new config lib | category: ai | default value: 0
+    pub ai_unsched_factor: f32, // Migrated
+    pub ai_max_scheduled: u32, // Migrated
+    pub ai_max_parked: i32, // Migrated
     pub collision_vehicles: bool, // Migrated
     pub collision_objects: bool, // Migrated
     pub collision_pedestrians: bool, // Migrated
