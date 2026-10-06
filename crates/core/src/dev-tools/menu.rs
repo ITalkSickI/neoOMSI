@@ -116,6 +116,13 @@ pub(super) fn draw(
                 show.perf = !show.perf;
             }
             if ui
+                .menu_item_config("Weather")
+                .selected(show.weather)
+                .build()
+            {
+                show.weather = !show.weather;
+            }
+            if ui
                 .menu_item_config("Light Settings")
                 .selected(show.lights)
                 .build()

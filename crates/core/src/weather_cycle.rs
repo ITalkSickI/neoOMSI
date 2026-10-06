@@ -37,6 +37,14 @@ impl Blend {
         }
     }
 
+    pub fn progress(&self) -> f32 {
+        self.k
+    }
+
+    pub fn target(&self) -> &Weather {
+        &self.to
+    }
+
     /// Advance by `dt` seconds of the day: the weather as it is now, whether the cloud type
     /// has just changed (the sky's cloud texture is made again), and whether it is done.
     pub fn step(&mut self, dt: f32) -> (Weather, bool, bool) {
