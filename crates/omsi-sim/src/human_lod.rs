@@ -119,7 +119,12 @@ pub(crate) fn keep_small_parts(low: &mut HumanMesh, top: &HumanMesh) {
                     top.alpha.get(slot as usize).copied().unwrap_or(0),
                 );
                 let same = low.materials.iter().zip(&low.alpha).position(|(m, a)| {
-                    m.texture.trim().eq_ignore_ascii_case(mat.texture.trim()) && *a == alpha
+                    m.texture.trim().eq_ignore_ascii_case(mat.texture.trim())
+                        && m.diffuse == mat.diffuse
+                        && m.specular == mat.specular
+                        && m.emissive == mat.emissive
+                        && m.specular_power == mat.specular_power
+                        && *a == alpha
                 });
                 same.unwrap_or_else(|| {
                     low.materials.push(mat.clone());
@@ -292,6 +297,16 @@ mod tests {
         let tris = triangles(&low.data);
         assert_eq!(tris.len(), 3);
         assert_eq!(tris.iter().filter(|(_, s)| *s == 1).count(), 1);
+
+        let mut tinted = mesh(&[(&body, 0), (&lash, 0)], &["skin.dds", "lash.dds"], 1.5);
+        tinted.materials[1].diffuse = [0.9, 0.1, 0.1, 1.0];
+        keep_small_parts(&mut tinted, &top);
+        assert_eq!(
+            tinted.materials.len(),
+            3,
+            "a lash.dds slot of another colour is not it"
+        );
+        assert_eq!(tinted.materials[2], top.materials[1]);
 
         let plain = mesh(&[(&body, 0)], &["skin.dds"], 1.5);
         for top in [&top, &plain] {

@@ -228,6 +228,7 @@ impl Humans {
         if !self.advance_seat_approach(i, dt) && self.pax(i).unwrap().doorway.is_none() {
             self.pax_move(i, dt, dt_ms, world, buses, bus_ix);
         }
+        self.leave_seat_floor(i);
         self.pax_task(
             i,
             dt,

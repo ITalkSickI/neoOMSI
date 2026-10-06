@@ -400,6 +400,17 @@ impl Humans {
         }
     }
 
+    pub(in crate::humans) fn leave_seat_floor(&mut self, i: usize) {
+        if let Some(p) = self.pax_mut(i)
+            && p.task == Task::InBusToExit
+            && p.seat_floor.is_some_and(|f| {
+                (p.pos.truncate() - f.center).length() > f.radius + SEAT_FLOOR_CLEAR
+            })
+        {
+            p.seat_floor = None;
+        }
+    }
+
     pub(in crate::humans) fn advance_seat_approach(&mut self, i: usize, dt: f32) -> bool {
         let Some(approach) = self.pax(i).and_then(|p| p.seat_approach) else {
             return false;
@@ -994,3 +1005,4 @@ mod tests {
 
 /// How far round the feet's place in front of a seat its own floor reaches.
 const SEAT_FLOOR_RADIUS: f64 = 0.35;
+const SEAT_FLOOR_CLEAR: f64 = 0.6;
