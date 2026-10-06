@@ -14,9 +14,7 @@ pub(super) fn settings_file() -> std::sync::Arc<serde_json::Value> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get_or_insert_with(|| {
-            let text =
-                std::fs::read_to_string(omsi_launcher_lib::data_dir().join("settings.cfg")).ok();
-            omsi_launcher_lib::settings_from_text(text.as_deref())
+            omsi_launcher_lib::current_settings()
         })
         .clone();
     let pending = PENDING_SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
@@ -27,9 +25,63 @@ pub(super) fn settings_file() -> std::sync::Arc<serde_json::Value> {
 }
 
 /// Forget the file as read (and the merged copy of it): it is read again on the next ask.
-fn invalidate_settings() {
+pub(super) fn invalidate_settings() {
     *SETTINGS_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *MERGED_SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// A `[graphics]` value as text, as the lists compare it (a switch as 1 or 0).
+pub(crate) fn gfx_text(key: &str) -> String {
+    use ::config::Value as T;
+    match ::config::get_setting("graphics", key) {
+        Some(T::Boolean(b)) => (b as u8).to_string(),
+        Some(T::Integer(i)) => i.to_string(),
+        Some(T::Float(f)) => f.to_string(),
+        Some(T::String(s)) => s,
+        _ => String::new(),
+    }
+}
+
+/// Write a `[graphics]` value from its text, as the type the key has in the config.
+pub(crate) fn gfx_set(key: &str, text: &str) {
+    use ::config::Value as T;
+    let value = match ::config::get_setting("graphics", key) {
+        Some(T::Boolean(_)) => T::Boolean(text == "1" || text == "true"),
+        Some(T::Integer(_)) => match text.parse::<i64>() {
+            Ok(i) => T::Integer(i),
+            Err(_) => return,
+        },
+        Some(T::Float(_)) => match text.parse::<f64>() {
+            Ok(f) => T::Float(f),
+            Err(_) => return,
+        },
+        Some(T::String(_)) => T::String(text.to_string()),
+        _ => return,
+    };
+    ::config::set_setting("graphics", key, value);
+}
+
+/// The quality presets: `[graphics]` values as text.
+pub(crate) const PRESETS: [(&str, &[(&str, &str)]); 4] = [
+    ("Low", &[("msaa", "1"), ("anisotropy", "2"), ("shadow_size", "1024"), ("ssao", "0"), ("shadows", "0"), ("detail_textures", "0"), ("clouds", "0"), ("view_distance", "600"), ("min_obj_size", "0.03"), ("max_obj_dist", "500"), ("mirror_size", "128"), ("mirror_refresh", "eco"), ("render_scale", "0.75"), ("texture_memory", "800")]),
+    ("Medium", &[("msaa", "2"), ("anisotropy", "4"), ("shadow_size", "2048"), ("ssao", "0"), ("shadows", "1"), ("detail_textures", "1"), ("clouds", "1"), ("view_distance", "900"), ("min_obj_size", "0.02"), ("max_obj_dist", "750"), ("mirror_size", "256"), ("mirror_refresh", "eco"), ("render_scale", "0"), ("texture_memory", "1200")]),
+    ("High", &[("msaa", "4"), ("anisotropy", "8"), ("shadow_size", "2048"), ("ssao", "1"), ("shadows", "1"), ("detail_textures", "1"), ("clouds", "1"), ("view_distance", "0"), ("min_obj_size", "0.013"), ("max_obj_dist", "-1"), ("mirror_size", "256"), ("mirror_refresh", "full"), ("render_scale", "0"), ("texture_memory", "0")]),
+    ("Ultra", &[("msaa", "4"), ("anisotropy", "8"), ("shadow_size", "4096"), ("ssao", "1"), ("shadows", "1"), ("detail_textures", "1"), ("clouds", "1"), ("view_distance", "2000"), ("min_obj_size", "0.005"), ("max_obj_dist", "1500"), ("mirror_size", "512"), ("mirror_refresh", "full"), ("render_scale", "0"), ("texture_memory", "0")]),
+];
+
+/// The preset the graphics match now.
+pub(crate) fn preset_now() -> Option<usize> {
+    PRESETS.iter().position(|p| {
+        p.1.iter().all(|(k, v)| {
+            let cur = gfx_text(k);
+            cur == *v
+                || cur
+                .parse::<f64>()
+                .ok()
+                .zip(v.parse::<f64>().ok())
+                .is_some_and(|(a, b)| (a - b).abs() < 1e-6)
+        })
+    })
 }
 
 pub(super) fn store_with(app: &mut App, change: impl FnOnce(&mut serde_json::Value)) {
@@ -47,31 +99,35 @@ pub(super) fn store_with(app: &mut App, change: impl FnOnce(&mut serde_json::Val
 
 pub(super) fn reload_settings(app: &mut App) {
     flush_settings(true);
-    app.settings = crate::settings::Settings::load();
-    crate::ui_language(&app.settings.language);
+    crate::ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
     sync_live(app);
 }
 
 pub(super) fn sync_live(app: &mut App) {
-    let s = &app.settings;
-    crate::startup::SOUND_AI.store(s.vol_ai.to_bits(), std::sync::atomic::Ordering::Relaxed);
-    crate::startup::SOUND_SCENERY.store(
-        s.vol_scenery.to_bits(),
+    crate::startup::SOUND_AI.store(
+        (::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    ::audio::DOPPLER.store(s.doppler, std::sync::atomic::Ordering::Relaxed);
+    crate::startup::SOUND_SCENERY.store(
+        (::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    ::audio::DOPPLER.store(
+        ::config::get_bool("audio", "doppler").unwrap_or(true),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     if let Some(n) = app.navigator.as_mut() {
-        n.arrows = s.nav_arrows;
+        n.arrows = ::config::get_bool("navigator", "arrows").unwrap_or(false);
     }
     if let Some(h) = app.humans.as_mut() {
-        h.exact_fare = s.exact_fare;
-        h.boarding = s.boarding.clone();
-        h.prefer_seats = s.pax_prefer_seats;
-        h.set_ik(app.args.pax_ik.unwrap_or(s.pax_ik));
-        h.set_natural(s.pax_motion == "natural");
-        h.voices = match s.pax_voices.as_str() {
-            "off" => 2,
-            "tickets" => 1,
+        h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
+        h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
+        h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
+        h.set_ik(app.args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true)));
+        h.set_natural(::config::get_string("passengers", "motion").as_deref().unwrap_or("natural") == "natural");
+        h.voices = match ::config::get_string("passengers", "voices").as_deref() {
+            Some("off") => 2,
+            Some("tickets") => 1,
             _ => 0,
         };
     }
@@ -87,7 +143,7 @@ pub(super) static MERGED_SETTINGS: std::sync::Mutex<Option<std::sync::Arc<serde_
 pub(super) static SETTINGS_CACHE: std::sync::Mutex<Option<serde_json::Value>> =
     std::sync::Mutex::new(None);
 
-/// Write one key of `~/.neoomsi/settings.cfg` (the launcher's file; the other lines
+/// Write one key of the settings file (the other keys
 /// stay as they are). The write is delayed a moment and joined with the ones that follow.
 pub(crate) fn remember_setting(key: &str, value: &str) {
     {
@@ -112,7 +168,7 @@ pub(crate) fn flush_settings(force: bool) {
         }
         if !force
             && p.1
-                .is_some_and(|t| t.elapsed().as_millis() < SETTINGS_FLUSH_MS)
+            .is_some_and(|t| t.elapsed().as_millis() < SETTINGS_FLUSH_MS)
         {
             return;
         }

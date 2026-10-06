@@ -39,7 +39,7 @@ impl App {
             h.density = w
                 .global
                 .passenger_density((self.clock.time / 3600.0) as f32)
-                * self.settings.pax_density;
+                * ::config::get_float("passengers", "density").unwrap_or(1.0) as f32;
             h.time_of_day = self.clock.time;
             h.delay = self
                 .duty
@@ -291,7 +291,7 @@ impl App {
             self.career.content = h.content as i32;
             self.career.ticket_requests = h.ticket_requests as i32;
             self.career.ticket_points = h.ticket_points as i32;
-            let hurt = if self.settings.collision_pedestrians {
+            let hurt = if ::config::get_bool("gameplay", "collision_pedestrians").unwrap_or(true) {
                 h.run_over(&p.vehicle)
             } else {
                 0

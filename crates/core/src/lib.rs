@@ -45,7 +45,6 @@ mod run_statistics;
 mod scene;
 mod schedule;
 mod schedule_paper;
-mod settings;
 mod threads;
 mod tiles;
 mod traffic;
@@ -186,14 +185,13 @@ pub fn run() -> Result<()> {
 }
 
 pub(crate) fn launcher_statics() {
-    let s = settings::Settings::load();
     ENHANCED.store(
-        s.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
+        (::config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    CLASSIC.store(s.classic(), std::sync::atomic::Ordering::Relaxed);
+    CLASSIC.store(config::get_string("graphics", "graphics").as_deref() == Some("vanilla"), std::sync::atomic::Ordering::Relaxed);
     CLOUDS.store(
-        s.clouds && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
+        ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
     );
 }
@@ -202,7 +200,7 @@ pub(crate) fn prepare(
     mut args: Args,
     bare: bool,
 ) -> Result<Option<(Args, Option<server::ServerCfg>)>> {
-    ui_language(&settings::Settings::load().language);
+    ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
     let server_cfg = match args.server.clone() {
         Some(p) => match server::prepare(&mut args, &p) {
             Ok(c) => Some(c),
@@ -270,7 +268,7 @@ pub(crate) fn prepare(
             Err(e) => log::warn!("content folder {}: {e}", c.display()),
         }
     }
-    if settings::Settings::load().pax_models == "realistic" {
+    if ::config::get_string("passengers", "models").unwrap_or_else(|| "omsi".into()) == "realistic" {
         if let Some(content) = content_dir() {
             let pack = content.join("Packs/RealisticPax");
             if pack.join("Humans").is_dir() {
@@ -319,7 +317,7 @@ pub(crate) fn make_app(
             Err(e) => log::warn!("LAN: {e}"),
         }
     }
-    if settings::Settings::load().time_sync
+    if ::config::get_bool("gameplay", "time_sync").unwrap_or(false)
         && args.lan_join.is_none()
         && args.server.is_none()
         && args.offscreen.is_none()
@@ -329,8 +327,7 @@ pub(crate) fn make_app(
     if args.export_glb.is_none() && args.lan_join.is_none() {
         place_on_duty(&mut args);
     }
-    let settings = settings::Settings::load();
-    applog::log_system(&settings);
+    applog::log_system();
     if args.drive_keys.eq_ignore_ascii_case("simple")
         && let Some(k) = ::config::get_string("gameplay", "drive-keys")
         && !k.eq_ignore_ascii_case("simple")
@@ -338,25 +335,25 @@ pub(crate) fn make_app(
         args.drive_keys = k;
     }
     ENHANCED.store(
-        settings.enhanced || args.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
+        (::config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || args.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
     CLOUDS.store(
-        settings.clouds && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
+        ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_AI.store(
-        settings.vol_ai.to_bits(),
+        (::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_SCENERY.store(
-        settings.vol_scenery.to_bits(),
+        (::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    MIRROR_SIZE.store(settings.mirror_size, std::sync::atomic::Ordering::Relaxed);
-    ::audio::DOPPLER.store(settings.doppler, std::sync::atomic::Ordering::Relaxed);
+    MIRROR_SIZE.store(::config::get_int("graphics", "mirror_size").unwrap_or(256) as u32, std::sync::atomic::Ordering::Relaxed);
+    ::audio::DOPPLER.store(::config::get_bool("audio", "doppler").unwrap_or(true), std::sync::atomic::Ordering::Relaxed);
     CLASSIC.store(
-        settings.classic() && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
+        (::config::get_string("graphics", "graphics").as_deref() == Some("vanilla")) && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
         std::sync::atomic::Ordering::Relaxed,
     );
     let mut lan = if args.export_glb.is_none() {
@@ -391,10 +388,10 @@ pub(crate) fn make_app(
     }
     if let (Some(l), None) = (lan.as_mut(), server_cfg.as_ref()) {
         if l.role == ::network::Role::Host {
-            l.clock_speed = if settings.time_sync {
+            l.clock_speed = if ::config::get_bool("gameplay", "time_sync").unwrap_or(false) {
                 1.0
             } else {
-                settings.time_speed.clamp(1.0, 30.0)
+                ::config::get_float("gameplay", "time_speed").unwrap_or(1.0).clamp(1.0, 30.0)
             };
         }
     }
@@ -587,7 +584,6 @@ pub(crate) fn make_app(
         metar_once: false,
         metar_next: 0.0,
         cursor_kind: 0,
-        settings,
         lan: None,
         remotes: Default::default(),
         spikes: 0,
@@ -605,7 +601,7 @@ pub(crate) fn make_app(
     };
     app.lan = lan;
     app.remotes = lan_game;
-    if app.settings.mouse_steering {
+    if ::config::get_bool("controls", "mouse_steering").unwrap_or(false) {
         app.mouse_drive = true;
         app.mouse_steer = (0.0, 1.0);
         app.center_cursor = true;

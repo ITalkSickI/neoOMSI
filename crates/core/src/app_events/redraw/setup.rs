@@ -15,9 +15,9 @@ impl App {
         if (!self.vr_active() || self.player.is_none())
             && matches!(self.list_kind, Some(game_lists::ListKind::Options(_)))
             && self
-                .admin_list
-                .as_ref()
-                .is_some_and(|rows| rows.iter().any(|(_, action)| action.starts_with("vr_nav_")))
+            .admin_list
+            .as_ref()
+            .is_some_and(|rows| rows.iter().any(|(_, action)| action.starts_with("vr_nav_")))
         {
             self.open_list(game_lists::ListKind::Options(0));
         }
@@ -68,7 +68,7 @@ impl App {
             platform::exit(event_loop);
             return false;
         }
-        let desktop_vsync = self.settings.vsync && !self.vr_active();
+        let desktop_vsync = ::config::get_bool("graphics", "vsync").unwrap_or(true) && !self.vr_active();
         if let (Some(surface), Some(renderer)) = (self.surface.as_mut(), self.renderer.as_ref()) {
             surface.set_vsync(renderer, desktop_vsync);
         }
@@ -138,8 +138,8 @@ impl App {
                 let fps = self.governor.1 as f32 / self.governor.0;
                 let wait_share = self.governor.2 / self.governor.0;
                 self.governor = (0.0, 0, 0.0);
-                let free = self.settings.render_scale <= 0.0
-                    && (self.settings.max_fps == 0 || self.settings.max_fps >= 50)
+                let free = ::config::get_float("graphics", "render_scale").unwrap_or(0.0) as f32 <= 0.0
+                    && (::config::get_int("graphics", "max_fps").unwrap_or(0) as u32 == 0 || ::config::get_int("graphics", "max_fps").unwrap_or(0) as u32 >= 50)
                     && ::legacy_config::env::var_os("OMSI_FIXED_SCALE").is_none();
                 if let (Some(r), true) = (self.renderer.as_mut(), free) {
                     let s = r.dynamic_scale();
@@ -157,8 +157,10 @@ impl App {
                         if self.governor_low >= 2 && fps < 30.0 {
                             self.governor_low = 0;
                             let what = r.lighten().or_else(|| {
-                                std::mem::replace(&mut self.settings.shadows, false)
-                                    .then_some("shadows off")
+                                ::config::get_bool("graphics", "shadows").unwrap_or(true).then(|| {
+                                    ::config::set_setting("graphics", "shadows", false);
+                                    "shadows off"
+                                })
                             });
                             if let Some(what) = what {
                                 log::warn!(

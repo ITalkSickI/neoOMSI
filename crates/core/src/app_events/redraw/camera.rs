@@ -14,14 +14,14 @@ impl App {
             let ctrl_alt = (self.keys.contains(&KeyCode::ControlLeft)
                 || self.keys.contains(&KeyCode::ControlRight))
                 && (self.keys.contains(&KeyCode::AltLeft)
-                    || self.keys.contains(&KeyCode::AltRight));
+                || self.keys.contains(&KeyCode::AltRight));
             let arrows = [
                 KeyCode::ArrowLeft,
                 KeyCode::ArrowRight,
                 KeyCode::ArrowUp,
                 KeyCode::ArrowDown,
             ]
-            .map(|k| self.keys.contains(&k));
+                .map(|k| self.keys.contains(&k));
             if let (true, Some(p), Some(cam)) = (
                 ctrl_alt && self.view == "driver" && arrows.iter().any(|a| *a),
                 self.player.as_mut(),
@@ -64,7 +64,15 @@ impl App {
                 }
             } else if let Some(p) = self.player.as_mut().filter(|p| p.mirrors_dirty) {
                 p.mirrors_dirty = false;
-                settings::save_mirror_offsets(&p.vehicle.ty.def.path, &p.mirror_offsets);
+                let bus = p.vehicle.ty.def.path.to_string_lossy().to_ascii_lowercase();
+                for (i, o) in p.mirror_offsets.iter().enumerate() {
+                    if o[0].abs() > 0.01 || o[1].abs() > 0.01 {
+                        ::config::set_setting_sub("mirrors", &bus, &i.to_string(), format!("{:.1},{:.1}", o[0], o[1]));
+                    } else {
+                        ::config::remove_setting_sub("mirrors", &bus, &i.to_string());
+                    }
+                }
+                let _ = ::config::save();
             }
             self.look.0 += step * 1.5 * (self.pad_look[1] as i32 - self.pad_look[0] as i32) as f32;
             self.look.1 = (self.look.1
@@ -140,9 +148,9 @@ impl App {
             // straight ahead again whenever it was switched to, #733)
             if self.keys.contains(&KeyCode::Home)
                 && !self
-                    .game_keys
-                    .iter()
-                    .any(|b| Some(b.scan_code) == keys::dik_code(KeyCode::Home))
+                .game_keys
+                .iter()
+                .any(|b| Some(b.scan_code) == keys::dik_code(KeyCode::Home))
             {
                 self.look = (0.0, 0.0);
                 self.orbit = ORBIT_DEFAULT;

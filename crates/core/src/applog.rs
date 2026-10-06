@@ -16,7 +16,7 @@ pub(crate) struct LogState {
 }
 
 /// The machine, the program and its settings, once at the start.
-pub(crate) fn log_system(settings: &crate::settings::Settings) {
+pub(crate) fn log_system() {
     let cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(0);
@@ -43,7 +43,6 @@ pub(crate) fn log_system(settings: &crate::settings::Settings) {
     if !env.is_empty() {
         log::info!("environment: {}", env.join(" "));
     }
-    log::info!("all settings: {settings:?}");
 }
 
 fn os_version() -> String {

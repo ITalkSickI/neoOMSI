@@ -181,7 +181,6 @@ pub(crate) struct App {
     pub(crate) metar_once: bool,
     pub(crate) metar_next: f64,
     pub(crate) cursor_kind: u8,
-    pub(crate) settings: settings::Settings,
     pub(crate) lan: Option<::network::LanSession>,
     pub(crate) remotes: lan::LanGame,
     pub(crate) spikes: u32,
@@ -215,7 +214,7 @@ impl App {
             if self.surface.is_none() {
                 if let Some(r) = self.renderer.as_ref() {
                     let size = window.inner_size();
-                    let vsync = self.settings.vsync && !self.vr_active();
+                    let vsync = ::config::get_bool("graphics", "vsync").unwrap_or(true) && !self.vr_active();
                     self.surface = SurfaceState::new_with(
                         &self.instance,
                         window.clone(),
@@ -258,7 +257,7 @@ impl App {
         if let Some(at) = at {
             attrs = attrs.with_position(at);
         }
-        if self.settings.fullscreen {
+        if ::config::get_bool("graphics", "fullscreen").unwrap_or(false) {
             attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
         }
         if ::legacy_config::env::var_os("OMSI_BACKGROUND").is_some() {
@@ -269,7 +268,28 @@ impl App {
             None => Arc::new(event_loop.create_window(attrs).expect("window")),
         };
         let mut renderer =
-            match window_renderer(&mut self.instance, &window, self.settings.render_options()) {
+            match window_renderer(
+                &mut self.instance,
+                &window,
+                ::render::RenderOptions {
+                    msaa: ::config::get_int("graphics", "msaa").unwrap_or(4) as u32,
+                    anisotropy: ::config::get_int("graphics", "anisotropy").unwrap_or(8) as u16,
+                    shadow_size: ::config::get_int("graphics", "shadow_size").unwrap_or(2048) as u32,
+                    ssao: ::config::get_bool("graphics", "ssao").unwrap_or(true),
+                    render_scale: ::config::get_float("graphics", "render_scale").unwrap_or(0.0) as f32,
+                    compress_textures: ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
+                    fxaa: ::config::get_string("graphics", "post_aa").as_deref() != Some("off"),
+                    min_obj_size: ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32,
+                    max_obj_dist: match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
+                        d if d >= 0.0 => d,
+                        _ => ::config::get_float("graphics", "view_distance").filter(|v| *v > 0.0).map(|v| v as f32).unwrap_or(900.0),
+                    },
+                    omsi_shadow_casters: ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi"),
+                    shadow_blobs: ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
+                    reflections: ::config::get_bool("graphics", "reflections").unwrap_or(true),
+                    no_enhanced: ::config::get_string("graphics", "graphics").as_deref() != Some("enhanced"),
+                },
+            ) {
                 Ok(r) => r,
                 Err(e) => {
                     fatal_message(&format!("The game cannot draw on this computer: {e:#}"));
@@ -312,7 +332,7 @@ impl App {
             &renderer,
             size.width,
             size.height,
-            self.settings.vsync && !self.vr_active(),
+            ::config::get_bool("graphics", "vsync").unwrap_or(true) && !self.vr_active(),
         ) {
             Ok(s) => s,
             Err(e) => {
@@ -366,8 +386,8 @@ impl App {
                 * ui::size_factor(
                 s.config.height as f32,
                 dpi,
-                self.settings.ui_scale,
-                self.settings.ui_scale_window,
+                ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                ::config::get_bool("ui", "scale_window").unwrap_or(true),
             );
             ui.loading_bg = Some(None);
             ui.loading(
@@ -446,8 +466,8 @@ impl App {
                 * ui::size_factor(
                 s.config.height as f32,
                 dpi,
-                self.settings.ui_scale,
-                self.settings.ui_scale_window,
+                ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                ::config::get_bool("ui", "scale_window").unwrap_or(true),
             );
             ui.loading(
                 r,
@@ -495,7 +515,7 @@ impl App {
 
     #[cfg(not(target_os = "android"))]
     pub(crate) fn update_discord(&mut self, loading: bool) {
-        if self.args.server.is_some() || !self.settings.discord_status {
+        if self.args.server.is_some() || !::config::get_bool("discord", "status").unwrap_or(true) {
             if let Some(discord) = self.discord.as_ref() {
                 discord.stop();
                 if discord.is_finished() {
@@ -519,7 +539,7 @@ impl App {
         }
         self.discord_next_update = now + std::time::Duration::from_secs(5);
         if self.discord.is_none() {
-            self.discord = discord::Discord::start(&self.settings.discord_app_id);
+            self.discord = discord::Discord::start(&::config::get_string("discord", "app_id").unwrap_or_default());
         }
         if let Some(discord) = self.discord.as_ref() {
             let bus = self.player.as_ref().map(|p| {
@@ -597,14 +617,14 @@ impl App {
                     let distance = self
                         .args
                         .view_distance
-                        .or_else(settings::view_distance)
+                        .or_else(|| ::config::get_float("graphics", "view_distance").filter(|v| *v > 0.0))
                         .unwrap_or(900.0)
                         .max(::map::tile_size());
                     w.set_fast_texture_loads(true);
-                    w.set_texture_budget(texture_budget(&self.settings));
+                    w.set_texture_budget(texture_budget());
                     log::info!(
                         "texture budget: {:.0} MB",
-                        texture_budget(&self.settings) as f64 / 1e6
+                        texture_budget() as f64 / 1e6
                     );
                     self.streamer = Some(tiles::Streamer::new(
                         w.clone(),
@@ -669,7 +689,7 @@ impl App {
                         let audio = ::audio::AudioEngine::new();
                         if let Some(p) = p.as_mut() {
                             p.vehicle.host.auto_clutch =
-                                if self.settings.auto_clutch { 1.0 } else { 0.0 };
+                                if ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) { 1.0 } else { 0.0 };
                             p.load_sounds(&audio);
                             p.ibis_background = true;
                             if self.args.autostart {
@@ -733,17 +753,17 @@ impl App {
                     self.camera = Some(cam);
                 }
                 self.navigator = Some(navigator::Navigator::new(
-                    self.settings.navigator,
-                    self.settings.ui_opacity,
-                    &self.settings.navigator_corner,
+                    ::config::get_bool("ui", "navigator").unwrap_or(true),
+                    ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32,
+                    &::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into()),
                 ));
                 if let Some(n) = self.navigator.as_mut() {
-                    n.arrows = self.settings.nav_arrows;
-                    n.show_ai = self.settings.nav_ai;
-                    n.show_topbar = self.settings.nav_topbar;
-                    n.show_turn = self.settings.nav_turn;
-                    n.show_stoplist = self.settings.nav_stoplist;
-                    n.schedule = self.settings.nav_stops_ext;
+                    n.arrows = ::config::get_bool("navigator", "arrows").unwrap_or(false);
+                    n.show_ai = ::config::get_bool("navigator", "ai").unwrap_or(true);
+                    n.show_topbar = ::config::get_bool("navigator", "topbar").unwrap_or(true);
+                    n.show_turn = ::config::get_bool("navigator", "turn").unwrap_or(true);
+                    n.show_stoplist = ::config::get_bool("navigator", "stoplist").unwrap_or(true);
+                    n.schedule = ::config::get_bool("navigator", "stops_ext").unwrap_or(false);
                 }
                 if let Some(d) = self.args.driver.as_deref() {
                     self.career = career::Career::load(&self.args.root, d);
@@ -753,17 +773,17 @@ impl App {
                     if let Some(lan) = self.lan.as_ref() {
                         h.set_lan_seed(lan::population_seed(lan));
                     }
-                    h.exact_fare = self.settings.exact_fare;
-                    h.boarding = self.settings.boarding.clone();
-                    h.prefer_seats = self.settings.pax_prefer_seats;
-                    h.voices = match self.settings.pax_voices.as_str() {
+                    h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
+                    h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
+                    h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
+                    h.voices = match ::config::get_string("passengers", "voices").unwrap_or_else(|| "all".into()).as_str() {
                         "off" => 2,
                         "tickets" => 1,
                         _ => 0,
                     };
-                    let ik = self.args.pax_ik.unwrap_or(self.settings.pax_ik);
+                    let ik = self.args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true));
                     h.set_ik(ik);
-                    h.set_natural(self.settings.pax_motion == "natural");
+                    h.set_natural(::config::get_string("passengers", "motion").unwrap_or_else(|| "natural".into()) == "natural");
                     if let Some(p) = self.player.as_mut() {
                         h.set_cabin(&mut p.vehicle);
                         h.ticket_key = ticket_key_name(&self.args.root, &p.bindings);
@@ -931,8 +951,8 @@ impl App {
                 * ui::size_factor(
                 s.config.height as f32,
                 dpi,
-                self.settings.ui_scale,
-                self.settings.ui_scale_window,
+                ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                ::config::get_bool("ui", "scale_window").unwrap_or(true),
             );
             ui.loading(
                 &renderer,
@@ -1045,11 +1065,9 @@ impl App {
             return;
         }
         if let Some(p) = self.player.as_mut() {
-            p.vehicle.collision = self
-                .settings
-                .collision_objects
-                .then(|| w.collision.lock().clone());
-            p.vehicle.wheel_walls = self.settings.collision_objects;
+            let objects = ::config::get_bool("gameplay", "collision_objects").unwrap_or(true);
+            p.vehicle.collision = objects.then(|| w.collision.lock().clone());
+            p.vehicle.wheel_walls = objects;
         }
         match self.traffic.as_mut() {
             Some(t) => {

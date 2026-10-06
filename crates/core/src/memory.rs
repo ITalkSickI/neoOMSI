@@ -1,7 +1,5 @@
 //! What the machine has and gives back: physical memory, the texture budget, and returning freed memory to the system.
 
-use super::*;
-
 /// Bytes of memory the machine has.
 pub(crate) fn physical_memory() -> Option<u64> {
     #[cfg(target_os = "macos")]
@@ -62,11 +60,11 @@ pub(crate) fn physical_memory() -> Option<u64> {
 /// The texture budget in bytes: `OMSI_TEXTURE_MEMORY` (MB), else the setting, else an
 /// eighth of the machine's memory (2 GB on a 16 GB Mac - Ahlheim's main station needs
 /// about 1.5).
-pub(crate) fn texture_budget(settings: &settings::Settings) -> u64 {
+pub(crate) fn texture_budget() -> u64 {
     let mb = ::legacy_config::env::var("OMSI_TEXTURE_MEMORY")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(settings.texture_memory as u64);
+        .unwrap_or(::config::get_int("graphics", "texture_memory").unwrap_or(0) as u32 as u64);
     if mb > 0 {
         // (a budget the graphics card cannot hold is taken down to what it can: the
         // settings offer up to 6 GB, and a 2 GB card lost its device at the first frames,

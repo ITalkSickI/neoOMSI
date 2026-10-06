@@ -19,13 +19,29 @@ pub(crate) fn run_offscreen(
         })
         .unwrap_or((1600, 900));
     let view_aspect = w as f32 / h.max(1) as f32;
-    let settings = settings::Settings::load();
     let instance = graphics_instance();
     let mut renderer = pollster::block_on(Renderer::new_with(
         &instance,
         None,
         Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-        settings.render_options(),
+        ::render::RenderOptions {
+            msaa: ::config::get_int("graphics", "msaa").unwrap_or(4) as u32,
+            anisotropy: ::config::get_int("graphics", "anisotropy").unwrap_or(8) as u16,
+            shadow_size: ::config::get_int("graphics", "shadow_size").unwrap_or(2048) as u32,
+            ssao: ::config::get_bool("graphics", "ssao").unwrap_or(true),
+            render_scale: ::config::get_float("graphics", "render_scale").unwrap_or(0.0) as f32,
+            compress_textures: ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
+            fxaa: ::config::get_string("graphics", "post_aa").as_deref() != Some("off"),
+            min_obj_size: ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32,
+            max_obj_dist: match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
+                d if d >= 0.0 => d,
+                _ => ::config::get_float("graphics", "view_distance").filter(|v| *v > 0.0).map(|v| v as f32).unwrap_or(900.0),
+            },
+            omsi_shadow_casters: ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi"),
+            shadow_blobs: ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
+            reflections: ::config::get_bool("graphics", "reflections").unwrap_or(true),
+            no_enhanced: ::config::get_string("graphics", "graphics").as_deref() != Some("enhanced"),
+        },
     ))?;
     log::info!("adapter: {}", renderer.adapter_name);
     lights::load_smoke_texture(&mut renderer, &args.root);
@@ -82,7 +98,7 @@ pub(crate) fn run_offscreen(
     let mut player = spawn_player(args, &world, &renderer, &mut scene)?;
     let spawn_z = player.as_ref().map(|p| p.vehicle.position.z).unwrap_or(0.0);
     if let Some(p) = player.as_mut() {
-        p.vehicle.host.auto_clutch = if settings.auto_clutch { 1.0 } else { 0.0 };
+        p.vehicle.host.auto_clutch = if ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) { 1.0 } else { 0.0 };
         // OMSI_PAX_CAM=n: `--view pax` from the bus's n-th passenger camera
         if let Some(k) = ::legacy_config::env::var("OMSI_PAX_CAM")
             .ok()
@@ -161,8 +177,8 @@ pub(crate) fn run_offscreen(
         .unwrap_or_default();
     let mut humans_off = if args.passengers || args.lan_join.is_some() {
         let mut h = humans::Humans::new(&args.root);
-        h.set_ik(args.pax_ik.unwrap_or(settings.pax_ik));
-        h.set_natural(settings.pax_motion == "natural");
+        h.set_ik(args.pax_ik.unwrap_or(::config::get_bool("passengers", "ik").unwrap_or(true)));
+        h.set_natural(::config::get_string("passengers", "motion").unwrap_or_else(|| "natural".into()) == "natural");
         if lan_off.as_ref().is_some_and(|lan| {
             lan.role == ::network::Role::Client && lan.welcome.is_some() && lan.rejected.is_none()
         }) {
@@ -171,10 +187,10 @@ pub(crate) fn run_offscreen(
         if let Some(seed) = lan_seed {
             h.set_lan_seed(seed);
         }
-        h.exact_fare = settings.exact_fare;
-        h.boarding = settings.boarding.clone();
-        h.prefer_seats = settings.pax_prefer_seats;
-        h.voices = match settings.pax_voices.as_str() {
+        h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
+        h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
+        h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
+        h.voices = match ::config::get_string("passengers", "voices").unwrap_or_else(|| "all".into()).as_str() {
             "off" => 2,
             "tickets" => 1,
             _ => 0,
@@ -191,7 +207,7 @@ pub(crate) fn run_offscreen(
         h.density = world
             .global
             .passenger_density((parse_time(&args.time) / 3600.0) as f32)
-            * settings.pax_density;
+            * ::config::get_float("passengers", "density").unwrap_or(1.0) as f32;
         h.time_of_day = parse_time(&args.time);
         h.stop_targets = schedule.as_ref().map(|s| s.stop_targets());
         h.stop_names = schedule.as_ref().map(|s| s.stop_names());
@@ -358,9 +374,9 @@ pub(crate) fn run_offscreen(
                                 w.y,
                                 p.z + 0.5,
                             )
-                            .below
-                            .map(|z| format!("{z:.4}"))
-                            .unwrap_or_default()
+                                .below
+                                .map(|z| format!("{z:.4}"))
+                                .unwrap_or_default()
                         })
                         .collect();
                     let _ = writeln!(
@@ -573,10 +589,10 @@ pub(crate) fn run_offscreen(
                 Some(c) => c,
                 None => match player.as_ref() {
                     Some(p)
-                        if args.cam.is_none() && args.view != "free" && args.follow.is_none() =>
-                    {
-                        p.camera(&args.view, &camera)
-                    }
+                    if args.cam.is_none() && args.view != "free" && args.follow.is_none() =>
+                        {
+                            p.camera(&args.view, &camera)
+                        }
                     _ => Camera {
                         position: camera.position,
                         yaw: camera.yaw,
@@ -625,7 +641,7 @@ pub(crate) fn run_offscreen(
                             &renderer,
                             &mut scene,
                             1.0 / 30.0,
-                            settings.driver,
+                            ::config::get_bool("gameplay", "driver").unwrap_or(true),
                             args.view == "driver",
                         );
                     }
@@ -635,7 +651,7 @@ pub(crate) fn run_offscreen(
                         &weather,
                         cloud_drift_at(&weather, run_clock.time),
                         0.0,
-                        settings.shadows,
+                        ::config::get_bool("graphics", "shadows").unwrap_or(true),
                     );
                     let pixels =
                         renderer.render_to_image(&mut scene, w, h, &view_cam, &lighting)?;
@@ -845,10 +861,10 @@ pub(crate) fn run_offscreen(
                                 .filter(|(k, s, d)| {
                                     *d < 6.0
                                         && ((net.lanes[*k].at(*s).1 as f64 - v.heading + 540.0)
-                                            .rem_euclid(360.0)
-                                            - 180.0)
-                                            .abs()
-                                            < 80.0
+                                        .rem_euclid(360.0)
+                                        - 180.0)
+                                        .abs()
+                                        < 80.0
                                 })
                                 .min_by(|a, b| a.2.total_cmp(&b.2))
                             {
@@ -946,7 +962,7 @@ pub(crate) fn run_offscreen(
                         at.y,
                         at.z + 1.5,
                     )
-                    .below;
+                        .below;
                     let lost = under.is_none_or(|g| at.z < g - 0.6);
                     if i % 15 == 0 || lost {
                         log::info!(
@@ -963,7 +979,7 @@ pub(crate) fn run_offscreen(
                 }
                 // the driver's hands follow the wheel frame by frame (as in the window), so
                 // that the snapshots show them where the hand-over-hand has got to
-                if settings.driver && !snapshot_times.is_empty() {
+                if ::config::get_bool("gameplay", "driver").unwrap_or(true) && !snapshot_times.is_empty() {
                     player.sync_driver(&renderer, &mut scene, dt, true, false);
                 }
                 // OMSI_SUSP_TRACE=<csv>: every frame, the body's height and vertical speed and
@@ -1076,7 +1092,7 @@ pub(crate) fn run_offscreen(
             h.density = world
                 .global
                 .passenger_density((run_clock.time / 3600.0) as f32)
-                * settings.pax_density;
+                * ::config::get_float("passengers", "density").unwrap_or(1.0) as f32;
             h.time_of_day = run_clock.time;
             // populate stops near every LAN player every 2 seconds, as app_events.rs
             // does every 2 s near the local player.  At startup `center` is ZERO (no
@@ -1277,7 +1293,7 @@ pub(crate) fn run_offscreen(
                         &renderer,
                         &mut scene,
                         1.0 / 30.0,
-                        settings.driver,
+                        ::config::get_bool("gameplay", "driver").unwrap_or(true),
                         args.view == "driver",
                     );
                     if args.cam.is_none() && args.view != "free" && args.follow.is_none() {
@@ -1332,7 +1348,7 @@ pub(crate) fn run_offscreen(
                     } else {
                         0.0
                     },
-                    settings.shadows,
+                    ::config::get_bool("graphics", "shadows").unwrap_or(true),
                 );
                 lighting.inside = player.as_ref().and_then(|p| {
                     p.vehicle
@@ -1359,7 +1375,7 @@ pub(crate) fn run_offscreen(
                     .filter_map(|t| t.ty.def.bounding_box.map(|bb| (t.position, t.heading, bb)))
                     .take(3)
                     .collect();
-                lighting.detail = settings.detail_textures;
+                lighting.detail = ::config::get_bool("graphics", "detail_textures").unwrap_or(true);
                 world.finish_texture_upgrades(&renderer, &mut scene);
                 let pixels = renderer.render_to_image(&mut scene, w, h, &cam, &lighting)?;
                 let path = out.with_file_name(format!(
@@ -1552,7 +1568,7 @@ pub(crate) fn run_offscreen(
                 &renderer,
                 &mut scene,
                 1.0 / 30.0,
-                settings.driver,
+                ::config::get_bool("gameplay", "driver").unwrap_or(true),
                 args.view == "driver",
             );
             for (t, f) in std::mem::take(&mut player.vehicle.host.fired_file_triggers) {
@@ -1871,7 +1887,7 @@ pub(crate) fn run_offscreen(
                     );
                     log::info!(
                         "  switch '{ev}' at screen ({sx:.0}, {sy:.0}): {}",
-                        describe::names(&args.root, &settings.language).control(ev)
+                        describe::names(&args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into())).control(ev)
                     );
                     switches.push((ev.clone(), sx, sy));
                 }
@@ -1958,7 +1974,7 @@ pub(crate) fn run_offscreen(
                     let run = |v: &mut ::simulation::VehicleInstance,
                                name: Option<&str>,
                                d: (f32, f32)|
-                     -> (bool, Vec<f32>, Vec<f32>, Vec<String>) {
+                               -> (bool, Vec<f32>, Vec<f32>, Vec<String>) {
                         restore(v);
                         v.host.fired_triggers.clear();
                         v.host.fired_file_triggers.clear();
@@ -2010,7 +2026,7 @@ pub(crate) fn run_offscreen(
                                 .filter(|&k| {
                                     !noisy[k]
                                         && (differs(after[k], idle[k])
-                                            || differs(held[k], idle_held[k]))
+                                        || differs(held[k], idle_held[k]))
                                 })
                                 .collect();
                             played = sounds
@@ -2081,7 +2097,7 @@ pub(crate) fn run_offscreen(
                     &renderer,
                     &mut scene,
                     1.0 / 30.0,
-                    settings.driver,
+                    ::config::get_bool("gameplay", "driver").unwrap_or(true),
                     args.view == "driver",
                 );
                 if let Ok(names) = ::legacy_config::env::var("OMSI_DEBUG_VARS") {
@@ -2104,7 +2120,7 @@ pub(crate) fn run_offscreen(
             &renderer,
             &mut scene,
             1.0 / 30.0,
-            settings.driver,
+            ::config::get_bool("gameplay", "driver").unwrap_or(true),
             args.view == "driver",
         );
         player_ref = Some(player);
@@ -2825,7 +2841,7 @@ pub(crate) fn run_offscreen(
         &weather,
         cloud_drift_at(&weather, clock.time),
         wetness,
-        settings.shadows,
+        ::config::get_bool("graphics", "shadows").unwrap_or(true),
     );
     // the player's vehicle has moved into `player_ref` by now (after --drive): without
     // this the offscreen picture had no cab box, unlike the window
@@ -2849,7 +2865,7 @@ pub(crate) fn run_offscreen(
         .filter_map(|t| t.ty.def.bounding_box.map(|bb| (t.position, t.heading, bb)))
         .take(3)
         .collect();
-    lighting.detail = settings.detail_textures;
+    lighting.detail = ::config::get_bool("graphics", "detail_textures").unwrap_or(true);
     lighting.glass_wind = player_ref
         .as_ref()
         .or(player.as_ref())
@@ -3031,15 +3047,15 @@ pub(crate) fn run_offscreen(
         }
         hud.update(&renderer, &mut scene, &lines);
         // the navigator, as the window shows it (its camera settled first)
-        if settings.navigator {
+        if ::config::get_bool("ui", "navigator").unwrap_or(true) {
             let mut nav =
-                navigator::Navigator::new(true, settings.ui_opacity, &settings.navigator_corner);
+                navigator::Navigator::new(true, ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32, &::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into()));
             nav.schedule = ::legacy_config::env::var_os("OMSI_NAV_SCHEDULE").is_some();
-            nav.show_ai = settings.nav_ai;
-            nav.show_topbar = settings.nav_topbar;
-            nav.show_turn = settings.nav_turn;
-            nav.show_stoplist = settings.nav_stoplist;
-            nav.schedule |= settings.nav_stops_ext;
+            nav.show_ai = ::config::get_bool("navigator", "ai").unwrap_or(true);
+            nav.show_topbar = ::config::get_bool("navigator", "topbar").unwrap_or(true);
+            nav.show_turn = ::config::get_bool("navigator", "turn").unwrap_or(true);
+            nav.show_stoplist = ::config::get_bool("navigator", "stoplist").unwrap_or(true);
+            nav.schedule |= ::config::get_bool("navigator", "stops_ext").unwrap_or(false);
             if ::legacy_config::env::var_os("OMSI_NAV_MAP").is_some() {
                 nav.toggle_map();
             }
@@ -3054,6 +3070,8 @@ pub(crate) fn run_offscreen(
                 nav.set_route(&key, lanes, true, g);
             }
             let (outside_temp, inside_temp) = app_events::vehicle_temperatures(p);
+            let ui_lang = ::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into());
+            let ui_units = ::config::get_string("ui", "units").unwrap_or_else(|| "metric".into());
             let frame = navigator::NavFrame {
                 traffic: traffic.as_ref(),
                 bus: p.vehicle.position,
@@ -3069,11 +3087,11 @@ pub(crate) fn run_offscreen(
                 stop_requested: navigator::stop_requested(&p.vehicle),
                 time: clock.time,
                 weekday: clock.weekday(),
-                language: &settings.language,
-                units: &settings.units,
+                language: &ui_lang,
+                units: &ui_units,
                 screen: (w as f32, h as f32),
-                ui_scale: settings.ui_scale,
-                follow_window: settings.ui_scale_window,
+                ui_scale: ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
+                follow_window: ::config::get_bool("ui", "scale_window").unwrap_or(true),
                 dt: 0.1,
             };
             for _ in 0..30 {
@@ -3328,7 +3346,7 @@ pub(crate) fn run_offscreen(
     // been there, then - with the budget raised to MB - the textures that come near again
     // with the camera are read back)
     if ::legacy_config::env::var_os("OMSI_TEXTURE_MEMORY").is_some() {
-        world.set_texture_budget(texture_budget(&settings));
+        world.set_texture_budget(texture_budget());
         let from: Vec<f64> = ::legacy_config::env::var("OMSI_BUDGET_FROM")
             .unwrap_or_default()
             .split(',')
@@ -3383,10 +3401,10 @@ fn tyre_lows(v: &::simulation::VehicleInstance, world: &World) -> Vec<(DVec3, f6
         let def = &v.ty.model.meshes[vm.def_index];
         if !v.mesh_props[i].visible
             || !def.animations.iter().any(|an| {
-                an.variable
-                    .to_ascii_lowercase()
-                    .starts_with("wheel_rotation_")
-            })
+            an.variable
+                .to_ascii_lowercase()
+                .starts_with("wheel_rotation_")
+        })
         {
             continue;
         }
@@ -3427,10 +3445,10 @@ fn vehicle_camera(player: &Player, camera: &mut Camera) {
     if v.len() >= 5 {
         camera.position = player.vehicle.position
             + player
-                .vehicle
-                .body_rotation()
-                .transform_point3(Vec3::new(v[0], v[1], v[2]))
-                .as_dvec3();
+            .vehicle
+            .body_rotation()
+            .transform_point3(Vec3::new(v[0], v[1], v[2]))
+            .as_dvec3();
         camera.yaw = player.vehicle.heading as f32 + v[3];
         camera.pitch = v[4];
         camera.near = 0.02;

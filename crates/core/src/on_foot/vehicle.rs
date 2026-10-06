@@ -350,7 +350,7 @@ impl App {
                 next.load_sounds(a);
             }
         }
-        next.vehicle.host.auto_clutch = if self.settings.auto_clutch { 1.0 } else { 0.0 };
+        next.vehicle.host.auto_clutch = if ::config::get_bool("gameplay", "auto_clutch").unwrap_or(true) { 1.0 } else { 0.0 };
         if let Some(now) = self.player.take() {
             let now = now;
             if let Some(h) = self.humans.as_mut() {

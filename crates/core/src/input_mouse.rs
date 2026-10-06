@@ -241,7 +241,7 @@ impl App {
         if pressed
             && self.mouse_drive
             && self.game_menu.is_none()
-            && self.settings.mouse_right_off
+            && ::config::get_bool("controls", "mouse_right_off").unwrap_or(false)
             && !self.paused
         {
             self.set_mouse_drive(false);
@@ -542,7 +542,7 @@ impl App {
                 return;
             }
         }
-        if pressed && self.lan.is_some() && self.settings.chat {
+        if pressed && self.lan.is_some() && ::config::get_bool("ui", "chat").unwrap_or(true) {
             if self.ui.as_ref().map(|u| u.chat.hovered).unwrap_or(false) {
                 self.remotes.chat.open();
                 return;

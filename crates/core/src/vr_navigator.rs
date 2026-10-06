@@ -129,11 +129,7 @@ pub(crate) struct Profiles {
 
 impl Profiles {
     pub fn load() -> Self {
-        let Some(path) =
-            crate::settings::Settings::path().map(|p| p.with_file_name("vr-navigator.json"))
-        else {
-            return Self::default();
-        };
+        let path = ::config::default_path().with_file_name("vr-navigator.json");
         match std::fs::read(&path) {
             Ok(data) => match serde_json::from_slice::<Self>(&data) {
                 Ok(mut profiles) => {
@@ -161,9 +157,7 @@ impl Profiles {
     }
 
     fn save(&self) -> anyhow::Result<()> {
-        let path = crate::settings::Settings::path()
-            .ok_or_else(|| anyhow::anyhow!("no user settings directory"))?
-            .with_file_name("vr-navigator.json");
+        let path = ::config::default_path().with_file_name("vr-navigator.json");
         self.save_to(&path)
     }
 
