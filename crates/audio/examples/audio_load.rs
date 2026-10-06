@@ -1,6 +1,6 @@
 //! Reproducible synthetic workload, timed OUTSIDE the renderer. Prints CSV for comparison
 //! on the same release build/machine. Not a substitute for live map CPU/memory/hearing QA.
-//! cargo run --release -p omsi-audio --example audio_load -- 200
+//! cargo run --release -p audio --example audio_load -- 200
 use ::audio::{AudioEngine, Bus, Clip, Listener, VoiceParams};
 use std::{sync::Arc, time::{Duration, Instant}};
 const RATE: u32 = 48000;
