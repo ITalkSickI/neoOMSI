@@ -168,7 +168,7 @@ impl App {
                 let sens = self.settings.stick_sens;
                 let target = controllers::gamepad_steering(
                     x,
-                    p.vehicle.physics.velocity_kmh() as f32,
+                    p.vehicle.physics.velocity_kmh(),
                     sens,
                 );
                 let now = p.vehicle.physics.controls.steering;
@@ -202,7 +202,7 @@ impl App {
             let k_v = 1.0 - (-dt / 0.4).exp();
             self.mouse_kmh += (raw_kmh - self.mouse_kmh) * k_v;
             let kmh = self.mouse_kmh;
-            let base = (player::mouse_steering(self.cursor.0, w, kmh)
+            let base = (mouse_steering(self.cursor.0, w, kmh)
                 * self.settings.mouse_sens)
                 .clamp(-1.0, 1.0);
             self.mouse_edge = self
@@ -221,8 +221,8 @@ impl App {
             };
             *steer = target + (*steer - target) * k;
             let (mt, mb) = &mut self.mouse_pedals;
-            *mt = player::mouse_pedal(*mt, pedal_t, k);
-            *mb = player::mouse_pedal(*mb, pedal_b, k);
+            *mt = mouse_pedal(*mt, pedal_t, k);
+            *mb = mouse_pedal(*mb, pedal_b, k);
             *fade = (*fade - dt).max(0.0);
             analog.steering = Some(*steer);
             if let Some(path) = omsi_cfg::env::var_os("OMSI_TRACE_STEER") {
@@ -296,7 +296,7 @@ impl App {
                     }
                     return false;
                 }
-                if input_script::is_game_action(&n) {
+                if is_game_action(&n) {
                     if *down {
                         game.push(n);
                     }
@@ -409,15 +409,15 @@ impl App {
                 self.settings.hands_in_cab,
             );
             if self.view != "free" && self.view != "foot" {
-                let key = input_script::look_key_of(&self.view, Some(p.cam_choice));
-                input_script::swap_view_look(
+                let key = look_key_of(&self.view, Some(p.cam_choice));
+                swap_view_look(
                     &mut self.look,
                     &mut self.view_looks,
                     &mut self.look_view,
                     &key,
                 );
                 if let Some(cam) = self.camera.as_ref() {
-                    p.seat = glam::Vec3::from_array(["seat_x", "seat_y", "seat_z"].map(|k| omsi_config::get_float("camera", k).unwrap_or(0.0) as f32));
+                    p.seat = Vec3::from_array(["seat_x", "seat_y", "seat_z"].map(|k| omsi_config::get_float("camera", k).unwrap_or(0.0) as f32));
                     if omsi_config::get_bool("camera", "head_tracking").unwrap_or(false)
                         && self.headtrack.is_none()
                         && self
@@ -427,7 +427,7 @@ impl App {
                         self.headtrack =
                             headtrack::HeadTracker::start(omsi_config::get_int("camera", "head_tracking_port").and_then(|v| u16::try_from(v).ok()).unwrap_or(4242));
                         self.headtrack_failed =
-                            self.headtrack.is_none().then(std::time::Instant::now);
+                            self.headtrack.is_none().then(Instant::now);
                     }
                     let tracked = self.headtrack.as_ref().and_then(|h| h.pose()).filter(|_| {
                         omsi_config::get_bool("camera", "head_tracking").unwrap_or(false)
@@ -440,18 +440,18 @@ impl App {
                     p.steer_look = if vr_on || tracked.is_some() {
                         0.0
                     } else {
-                        player::steering_view_yaw(
+                        steering_view_yaw(
                             p.steer_look,
                             p.vehicle.physics.controls.steering,
                             dt,
                             omsi_config::get_bool("camera", "steer_look").unwrap_or(false) && self.view == "driver",
-                            (omsi_config::get_float("camera", "steer_look_angle").unwrap_or(30.0) as f32),
-                            (omsi_config::get_float("camera", "steer_look_response").unwrap_or(0.25) as f32),
+                            omsi_config::get_float("camera", "steer_look_angle").unwrap_or(30.0) as f32,
+                            omsi_config::get_float("camera", "steer_look_response").unwrap_or(0.25) as f32,
                         )
                     };
                     if let Some(t) = tracked {
-                        p.seat += glam::Vec3::new(t.pos[0], -t.pos[2], t.pos[1])
-                            .clamp(glam::Vec3::splat(-60.0), glam::Vec3::splat(60.0))
+                        p.seat += Vec3::new(t.pos[0], -t.pos[2], t.pos[1])
+                            .clamp(Vec3::splat(-60.0), Vec3::splat(60.0))
                             / 100.0;
                     }
                     // (the outside view's field of view starts from the plain 60
@@ -459,7 +459,7 @@ impl App {
                     // zoom was applied on top of itself and ran off to its narrowest
                     // or widest at once)
                     let prev_cam = *cam;
-                    let base = omsi_render::Camera {
+                    let base = Camera {
                         fov_deg: 60.0,
                         ..*cam
                     };
@@ -471,9 +471,9 @@ impl App {
                         }
                         t.rot
                     });
-                    let fov_setting = (omsi_config::get_float("camera", "fov").unwrap_or(0.0) as f32);
+                    let fov_setting = omsi_config::get_float("camera", "fov").unwrap_or(0.0) as f32;
                     let zoom = self.view_zoom.get(&self.view).copied();
-                    let finish = move |c: &mut omsi_render::Camera| {
+                    let finish = move |c: &mut Camera| {
                         if let Some(r) = tracked_rot {
                             c.yaw += r[0].clamp(-170.0, 170.0);
                             c.pitch = (c.pitch + r[1].clamp(-80.0, 80.0)).clamp(-89.0, 89.0);
@@ -506,7 +506,7 @@ impl App {
                         let mut started = false;
                         if let Some(to) = target.as_ref() {
                             if (entering || left || resetting)
-                                && app::CAM_BLEND_SECS > 0.0
+                                && CAM_BLEND_SECS > 0.0
                                 && omsi_config::get_bool("camera", "smooth").unwrap_or(true)
                             {
                                 let from = if entering {
@@ -531,8 +531,8 @@ impl App {
                                     from
                                 };
                                 if let Some(from) = from {
-                                    let d = glam::Vec3::from_array(from.pos)
-                                        - glam::Vec3::from_array(to.pos);
+                                    let d = Vec3::from_array(from.pos)
+                                        - Vec3::from_array(to.pos);
                                     if d.length() < 25.0 {
                                         self.cam_blend.from = Some(from);
                                         self.cam_blend.t = 0.0;
@@ -547,21 +547,21 @@ impl App {
                         match (target.as_ref(), from_now.as_ref()) {
                             (Some(to), Some(from)) => {
                                 if !started {
-                                    self.cam_blend.t += dt.min(app::CAM_BLEND_MAX_DT)
-                                        / app::CAM_BLEND_SECS;
+                                    self.cam_blend.t += dt.min(CAM_BLEND_MAX_DT)
+                                        / CAM_BLEND_SECS;
                                 }
                                 if self.cam_blend.t >= 1.0 {
                                     // (the hand-over to the plain camera: the glide ends exactly on it (k = 1),
                                     // so the curve's tail is not left over to twitch; only what the two ways
                                     // of making the camera might still differ in is eased out)
                                     let mut last =
-                                        p.driver_world(&app::blend_local(from, to, 1.0));
+                                        p.driver_world(&blend_local(from, to, 1.0));
                                     finish(&mut last);
                                     self.cam_blend.carry =
-                                        Some(app::CamCarry::between(&last, &cam));
+                                        Some(CamCarry::between(&last, &cam));
                                     self.cam_blend.from = None;
                                 } else {
-                                    let mixed = app::blend_local(
+                                    let mixed = blend_local(
                                         from,
                                         to,
                                         self.cam_blend.progress(),

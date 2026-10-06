@@ -174,9 +174,9 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "vol_scenery" => s.vol_scenery,
         "wheel_range" => s.wheel_range,
         "wheel_lock" => s.wheel_lock,
-        "fov" => (omsi_config::get_float("camera", "fov").unwrap_or(0.0) as f32),
-        "steer_look_angle" => (omsi_config::get_float("camera", "steer_look_angle").unwrap_or(30.0) as f32),
-        "steer_look_response" => (omsi_config::get_float("camera", "steer_look_response").unwrap_or(0.25) as f32),
+        "fov" => omsi_config::get_float("camera", "fov").unwrap_or(0.0) as f32,
+        "steer_look_angle" => omsi_config::get_float("camera", "steer_look_angle").unwrap_or(30.0) as f32,
+        "steer_look_response" => omsi_config::get_float("camera", "steer_look_response").unwrap_or(0.25) as f32,
         "seat" => ["seat_x", "seat_y", "seat_z"].map(|k| omsi_config::get_float("camera", k).unwrap_or(0.0) as f32)[arg.trim().parse::<usize>().unwrap_or(0).min(2)],
         "hour" => ((app.clock.time / 3600.0) as i64).rem_euclid(24) as f32,
         "minute" => (((app.clock.time / 60.0) as i64) % 60) as f32,
@@ -305,7 +305,7 @@ pub(super) fn option_set(
             None
         }
         "steer_look_angle" => {
-            omsi_config::set_setting("camera", "steer_look_angle", (v.round()) as f64);
+            omsi_config::set_setting("camera", "steer_look_angle", v.round() as f64);
             let _ = omsi_config::save();
             None
         }

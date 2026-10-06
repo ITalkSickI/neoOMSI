@@ -125,7 +125,6 @@ pub(super) fn map_options_page(app: &App) -> Page {
 }
 
 pub(super) fn options_pages(app: &App) -> Vec<Page> {
-    let s = &app.settings;
     let file = settings_file();
     let pick = |key: &str, name: &str, desc: &str| select_row(&file, key, name, desc);
     let pct = |v: f32| format!("{:.0} %", v * 100.0);
