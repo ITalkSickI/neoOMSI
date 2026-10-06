@@ -23,6 +23,8 @@ impl Def {
 pub const DEFAULTS: &[(&str, &str, Def)] = &[
     // [gameplay]
     ("gameplay", "drive-keys", Def::Str("simple")),
+    // [graphics]
+    ("graphics", "fullscreen", Def::Bool(false)),
     // [audio]
     ("audio", "master-volume", Def::Float(1.0)),
     // [controller]

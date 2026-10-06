@@ -45,7 +45,7 @@ fn a_share_of_the_drive_is_a_driven_axle() {
 
 #[test]
 fn rear_sections_are_not_listed_and_lead_to_their_front() {
-    let dir = std::env::temp_dir().join(format!("::legacy_vehicle_couple_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("legacy_vehicle_couple_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("G Main.bus"), "[friendlyname]\nMB\nO530G\nDefault\n\n[coupling_back]\n0\n-4\n0.3\n\n[couple_back]\ng trail.BUS\nfalse\n").unwrap();
     std::fs::write(
@@ -125,7 +125,7 @@ fn an_empty_registration_affix_keeps_the_next_keyword() {
 /// list file whatever the mode), prefix + number only where the list has none.
 #[test]
 fn list_plate_wins_over_a_later_automatic_mode() {
-    let dir = std::env::temp_dir().join(format!("::legacy_vehicle_regs_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("legacy_vehicle_regs_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("Nos.org"), "E1\nE2\n").unwrap();
     std::fs::write(dir.join("Regs.org"), "AB12 CDE\n").unwrap();
