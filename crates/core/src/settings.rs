@@ -10,6 +10,7 @@ pub const SETTINGS_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
+    // FYI: we don't remove "Migrated" stuff because this shit is cursed, don't ask me why
     pub msaa: u32, // TODO: Migrate to new config lib
     pub anisotropy: u16, // TODO: Migrate to new config lib
     pub ssao: bool, // TODO: Migrate to new config lib
@@ -720,95 +721,6 @@ impl Settings {
             s.boarding = "auto".into();
         }
         s
-    }
-
-    /// The settings as the file holds them. The game only ever reads the file - the
-    /// launcher's settings page writes it - so this is here for the round-trip test that
-    /// every key read is written back.
-    #[cfg(test)]
-    pub fn to_text(&self) -> String {
-        let mut text = format!(
-            "# neoOMSI settings\nversion={}\nmsaa={}\nanisotropy={}\nssao={}\nshadows={}\nshadow_size={}\nshadow_blobs={}\nnavigator={}\nui_opacity={}\nnavigator_corner={}\nboarding={}\ndetail_textures={}\nexact_fare={}\nenhanced={}\ngraphics={}\nfullscreen={}\nvsync={}\nvolume={}\npost_aa={}\nrender_scale={}\nlanguage={}\ntexture_compression={}\ntexture_memory={}\nauto_clutch={}\nauto_ibis={}\nmomentary_gears={}\nmin_obj_size={}\nmax_obj_dist={}\nmax_fps={}\nchat={}\ntooltips={}\nname_tags={}\nshow_fps={}\nclouds={}\npax_density={}\nvol_ai={}\nvol_scenery={}\nmirror_size={}\nmirror_refresh={}\ndoppler={}\ndriver={}\ndriverview_smooth={}\n",
-            SETTINGS_VERSION,
-            self.msaa,
-            self.anisotropy,
-            self.ssao as u8,
-            self.shadows as u8,
-            self.shadow_size,
-            self.shadow_blobs as u8,
-            self.navigator as u8,
-            self.ui_opacity,
-            self.navigator_corner,
-            self.boarding,
-            self.detail_textures as u8,
-            self.exact_fare as u8,
-            self.enhanced as u8,
-            self.graphics,
-            self.fullscreen as u8,
-            self.vsync as u8,
-            self.volume,
-            self.post_aa,
-            self.render_scale_text(),
-            self.language,
-            self.texture_compression as u8,
-            self.texture_memory,
-            self.auto_clutch as u8,
-            self.auto_ibis as u8,
-            self.momentary_gears as u8,
-            self.min_obj_size,
-            if self.max_obj_dist < 0.0 {
-                "auto".to_string()
-            } else {
-                self.max_obj_dist.to_string()
-            },
-            self.max_fps,
-            self.chat as u8,
-            self.tooltips as u8,
-            self.name_tags as u8,
-            self.show_fps as u8,
-            self.clouds as u8,
-            self.pax_density,
-            self.vol_ai,
-            self.vol_scenery,
-            self.mirror_size,
-            self.mirror_refresh,
-            self.doppler as u8,
-            self.driver as u8,
-            self.driverview_smooth as u8
-        );
-        text.push_str(&format!("nightmap_glow={}\n", self.nightmap_glow));
-        text.push_str(&format!(
-            "led_glow={}\nled_mips={}\nui_scale={}\nui_scale_window={}\nnotes={}\n",
-            self.led_glow, self.led_mips, self.ui_scale, self.ui_scale_window as u8, self.notes as u8,
-        ));
-        text.push_str(&format!(
-            "atmosphere_brightness={}\n",
-            self.atmosphere_brightness
-        ));
-        text.push_str(&format!("steer_look={}\nsteer_look_angle={}\nsteer_look_response={}\nlook_sens={}\nblinker_cancel={}\n", self.steer_look as u8, self.steer_look_angle, self.steer_look_response, self.look_sens, self.blinker_cancel as u8));
-        text.push_str(&format!(
-            "units={}\ndiscord_status={}\ndiscord_app_id={}\n",
-            self.units, self.discord_status as u8, self.discord_app_id
-        ));
-        text.push_str(&format!("auto_shift={}\n", self.auto_shift as u8));
-        text.push_str(&format!(
-            "pax_prefer_seats={}\n",
-            self.pax_prefer_seats as u8
-        ));
-        text.push_str(&format!(
-            "map_detail={}\n",
-            if self.map_detail < 0 {
-                "auto".to_string()
-            } else {
-                self.map_detail.to_string()
-            }
-        ));
-        text.push_str(&format!(
-            "pax_models={}\npax_motion={}\n",
-            self.pax_models, self.pax_motion
-        ));
-        text.push_str(&format!("pax_ik={}\n", self.pax_ik as u8));
-        text
     }
 
     /// Vanilla graphics: the picture as OMSI 2 draws it.
