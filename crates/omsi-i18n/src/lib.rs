@@ -50,12 +50,15 @@ fn tables() -> &'static HashMap<String, Table> {
     })
 }
 
-fn find(lang: &str, key: &str) -> Option<&'static str> {
+fn find_modern(lang: &str, key: &str) -> Option<&'static str> {
     tables()
         .get(&lang.to_ascii_lowercase())
         .and_then(|t| t.get(key))
         .map(String::as_str)
-        .or_else(|| legacy::lookup(lang, key))
+}
+
+fn find(lang: &str, key: &str) -> Option<&'static str> {
+    find_modern(lang, key).or_else(|| legacy::lookup(lang, key))
 }
 
 pub fn set_fallback(f: Option<Lookup>) {
@@ -82,6 +85,16 @@ pub fn languages() -> Vec<&'static str> {
     LOCALES.iter().map(|(c, _)| *c).collect()
 }
 
+pub fn keys() -> Vec<String> {
+    let mut all: Vec<String> = tables()
+        .values()
+        .flat_map(|t| t.keys().cloned())
+        .collect();
+    all.sort();
+    all.dedup();
+    all
+}
+
 pub fn lookup(lang: &str, key: &str) -> Option<String> {
     find(lang, key).map(str::to_string)
 }
@@ -92,7 +105,7 @@ pub fn tr(key: &str) -> Cow<'_, str> {
     }
     let lang = language();
     if !lang.is_empty() {
-        if let Some(t) = find(&lang, key) {
+        if let Some(t) = legacy::lookup(&lang, key) {
             return Cow::Borrowed(t);
         }
         if let Some(t) = FALLBACK
@@ -104,10 +117,27 @@ pub fn tr(key: &str) -> Cow<'_, str> {
             return Cow::Owned(t);
         }
     }
-    match find(DEFAULT, key) {
+    match legacy::lookup(DEFAULT, key) {
         Some(t) => Cow::Borrowed(t),
         None => Cow::Borrowed(key),
     }
+}
+
+/// We will only translate text when we use this, the legacy way is shit.
+pub fn translate(key: &str, params: &[(&str, &dyn std::fmt::Display)]) -> String {
+    let lang = language();
+    let mut text = if lang.is_empty() {
+        None
+    } else {
+        find_modern(&lang, key)
+    }
+        .or_else(|| find_modern(DEFAULT, key))
+        .unwrap_or(key)
+        .to_string();
+    for (name, value) in params {
+        text = text.replace(&format!("{{{name}}}"), &value.to_string());
+    }
+    text
 }
 
 #[cfg(test)]

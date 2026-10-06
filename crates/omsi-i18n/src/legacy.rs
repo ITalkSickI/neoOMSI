@@ -1,3 +1,6 @@
+// This code help us to use the legacy `app.yml` file.
+// Please use the new way instead of this.
+
 use hashbrown::HashMap;
 use std::sync::OnceLock;
 
@@ -57,6 +60,13 @@ pub fn lookup(lang: &str, key: &str) -> Option<&'static str> {
         .get(&lang.to_ascii_lowercase())
         .and_then(|t| t.get(key))
         .map(String::as_str)
+}
+
+pub fn keys() -> impl Iterator<Item = &'static String> {
+    TABLE
+        .get_or_init(|| parse(SOURCE))
+        .values()
+        .flat_map(|t| t.keys())
 }
 
 #[cfg(test)]
