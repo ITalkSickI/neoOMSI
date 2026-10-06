@@ -13828,6 +13828,13 @@ fn object_lanes(
                 }
                 *q = pos + transform.transform_point3(local);
             }
+            for h in &mut l.headings {
+                let r = (*h as f64).to_radians();
+                let d = transform.transform_vector3(DVec3::new(r.sin(), r.cos(), 0.0));
+                if d.x.abs() + d.y.abs() > 1e-9 {
+                    *h = d.x.atan2(d.y).to_degrees() as f32;
+                }
+            }
             l.refresh();
             l.traffic_light = controller.and_then(|c| {
                 sco.path_traffic_light
