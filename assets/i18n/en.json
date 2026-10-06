@@ -1,3 +1,5 @@
 {
-
+  "example": {
+    "speed": "Speed: {kmh} km/h"
+  }
 }
