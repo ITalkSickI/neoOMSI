@@ -255,11 +255,12 @@ pub(super) fn assign_occluders(
     let mut lights = std::mem::take(&mut scene.lights);
     let mut shadowed = 0usize;
     let mut shadowed_spots = 0usize;
+    let spill_r = spill_radius(&settings().spill);
     let mut gathers = 0usize;
     for l in lights.iter_mut() {
         l.occ_first = 0;
         l.occ_count = 0;
-        let spill = l.radius == INTERIOR_SPILL_RADIUS;
+        let spill = l.radius == spill_r;
         let spot = !spill && l.direction.length_squared() > 0.5;
         if l.radius <= 0.0 || l.is_screen() {
             continue;
@@ -319,6 +320,9 @@ pub(super) fn assign_occluders(
         let first = scene.occluders.len() as u32;
         scene.occluders.extend_from_slice(occ);
         for (o, oc) in &bodies {
+            if spill {
+                break;
+            }
             let body_reach = if spot {
                 l.radius.min(SPOT_REACH as f32)
             } else {
@@ -367,8 +371,8 @@ pub(super) fn body_box(ty: &omsi_sim::VehicleType) -> Option<[f32; 6]> {
     })
 }
 
-pub(super) const BODY_INNER: f32 = 0.25;
-pub(super) const BODY_SKIN: f32 = 0.15;
+pub(super) const BODY_INNER: f32 = 0.4;
+pub(super) const BODY_SKIN: f32 = 0.3;
 
 /// A vehicle's bodies for `body_hides`: box, inverse of the body's turn, origin (made once
 /// per vehicle and frame, not per corona).

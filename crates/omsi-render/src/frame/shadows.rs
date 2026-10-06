@@ -6,8 +6,8 @@ pub const SHADOW_RANGE_CLOSE: f32 = 32.0;
 pub(crate) const SHADOW_CLOSE_MAX: u32 = 2048;
 
 pub(crate) const SPOT_SLOTS: usize = 8;
-pub(crate) const SPOT_DRAWS_PER_FRAME: usize = 2;
-pub(crate) const SPOT_REDRAW_AGE: u32 = 24;
+pub(crate) const SPOT_DRAWS_PER_FRAME: usize = 4;
+pub(crate) const SPOT_REDRAW_AGE: u32 = 6;
 pub(crate) const SPOT_CAM_RANGE: f64 = 70.0;
 pub(crate) const SPOT_RANGE_MAX: f32 = 45.0;
 pub(crate) const SPOT_NEAR: f32 = 0.8;
@@ -185,10 +185,12 @@ impl Renderer {
                 }
             }
         }
-        for (ci, (_, li, _)) in cands.iter().enumerate() {
+        for (ci, (_, li, pose)) in cands.iter().enumerate() {
             if let Some(k) = assign[ci] {
-                if slots[k].drawn.is_some() {
-                    out[*li] = k as u32 + 1;
+                if let Some(d) = slots[k].drawn {
+                    if (d.pos - pose.pos).length() < 0.5 && d.dir.dot(pose.dir) > 0.98 {
+                        out[*li] = k as u32 + 1;
+                    }
                 }
             }
         }

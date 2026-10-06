@@ -2,7 +2,7 @@ use super::*;
 // (the spill lights sit just outside the body's box: inside it they counted as "in the skin" and the body neither held nor shaded their light, so it went through the bodywork)
 // (a vehicle farther than this from the camera gets no window light: up to ten lights with
 // occluders each, for a glow a few pixels wide - the cost on a weak graphics card)
-pub(super) const SPILL_RANGE: f64 = 30.0;
+pub(super) const SPILL_RANGE: f64 = 70.0;
 pub(super) const SPILL_VEHICLES: usize = 3;
 pub(super) static LED_GLOW: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
@@ -76,7 +76,13 @@ pub fn corona_lights(coronas: &[Corona], dark: f32, max: usize, out: &mut Vec<Po
             ])
         })
         .collect();
-    found.sort_by(|a, b| b.intensity.total_cmp(&a.intensity));
+    found.sort_by(|a, b| {
+        b.intensity
+            .total_cmp(&a.intensity)
+            .then(a.position.x.total_cmp(&b.position.x))
+            .then(a.position.y.total_cmp(&b.position.y))
+            .then(a.position.z.total_cmp(&b.position.z))
+    });
     found.truncate(max);
     out.extend(found);
 }
