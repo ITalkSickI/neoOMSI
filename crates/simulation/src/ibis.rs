@@ -22,6 +22,7 @@
 //! variables show the duty. The plan is then played on the bus at a driver's pace,
 //! checking on the way that the unit is where the trial run was.
 
+use crate::host::FiredSound;
 use crate::{VehicleHost, VehicleInstance};
 use hashbrown::HashSet;
 use ::legacy_script::{BlockId, Op, Program, State, VarId, Vm};
@@ -759,6 +760,17 @@ fn layouts(t: &Target, room: usize) -> Vec<String> {
     out
 }
 
+/// A quiet press must not play its stop announcement, but keeps the normal `(T.…)` sounds
+/// the same key fired: everything from `before` on that is a `(T.F.…)` file goes.
+fn drop_announcements(sounds: &mut Vec<FiredSound>, before: usize) {
+    let mut i = 0;
+    sounds.retain(|s| {
+        let keep = i < before || s.file().is_none();
+        i += 1;
+        keep
+    });
+}
+
 /// A running typing job: the plan found for the bus, played at a driver's pace.
 pub struct Typist {
     target: Target,
@@ -917,7 +929,7 @@ impl Typist {
                     let announced = v.host.fired_sounds.len();
                     v.trigger(&press.key);
                     if press.quiet {
-                        v.host.fired_sounds.truncate(announced);
+                        drop_announcements(&mut v.host.fired_sounds, announced);
                     }
                     self.releases.push((self.t + HOLD, press.key.clone()));
                     self.next += 1;
@@ -1438,6 +1450,51 @@ fn confirm(u: &Unit, t: &Target, s: &mut Sim, enter: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SimClock;
+    use ::legacy_script::{CompileInput, compile};
+
+    /// A quiet press leaves out the stop announcement but keeps the normal `(T.…)` sounds
+    /// the same key fired (the announcement is a `(T.F.…)` file, the others are not).
+    #[test]
+    fn a_quiet_press_keeps_normal_triggers_and_drops_the_announcement() {
+        let dir = std::env::temp_dir().join(format!("omsi_ibis_quiet_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("ibis.osc");
+        std::fs::write(
+            &script,
+            "{trigger:stop}\n(T.L.chime)\n\"announce.wav\" (T.F.stop_announce)\n{end}\n",
+        )
+        .unwrap();
+        let p = compile(&CompileInput {
+            scripts: vec![script],
+            ..Default::default()
+        });
+        assert!(p.errors.is_empty(), "{:?}", p.errors);
+        let mut host = VehicleHost::new(SimClock::default());
+        let mut state = State::new(&p);
+        let mut vm = Vm::new();
+
+        // a normal sound fired before the press stays
+        host.fired_sounds.push(FiredSound::Trigger {
+            name: "idle".into(),
+        });
+        let announced = host.fired_sounds.len();
+        assert!(vm.run_trigger(&p, "stop", &mut state, &mut host));
+        assert_eq!(host.fired_sounds.len(), announced + 2);
+
+        drop_announcements(&mut host.fired_sounds, announced);
+        assert_eq!(
+            host.fired_sounds,
+            vec![
+                FiredSound::Trigger {
+                    name: "idle".into()
+                },
+                FiredSound::Trigger {
+                    name: "chime".into()
+                },
+            ]
+        );
+    }
 
     #[test]
     fn layouts_fit_the_room() {
