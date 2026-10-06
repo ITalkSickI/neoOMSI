@@ -11,7 +11,6 @@ pub(super) const INTERIOR_SPILL_LAMP: f32 = 0.25;
 pub(super) const INTERIOR_SPILL_RADIUS: f32 = 12.0;
 pub(super) const INTERIOR_SPILL_CORE: f32 = 2.0;
 pub(super) const INTERIOR_SPILL_WHITE: f32 = 0.6;
-pub(super) const INTERIOR_SPILL_SLOTS: usize = 8;
 pub(super) const INTERIOR_SPILL_TILT: f32 = 20.0;
 pub(super) const INTERIOR_SPILL_INNER: f32 = 15.0;
 pub(super) const INTERIOR_SPILL_OUTER: f32 = 45.0;

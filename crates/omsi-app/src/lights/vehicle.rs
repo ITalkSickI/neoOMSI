@@ -214,12 +214,9 @@ pub fn vehicle_lights(
                 .to_radians()
                 .cos(),
         ];
-        let per_section = ((INTERIOR_SPILL_SLOTS / sp.vehicles.max(1) as usize)
-            / (1 + v.trailers.len()))
-            .max(2);
         let spill_r = spill_radius(&sp);
         for (model, _bb, xf, origin) in sections {
-            let mut lit: Vec<usize> = (0..model.interior_lights.len())
+            let lit: Vec<usize> = (0..model.interior_lights.len())
                 .filter(|&li| {
                     let il = &model.interior_lights[li];
                     value_of(&il.variable) >= 0.5 && !interior_cfg(li).off
@@ -228,16 +225,7 @@ pub fn vehicle_lights(
             if lit.is_empty() {
                 continue;
             }
-            lit.sort_by(|a, b| {
-                model.interior_lights[*a].pos[1].total_cmp(&model.interior_lights[*b].pos[1])
-            });
-            let total = lit.len();
-            let chosen = (per_section / 2).max(1).min(total);
-            let lit: Vec<usize> = (0..chosen)
-                .map(|k| lit[(2 * k + 1) * total / (2 * chosen)])
-                .collect();
-            let share = total as f32 / chosen as f32;
-            let strength = night.clamp(0.0, 1.0) * sp.gain * share;
+            let strength = night.clamp(0.0, 1.0) * sp.gain;
             for li in lit {
                 let il = &model.interior_lights[li];
                 let ic = interior_cfg(li);

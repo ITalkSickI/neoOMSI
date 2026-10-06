@@ -3,7 +3,7 @@ use super::*;
 // (a vehicle farther than this from the camera gets no window light: up to ten lights with
 // occluders each, for a glow a few pixels wide - the cost on a weak graphics card)
 pub(super) const SPILL_RANGE: f64 = 70.0;
-pub(super) const SPILL_VEHICLES: usize = 2;
+pub(super) const SPILL_VEHICLES: usize = 64;
 pub(super) static LED_GLOW: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 pub fn set_led_glow(v: f32) {

@@ -138,7 +138,7 @@ pub(super) fn spots_panel(
         ui.slider("Outer Angle +deg##sp", -40.0, 90.0, &mut m.outer_add);
         ui.slider("Tilt +deg (down)##sp", -30.0, 60.0, &mut m.tilt_add);
         ui.slider("Shines up to (m from body)##sp", 5.0, 300.0, &mut m.reach);
-        ui.slider("Max vehicles##sp", 0, 12, &mut m.vehicles);
+        ui.slider("Max vehicles##sp", 0, 256, &mut m.vehicles);
         if ui.button("Reset Window Light##sp") {
             *m = crate::lights::SpillCfg::DEFAULT;
         }
