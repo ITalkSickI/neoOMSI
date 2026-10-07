@@ -505,6 +505,7 @@ pub(crate) fn make_app(
         shot: None,
         screenshot_mode: None,
         paused: false,
+        sim_accum: 0.0,
         game_menu: None,
         menu_top: None,
         menu_scroll_drag: false,
