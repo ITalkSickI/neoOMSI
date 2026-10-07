@@ -18,7 +18,7 @@ use ::render::{
     AlphaMode, MaterialExtra, MaterialId, MeshId, RenderPhase, Renderer, Scene, TextureId,
 };
 use ::scenery::{SceneryObject, Spline};
-use ::simulation::traffic::{Lane, LaneBuilder, LaneKey, LaneKind, TrafficLightController};
+use ::simulation::traffic::{BlockRule, Lane, LaneBuilder, LaneKey, LaneKind, TrafficLightController};
 use ::texture::{Image, TextureCache, TextureData};
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
@@ -13673,6 +13673,7 @@ fn spline_lanes(
             .filter(|r| {
                 r.path_index == pi as i32
                     && r.kind.eq_ignore_ascii_case("speedlimit")
+                    && !r.kill
                     && r.value > 0.0
             })
             .map(|r| r.value as f32)
@@ -13836,10 +13837,18 @@ fn object_lanes(
                 .map(|b| {
                     b.iter()
                         .filter(|(n, _)| *n >= 0)
-                        .map(|(n, _)| *n as u16)
+                        .map(|(n, mode)| BlockRule {
+                            path: *n as u16,
+                            mode: *mode as u16,
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
+            l.crossing_problem = sco
+                .path_crossing_problem
+                .get(pi)
+                .copied()
+                .unwrap_or(false);
             l.reversed = reverse;
             // Build locally, deform locally, then place. Hidden and visible junctions use
             // the same operation; refresh only after all spatial changes are complete.

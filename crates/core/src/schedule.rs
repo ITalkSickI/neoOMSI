@@ -6,7 +6,7 @@ use crate::traffic::Traffic;
 use hashbrown::{HashMap, HashSet};
 use ::render::{Renderer, Scene};
 use ::simulation::VehicleType;
-use ::simulation::traffic::{LaneKey, Network};
+use ::simulation::traffic::{LaneKey, Network, RouteStatus};
 use ::timetable::TimetableData;
 use std::path::Path;
 use std::sync::Arc;
@@ -998,7 +998,7 @@ impl Schedule {
         traffic
             .cars()
             .iter()
-            .position(|c| c.is_bus() && !c.gone && self.car_departure.get(&c.id) == Some(&k))
+            .position(|c| c.is_bus() && !c.gone && self.car_departure.get(&c.id.get()) == Some(&k))
     }
 
     /// The timetable buses at the end of their trip: each takes its tour's next trip on
@@ -1011,7 +1011,7 @@ impl Schedule {
         scene: &mut Scene,
         day_time: f64,
     ) {
-        let done: Vec<u64> = traffic
+        let done: Vec<::simulation::traffic::VehicleId> = traffic
             .cars()
             .iter()
             .filter(|c| c.trip_done())
@@ -1021,7 +1021,10 @@ impl Schedule {
             let Some(ci) = traffic.cars().iter().position(|c| c.id == id) else {
                 continue;
             };
-            let next = self.car_departure.get(&id).and_then(|&k| self.tour_next[k]);
+            let next = self
+                .car_departure
+                .get(&id.get())
+                .and_then(|&k| self.tour_next[k]);
             let mut taken = false;
             if let Some(j) = next {
                 let d = &self.departures[j];
@@ -1051,7 +1054,7 @@ impl Schedule {
                 // the tour's last trip is over: Omsi takes the bus (and what is coupled to
                 // it) off the road at once rather than letting it drive on
                 traffic.remove_car(world, renderer, scene, id);
-                self.car_departure.remove(&id);
+                self.car_departure.remove(&id.get());
                 if ::legacy_config::env::var_os("OMSI_DEBUG_TRAFFIC").is_some() {
                     log::info!("scheduled bus {id}: the last trip of its tour is over: removed");
                 }
@@ -1670,14 +1673,14 @@ impl Schedule {
         world: &World,
         traffic: &Traffic,
         trip_name: &str,
-    ) -> (Vec<usize>, bool) {
+    ) -> (Vec<usize>, RouteStatus) {
         let Some(trip) = self
             .data
             .trips
             .iter()
             .find(|x| x.name.eq_ignore_ascii_case(trip_name))
         else {
-            return (Vec::new(), true);
+            return (Vec::new(), RouteStatus::Invalid);
         };
         let slots = self.slots(
             world,
@@ -1685,13 +1688,19 @@ impl Schedule {
             &self.steps_of(trip_name, &trip_stations(trip)).0,
             None,
         );
-        let complete = !slots.contains(&Slot::Waiting);
+        let status = if slots.contains(&Slot::Waiting) {
+            RouteStatus::PendingTiles
+        } else if slots.iter().any(|s| matches!(s, Slot::Lane(_))) {
+            RouteStatus::Complete
+        } else {
+            RouteStatus::Invalid
+        };
         (
             slots
                 .into_iter()
                 .filter_map(|s| if let Slot::Lane(l) = s { Some(l) } else { None })
                 .collect(),
-            complete,
+            status,
         )
     }
 
@@ -2014,7 +2023,7 @@ impl Schedule {
             for id in gone {
                 self.car_departure.remove(&id);
                 self.running.retain(|r| r.car != id);
-                if traffic.remove_car(world, renderer, scene, id) {
+                if traffic.remove_car(world, renderer, scene, id.into()) {
                     log::info!("timetable: bus {id} of the player's tour taken off the road");
                 }
             }
@@ -2121,13 +2130,14 @@ impl Schedule {
         }
         // buses whose ground was unloaded under them wait for it to come back
         for id in traffic.take_removed_scheduled() {
-            if let Some(i) = self.car_departure.remove(&id) {
+            if let Some(i) = self.car_departure.remove(&id.get()) {
                 log::debug!("departure {i}: its bus left the loaded tiles, waiting for them");
                 self.waiting.push(i);
             }
         }
         if self.car_departure.len() > 64 + traffic.cars().len() * 2 {
-            let alive: std::collections::HashSet<u64> = traffic.cars().iter().map(|c| c.id).collect();
+            let alive: std::collections::HashSet<u64> =
+                traffic.cars().iter().map(|c| c.id.get()).collect();
             self.car_departure.retain(|id, _| alive.contains(id));
         }
         // tiles brought lanes, or half a minute went by: the waiting departures may be on
@@ -2644,11 +2654,11 @@ impl Schedule {
                 b.serve_early = early;
             }
             let id = car.id;
-            self.car_departure.insert(id, i);
-            self.running.retain(|r| r.car != id);
+            self.car_departure.insert(id.get(), i);
+            self.running.retain(|r| r.car != id.get());
             if end < slots.len() {
                 self.running.push(RunningTrip {
-                    car: id,
+                    car: id.get(),
                     steps,
                     next: end,
                     stations: stations
@@ -2827,7 +2837,7 @@ impl Schedule {
         ) else {
             return Placed::Drop;
         };
-        self.car_departure.insert(traffic.car(ci).id, i);
+        self.car_departure.insert(traffic.car(ci).id.get(), i);
         if let Some(t) = &turned {
             traffic.set_trailers(world, renderer, scene, ci, &t[1..]);
             traffic.car_mut(ci).consist_reversed = true;
@@ -2917,7 +2927,7 @@ impl Schedule {
         );
         if end < slots.len() {
             self.running.push(RunningTrip {
-                car: car.id,
+                car: car.id.get(),
                 steps,
                 next: end,
                 stations: stations
@@ -4455,7 +4465,7 @@ impl Schedule {
         let mut on_road: HashMap<usize, OnRoad> = HashMap::new();
         if let Some(t) = traffic {
             for car in t.cars() {
-                let Some(&i) = self.car_departure.get(&car.id) else {
+                let Some(&i) = self.car_departure.get(&car.id.get()) else {
                     continue;
                 };
                 if trip_stations(&self.data.trips[self.departures[i].trip]).is_empty() {

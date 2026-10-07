@@ -443,6 +443,10 @@ pub(crate) fn run_offscreen(
             l.clock_speed = *speed;
         }
     }
+    // The traffic AI runs on the same fixed tick in the offscreen path as in the window:
+    // the loop's frame `dt` only feeds an accumulator, so the sequence of decision ticks
+    // depends on elapsed time rather than on the frame partition.
+    let mut sim_accum = 0.0f32;
     for i in 0..total_frames {
         let t_s = i as f32 * dt;
         if server {
@@ -716,7 +720,18 @@ pub(crate) fn run_offscreen(
                     .and_then(|p| p.vehicle.var("TrafficPriority"))
                     .is_some_and(|v| v > 0.5),
             );
-            t.tick(dt, player.as_ref().map(|p| player_outline(p)));
+            let steps = ::simulation::traffic::advance_fixed_clock(
+                &mut sim_accum,
+                dt,
+                ::simulation::traffic::SIM_DT,
+                ::simulation::traffic::MAX_SIM_STEPS,
+            );
+            for _ in 0..steps {
+                t.tick(
+                    ::simulation::traffic::SIM_DT,
+                    player.as_ref().map(|p| player_outline(p)),
+                );
+            }
             world.set_switches(&t.switch_requests());
             world.set_signals(&t.signal_aspects(&world.signal_routes, None));
             if let Some(p) = player.as_mut() {
@@ -1174,10 +1189,10 @@ pub(crate) fn run_offscreen(
                 let (alighting, waiting) = h.stop_wishes();
                 t.set_stop_wishes(alighting, waiting);
                 for (id, secs) in h.take_holds() {
-                    t.hold_boarding(id, secs);
+                    t.hold_boarding(crate::traffic::VehicleId(id), secs);
                 }
                 for (id, entry, exit) in h.take_ai_requests() {
-                    t.set_pax_requests(id, &entry, &exit);
+                    t.set_pax_requests(crate::traffic::VehicleId(id), &entry, &exit);
                 }
             }
             if let Some(p) = player.as_mut() {
