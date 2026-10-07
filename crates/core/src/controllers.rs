@@ -1027,7 +1027,7 @@ impl Controllers {
                                 continue;
                             }
                             steering_set_up = true;
-                            if c.gamepad {
+                            if c.gamepad && !c.ff {
                                 // a pad's stick set up to steer is still a stick (#200)
                                 let x = if inverted { -v } else { v };
                                 let floor = if d.deadzone.is_some() || d.calibration[k].is_some_and(|c| c.deadzone.is_some()) {
