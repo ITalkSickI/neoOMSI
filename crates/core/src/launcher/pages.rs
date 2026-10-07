@@ -3368,6 +3368,9 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             &|v| format!("{:.0} %", v * 100.0),
         ) {
             d.deadzone = Some((dz * 100.0).round() / 100.0);
+            for c in d.calibration.iter_mut().flatten() {
+                c.deadzone = None;
+            }
             dirty = true;
         }
         y += ROW + 12.0;

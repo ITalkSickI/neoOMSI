@@ -1043,8 +1043,12 @@ impl Controllers {
                             if c.gamepad {
                                 // a pad's stick set up to steer is still a stick (#200)
                                 let x = if inverted { -v } else { v };
-                                let x = x.signum()
-                                    * ((x.abs() - dz.max(0.08)).max(0.0) / (1.0 - dz.max(0.08)));
+                                let floor = if d.deadzone.is_some() || d.calibration[k].is_some_and(|c| c.deadzone.is_some()) {
+                                    dz
+                                } else {
+                                    dz.max(0.08)
+                                };
+                                let x = x.signum() * ((x.abs() - floor).max(0.0) / (1.0 - floor));
                                 if out.steering.map_or(true, |s| s.abs() < x.abs()) {
                                     out.steering = Some(x);
                                     out.stick = true;
@@ -1145,7 +1149,7 @@ impl Controllers {
                         // (a joystick's centre is slack, so it gets a little dead zone; a
                         // force-feedback wheel's is not: 2 % of it held a 1080° wheel's
                         // picture 11° behind the rim, #866)
-                        let dz_free = if c.ff_capable { dz } else { dz.max(0.02) };
+                        let dz_free = dz;
                         let (steering, position) =
                             wheel_steering(*v, false, 0, dz_free, self.steer_gain);
                         out.steering.get_or_insert(steering);
@@ -1224,7 +1228,7 @@ impl Controllers {
                 }
             }
         }
-        if self.centre && out.steering.is_some_and(|s| s.abs() < CENTRE_SNAP) {
+        if self.centre && out.stick && out.steering.is_some_and(|s| s.abs() < CENTRE_SNAP) {
             out.steering = Some(0.0);
         }
         let before = self
