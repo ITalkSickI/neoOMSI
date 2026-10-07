@@ -2430,7 +2430,6 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("vol_ai", "audio", "ai-volume", Float(0.0, 1.0)),
     ("vol_scenery", "audio", "scenery-volume", Float(0.0, 1.0)),
     ("doppler", "audio", "doppler", Bool),
-    ("ctrl_deadzone", "controller", "deadzone", Float(0.0, 0.3)),
     ("ff_enabled", "controller", "ff_enabled", Bool),
     ("ff_invert", "controller", "ff_invert", Bool),
     ("ctrl_assign", "controller", "assign", Text),

@@ -238,13 +238,6 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         slider_row(
             app,
-            "ctrl_deadzone",
-            "Default controller dead zone",
-            "For controllers without their own dead zone (set per device in the launcher)",
-            &pct,
-        ),
-        slider_row(
-            app,
             "pedal_t",
             "Throttle pedal strength",
             "Adjust how strongly pedal input affects the throttle",

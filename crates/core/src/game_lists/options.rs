@@ -43,7 +43,6 @@ pub(super) fn steps_of(verb: &str) -> Option<Vec<f32>> {
         "pedal_t" | "pedal_b" => PEDAL.to_vec(),
         "mouse_sens" => (10..=300).map(|v| v as f32 / 100.0).collect(),
         "stick_sens" => (2..=40).map(|v| v as f32 * 0.05).collect(),
-        "ctrl_deadzone" => (0..=30).map(|v| v as f32 / 100.0).collect(),
         "look_sens" => (2..=40).map(|v| v as f32 * 0.05).collect(),
         "seat" => (-50..=50).map(|v| v as f32 / 100.0).collect(),
         "hour" => (0..24).map(|v| v as f32).collect(),
@@ -165,7 +164,6 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
         "pedal_b" => ::config::get_float("controls", "pedal_brake").unwrap_or(1.0) as f32,
         "mouse_sens" => ::config::get_float("controls", "mouse_sens").unwrap_or(1.0) as f32,
         "stick_sens" => ::config::get_float("controls", "stick_sens").unwrap_or(0.25) as f32,
-        "ctrl_deadzone" => controllers::global_deadzone(),
         "look_sens" => ::config::get_float("camera", "look_sens").unwrap_or(1.0) as f32,
         "ui_scale" => ::config::get_float("ui", "scale").unwrap_or(1.0) as f32,
         "ui_opacity" => ::config::get_float("ui", "opacity").unwrap_or(0.85).clamp(0.2, 1.0) as f32,
@@ -273,11 +271,6 @@ pub(super) fn option_set(
         }
         "stick_sens" => {
             ::config::set_setting("controls", "stick_sens", ((v * 100.0).round() / 100.0) as f64);
-            let _ = ::config::save();
-            None
-        }
-        "ctrl_deadzone" => {
-            controllers::set_global_deadzone((v * 100.0).round() / 100.0);
             let _ = ::config::save();
             None
         }

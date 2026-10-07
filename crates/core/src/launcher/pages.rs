@@ -3216,7 +3216,6 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         return;
     }
     if let Some(c) = pv.calibrating.as_mut() {
-        let global_dz = crate::controllers::global_deadzone();
         match calibration(
             &mut l.ui,
             inner,
@@ -3224,7 +3223,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             d,
             &live,
             live_dev.is_some_and(|c| c.gamepad),
-            d.deadzone.unwrap_or(global_dz),
+            d.deadzone.unwrap_or(0.0),
         ) {
             Some(true) => {
                 pv.calibrating = None;
@@ -3350,13 +3349,12 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     // (the axes, then every button of the device: the list scrolls - it stopped at the ten
     // buttons that fitted)
     let list = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 50.0);
-    let default_dz = crate::controllers::global_deadzone();
     let mut buttons_start_y = 0.0;
     l.ui.scroll_area("pad-detail", list, &mut |ui, v| {
         let x0 = v.x + 6.0;
         let w = v.w - 16.0;
         let mut y = v.y;
-        let mut dz = d.deadzone.unwrap_or(default_dz);
+        let mut dz = d.deadzone.unwrap_or(0.0);
         if ui.slider(
             "pad-dz",
             Rect::new(x0, y, w, ROW),

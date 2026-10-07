@@ -58,7 +58,6 @@ impl App {
             .controllers
             .get_or_insert_with(|| controllers::Controllers::new(&self.args.root, hwnd));
         ctl.set_focus(self.window_focused);
-        ctl.deadzone = controllers::global_deadzone();
         ctl.centre = ::config::get_bool("controls", "steer_center").unwrap_or(true);
         ctl.pedal_throttle = ::config::get_float("controls", "pedal_throttle").unwrap_or(1.0) as f32;
         ctl.pedal_brake = ::config::get_float("controls", "pedal_brake").unwrap_or(1.0) as f32;

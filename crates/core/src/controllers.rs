@@ -114,14 +114,14 @@ impl DeviceCfg {
             .map_or(v, |c| c.apply(v))
     }
 
-    pub(crate) fn deadzone(&self, k: usize, global: f32) -> f32 {
+    pub(crate) fn deadzone(&self, k: usize) -> f32 {
         self.calibration
             .get(k)
             .copied()
             .flatten()
             .and_then(|c| c.deadzone)
             .or(self.deadzone)
-            .unwrap_or(global)
+            .unwrap_or(0.0)
             .clamp(0.0, 0.3)
     }
 }
@@ -202,15 +202,6 @@ fn dev_put(name: &str, key: &str, v: Option<::config::Value>) {
         Some(v) => ::config::set_setting_sub(CAT, name, key, v),
         None => ::config::remove_setting_sub(CAT, name, key),
     }
-}
-
-/// Dead zone of the devices that have none of their own (0..0.3).
-pub(crate) fn global_deadzone() -> f32 {
-    ::config::get_float(CAT, "deadzone").unwrap_or(0.05).clamp(0.0, 0.3) as f32
-}
-
-pub(crate) fn set_global_deadzone(v: f32) {
-    ::config::set_setting(CAT, "deadzone", v.clamp(0.0, 0.3) as f64);
 }
 
 /// Force feedback and rumble on.
@@ -872,8 +863,6 @@ pub struct Controllers {
     focused: bool,
     cfg: Vec<DeviceCfg>,
     pub enabled: bool,
-    /// The settings' dead zone round the centre of a set-up device's axes (0..0.3).
-    pub deadzone: f32,
     /// The pedals' response curves (Settings → pedal strength; 1 = as the pedal reads).
     pub pedal_throttle: f32,
     pub pedal_brake: f32,
@@ -948,7 +937,6 @@ impl Controllers {
             devices,
             focused: true,
             cfg,
-            deadzone: 0.0,
             pedal_throttle: 1.0,
             pedal_brake: 1.0,
             sources: Default::default(),
@@ -1013,7 +1001,6 @@ impl Controllers {
         let gives = |i: usize, name: &str| may_give(&sources, &present, i, name);
         let mut steer: Option<(String, f32, bool)> = None;
         let mut steering_set_up = false;
-        let dz = self.deadzone.clamp(0.0, 0.3);
         for (cfg, c) in pads {
             if let Some((k, v)) = c.axes.iter().find(|(_, v)| v.abs() > 0.5) {
                 let key = format!("axis:{}", c.name);
@@ -1034,7 +1021,7 @@ impl Controllers {
                             continue;
                         };
                         let v = d.calibrated(k, v);
-                        let dz = d.deadzone(k, dz);
+                        let dz = d.deadzone(k);
                         if matches!(f, Func::Steering) {
                             if !gives(0, &c.name) {
                                 continue;
@@ -1149,7 +1136,7 @@ impl Controllers {
                         // (a joystick's centre is slack, so it gets a little dead zone; a
                         // force-feedback wheel's is not: 2 % of it held a 1080° wheel's
                         // picture 11° behind the rim, #866)
-                        let dz_free = dz;
+                        let dz_free = 0.0;
                         let (steering, position) =
                             wheel_steering(*v, false, 0, dz_free, self.steer_gain);
                         out.steering.get_or_insert(steering);
@@ -1977,14 +1964,14 @@ mod tests {
         assert_eq!(back.calibration[0], d.calibration[0]);
         assert_eq!(back.calibration[5], d.calibration[5]);
         assert_eq!(back.calibration[1], None);
-        assert_eq!(back.deadzone(0, 0.2), 0.05);
-        assert_eq!(back.deadzone(1, 0.2), 0.2);
+        assert_eq!(back.deadzone(0), 0.05);
+        assert_eq!(back.deadzone(1), 0.0);
         let mut own = d.clone();
         own.deadzone = Some(0.08);
         let own = round(&own);
         assert_eq!(own.deadzone, Some(0.08));
-        assert_eq!(own.deadzone(0, 0.2), 0.05);
-        assert_eq!(own.deadzone(1, 0.2), 0.08);
+        assert_eq!(own.deadzone(0), 0.05);
+        assert_eq!(own.deadzone(1), 0.08);
         let mut plain = d.clone();
         plain.calibration = Default::default();
         assert_eq!(round(&plain).calibrated(0, 0.3), 0.3);
