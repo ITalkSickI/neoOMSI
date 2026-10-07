@@ -1018,7 +1018,7 @@ impl Schedule {
             .map(|c| c.id)
             .collect();
         for id in done {
-            let Some(ci) = traffic.cars.iter().position(|c| c.id == id) else {
+            let Some(ci) = traffic.cars().iter().position(|c| c.id == id) else {
                 continue;
             };
             let next = self.car_departure.get(&id).and_then(|&k| self.tour_next[k]);
@@ -2120,14 +2120,14 @@ impl Schedule {
             }
         }
         // buses whose ground was unloaded under them wait for it to come back
-        for id in std::mem::take(&mut traffic.removed_scheduled) {
+        for id in traffic.take_removed_scheduled() {
             if let Some(i) = self.car_departure.remove(&id) {
                 log::debug!("departure {i}: its bus left the loaded tiles, waiting for them");
                 self.waiting.push(i);
             }
         }
-        if self.car_departure.len() > 64 + traffic.cars.len() * 2 {
-            let alive: std::collections::HashSet<u64> = traffic.cars.iter().map(|c| c.id).collect();
+        if self.car_departure.len() > 64 + traffic.cars().len() * 2 {
+            let alive: std::collections::HashSet<u64> = traffic.cars().iter().map(|c| c.id).collect();
             self.car_departure.retain(|id, _| alive.contains(id));
         }
         // tiles brought lanes, or half a minute went by: the waiting departures may be on
@@ -2198,10 +2198,10 @@ impl Schedule {
     fn carry_on(&mut self, world: &World, traffic: &mut Traffic) {
         let mut keep = Vec::new();
         for mut run in std::mem::take(&mut self.running) {
-            let Some(ci) = traffic.cars.iter().position(|c| c.id == run.car) else {
+            let Some(ci) = traffic.cars().iter().position(|c| c.id == run.car) else {
                 continue;
             };
-            let last = traffic.cars[ci].state.route.last().copied();
+            let last = traffic.car(ci).state.route.last().copied();
             Self::add_twins(traffic, &run.steps[run.next.saturating_sub(1)..]);
             let slots = self.slots(world, traffic, &run.steps[run.next..], last);
             let n = slots
@@ -2232,7 +2232,7 @@ impl Schedule {
                 }
             };
             if !lanes.is_empty() {
-                let base = traffic.cars[ci].state.route.len();
+                let base = traffic.car(ci).state.route.len();
                 let mut stops = Vec::new();
                 let mut from = 0;
                 for (si, (sid, t_dep)) in run.stations.iter().enumerate() {
@@ -2258,8 +2258,8 @@ impl Schedule {
                     }
                 }
                 let (ty, rail) = (
-                    traffic.cars[ci].vehicle.ty.clone(),
-                    traffic.cars[ci].is_rail(),
+                    traffic.car(ci).vehicle.ty.clone(),
+                    traffic.car(ci).is_rail(),
                 );
                 place_stops(&traffic.net, &lanes, base, &mut stops, &ty, rail);
                 stops.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
@@ -2283,7 +2283,7 @@ impl Schedule {
             if run.next < run.steps.len() {
                 keep.push(run);
             } else {
-                if let Some(b) = traffic.cars[ci].bus.as_mut() {
+                if let Some(b) = traffic.car_mut(ci).bus.as_mut() {
                     b.route_open = false;
                 }
             }
@@ -2485,8 +2485,8 @@ impl Schedule {
             // along the siding instead - past the end of the track - and another train
             // appeared for the trip.)
             let reverse = self.data.trips[self.departures[i].trip].train_reverse;
-            if traffic.cars[ci].is_rail() && traffic.cars[ci].consist_reversed != reverse {
-                let c = &traffic.cars[ci];
+            if traffic.car(ci).is_rail() && traffic.car(ci).consist_reversed != reverse {
+                let c = traffic.car(ci);
                 let tail = c
                     .vehicle
                     .trailers
@@ -2546,14 +2546,14 @@ impl Schedule {
                 }
             }
             let (ty, rail) = (
-                traffic.cars[ci].vehicle.ty.clone(),
-                traffic.cars[ci].is_rail(),
+                traffic.car(ci).vehicle.ty.clone(),
+                traffic.car(ci).is_rail(),
             );
             place_stops(&traffic.net, &section, 0, &mut stops, &ty, rail);
             // the tour's bus that has just finished its trip takes this one on from where
             // it stands: the section itself when it stands on it, else the shortest way
             // from its lane onto one of the section's first lanes (round a terminal loop)
-            let (lane0, s0) = (traffic.cars[ci].state.lane, traffic.cars[ci].state.s);
+            let (lane0, s0) = (traffic.car(ci).state.lane, traffic.car(ci).state.s);
             let net = &traffic.net;
             let (prefix, from) = match section.iter().position(|&l| l == lane0) {
                 Some(r) => (Vec::new(), r),
@@ -2637,7 +2637,7 @@ impl Schedule {
                 .last()
                 .copied();
             let (always, early) = self.special_stops(i);
-            let car = &mut traffic.cars[ci];
+            let car = traffic.car_mut(ci);
             if let Some(k) = car.vehicle.ty.program.str_var("Linie") {
                 car.vehicle.state.str_vars[k as usize] = line.clone();
             }
@@ -2835,10 +2835,10 @@ impl Schedule {
         ) else {
             return Placed::Drop;
         };
-        self.car_departure.insert(traffic.cars[ci].id, i);
+        self.car_departure.insert(traffic.car(ci).id, i);
         if let Some(t) = &turned {
             traffic.set_trailers(world, renderer, scene, ci, &t[1..]);
-            traffic.cars[ci].consist_reversed = true;
+            traffic.car_mut(ci).consist_reversed = true;
         } else if let Some(rest) = &rest {
             traffic.attach_cars(world, renderer, scene, ci, rest);
         }
@@ -2846,7 +2846,7 @@ impl Schedule {
             log::info!(
                 "train: {}",
                 std::iter::once(
-                    traffic.cars[ci]
+                    traffic.car(ci)
                         .vehicle
                         .ty
                         .def
@@ -2856,7 +2856,7 @@ impl Schedule {
                         .to_string_lossy()
                         .to_string()
                 )
-                .chain(traffic.cars[ci].vehicle.trailers.iter().map(|t| {
+                .chain(traffic.car(ci).vehicle.trailers.iter().map(|t| {
                     format!(
                         "{}{}",
                         t.ty.def
@@ -2870,9 +2870,10 @@ impl Schedule {
                 .collect::<Vec<_>>()
                 .join(" + ")
             );
-            traffic.cars[ci].state.max_speed_kmh = 90.0;
-            traffic.cars[ci].state.length =
-                20.0 * (1 + traffic.cars[ci].vehicle.trailers.len()) as f32;
+            let length = 20.0 * (1 + traffic.car(ci).vehicle.trailers.len()) as f32;
+            let car = traffic.car_mut(ci);
+            car.state.max_speed_kmh = 90.0;
+            car.state.length = length;
         }
         let names = self.trip_stop_names(self.departures[i].trip);
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
@@ -2880,7 +2881,7 @@ impl Schedule {
             .last()
             .copied();
         let (always, early) = self.special_stops(i);
-        let car = &mut traffic.cars[ci];
+        let car = traffic.car_mut(ci);
         // on its layover only when it stands at its first stop now (the trip's first station
         // may lie on a part of the track that is not loaded): it waits there for its departure
         if let Some(b) = car.bus.as_mut() {
