@@ -1,6 +1,6 @@
 export const SITE = "https://neoomsi.com/";
 export const REPO = "neoOMSI/neoOMSI";
-export const DISCORD = "https://discord.gg/Gk7EngX6JK";
+export const DISCORD = "https://discord.gg/neoomsi";
 export const OPENOMSI = {
   repo: "https://github.com/openOMSI-Project/openOMSI",
   site: "https://openomsi-project.github.io/openOMSI/",
