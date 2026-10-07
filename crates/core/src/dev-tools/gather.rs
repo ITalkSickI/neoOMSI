@@ -261,8 +261,8 @@ impl crate::App {
             profile: self.profile.iter().map(|(k, v)| (*k, *v)).collect(),
             frames: self.total_frames,
             traffic: self.traffic.as_ref().map(|t| TrafficPerf {
-                cars: t.cars.len(),
-                dormant: t.dormant.len(),
+                cars: t.car_count(),
+                dormant: t.dormant_count(),
             }),
             weather: self.dev_weather_info(),
         }

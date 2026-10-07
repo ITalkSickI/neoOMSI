@@ -153,7 +153,7 @@ pub(super) fn option_now(app: &App, verb: &str, arg: &str) -> Option<f32> {
     }
     Some(match verb {
         "speed" => ::config::get_float("gameplay", "time_speed").unwrap_or(1.0) as f32,
-        "traffic" => app.traffic.as_ref()?.target as f32,
+        "traffic" => app.traffic.as_ref()?.target() as f32,
         "pax" => ::config::get_float("passengers", "density").unwrap_or(1.0) as f32,
         "volume" => ::config::get_float("audio", "master-volume").unwrap_or(1.0) as f32,
         "led_glow" => ::config::get_int("graphics", "led_glow").unwrap_or(6) as u8 as f32,
@@ -214,8 +214,8 @@ pub(super) fn option_set(
         }
         "traffic" => {
             if let Some(t) = app.traffic.as_mut() {
-                t.target = v.round() as usize;
-                app.args.traffic = t.target;
+                t.set_target(v.round() as usize);
+                app.args.traffic = t.target();
             }
             None
         }
