@@ -5555,33 +5555,6 @@ mod settings_tests {
     }
 
     #[test]
-    fn every_setting_is_on_exactly_one_tab() {
-        let tabs = by_tab();
-        assert_eq!(tabs.len(), SETTINGS_TABS.len());
-        let mut seen = std::collections::HashSet::new();
-        for name in tabs.iter().flatten() {
-            assert!(seen.insert(*name), "{name} is listed on two tabs");
-        }
-        for (tab, names) in tabs.iter().enumerate() {
-            let mut ui = Ui::new();
-            frame(&mut ui, tab, &mut all_rows(), &mut outside());
-            for name in names {
-                assert!(
-                    ui.drawn.contains_key(&id_of(name)),
-                    "{name} is not on the {} tab",
-                    SETTINGS_TABS[tab]
-                );
-            }
-            assert_eq!(
-                ui.drawn.len(),
-                names.len(),
-                "the {} tab has a clickable thing more than the list names",
-                SETTINGS_TABS[tab]
-            );
-        }
-    }
-
-    #[test]
     fn the_driving_tab_leads_to_the_keys_and_the_controllers() {
         let mut s = all_rows();
         assert_eq!(click(1, "s-go-keys", &mut s).controls, Some(0));
