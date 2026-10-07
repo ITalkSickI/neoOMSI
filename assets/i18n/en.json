@@ -1,5 +1,180 @@
 {
-  "example": {
-    "speed": "Speed: {kmh} km/h"
+  "pause": {
+    "title": "PAUSE",
+    "dummy": "Dummy",
+    "details": "DETAILS",
+    "entry": {
+      "resume": "Resume",
+      "save": "Save",
+      "options": "Options",
+      "world": "World",
+      "vehicle": "Vehicle",
+      "quit": "Quit"
+    },
+    "page": {
+      "map": {
+        "nav": "Map",
+        "head": "MAP",
+        "note": "City map and navigation",
+        "card": {
+          "city_map": "City map",
+          "lines": "Lines",
+          "stops": "Stops",
+          "markers": "Markers",
+          "navigation": "Navigation"
+        },
+        "panel": "The map will go here: pick a section, show lines, set destinations."
+      },
+      "options": {
+        "nav": "Options",
+        "head": "OPTIONS",
+        "note": "Adjust the game",
+        "card": {
+          "graphics": "Graphics",
+          "audio": "Audio",
+          "controls": "Controls",
+          "interface": "Interface",
+          "game": "Game"
+        },
+        "panel": "The settings will go here, sorted by area."
+      },
+      "world": {
+        "nav": "World",
+        "head": "WORLD",
+        "note": "Time, weather and traffic",
+        "card": {
+          "weather": "Weather",
+          "time": "Time",
+          "traffic": "Traffic",
+          "passengers": "Passengers",
+          "date": "Date"
+        },
+        "panel": "The world's settings will go here: weather, time of day, traffic."
+      },
+      "vehicle": {
+        "nav": "Vehicle",
+        "head": "VEHICLE",
+        "note": "Condition and equipment",
+        "card": {
+          "condition": "Condition",
+          "lights": "Lights",
+          "doors": "Doors",
+          "suspension": "Suspension",
+          "sound": "Sound"
+        },
+        "panel": "The vehicle's settings will go here.",
+        "empty": "No vehicle options right now",
+        "hint": "Point at an action to see what it does.",
+        "choose": "Choose",
+        "group": {
+          "fleet": {
+            "title": "Vehicles"
+          },
+          "display": {
+            "title": "Display"
+          },
+          "service": {
+            "title": "Service"
+          },
+          "driver": {
+            "title": "Driver"
+          },
+          "teleport": {
+            "title": "Teleport"
+          }
+        },
+        "action": {
+          "dest": {
+            "name": "Destination display",
+            "desc": "Change the current destination"
+          },
+          "hof": {
+            "name": "Depot file (HOF)",
+            "desc": "Change the current depot file (used for the timetable)"
+          },
+          "number": {
+            "name": "Fleet number",
+            "desc": "Change the vehicle's current fleet number"
+          },
+          "switch": {
+            "name": "Drive the next vehicle",
+            "desc": "Take the wheel of another vehicle standing in the world",
+            "button": "Switch"
+          },
+          "place": {
+            "name": "Place a vehicle",
+            "desc": "Place a vehicle of your choice"
+          },
+          "swap": {
+            "name": "Swap for another vehicle",
+            "desc": "Put another vehicle in this one's place and drive it",
+            "button": "Swap"
+          },
+          "couple": {
+            "name": "Couple",
+            "desc": "Couple the vehicle to the one in front of or behind it",
+            "button": "Couple"
+          },
+          "uncouple": {
+            "name": "Uncouple",
+            "desc": "Separate the coupled vehicles",
+            "button": "Uncouple"
+          },
+          "remove": {
+            "name": "Remove this vehicle",
+            "desc": "Removes the current vehicle",
+            "button": "Remove"
+          },
+          "clearplaced": {
+            "name": "Remove the placed vehicles",
+            "desc": "Removes all vehicles you've placed from the world",
+            "button": "Remove"
+          },
+          "refuel": {
+            "name": "Refuel",
+            "desc": "Fills the tank of the current vehicle",
+            "button": "Refuel"
+          },
+          "wash": {
+            "name": "Wash",
+            "desc": "Cleans the current vehicle",
+            "button": "Wash"
+          },
+          "repair": {
+            "name": "Repair",
+            "desc": "Repairs the current vehicle",
+            "button": "Repair"
+          },
+          "reset_vehicle": {
+            "name": "Put back on its wheels",
+            "desc": "Return the vehicle to an upright position",
+            "button": "Reset"
+          },
+          "reload": {
+            "name": "Reload this vehicle",
+            "desc": "Read the vehicle's files again (.bus, model and sound configuration, scripts) and drive it from here",
+            "button": "Reload"
+          },
+          "driver": {
+            "name": "Driver",
+            "desc": "Change the current driver profile"
+          },
+          "getout": {
+            "name": "Get up and out",
+            "desc": "Step out of your car and explore the world",
+            "button": "Get out"
+          },
+          "teleport": {
+            "name": "Move on the map",
+            "desc": "Teleports you to any location on the map",
+            "button": "Pick"
+          },
+          "tplist": {
+            "name": "Teleport to a start point",
+            "desc": "Teleport to a starting point on the map"
+          }
+        }
+      }
+    }
   }
 }
