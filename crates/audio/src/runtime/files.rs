@@ -26,6 +26,15 @@ impl SoundSet {
             warn_missing_once(trigger, &path);
             return;
         };
+        // `(T.F.)` is the generic dynamic-file trigger, not a synonym for an announcement:
+        // the C2 gearbox and other scripted sounds fire it too. Only a file resolved under
+        // an `Announcements` folder gets the PA bus; everything else stays on the set's
+        // fallback `file_bus` (the vehicle), so it is not fed the PA hall/leakage path.
+        let bus = if is_announcement_path(&path) {
+            crate::Bus::Announcement
+        } else {
+            self.file_bus
+        };
         let ai = self.ai;
         let (eased, muffled) = self.advance_blend();
         let inside = self.inside_factor(eased, object_to_world, engine.listener_position());
@@ -61,17 +70,17 @@ impl SoundSet {
             }
             let (position, reach, pan) =
                 placement::place(s.def.pos, s.def.range, exterior, object_to_world);
-            let (body_gain, lowpass_hz) = if self.file_bus == crate::Bus::Announcement {
+            let (body_gain, lowpass_hz) = if bus == crate::Bus::Announcement {
                 outside::announcement_transfer(&s.def, exterior, inside, muffled, var("Snd_OutsideVol"))
             } else { outside::entry_transfer(&s.def, exterior, inside, muffled) };
             let (spatial_blend, pan_width) = placement::cabin_spatial(s.def.pos, exterior, inside);
             s.peak = record * script * through;
-            s.playback_bus = Some(self.file_bus);
+            s.playback_bus = Some(bus);
             let params = MixParams {
-                cabin_reverb: outside::announcement_reverb(&s.def, self.file_bus, exterior,
+                cabin_reverb: outside::announcement_reverb(&s.def, bus, exterior,
                     inside, self.announcement_reverb),
                 spatial_blend,
-                bus: self.file_bus,
+                bus,
                 level: Level::Omsi {
                     record,
                     script,
@@ -122,4 +131,14 @@ impl SoundSet {
         engine.play_mix(clip, mix);
     }
 
+}
+
+/// Whether a resolved `(T.F.)` file lies in an `Announcements` folder (case-insensitive):
+/// those carry the PA/announcement bus, all other dynamic `[sound] N` files do not.
+fn is_announcement_path(path: &Path) -> bool {
+    path.components().any(|c| {
+        c.as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case("Announcements")
+    })
 }

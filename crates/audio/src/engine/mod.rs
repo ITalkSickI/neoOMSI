@@ -98,7 +98,6 @@ impl AudioEngine {
         let reaper = Arc::new(Reaper::new());
         let format = Arc::new(OutputFormat::new(sample_rate, channels));
         let core = AudioCore::new(
-            clock.clone(),
             format,
             commands.clone(),
             reaper.clone(),
@@ -279,17 +278,6 @@ impl AudioEngine {
         if self.output_available() {
             self.enqueue(Command::Stop { id });
         }
-    }
-
-    pub fn set_cabin(&self, h: f32) {
-        let at = self.clock.now();
-        if !self.output_available() {
-            return;
-        }
-        self.enqueue(Command::SetCabin {
-            h: h.clamp(0.0, 1.0),
-            at,
-        });
     }
 
     pub fn set_listener(&self, l: Listener) {

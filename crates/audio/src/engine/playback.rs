@@ -28,7 +28,6 @@ pub trait Playback {
     fn is_playing(&self, id: VoiceId) -> bool;
     fn voice_state(&self, id: VoiceId) -> Option<(VoiceParams, f32)>;
     fn listener_position(&self) -> Vec3;
-    fn set_cabin(&self, h: f32);
     fn load_clip(&self, path: &Path) -> Option<Arc<Clip>>;
     /// The clock the runtime runs on (so an offline engine stays reproducible).
     fn clock(&self) -> Clock;
@@ -71,10 +70,6 @@ impl Playback for AudioEngine {
 
     fn listener_position(&self) -> Vec3 {
         AudioEngine::listener_position(self)
-    }
-
-    fn set_cabin(&self, h: f32) {
-        AudioEngine::set_cabin(self, h)
     }
 
     fn load_clip(&self, path: &Path) -> Option<Arc<Clip>> {

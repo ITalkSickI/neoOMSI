@@ -5,13 +5,13 @@ use std::{path::Path, sync::Arc};
 
 fn setup(inside: bool, mix: f32) -> (AudioEngine, SoundSet) {
     let engine = AudioEngine::new_offline(48000, 2);
-    engine.cache_clip("pa.wav", Arc::new(Clip {
+    engine.cache_clip(Path::new("Announcements").join("pa.wav"), Arc::new(Clip {
         sample_rate: 48000, channels: 1, samples: vec![12000; 480] }));
     let cfg = SoundCfg { sounds: vec![SoundEntry { file: "0".into(), volume: 1.0,
         triggers: vec!["announce".into()], ..Default::default() }], unknown_keywords: vec![] };
     let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
     set.set_inside(inside); set.set_announcement_reverb(mix);
-    let events = [SoundEvent::file(EventSource::Player, 0, "announce", "pa.wav")];
+    let events = [SoundEvent::file(EventSource::Player, 0, "announce", "Announcements/pa.wav")];
     set.update_events(&engine, &|name| (name == "Snd_OutsideVol").then_some(0.0),
         &glam::Mat4::IDENTITY, &events, &|_| None);
     (engine, set)

@@ -9,7 +9,7 @@ fn fixture(inside: bool, position: glam::Vec3, hz: f64) -> (AudioEngine, SoundSe
     // No viewpoint is how the tested C2 declares its interior announcement entry.
     let cfg = SoundCfg { sounds: vec![SoundEntry { file: "0".into(), volume: 1.0,
         triggers: vec!["announce".into()], ..Default::default() }], unknown_keywords: Vec::new() };
-    engine.cache_clip("pa.wav", Arc::new(Clip { sample_rate: 48000, channels: 1,
+    engine.cache_clip(Path::new("Announcements").join("pa.wav"), Arc::new(Clip { sample_rate: 48000, channels: 1,
         samples: (0..96000).map(|i| (12000.0 * (i as f64 * hz / 48000.0 *
             std::f64::consts::TAU).sin()) as i16).collect() }));
     let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
@@ -18,7 +18,7 @@ fn fixture(inside: bool, position: glam::Vec3, hz: f64) -> (AudioEngine, SoundSe
 }
 
 fn fire(engine: &AudioEngine, set: &mut SoundSet, opening: f32) {
-    let events = [SoundEvent::file(EventSource::Player, 0, "announce", "pa.wav")];
+    let events = [SoundEvent::file(EventSource::Player, 0, "announce", "Announcements/pa.wav")];
     set.update_events(engine, &|name| (name == "Snd_OutsideVol").then_some(opening),
         &glam::Mat4::IDENTITY, &events, &|_| None);
 }

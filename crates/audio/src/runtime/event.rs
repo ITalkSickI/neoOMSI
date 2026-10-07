@@ -16,6 +16,12 @@
 //! The exact rule for two identical triggers in one frame is not settled by the static
 //! reference: the runtime keeps the current behavior (an entry restarts once per frame) and
 //! the stream records both firings. See `docs/audio/SOUND_ENGINE_BEHAVIOR.md`, section 4.
+//!
+//! Playback is not event-by-event yet: `SoundSet::update_events` evaluates every entry once
+//! with all of the frame's normal triggers, then replays the `(T.F.)` file events. The stream
+//! order `(source, seq)` therefore orders what is recorded and the fire-time variable
+//! snapshots, but the position of a file event relative to a normal trigger does not change
+//! what plays (the file event is always applied last). The exact rule is OPEN.
 
 use std::time::Instant;
 

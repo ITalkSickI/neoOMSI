@@ -71,7 +71,6 @@ impl SoundSet {
         part_to_world: &dyn Fn(usize) -> Option<Mat4>) -> f32 {
         let geometry = self.camera_cabin_factor(engine.listener_position(), object_to_world, part_to_world);
         let shared = if self.inside { Some(1.0) } else { geometry };
-        if let Some(h) = shared { engine.set_cabin(h); }
         self.hull_override = shared;
         for (_, part) in &mut self.parts {
             part.hull_override = if part.cabin_connected || part.hull.is_none() { shared } else { None };

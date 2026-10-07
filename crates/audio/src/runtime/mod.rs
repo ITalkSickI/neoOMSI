@@ -130,6 +130,30 @@ mod tests {
         assert_eq!(set.state(0), Some(SoundState::Running));
     }
 
+    /// The stream order is recorded, but playback applies all normal triggers first and the
+    /// `(T.F.)` file events afterwards, so a file event wins over a normal trigger in the
+    /// same frame whatever their order in the stream (see `runtime::event`).
+    #[test]
+    fn file_events_are_applied_after_normal_triggers() {
+        let cfg = triggered("0"); // a dynamic `[sound] 0`, filled by the file trigger
+        for file_first in [true, false] {
+            let engine = crate::engine::AudioEngine::new_offline(48_000, 2);
+            engine.cache_clip(Path::new("Announcements").join("voice.wav"), quiet_clip());
+            let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
+            let file =
+                SoundEvent::file(EventSource::Player, 0, "ev_horn", "Announcements/voice.wav");
+            let trig = SoundEvent::trigger(EventSource::Player, 1, "ev_horn");
+            let events = if file_first { vec![file, trig] } else { vec![trig, file] };
+            set.update_events(&engine, &|_| Some(1.0), &glam::Mat4::IDENTITY, &events, &|_| None);
+            assert_eq!(
+                set.sounds[0].playback_bus,
+                Some(crate::Bus::Announcement),
+                "the file event is applied last (file_first={file_first})"
+            );
+            assert_eq!(engine.voice_count(), 1);
+        }
+    }
+
     /// A trigger accepted while the clip is still loading is not swallowed: it starts when
     /// the asset arrives (the asynchronous-load case).
     #[test]

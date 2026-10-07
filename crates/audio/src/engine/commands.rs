@@ -4,14 +4,14 @@
 //! never waits on the game thread; when the lock is busy it drains next block.
 //!
 //! Capacity and overflow (documented once, here): the queue holds [`COMMAND_CAPACITY`]
-//! entries. A `SetParams` for an id already queued, or a `SetListener`, is folded into the
-//! existing entry, so per-frame parameter traffic cannot grow the queue (the cabin commands
-//! are kept in order: their `max` blend is order dependent). When the
-//! queue is full, the oldest parameter entry is evicted (counted as `coalesced_evicted`);
-//! only if there is nothing left to coalesce is the oldest event dropped (counted as
-//! `dropped_commands`), never silently. A start dropped this way is recoverable - the game
-//! forgets the id and the runtime starts it again; the policy is a definition, not a promise
-//! that extreme overload is free.
+//! entries. A `SetParams` for an id already queued, a `SetListener` or a `SetBus` for a bus
+//! already queued is folded into the existing entry, so per-frame parameter traffic cannot
+//! grow the queue. When the queue is full, the oldest parameter entry is evicted (counted as
+//! `coalesced_evicted`); next anything but a `Stop` is evicted (counted as `dropped_commands`);
+//! only a queue of nothing but stops falls back to its oldest entry, never silently. A start
+//! dropped this way is recoverable - the game forgets the id and the runtime starts it again -
+//! while a dropped `Stop` would strand a looping voice, so stops are kept. The policy is a
+//! definition, not a promise that extreme overload is free.
 
 use crate::assets::{clip::Clip, stream::StreamBuf};
 use crate::engine::feedback::Counters;
@@ -46,10 +46,6 @@ pub(crate) enum Command {
     },
     SetListener(Listener),
     SetBus { bus: crate::voice::bus::Bus, gain: f32 },
-    SetCabin {
-        h: f32,
-        at: Instant,
-    },
 }
 
 impl Command {
@@ -60,7 +56,7 @@ impl Command {
             | Command::PlayStream { id, .. }
             | Command::Stop { id }
             | Command::SetParams { id, .. } => Some(*id),
-            Command::SetListener(_) | Command::SetBus { .. } | Command::SetCabin { .. } => None,
+            Command::SetListener(_) | Command::SetBus { .. } => None,
         }
     }
 }
@@ -120,7 +116,19 @@ impl CommandQueue {
             q.push_back(cmd);
             return None;
         }
-        // Nothing coalescible left: drop the oldest command and report it.
+        // Then prefer to evict anything but a `Stop`: a dropped start is restarted by the
+        // runtime, but a dropped `Stop` would leave a looping voice with no handle left to
+        // end it. Globals (listener/bus) are periodic and cheap to lose, so they go too.
+        if let Some(pos) = q
+            .iter()
+            .position(|c| !matches!(c, Command::Stop { .. }))
+        {
+            let dropped = q.remove(pos);
+            self.counters.dropped_commands.fetch_add(1, Ordering::Relaxed);
+            q.push_back(cmd);
+            return dropped.and_then(|c| c.voice_id());
+        }
+        // Nothing but stop events left (pathological): drop the oldest and report it.
         let dropped = q.pop_front();
         self.counters.dropped_commands.fetch_add(1, Ordering::Relaxed);
         q.push_back(cmd);
@@ -218,6 +226,24 @@ mod tests {
         assert_eq!(dropped, None, "a parameter was evicted instead of the start");
         assert_eq!(counters.coalesced_evicted.load(Ordering::Relaxed), 1);
         assert_eq!(counters.dropped_commands.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn overflow_evicts_a_start_rather_than_a_stop() {
+        let counters = Arc::new(Counters::default());
+        let q = CommandQueue::new(counters.clone());
+        q.push(Command::Stop { id: 0 });
+        for k in 1..COMMAND_CAPACITY {
+            q.push(play(k as VoiceId));
+        }
+        let dropped = q.push(play(9_999));
+        assert_eq!(dropped, Some(1), "an older start is reported, not the stop");
+        assert_eq!(counters.dropped_commands.load(Ordering::Relaxed), 1);
+        let got = drain(&q);
+        assert!(
+            got.iter().any(|c| matches!(c, Command::Stop { id } if *id == 0)),
+            "the stop survives the overflow"
+        );
     }
 
     #[test]

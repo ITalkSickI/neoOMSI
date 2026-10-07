@@ -24,7 +24,7 @@ impl AudioEngine {
         }
         self.commands.clear();
         let opened = device.open_prepared(|| {
-            let mut core = AudioCore::new(self.clock.clone(), device.format(),
+            let mut core = AudioCore::new(device.format(),
                 self.commands.clone(), self.reaper.clone(), self.counters.clone(), mixer::muted());
             move |data: &mut [f32]| core.render(data)
         });
@@ -97,7 +97,7 @@ mod tests {
         let e = AudioEngine::new_offline(48000, 2);
         e.play_stream(Arc::new(StreamBuf::default()), VoiceParams::default());
         e.commands.clear(); e.replay();
-        let mut core = AudioCore::new(e.clock(), Arc::new(OutputFormat::new(48000, 2)),
+        let mut core = AudioCore::new(Arc::new(OutputFormat::new(48000, 2)),
             e.commands.clone(), e.reaper.clone(), e.counters.clone(), false);
         core.render(&mut [0.0; 256]); e.pump();
         assert_eq!(e.voice_count(), 1, "one stream reader, no duplicate start ending its id");

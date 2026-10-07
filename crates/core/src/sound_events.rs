@@ -11,8 +11,10 @@ use std::collections::{HashMap, VecDeque};
 
 impl crate::App {
     /// Audio follows the physical ear position, independently of mesh/camera view flags.
+    /// The player riding as a passenger in another player's bus (`inside_remote`) is inside
+    /// a cabin too, so traffic, scenery and ambience must be muffled the same way.
     pub(crate) fn audio_in_cab(&self) -> bool {
-        if self.in_cab { return true; }
+        if self.in_cab || self.inside_remote.is_some() { return true; }
         let (Some(player), Some(camera)) = (self.player.as_ref(), self.camera.as_ref()) else { return false; };
         let Some(sounds) = player.sounds.as_ref() else { return false; };
         sounds.camera_cabin_factor(camera.position.as_vec3(), &player.vehicle.world_transform(),

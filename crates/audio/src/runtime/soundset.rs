@@ -94,7 +94,10 @@ impl SoundSet {
             clock: engine.clock(),
             master: 1.0,
             bus: crate::voice::bus::Bus::Vehicle,
-            file_bus: crate::voice::bus::Bus::Announcement,
+            // The fallback bus of a `(T.F.)` dynamic file. Announcements are routed to
+            // `Bus::Announcement` per file (see `play_file_trigger`); everything else - the
+            // C2 gearbox and every other scripted dynamic sound - stays on the vehicle.
+            file_bus: crate::voice::bus::Bus::Vehicle,
             announcement_reverb: ::legacy_config::env::var("OMSI_ANNOUNCEMENT_REVERB").ok()
                 .and_then(|s| s.parse::<f32>().ok()).filter(|v| v.is_finite())
                 .unwrap_or(0.25).clamp(0.0, 0.5),
@@ -309,6 +312,10 @@ impl SoundSet {
     /// entry once per frame; a file trigger restarts it each time) is unchanged, so the
     /// behavior of two identical firings is exactly what it was - the stream only makes it
     /// observable. The exact OMSI rule is OPEN (behavior doc section 4).
+    ///
+    /// Note (current playback rule): all normal triggers are applied first in the frame-wide
+    /// pass, then the file events, so the stream order does not change what plays for a file
+    /// event and a normal trigger in the same frame (see [`crate::runtime::event`]).
     pub fn update_events(
         &mut self,
         engine: &dyn Playback,
@@ -360,9 +367,6 @@ impl SoundSet {
         let (eased, muffled) = self.advance_blend();
         let listener = engine.listener_position();
         let inside = self.inside_factor(eased, object_to_world, listener);
-        if self.hull.is_some() && self.hull_override.is_none() {
-            engine.set_cabin(inside);
-        }
         let (exterior, master, doppler) = (self.exterior, self.master, !self.listener_vehicle);
         let ai = self.ai;
         let now = self.clock.now();

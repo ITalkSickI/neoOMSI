@@ -13,7 +13,7 @@ fn fixture(announcement: bool) -> (AudioEngine, SoundSet, Mat4) {
         ..Default::default() }], unknown_keywords: vec![] };
     let clip = Arc::new(Clip { sample_rate: 48000, channels: 1,
         samples: vec![8192; if announcement { 480 } else { 96000 }] });
-    engine.cache_clip("engine.wav", clip.clone()); engine.cache_clip("pa.wav", clip);
+    engine.cache_clip("engine.wav", clip.clone()); engine.cache_clip(Path::new("Announcements").join("pa.wav"), clip);
     let mut main = SoundSet::new(&engine, &cfg, Path::new(""));
     let mut rear = SoundSet::new(&engine, &cfg, Path::new(""));
     main.set_hull(Some([2.52, 9.6, 2.5, 0.0, 1.02988, 1.7]));
@@ -61,7 +61,7 @@ fn front_rear_and_joint_cameras_receive_interior_pa_and_its_hall() {
         engine.set_listener(Listener { position: Vec3::new(0.0, y, 1.7), ..Default::default() });
         // Leave set_inside(false): this reproduces entering by the exterior camera.
         set.prepare_listener_cabin(&engine, &Mat4::IDENTITY, &|_| Some(rear));
-        let events = [SoundEvent::file(EventSource::Player, 0, "announce", "pa.wav")];
+        let events = [SoundEvent::file(EventSource::Player, 0, "announce", "Announcements/pa.wav")];
         let var = |name: &str| (name == "Snd_OutsideVol").then_some(0.0);
         set.update_events(&engine, &var, &Mat4::IDENTITY, &events, &|_| None);
         set.update_parts_events(&engine, &var, &|_| Some(rear), &events, &|_| None);

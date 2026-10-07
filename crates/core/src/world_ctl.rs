@@ -15,7 +15,8 @@ impl App {
         let frame = lan::Frame {
             audio: self.audio.as_ref(),
             listener: self.camera.as_ref().map(|c| c.position),
-            muffled: audio_inside || self.inside_remote.is_some(),
+            // `audio_in_cab` already covers riding in another player's bus (`inside_remote`)
+            muffled: audio_inside,
             riders: self.humans.as_ref().map(|h| h.riding()).unwrap_or(0),
             clock: Some(&self.clock),
             tour: self.duty.as_ref().map(|d| format!("{}/{}", d.line, d.tour)),

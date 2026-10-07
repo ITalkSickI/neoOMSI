@@ -1,6 +1,6 @@
 //! The audio thread's own state, owned exclusively by whoever calls [`AudioCore::render`]:
 //! the output callback with a device, or the offline renderer on the caller's thread. It
-//! holds the voice list, the listener, the cabin blend and the effects, drains the bounded
+//! holds the voice list, the listener and the effects, drains the bounded
 //! command queue at the top of every block and retires finished voices to the game thread.
 //!
 //! Real-time constraints (documented once, here): `render` must not block on a game or
@@ -10,7 +10,6 @@
 //! building a `HashMap`, complete finished voices go to the bounded reaper, and radio reads
 //! atomic ring slots without a decoder lock.
 
-use crate::clock::Clock;
 use crate::device::OutputFormat;
 use crate::dsp::limiter::Limiter;
 use crate::dsp::{envelope, resample::Kernel};
@@ -22,7 +21,6 @@ use crate::spatial::Legacy;
 use crate::voice::{doppler_enabled, Voice};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Instant;
 
 // Keep the old `::audio::mixer::…` paths working.
 pub use crate::assets::Clip;
@@ -44,9 +42,6 @@ pub(crate) struct AudioCore {
     bus_targets: [f32; BUS_COUNT],
     stereo: [f32; BLOCK_FRAMES * 2],
     listener: Listener,
-    /// The cabin blend target and when it was set, and the smoothed value.
-    cabin: (f32, Instant),
-    cabin_s: f32,
     reverb: Reverb,
     pa_reverb: Reverb,
     pa_send: [f32; BLOCK_FRAMES * 2],
@@ -58,7 +53,6 @@ pub(crate) struct AudioCore {
     limiter: Limiter,
     spatial: Legacy,
     muted: bool,
-    clock: Clock,
     /// The output device's rate and channels, read while rendering.
     format: Arc<OutputFormat>,
     queue: Arc<CommandQueue>,
@@ -74,14 +68,12 @@ pub(crate) struct AudioCore {
 
 impl AudioCore {
     pub(crate) fn new(
-        clock: Clock,
         format: Arc<OutputFormat>,
         queue: Arc<CommandQueue>,
         reaper: Arc<Reaper>,
         counters: Arc<Counters>,
         muted: bool,
     ) -> AudioCore {
-        let cabin = (0.0, clock.now());
         let mut reverb = Reverb::default();
         reverb.prepare(2, format.sample_rate());
         let mut pa_reverb = Reverb::default();
@@ -93,8 +85,6 @@ impl AudioCore {
             bus_gains: DEFAULT_GAINS, bus_targets: DEFAULT_GAINS,
             stereo: [0.0; BLOCK_FRAMES * 2],
             listener: Listener::default(),
-            cabin,
-            cabin_s: 0.0,
             reverb,
             pa_reverb, pa_send: [0.0; BLOCK_FRAMES * 2], pa_return: 1.0, pa_return_target: 1.0,
             pa_tail_frames: 0,
@@ -103,7 +93,6 @@ impl AudioCore {
             limiter: Limiter::default(),
             spatial: Legacy,
             muted,
-            clock,
             format,
             queue,
             reaper,
@@ -138,12 +127,6 @@ impl AudioCore {
             }
             Command::SetListener(l) => self.listener = l,
             Command::SetBus { bus, gain } => self.bus_targets[bus as usize] = gain,
-            Command::SetCabin { h, at } => {
-                let h = h.clamp(0.0, 1.0);
-                let age = at.saturating_duration_since(self.cabin.1).as_secs_f32();
-                self.cabin.0 = if age > 0.05 { h } else { self.cabin.0.max(h) };
-                self.cabin.1 = at;
-            }
         }
     }
 
@@ -173,7 +156,6 @@ impl AudioCore {
 
         let listener = self.listener;
         let ch = self.format.channels();
-        let frames = out.len() / ch;
         let rate = self.format.sample_rate();
         let dev_rate = rate as f64;
         // More voices than OMSI's `[sound_maxcount]` (200 by default): keep `[important]`
@@ -186,13 +168,19 @@ impl AudioCore {
             .count()
             > MAX_VOICES;
         let mixed = if over {
+            // Rank by what the listener actually hears: a voice on a muted (gain 0) bus must
+            // not outrank an audible one and take a mixed slot.
+            let bus_targets = self.bus_targets;
             self.ranked.clear();
             self.ranked.extend(
                 self.voices
                     .iter()
                     .enumerate()
                     .filter(|(_, v)| !v.is_finished() && !v.is_stream())
-                    .map(|(i, v)| (v.important(), v.heard_gain(&listener), i)),
+                    .map(|(i, v)| {
+                        let bus = v.params().bus as usize;
+                        (v.important(), v.heard_gain(&listener) * bus_targets[bus], i)
+                    }),
             );
             self.ranked
                 .sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.total_cmp(&a.1)).then_with(|| a.2.cmp(&b.2)));
@@ -209,21 +197,9 @@ impl AudioCore {
         } else {
             false
         };
-        let cab = {
-            let age = self
-                .clock
-                .now()
-                .saturating_duration_since(self.cabin.1)
-                .as_secs_f32();
-            let target = if age < 0.25 { self.cabin.0 } else { 0.0 };
-            self.cabin_s += (target - self.cabin_s)
-                * (1.0 - (-(frames as f32) / rate as f32 / 0.15).exp());
-            self.cabin_s
-        };
-        // A cabin flag is a bodywork hint, not a reverb preset. The forced 0.22 wet
-        // mix coloured every switch/button and loop with a synthetic noisy tail.
-        // Only explicitly authored world/trigger-box reverb controls the shared effect.
-        let _cab = cab;
+        // The cabin flag is a bodywork hint, not a reverb preset: the forced 0.22 wet mix
+        // coloured every switch/button with a synthetic tail, so only explicitly authored
+        // world/trigger-box reverb (the listener's own params) drives the shared effect.
         let (rt, mix) = (listener.reverb_time, listener.reverb_mix);
         let bus_k = envelope::coefficient(rate, 0.02);
         // Hold return visibility after a voice ends so its room tail can finish. While

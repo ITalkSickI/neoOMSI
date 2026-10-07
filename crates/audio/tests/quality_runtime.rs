@@ -8,7 +8,9 @@ fn config(file: &str) -> SoundCfg {
         ..Default::default() }], unknown_keywords: Vec::new() }
 }
 fn cache(engine: &AudioEngine) {
-    engine.cache_clip("voice.wav", Arc::new(Clip { sample_rate: 48000, channels: 1, samples: vec![16384; 4800] }));
+    let clip = Arc::new(Clip { sample_rate: 48000, channels: 1, samples: vec![16384; 4800] });
+    engine.cache_clip("voice.wav", clip.clone());
+    engine.cache_clip(Path::new("Announcements").join("voice.wav"), clip);
 }
 #[test]
 fn coupled_parts_receive_file_events_and_their_fire_time_level() {
@@ -17,7 +19,7 @@ fn coupled_parts_receive_file_events_and_their_fire_time_level() {
     let mut set = SoundSet::new(&engine, &cfg, Path::new(""));
     set.set_inside(true);
     set.add_part(1, SoundSet::new(&engine, &cfg, Path::new("")));
-    let events = [SoundEvent::file(EventSource::Player, 0, "announce", "voice.wav").with_vars(vec![0.75])];
+    let events = [SoundEvent::file(EventSource::Player, 0, "announce", "Announcements/voice.wav").with_vars(vec![0.75])];
     let current = |_: &str| Some(0.0); let slots = |_: &str| Some(0);
     set.update_events(&engine, &current, &glam::Mat4::IDENTITY, &events, &slots);
     set.update_parts_events(&engine, &current, &|_| Some(glam::Mat4::IDENTITY), &events, &slots);

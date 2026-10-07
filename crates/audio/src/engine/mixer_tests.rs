@@ -1,13 +1,13 @@
 use super::*;
     use crate::engine::commands::CommandQueue;
     use crate::engine::feedback::{Counters, Reaper};
-    use crate::voice::VoiceId;
+    use crate::voice::{MixParams, VoiceId};
     use std::sync::Arc;
+    use std::time::Instant;
 
     fn core() -> AudioCore {
         let counters = Arc::new(Counters::default());
         AudioCore::new(
-            Clock::real(),
             Arc::new(OutputFormat::new(48_000, 1)),
             Arc::new(CommandQueue::new(counters.clone())),
             Arc::new(Reaper::new()),
@@ -161,6 +161,25 @@ use super::*;
         assert!((out[0] - expect).abs() < 1e-4, "{} vs {expect}", out[0]);
     }
 
+    /// A voice on a bus whose gain is zero is inaudible and must not win a mixed slot over
+    /// audible voices, even when its own gain is the highest.
+    #[test]
+    fn a_voice_on_a_muted_bus_does_not_take_a_mixed_slot() {
+        let clip = Arc::new(Clip { sample_rate: 48_000, channels: 1, samples: vec![64; 100] });
+        let mut s = core();
+        s.queue.push(Command::SetBus { bus: crate::Bus::Ambience, gain: 0.0 });
+        for _ in 0..MAX_VOICES {
+            let mut mix = MixParams::from(VoiceParams { gain: 0.25, ..Default::default() });
+            mix.bus = crate::Bus::Vehicle;
+            s.voices.push(Voice::clip_voice(1, clip.clone(), mix));
+        }
+        let mut muted = MixParams::from(VoiceParams { gain: 1.0, ..Default::default() });
+        muted.bus = crate::Bus::Ambience;
+        s.voices.push(Voice::clip_voice(2, clip, muted));
+        s.render(&mut [0.0f32; 16]);
+        assert!(!s.keep[MAX_VOICES], "the muted-bus voice lost its slot");
+    }
+
     #[test]
     fn only_the_loudest_voices_are_mixed() {
         let clip = Arc::new(Clip {
@@ -224,10 +243,9 @@ fn a_busy_reaper_retains_rejected_starts_without_replaying_them() {
 }
 
 #[test]
-fn button_transients_have_no_implicit_cabin_reverb_tail() {
-    let mut s = core();
-    s.queue.push(Command::SetCabin { h: 1.0, at: s.clock.now() });
-    let clip = Arc::new(Clip { sample_rate: 48000, channels: 1, samples: vec![12000; 240] });
+    fn button_transients_have_no_implicit_cabin_reverb_tail() {
+        let mut s = core();
+        let clip = Arc::new(Clip { sample_rate: 48000, channels: 1, samples: vec![12000; 240] });
     s.queue.push(Command::Play { id: 7, clip, params: Default::default() });
     let mut out = vec![0.0; 10000]; s.render(&mut out);
     assert!(out[..240].iter().any(|s| *s > 0.01));
