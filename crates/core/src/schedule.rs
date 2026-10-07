@@ -6,7 +6,10 @@ use crate::traffic::Traffic;
 use hashbrown::{HashMap, HashSet};
 use ::render::{Renderer, Scene};
 use ::simulation::VehicleType;
-use ::simulation::traffic::{LaneKey, Network, RouteStatus};
+use ::simulation::traffic::{
+    LaneId, LaneKey, Network, RouteStatus, RouteStepState, TileState, bridge_gaps, compile_route,
+    joins, way_between,
+};
 use ::timetable::TimetableData;
 use std::path::Path;
 use std::sync::Arc;
@@ -1241,65 +1244,30 @@ impl Schedule {
         prev: Option<usize>,
     ) -> Vec<Slot> {
         let net = traffic.net();
-        // every step's candidate lanes (both directions of a two-way path)
-        let cands: Vec<Result<&Vec<usize>, Slot>> = steps
-            .iter()
-            .map(|st| {
-                let Some(key) = st.key else {
-                    return Err(Slot::Absent);
-                };
-                match net.by_key.get(&key) {
-                    Some(c) if !c.is_empty() => Ok(c),
-                    _ if !traffic.has_lane_tile(key.tile) && world.has_tile(key.tile) => {
-                        Err(Slot::Waiting)
-                    }
-                    _ => Err(Slot::Absent),
+        let keys: Vec<Option<LaneKey>> = steps.iter().map(|st| st.key).collect();
+        let compiled = compile_route(
+            net,
+            &keys,
+            |tile| {
+                if traffic.has_lane_tile(tile) {
+                    TileState::Loaded
+                } else if world.has_tile(tile) {
+                    TileState::InMap
+                } else {
+                    TileState::Unknown
                 }
+            },
+            prev.map(LaneId),
+        );
+        let out: Vec<Slot> = compiled
+            .steps
+            .iter()
+            .map(|s| match s {
+                RouteStepState::Lane(l) => Slot::Lane(l.index()),
+                RouteStepState::PendingTiles => Slot::Waiting,
+                RouteStepState::Missing => Slot::Absent,
             })
             .collect();
-        let mut out = Vec::with_capacity(steps.len());
-        let mut last = prev;
-        for (i, c) in cands.iter().enumerate() {
-            let c = match c {
-                Ok(c) => *c,
-                Err(slot) => {
-                    if *slot == Slot::Waiting {
-                        last = None;
-                    }
-                    out.push(*slot);
-                    continue;
-                }
-            };
-            // the next lanes the route has (not across a gap)
-            let next = cands[i + 1..].iter().find_map(|x| match x {
-                Ok(n) => Some(Some(*n)),
-                Err(Slot::Waiting) => Some(None),
-                Err(_) => None,
-            });
-            let next = next.flatten();
-            let score = |l: usize| -> f64 {
-                let mut s = 0.0;
-                if let Some(prev) = last {
-                    s += (net.lanes[l].start() - net.lanes[prev].end()).length();
-                }
-                if let Some(next) = next {
-                    let end = net.lanes[l].end();
-                    s += next
-                        .iter()
-                        .map(|&n| (net.lanes[n].start() - end).length())
-                        .fold(f64::MAX, f64::min);
-                }
-                s
-            };
-            let best = c
-                .iter()
-                .copied()
-                .min_by(|a, b| score(*a).total_cmp(&score(*b)))
-                .unwrap();
-            out.push(Slot::Lane(best));
-            last = Some(best);
-        }
-        skip_detours(net, &mut out);
         if ::legacy_config::env::var_os("OMSI_DEBUG_ROUTES").is_some() {
             // where consecutive lanes of the route do not join (a gap, or a change within the
             // same spline, which is a lane change)
@@ -1717,47 +1685,13 @@ impl Schedule {
             return Vec::new();
         };
         let (steps, _) = self.steps_of(trip_name, &trip_stations(trip));
-        let cands: Vec<Option<&Vec<usize>>> = steps
-            .iter()
-            .map(|st| {
-                st.key
-                    .and_then(|k| net.by_key.get(&k))
-                    .filter(|c| !c.is_empty())
-            })
-            .collect();
-        let mut out: Vec<Slot> = Vec::with_capacity(steps.len());
-        let mut last: Option<usize> = None;
-        for (i, c) in cands.iter().enumerate() {
-            let Some(c) = c else {
-                out.push(Slot::Absent);
-                continue;
-            };
-            let next = cands[i + 1..].iter().find_map(|x| *x);
-            let score = |l: usize| -> f64 {
-                let mut s = 0.0;
-                if let Some(prev) = last {
-                    s += (net.lanes[l].start() - net.lanes[prev].end()).length();
-                }
-                if let Some(next) = next {
-                    let end = net.lanes[l].end();
-                    s += next
-                        .iter()
-                        .map(|&n| (net.lanes[n].start() - end).length())
-                        .fold(f64::MAX, f64::min);
-                }
-                s
-            };
-            let best = c
-                .iter()
-                .copied()
-                .min_by(|a, b| score(*a).total_cmp(&score(*b)))
-                .unwrap();
-            out.push(Slot::Lane(best));
-            last = Some(best);
-        }
-        skip_detours(net, &mut out);
-        out.into_iter()
-            .filter_map(|s| if let Slot::Lane(l) = s { Some(l) } else { None })
+        let keys: Vec<Option<LaneKey>> = steps.iter().map(|st| st.key).collect();
+        // The navigator's whole-map network has every tile's lanes whether loaded or not:
+        // a key with no lane is missing here, never merely pending.
+        compile_route(net, &keys, |_| TileState::Unknown, None)
+            .lanes()
+            .into_iter()
+            .map(|l| l.index())
             .collect()
     }
 
@@ -2890,7 +2824,7 @@ impl Schedule {
             b.layover = departure > day_time
                 && b.stops
                     .front()
-                    .map(|st| st.ri == 0 && (st.s - s).abs() < 2.0)
+                    .map(|st| st.route_index == 0 && (st.s - s).abs() < 2.0)
                     .unwrap_or(false);
             b.route_open = end < slots.len();
             b.terminus = terminus.clone();
@@ -2949,127 +2883,6 @@ impl Schedule {
         }
         Placed::Spawned
     }
-}
-
-/// Consecutive route lanes that a vehicle can drive from one into the other: linked, a lane
-/// change beside it, or starting (almost) where the first ends.
-fn joins(net: &Network, a: usize, b: usize) -> bool {
-    net.lanes[a].next.contains(&b)
-        || net.parallel(a, b)
-        || (net.lanes[b].start() - net.lanes[a].end())
-            .truncate()
-            .length()
-            < 2.0
-}
-
-/// A station link often runs on past its station: the path search that made it went a
-/// few paths beyond the stop - into a turning lane, round a corner - before the next link
-/// starts back at the stop on another path (Spandau's links end so in 122 of 505 joins, the
-/// extra paths mostly listed with length 0). Driven as listed, the bus turned off, then
-/// jumped back and drove on the wrong side or against the traffic. Such a detour is passed
-/// over (made `Absent`): where the route does not join, the lane a few steps back that
-/// the next one continues from - or the lane a few steps on that continues this one - is
-/// where the route really goes.
-fn skip_detours(net: &Network, slots: &mut [Slot]) {
-    const REACH: usize = 8;
-    let lane_at = |slots: &[Slot], k: usize| match slots[k] {
-        Slot::Lane(l) => Some(l),
-        _ => None,
-    };
-    let mut i = 0;
-    while i + 1 < slots.len() {
-        let (Some(a), Some(b)) = (lane_at(slots, i), lane_at(slots, i + 1)) else {
-            i += 1;
-            continue;
-        };
-        if joins(net, a, b) {
-            i += 1;
-            continue;
-        }
-        // back: an earlier lane of the route that `b` continues
-        let back = (i.saturating_sub(REACH)..i)
-            .rev()
-            .find(|&k| lane_at(slots, k).map(|x| joins(net, x, b)).unwrap_or(false));
-        // on: a later lane that continues `a`
-        let on = (i + 2..(i + 2 + REACH).min(slots.len()))
-            .find(|&k| lane_at(slots, k).map(|x| joins(net, a, x)).unwrap_or(false));
-        match (back, on) {
-            (Some(k), Some(m)) if i - k <= m - i - 1 => slots[k + 1..=i].fill(Slot::Absent),
-            (_, Some(m)) => slots[i + 1..m].fill(Slot::Absent),
-            (Some(k), None) => slots[k + 1..=i].fill(Slot::Absent),
-            (None, None) => {}
-        }
-        i += 1;
-    }
-}
-
-/// Where consecutive lanes of a route do not join (a path the timetable file names that
-/// the map does not have any more, a junction a mod map edited after its tracks were
-/// made), the shortest way between them through the network, when there is one not much
-/// longer than the gap: the bus drives it instead of jumping across. Returns the lanes and,
-/// for each lane given, its index in them.
-fn bridge_gaps(net: &Network, lanes: &[usize]) -> (Vec<usize>, Vec<usize>) {
-    let mut out: Vec<usize> = Vec::with_capacity(lanes.len());
-    let mut index = Vec::with_capacity(lanes.len());
-    for (k, &b) in lanes.iter().enumerate() {
-        if k > 0 {
-            let a = lanes[k - 1];
-            if !joins(net, a, b) {
-                let gap = (net.lanes[b].start() - net.lanes[a].end())
-                    .truncate()
-                    .length();
-                if let Some(way) = way_between(net, a, b, (gap * 2.5 + 60.0) as f32) {
-                    out.extend(way);
-                }
-            }
-        }
-        index.push(out.len());
-        out.push(b);
-    }
-    (out, index)
-}
-
-/// The lanes strictly between `a` and `b` on the shortest way from the end of `a` to the
-/// start of `b`, if that is at most `max` metres long.
-fn way_between(net: &Network, a: usize, b: usize, max: f32) -> Option<Vec<usize>> {
-    use std::cmp::Reverse;
-    let mut best: HashMap<usize, (f32, usize)> = HashMap::new();
-    let mut heap = std::collections::BinaryHeap::new();
-    for &n in &net.lanes[a].next {
-        heap.push((Reverse(ordered(0.0)), n, a));
-    }
-    while let Some((Reverse(c), l, from)) = heap.pop() {
-        let c = c as f32 / 1000.0;
-        if best.contains_key(&l) {
-            continue;
-        }
-        best.insert(l, (c, from));
-        if l == b {
-            let mut way = Vec::new();
-            let mut at = from;
-            while at != a {
-                way.push(at);
-                at = best.get(&at)?.1;
-            }
-            way.reverse();
-            return Some(way);
-        }
-        let c2 = c + net.lanes[l].length();
-        if c2 > max {
-            continue;
-        }
-        for &n in &net.lanes[l].next {
-            if !best.contains_key(&n) {
-                heap.push((Reverse(ordered(c2)), n, l));
-            }
-        }
-    }
-    None
-}
-
-/// A distance in millimetres, for ordering.
-fn ordered(m: f32) -> u64 {
-    (m.max(0.0) * 1000.0) as u64
 }
 
 /// A flight path: aircraft are not tied to the ground under them.
