@@ -12261,7 +12261,7 @@ impl World {
         vt: &::simulation::VehicleType,
         scheme: Option<usize>,
     ) -> VehicleRender {
-        let set = self.upload_vehicle(renderer, scene, vt, scheme);
+        let set = self.upload_vehicle(renderer, scene, vt, scheme, 0);
         let mut render = self.instantiate_vehicle(renderer, scene, vt, &set, None, None);
         own_skinned_meshes(renderer, scene, vt, &mut render);
         render
@@ -12279,7 +12279,19 @@ impl World {
         scheme: Option<usize>,
         lead: &VehicleRender,
     ) -> VehicleRender {
-        let set = self.upload_vehicle(renderer, scene, vt, scheme);
+        self.add_vehicle_part_mirrors(renderer, scene, vt, scheme, lead, 0)
+    }
+
+    pub fn add_vehicle_part_mirrors(
+        &self,
+        renderer: &Renderer,
+        scene: &mut Scene,
+        vt: &::simulation::VehicleType,
+        scheme: Option<usize>,
+        lead: &VehicleRender,
+        mirror_base: usize,
+    ) -> VehicleRender {
+        let set = self.upload_vehicle(renderer, scene, vt, scheme, mirror_base);
         let shared = if vt.def.script_share || vt.model.script_textures.is_empty() {
             Some(lead.script_textures.as_slice())
         } else {
@@ -12374,7 +12386,7 @@ impl World {
             }
             return;
         }
-        let c = self.upload_vehicle(renderer, scene, vt, scheme);
+        let c = self.upload_vehicle(renderer, scene, vt, scheme, 0);
         self.vehicle_gpu.lock().insert(key, c);
     }
 
@@ -12403,7 +12415,7 @@ impl World {
         let set = match cached {
             Some(c) => c,
             None => {
-                let c = self.upload_vehicle(renderer, scene, vt, scheme);
+                let c = self.upload_vehicle(renderer, scene, vt, scheme, 0);
                 self.vehicle_gpu.lock().insert(key.clone(), c.clone());
                 c
             }
@@ -13079,6 +13091,7 @@ impl World {
         scene: &mut Scene,
         vt: &::simulation::VehicleType,
         scheme: Option<usize>,
+        mirror_base: usize,
     ) -> VehicleSet {
         let mut dyn_slots: Vec<DynSlot> = Vec::new();
         let mut variants: Vec<VariantSlot> = Vec::new();
@@ -13114,7 +13127,7 @@ impl World {
             ($name:expr, $dirs:expr) => {{
                 let nm: &str = &$name;
                 match mirror_index(nm) {
-                    Some(mi) => Some(self.mirror_texture(renderer, scene, mi)),
+                    Some(mi) => Some(self.mirror_texture(renderer, scene, mi + mirror_base)),
                     None => tex!(nm, $dirs, vehicle_texture),
                 }
             }};
@@ -13178,7 +13191,7 @@ impl World {
                         // looking for it on disk only produced a false "texture not found"
                         None
                     } else if let Some(mi) = mirror_index(&tex_name) {
-                        Some(self.mirror_texture(renderer, scene, mi))
+                        Some(self.mirror_texture(renderer, scene, mi + mirror_base))
                     } else if rain_layer && snowing() && !seasonal_texture(&tex_name, &dirs_ref) {
                         tex!("", &dirs_ref, snow_glass_texture)
                     } else {

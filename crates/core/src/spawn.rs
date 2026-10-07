@@ -363,15 +363,19 @@ pub(crate) fn spawn_player(
     }
     let render = world.add_vehicle(renderer, scene, &vt, scheme);
     // coupled rear sections / trailers
+    let mut mirror_base = vt.def.cameras_reflexion.len();
     let trailer_renders: Vec<scene::VehicleRender> = load_coupled_parts(&args.root, &mut vehicle)
         .iter()
         .map(|t| {
-            world.add_vehicle_part(
+            let base = mirror_base;
+            mirror_base += t.def.cameras_reflexion.len();
+            world.add_vehicle_part_mirrors(
                 renderer,
                 scene,
                 t,
                 scheme.filter(|i| *i < t.paint_schemes.len()),
                 &render,
+                base,
             )
         })
         .collect();

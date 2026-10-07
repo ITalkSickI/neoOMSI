@@ -27,13 +27,13 @@ impl App {
                 self.player.as_mut(),
                 self.camera.as_ref(),
             ) {
-                let cams = &p.vehicle.ty.def.cameras_reflexion;
+                let cams = mirror_cams(&p.vehicle);
                 let f = cam.forward();
                 let best = (0..cams.len())
                     .map(|i| {
                         (
                             i,
-                            (p.vehicle.camera_world_full(&cams[i]).0 - cam.position)
+                            (mirror_cam_world_full(&p.vehicle, cams[i].0, cams[i].1).0 - cam.position)
                                 .as_vec3()
                                 .normalize_or_zero()
                                 .dot(f),

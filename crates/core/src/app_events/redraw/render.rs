@@ -569,7 +569,7 @@ impl App {
                     let mirrors = self
                         .player
                         .as_ref()
-                        .map(|p| p.vehicle.ty.def.cameras_reflexion.len())
+                        .map(|p| mirror_cams(&p.vehicle).len())
                         .unwrap_or(0);
                     #[cfg(windows)]
                     let vr_active = self.vr.is_some();

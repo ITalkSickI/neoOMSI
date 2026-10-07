@@ -302,15 +302,19 @@ const MIRROR_ASPECT: f32 = 1.6;
 /// the saloon or at the sky.)
 pub(crate) fn mirror_view(
     v: &::simulation::VehicleInstance,
+    part: Option<&::simulation::vehicle::TrailerPart>,
     c: &::legacy_vehicle::Camera,
     eye: DVec3,
     off: [f32; 2],
 ) -> ::legacy_vehicle::Camera {
-    let rot = v.body_rotation();
-    let at = v.position
+    let (base, rot) = match part {
+        Some(t) => (t.position, t.body_rotation()),
+        None => (v.position, v.body_rotation()),
+    };
+    let at = base
         + rot
-            .transform_point3(glam::Vec3::new(c.pos[0], c.pos[1], c.pos[2]))
-            .as_dvec3();
+        .transform_point3(Vec3::new(c.pos[0], c.pos[1], c.pos[2]))
+        .as_dvec3();
     let d = rot.inverse().transform_vector3((at - eye).as_vec3());
     let Some(d) = d.try_normalize() else {
         return c.clone();
@@ -325,6 +329,30 @@ pub(crate) fn mirror_view(
         yaw: r.x.atan2(r.y).to_degrees(),
         pitch: r.z.clamp(-1.0, 1.0).asin().to_degrees(),
         ..c.clone()
+    }
+}
+
+pub(crate) fn mirror_cams(
+    v: &::simulation::VehicleInstance,
+) -> Vec<(
+    Option<&::simulation::vehicle::TrailerPart>,
+    &::legacy_vehicle::Camera,
+)> {
+    let mut out: Vec<_> = v.ty.def.cameras_reflexion.iter().map(|c| (None, c)).collect();
+    for t in &v.trailers {
+        out.extend(t.ty.def.cameras_reflexion.iter().map(|c| (Some(t), c)));
+    }
+    out
+}
+
+pub(crate) fn mirror_cam_world_full(
+    v: &::simulation::VehicleInstance,
+    part: Option<&::simulation::vehicle::TrailerPart>,
+    c: &::legacy_vehicle::Camera,
+) -> (DVec3, f32, f32, f32) {
+    match part {
+        Some(t) => t.camera_world_full(c),
+        None => v.camera_world_full(c),
     }
 }
 
@@ -368,16 +396,15 @@ pub(crate) fn render_mirrors(
         .as_ref()
         .map(|v| v.0.position)
         .unwrap_or_else(|| driver_eye(p));
-    let cams: Vec<::legacy_vehicle::Camera> = p
-        .vehicle
-        .ty
-        .def
-        .cameras_reflexion
-        .iter()
+    let parts: Vec<Option<&::simulation::vehicle::TrailerPart>> =
+        mirror_cams(&p.vehicle).into_iter().map(|(t, _)| t).collect();
+    let cams: Vec<::legacy_vehicle::Camera> = mirror_cams(&p.vehicle)
+        .into_iter()
         .enumerate()
-        .map(|(i, c)| {
+        .map(|(i, (t, c))| {
             mirror_view(
                 &p.vehicle,
+                t,
                 c,
                 eye,
                 p.mirror_offsets.get(i).copied().unwrap_or([0.0; 2]),
@@ -426,7 +453,7 @@ pub(crate) fn render_mirrors(
             view.as_ref()
                 .map(|v| {
                     mirror_in_view(
-                        p.vehicle.camera_world_full(&cams[i]).0,
+                        mirror_cam_world_full(&p.vehicle, parts[i], &cams[i]).0,
                         cams[i].extra.unwrap_or(0.0).max(MIRROR_MIN_RADIUS),
                         v,
                     )
@@ -445,7 +472,7 @@ pub(crate) fn render_mirrors(
         let Some(Some(tex)) = textures.get(i) else {
             continue;
         };
-        let (eye, yaw, pitch, roll) = p.vehicle.camera_world_full(c);
+        let (eye, yaw, pitch, roll) = mirror_cam_world_full(&p.vehicle, parts[i], c);
         let pitch = pitch.clamp(-89.0, 89.0);
         if ::legacy_config::env::var_os("OMSI_DEBUG_MIRRORS").is_some() {
             log::info!(

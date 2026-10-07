@@ -401,9 +401,10 @@ impl App {
         for tr in q.trailer_renders {
             w.release_vehicle(r, scene, tr);
         }
+        let mirror_base = crate::camera_util::mirror_cams(&p.vehicle).len();
         p.vehicle.attach_trailer_ex(ty.clone(), false);
         p.trailer_renders
-            .push(w.add_vehicle_part(r, scene, &ty, None, &p.render));
+            .push(w.add_vehicle_part_mirrors(r, scene, &ty, None, &p.render, mirror_base));
         p.hand_coupled += 1;
         self.service_msg = Some((
             format!("Coupled: {} {}", ty.def.manufacturer, ty.def.type_name),

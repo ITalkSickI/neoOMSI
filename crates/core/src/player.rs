@@ -2601,20 +2601,17 @@ impl Player {
         if let Some(c) = view
             .strip_prefix("mirror")
             .and_then(|n| n.parse::<usize>().ok())
-            .and_then(|n| def.cameras_reflexion.get(n))
+            .and_then(|n| mirror_cams(&self.vehicle).into_iter().nth(n).map(|(t, c)| (n, t, c)))
         {
-            let k = def
-                .cameras_reflexion
-                .iter()
-                .position(|x| std::ptr::eq(x, c))
-                .unwrap_or(0);
+            let (k, part, c) = c;
             let aimed = mirror_view(
                 &self.vehicle,
+                part,
                 c,
                 driver_eye(self),
                 self.mirror_offsets.get(k).copied().unwrap_or([0.0; 2]),
             );
-            let (eye, yaw, pitch, roll) = self.vehicle.camera_world_full(&aimed);
+            let (eye, yaw, pitch, roll) = mirror_cam_world_full(&self.vehicle, part, &aimed);
             return Camera {
                 position: eye,
                 yaw,
