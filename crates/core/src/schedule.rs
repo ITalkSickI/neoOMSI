@@ -996,7 +996,7 @@ impl Schedule {
     /// The timetable bus on the road that runs departure `k` (not one that has been let go).
     fn tour_bus(&self, k: usize, traffic: &Traffic) -> Option<usize> {
         traffic
-            .cars
+            .cars()
             .iter()
             .position(|c| c.is_bus() && !c.gone && self.car_departure.get(&c.id) == Some(&k))
     }
@@ -1012,7 +1012,7 @@ impl Schedule {
         day_time: f64,
     ) {
         let done: Vec<u64> = traffic
-            .cars
+            .cars()
             .iter()
             .filter(|c| c.trip_done())
             .map(|c| c.id)
@@ -1160,7 +1160,7 @@ impl Schedule {
     /// tracks run over invisible one-way helper streets backwards, and the bus drove them
     /// forwards, against its route, and jumped back at their end.
     fn add_twins(traffic: &mut Traffic, steps: &[Step]) {
-        let net = &traffic.net;
+        let net = traffic.net();
         let cands: Vec<Option<&Vec<usize>>> = steps
             .iter()
             .map(|st| {
@@ -1209,7 +1209,7 @@ impl Schedule {
     /// a connector lane across the gap (`Traffic::add_connector`), so that `bridge_gaps`
     /// finds a way to drive.
     fn add_connectors(traffic: &mut Traffic, lanes: &[usize]) {
-        let net = &traffic.net;
+        let net = traffic.net();
         let holes: Vec<(usize, usize)> = lanes
             .windows(2)
             .filter(|w| !joins(net, w[0], w[1]))
@@ -1237,7 +1237,7 @@ impl Schedule {
         steps: &[Step],
         prev: Option<usize>,
     ) -> Vec<Slot> {
-        let net = &traffic.net;
+        let net = traffic.net();
         // every step's candidate lanes (both directions of a two-way path)
         let cands: Vec<Result<&Vec<usize>, Slot>> = steps
             .iter()
@@ -1247,7 +1247,7 @@ impl Schedule {
                 };
                 match net.by_key.get(&key) {
                     Some(c) if !c.is_empty() => Ok(c),
-                    _ if !traffic.lane_tiles.contains(&key.tile) && world.has_tile(key.tile) => {
+                    _ if !traffic.has_lane_tile(key.tile) && world.has_tile(key.tile) => {
                         Err(Slot::Waiting)
                     }
                     _ => Err(Slot::Absent),
@@ -1774,7 +1774,7 @@ impl Schedule {
             Self::add_connectors(traffic, &lanes);
         }
         let traffic = &*traffic;
-        let net = &traffic.net;
+        let net = traffic.net();
         let (mut trips, mut joints, mut linked, mut changes, mut gaps, mut wrong, mut partial) =
             (0, 0, 0, 0, 0, 0, 0);
         let mut bad_length = 0;
@@ -1794,7 +1794,7 @@ impl Schedule {
                         steps
                             .get(k)
                             .and_then(|s| s.key)
-                            .map(|key| traffic.lane_tiles.contains(&key.tile))
+                            .map(|key| traffic.has_lane_tile(key.tile))
                             .unwrap_or(false),
                         steps
                             .get(k)
@@ -2132,7 +2132,7 @@ impl Schedule {
         }
         // tiles brought lanes, or half a minute went by: the waiting departures may be on
         // loaded ground now, and the routes that stopped short may go on
-        let grew = traffic.lanes_generation != self.seen_generation;
+        let grew = traffic.lanes_generation() != self.seen_generation;
         if grew || day_time - self.last_retry >= 30.0 || day_time < self.last_retry {
             self.last_retry = day_time;
             for i in std::mem::take(&mut self.waiting) {
@@ -2166,7 +2166,7 @@ impl Schedule {
             }
         }
         if grew {
-            self.seen_generation = traffic.lanes_generation;
+            self.seen_generation = traffic.lanes_generation();
             self.carry_on(world, traffic);
         }
         self.fleet(world, traffic, renderer, scene, day_time);
@@ -2224,11 +2224,11 @@ impl Schedule {
                     let with: Vec<usize> =
                         std::iter::once(l).chain(lanes.iter().copied()).collect();
                     Self::add_connectors(traffic, &with);
-                    bridge_gaps(&traffic.net, &with).0[1..].to_vec()
+                    bridge_gaps(traffic.net(), &with).0[1..].to_vec()
                 }
                 _ => {
                     Self::add_connectors(traffic, &lanes);
-                    bridge_gaps(&traffic.net, &lanes).0
+                    bridge_gaps(traffic.net(), &lanes).0
                 }
             };
             if !lanes.is_empty() {
@@ -2243,7 +2243,7 @@ impl Schedule {
                         continue;
                     };
                     if let Some((ri, ss, lat)) =
-                        project_stop(&traffic.net, &lanes, pos, Some(STOP_REACH), from)
+                        project_stop(traffic.net(), &lanes, pos, Some(STOP_REACH), from)
                     {
                         from = ri;
                         stops.push((
@@ -2261,7 +2261,7 @@ impl Schedule {
                     traffic.car(ci).vehicle.ty.clone(),
                     traffic.car(ci).is_rail(),
                 );
-                place_stops(&traffic.net, &lanes, base, &mut stops, &ty, rail);
+                place_stops(traffic.net(), &lanes, base, &mut stops, &ty, rail);
                 stops.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
                 log::debug!(
                     "scheduled bus {}: route carried on by {} lanes, {} more stops",
@@ -2269,15 +2269,7 @@ impl Schedule {
                     lanes.len(),
                     stops.len()
                 );
-                let car = &mut traffic.cars[ci];
-                car.state.route.extend(lanes);
-                if let Some(b) = car.bus.as_mut() {
-                    b.stops
-                        .extend(stops.into_iter().map(crate::bus_service::Stop::from_tuple));
-                }
-                // (it may have stood waiting at the end of what it had)
-                car.state.planned_next = None;
-                car.state.plan_next(&traffic.net);
+                traffic.extend_scheduled_route(ci, lanes, stops);
             }
             run.next += n;
             if run.next < run.steps.len() {
@@ -2359,7 +2351,7 @@ impl Schedule {
             ((day_time - t0) / (t1 - t0).max(1e-3)).clamp(0.0, 1.0)
         };
         // lengths of the steps: a step still to come counts as long as an average one
-        let net = &traffic.net;
+        let net = traffic.net();
         let known: Vec<f64> = slots
             .iter()
             .filter_map(|s| {
@@ -2424,7 +2416,7 @@ impl Schedule {
         let section: Vec<usize> = slots[start..end].iter().filter_map(lane_of).collect();
         let start_index = slots[start..at].iter().filter_map(lane_of).count();
         Self::add_connectors(traffic, &section);
-        let net = &traffic.net;
+        let net = traffic.net();
         let (section, index) = bridge_gaps(net, &section);
         let start_index = index[start_index.min(index.len() - 1)];
         let mut s = offset.min(net.lanes[section[start_index]].length() as f64) as f32;
@@ -2493,7 +2485,7 @@ impl Schedule {
                     .last()
                     .map(|t| t.position)
                     .unwrap_or(c.vehicle.position);
-                let net = &traffic.net;
+                let net = traffic.net();
                 let found = section
                     .iter()
                     .enumerate()
@@ -2549,12 +2541,12 @@ impl Schedule {
                 traffic.car(ci).vehicle.ty.clone(),
                 traffic.car(ci).is_rail(),
             );
-            place_stops(&traffic.net, &section, 0, &mut stops, &ty, rail);
+            place_stops(traffic.net(), &section, 0, &mut stops, &ty, rail);
             // the tour's bus that has just finished its trip takes this one on from where
             // it stands: the section itself when it stands on it, else the shortest way
             // from its lane onto one of the section's first lanes (round a terminal loop)
             let (lane0, s0) = (traffic.car(ci).state.lane, traffic.car(ci).state.s);
-            let net = &traffic.net;
+            let net = traffic.net();
             let (prefix, from) = match section.iter().position(|&l| l == lane0) {
                 Some(r) => (Vec::new(), r),
                 None => {
@@ -2697,7 +2689,7 @@ impl Schedule {
         };
         self.next_number += 1;
         let rail =
-            traffic.net.lanes[section[start_index]].kind == ::simulation::traffic::LaneKind::Rail;
+            traffic.net().lanes[section[start_index]].kind == ::simulation::traffic::LaneKind::Rail;
         // every further car of the train with the cars of its unit, as Omsi.exe creates
         // each car of a `.zug` (the first has its own with `create_car`): the ones before it
         // (towards the front of the train), the car, the ones behind it
@@ -2725,7 +2717,7 @@ impl Schedule {
             .as_ref()
             .map(|t| t[0].0.clone())
             .unwrap_or_else(|| ty.clone());
-        place_stops(&traffic.net, &section, 0, &mut stops, &lead_ty, rail);
+        place_stops(traffic.net(), &section, 0, &mut stops, &lead_ty, rail);
         log::debug!(
             "spawn trip {trip_name}: departure {:.2} min, now {:.2} min, leg {leg} at {:.0} %, step {at} of {}, start {s:.0} m into its lane",
             departure / 60.0,
@@ -2736,9 +2728,9 @@ impl Schedule {
         // the bus starts on its step's lane; the stops behind it are dropped
         let mut start_index = start_index;
         while start_index + 1 < section.len()
-            && s > traffic.net.lanes[section[start_index]].length()
+            && s > traffic.net().lanes[section[start_index]].length()
         {
-            s -= traffic.net.lanes[section[start_index]].length();
+            s -= traffic.net().lanes[section[start_index]].length();
             start_index += 1;
         }
         // a bus that would start a few metres short of its next stop stands at it (half a
@@ -2750,8 +2742,8 @@ impl Schedule {
         {
             let mut d = ss - s;
             for k in start_index..ri {
-                if !traffic.net.parallel(section[k], section[k + 1]) {
-                    d += traffic.net.lanes[section[k]].length();
+                if !traffic.net().parallel(section[k], section[k + 1]) {
+                    d += traffic.net().lanes[section[k]].length();
                 }
             }
             if d < 25.0 {
@@ -2759,7 +2751,7 @@ impl Schedule {
                 s = (ss - 0.5).max(0.0);
             }
         }
-        let at_pos = traffic.net.lanes[section[start_index]].at(s).0;
+        let at_pos = traffic.net().lanes[section[start_index]].at(s).0;
         // lanes stay in the network when their tile is unloaded: nothing is put on ground
         // that is not there (the departure waits for its tile)
         if !track_is_air(traffic, section[start_index]) && !world.has_ground(at_pos.x, at_pos.y) {
@@ -2768,7 +2760,7 @@ impl Schedule {
         }
         // not into a vehicle that happens to be there (the player's bus at its stop, a car),
         // nor just in front of one driving up to that place: try again in a moment
-        let at_heading = traffic.net.lanes[section[start_index]].at(s).1 as f64;
+        let at_heading = traffic.net().lanes[section[start_index]].at(s).1 as f64;
         if traffic.blocked(&ty, at_pos, at_heading) || !traffic.spawn_clear(&ty, at_pos, at_heading)
         {
             log::debug!("trip {trip_name}: a vehicle stands where the bus would appear");
@@ -2780,7 +2772,7 @@ impl Schedule {
         // serving the stop and every car behind them waiting as well.)
         if departure > day_time + 30.0
             && traffic
-                .cars
+                .cars()
                 .iter()
                 .any(|c| c.is_bus() && !c.gone && (c.vehicle.position - at_pos).length() < 50.0)
         {
@@ -3073,7 +3065,7 @@ fn ordered(m: f32) -> u64 {
 /// A flight path: aircraft are not tied to the ground under them.
 fn track_is_air(traffic: &Traffic, lane: usize) -> bool {
     traffic
-        .net
+        .net()
         .lanes
         .get(lane)
         .map(|l| l.kind == ::simulation::traffic::LaneKind::Air)
@@ -4462,7 +4454,7 @@ impl Schedule {
         // train runs its track without stops of its own and is taken as on time)
         let mut on_road: HashMap<usize, OnRoad> = HashMap::new();
         if let Some(t) = traffic {
-            for car in &t.cars {
+            for car in t.cars() {
                 let Some(&i) = self.car_departure.get(&car.id) else {
                     continue;
                 };

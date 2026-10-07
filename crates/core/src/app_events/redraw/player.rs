@@ -363,7 +363,7 @@ impl App {
                 let vr_on = false;
                 p.move_head(dt, ::config::get_bool("camera", "head_movement").unwrap_or(true) && !vr_on);
                 if let Some(w) = self.world.as_ref() {
-                    rail_drive::frame(p, self.traffic.as_ref().map(|t| &t.net), w, dt);
+                    rail_drive::frame(p, self.traffic.as_ref().map(|t| t.net()), w, dt);
                 }
             }
             if let Some(t) = p.vehicle.host.time_written.take() {
