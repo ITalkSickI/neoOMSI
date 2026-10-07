@@ -2,10 +2,12 @@
 
 use super::*;
 
+mod dialog;
 mod nav;
 mod page;
 mod screen;
 
+pub use self::dialog::Dialog;
 pub use self::page::{PAGE_COUNT, VEHICLE_PAGE};
 
 pub const PAUSE_ENTRIES: [&str; 6] = [
@@ -73,7 +75,7 @@ pub(super) fn inside(rc: [f32; 4], p: (f32, f32)) -> bool {
 }
 
 impl Ui {
-    
+
     pub(super) fn pause_reset(&mut self) {
         self.pause_open = 0.0;
         self.page_t = 0.0;
@@ -120,6 +122,14 @@ impl Ui {
                 let shown = self.pause_last.min(PAGE_COUNT - 1);
                 self.draw_pause_page(r, scene, f, m, tab.min(PAGE_COUNT - 1), shown);
             }
+        }
+        
+        match self.dialog.take() {
+            Some(d) => {
+                self.draw_dialog(r, scene, f, m, &d);
+                self.dialog = Some(d);
+            }
+            None => self.dialog_rects.clear(),
         }
     }
 }

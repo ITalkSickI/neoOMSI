@@ -25,6 +25,8 @@ impl Ui {
             pause_items: Vec::new(),
             lab_groups: Vec::new(),
             lab_actions: Vec::new(),
+            dialog: None,
+            dialog_rects: Vec::new(),
             lab_group: 0,
             pause_open: 0.0,
             page_t: 0.0,

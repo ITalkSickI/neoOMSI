@@ -24,7 +24,7 @@ mod text;
 mod view;
 mod widgets;
 
-pub use self::pause_menu::{PauseState, PAGE_COUNT, PAUSE_ENTRIES, VEHICLE_PAGE};
+pub use self::pause_menu::{Dialog, PauseState, PAGE_COUNT, PAUSE_ENTRIES, VEHICLE_PAGE};
 pub use self::view::*;
 #[allow(unused_imports)]
 use self::{style::*, text::*};
@@ -76,6 +76,8 @@ pub struct Ui {
     pub lab_groups: Vec<[f32; 4]>,
     pub lab_actions: Vec<[f32; 4]>,
     pub lab_group: usize,
+    pub dialog: Option<Dialog>,
+    pub dialog_rects: Vec<[f32; 4]>,
     pause_open: f32,
     page_t: f32,
     pause_last: usize,
