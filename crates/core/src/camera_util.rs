@@ -8,9 +8,9 @@ pub(crate) fn default_camera(world: &World) -> Camera {
     if mc.len() >= 8 {
         let tx = mc[0];
         let ty = mc[1];
-        let x = tx * ::map::tile_size() + mc[2];
+        let x = tx * map::tile_size() + mc[2];
         let z = mc[3];
-        let y = ty * ::map::tile_size() + mc[4];
+        let y = ty * map::tile_size() + mc[4];
         let yaw = mc[5] as f32;
         let pitch = mc[6] as f32;
         let dist = mc[7] as f32;
@@ -46,7 +46,7 @@ pub(crate) fn default_camera(world: &World) -> Camera {
 /// thread on a fast machine, three times that on a slow one - while the mouse was over
 /// nothing; a sphere per mesh passes most of them by.
 pub(crate) fn ray_may_hit(
-    ty: &::simulation::VehicleType,
+    ty: &simulation::VehicleType,
     i: usize,
     xf: &glam::Mat4,
     o: Vec3,
@@ -67,7 +67,7 @@ pub(crate) fn ray_may_hit(
         .max(xf.z_axis.truncate().length());
     let c = xf.transform_point3(c);
     let r = r * scale + (c - o).length() * widen + 0.01;
-    ::geometry::ray_near_sphere(o, dir.normalize_or_zero(), c, r)
+    geometry::ray_near_sphere(o, dir.normalize_or_zero(), c, r)
 }
 
 /// How far the outside camera sits from the bus: at the start, and the nearest and
@@ -96,7 +96,7 @@ pub(crate) fn look_of(args: &Args) -> (f32, f32) {
 /// How far the offscreen outside camera sits from the vehicle: 18 m, or `OMSI_ORBIT_DIST`
 /// metres for close-ups (a headlight, a door) together with `--look`.
 pub(crate) fn offscreen_orbit() -> f32 {
-    ::legacy_config::env::var("OMSI_ORBIT_DIST")
+    legacy_config::env::var("OMSI_ORBIT_DIST")
         .ok()
         .and_then(|v| v.trim().parse().ok())
         .unwrap_or(18.0)
@@ -315,7 +315,10 @@ pub(crate) fn mirror_view(
         + rot
         .transform_point3(Vec3::new(c.pos[0], c.pos[1], c.pos[2]))
         .as_dvec3();
-    let d = rot.inverse().transform_vector3((at - eye).as_vec3());
+    let d = match part.and_then(|t| eye_in_part_frame(v, t, eye)) {
+        Some(e) => Vec3::new(c.pos[0], c.pos[1], c.pos[2]) - e,
+        None => rot.inverse().transform_vector3((at - eye).as_vec3()),
+    };
     let Some(d) = d.try_normalize() else {
         return c.clone();
     };
@@ -323,7 +326,7 @@ pub(crate) fn mirror_view(
         (c.yaw + off[0]).to_radians(),
         (c.pitch + off[1]).to_radians(),
     );
-    let m = glam::Vec3::new(p.cos() * y.sin(), p.cos() * y.cos(), p.sin());
+    let m = Vec3::new(p.cos() * y.sin(), p.cos() * y.cos(), p.sin());
     let r = d - m * (2.0 * d.dot(m));
     ::legacy_vehicle::Camera {
         yaw: r.x.atan2(r.y).to_degrees(),
@@ -332,11 +335,33 @@ pub(crate) fn mirror_view(
     }
 }
 
+fn eye_in_part_frame(
+    v: &simulation::VehicleInstance,
+    t: &simulation::vehicle::TrailerPart,
+    eye: DVec3,
+) -> Option<Vec3> {
+    let mut e = v
+        .body_rotation()
+        .inverse()
+        .transform_vector3((eye - v.position).as_vec3());
+    for x in &v.trailers {
+        if x.reversed {
+            return None;
+        }
+        let (back, front) = x.couplings();
+        e -= back - front;
+        if std::ptr::eq(x, t) {
+            return Some(e);
+        }
+    }
+    None
+}
+
 pub(crate) fn mirror_cams(
-    v: &::simulation::VehicleInstance,
+    v: &simulation::VehicleInstance,
 ) -> Vec<(
-    Option<&::simulation::vehicle::TrailerPart>,
-    &::legacy_vehicle::Camera,
+    Option<&simulation::vehicle::TrailerPart>,
+    &legacy_vehicle::Camera,
 )> {
     let mut out: Vec<_> = v.ty.def.cameras_reflexion.iter().map(|c| (None, c)).collect();
     for t in &v.trailers {
@@ -346,9 +371,9 @@ pub(crate) fn mirror_cams(
 }
 
 pub(crate) fn mirror_cam_world_full(
-    v: &::simulation::VehicleInstance,
-    part: Option<&::simulation::vehicle::TrailerPart>,
-    c: &::legacy_vehicle::Camera,
+    v: &simulation::VehicleInstance,
+    part: Option<&simulation::vehicle::TrailerPart>,
+    c: &legacy_vehicle::Camera,
 ) -> (DVec3, f32, f32, f32) {
     match part {
         Some(t) => t.camera_world_full(c),
@@ -370,9 +395,9 @@ pub(crate) fn driver_eye(p: &Player) -> DVec3 {
         Some(c) => {
             p.vehicle.camera_world(c).0
                 + p.vehicle
-                    .body_rotation()
-                    .transform_vector3(p.head + p.seat)
-                    .as_dvec3()
+                .body_rotation()
+                .transform_vector3(p.head + p.seat)
+                .as_dvec3()
         }
         None => p.vehicle.position + DVec3::Z * 2.0,
     }
@@ -384,9 +409,9 @@ pub(crate) fn driver_eye(p: &Player) -> DVec3 {
 pub(crate) fn render_mirrors(
     renderer: &mut Renderer,
     scene: &mut Scene,
-    world: &scene::World,
+    world: &World,
     p: &Player,
-    lighting: &::render::Lighting,
+    lighting: &render::Lighting,
     only: Option<usize>,
     view: Option<(Camera, f32)>,
 ) -> usize {
@@ -396,9 +421,9 @@ pub(crate) fn render_mirrors(
         .as_ref()
         .map(|v| v.0.position)
         .unwrap_or_else(|| driver_eye(p));
-    let parts: Vec<Option<&::simulation::vehicle::TrailerPart>> =
+    let parts: Vec<Option<&simulation::vehicle::TrailerPart>> =
         mirror_cams(&p.vehicle).into_iter().map(|(t, _)| t).collect();
-    let cams: Vec<::legacy_vehicle::Camera> = mirror_cams(&p.vehicle)
+    let cams: Vec<legacy_vehicle::Camera> = mirror_cams(&p.vehicle)
         .into_iter()
         .enumerate()
         .map(|(i, (t, c))| {
@@ -420,7 +445,7 @@ pub(crate) fn render_mirrors(
     let mut lighting = lighting.clone();
     // a mirror's small picture: nothing smaller than a few of its pixels, and nothing much
     // beyond what a mirror shows (the far distance below)
-    let px = crate::MIRROR_SIZE
+    let px = MIRROR_SIZE
         .load(std::sync::atomic::Ordering::Relaxed)
         .max(64) as f32;
     lighting.min_obj_size = lighting.min_obj_size.max((12.0 / px).clamp(0.03, 0.09));
@@ -432,7 +457,7 @@ pub(crate) fn render_mirrors(
     // (By the sun's darkness, Envir_Brightness's ramp from +6 to -6 degrees: `night` is
     // whole at sunset already, from +10 degrees on, and rain raises it by day, and the
     // mirrors were a fifth of the window's light through the whole dusk, #432.)
-    if lighting.enhanced && ::legacy_config::env::var_os("OMSI_MIRROR_ENHANCED").is_none() {
+    if lighting.enhanced && legacy_config::env::var_os("OMSI_MIRROR_ENHANCED").is_none() {
         let alt = lighting.sun_dir.z.clamp(-1.0, 1.0).asin().to_degrees();
         let dark = 1.0 - ((alt + 6.0) / 12.0).clamp(0.0, 1.0);
         let k = 1.0 - MIRROR_NIGHT_DIM * dark;
@@ -474,7 +499,7 @@ pub(crate) fn render_mirrors(
         };
         let (eye, yaw, pitch, roll) = mirror_cam_world_full(&p.vehicle, parts[i], c);
         let pitch = pitch.clamp(-89.0, 89.0);
-        if ::legacy_config::env::var_os("OMSI_DEBUG_MIRRORS").is_some() {
+        if legacy_config::env::var_os("OMSI_DEBUG_MIRRORS").is_some() {
             log::info!(
                 "mirror {i}: eye {:.2},{:.2},{:.2} yaw {yaw:.1} pitch {pitch:.1} roll {roll:.2} fov {:.0} ({} of {} in view)",
                 eye.x,
