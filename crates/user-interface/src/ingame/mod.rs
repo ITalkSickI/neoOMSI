@@ -10,6 +10,8 @@ use ab_glyph::{Font, FontVec, PxScale, ScaleFont, VariableFont};
 use ::render::{Renderer, Scene, TextureId};
 
 mod frame;
+#[path = "../pause-menu/mod.rs"]
+mod pause_menu;
 mod loading;
 mod menu;
 mod run_report;
@@ -22,6 +24,7 @@ mod text;
 mod view;
 mod widgets;
 
+pub use self::pause_menu::{PauseState, PAGE_COUNT, PAUSE_ENTRIES, VEHICLE_PAGE};
 pub use self::view::*;
 #[allow(unused_imports)]
 use self::{style::*, text::*};
@@ -68,6 +71,15 @@ pub struct Ui {
     /// down, one right of `plus` up.
     pub menu_arrows: Vec<Option<[f32; 3]>>,
     pub menu_scroll_thumb: Option<[f32; 4]>,
+    pub lab_tabs: Vec<[f32; 4]>,
+    pub pause_items: Vec<[f32; 4]>,
+    pub lab_groups: Vec<[f32; 4]>,
+    pub lab_actions: Vec<[f32; 4]>,
+    pub lab_group: usize,
+    pause_open: f32,
+    page_t: f32,
+    pause_last: usize,
+    page_fade: bool,
     pub menu_scroll_track: Option<[f32; 4]>,
     /// Where the controls of the settings rows were drawn (a slider's track, a stepper), one
     /// entry per line in `menu_rects`: a click there sets the value.

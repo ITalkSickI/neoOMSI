@@ -411,6 +411,22 @@ impl App {
                 self.leave_screenshot_mode();
                 return;
             }
+            if self.lab_menu.is_some() {
+                if pressed && !repeat {
+                    self.lab_key(event_loop, code);
+                }
+                return;
+            }
+            if pressed
+                && !repeat
+                && code == KeyCode::Escape
+                && self.game_menu.is_none()
+                && (self.keys.contains(&KeyCode::ShiftLeft)
+                || self.keys.contains(&KeyCode::ShiftRight))
+            {
+                self.open_lab_menu();
+                return;
+            }
             if self.game_menu.is_none() && self.placing_key(code, pressed) {
                 return;
             }

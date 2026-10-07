@@ -79,6 +79,12 @@ impl App {
             }
             return;
         }
+        if self.lab_menu.is_some() {
+            if pressed {
+                self.lab_click(event_loop);
+            }
+            return;
+        }
         if self.game_menu.is_some() {
             if state == ElementState::Pressed {
                 self.menu_kbd = false;

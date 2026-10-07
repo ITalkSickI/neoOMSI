@@ -1,5 +1,7 @@
 //! What the game hands the interface each frame (`Frame`, the menu and chat views) and the sizing helpers.
 
+use super::PauseState;
+
 /// One stop of the trip evaluation: its eight cells and its status (an untranslated key).
 pub struct RunReportRow {
     pub cells: [String; 8],
@@ -185,6 +187,21 @@ pub struct Frame<'a> {
     pub menu_kbd: bool,
     /// The drop-down open over a row of the settings window.
     pub dropdown: Option<DropdownView<'a>>,
+    pub lab: Option<PauseState>,
+    pub vehicle_menu: &'a [VehicleGroup],
+}
+
+/// One action of the vehicle page: only its id and kind, the texts come from the i18n keys
+/// `pause.page.vehicle.action.<id>.*`.
+pub struct VehicleAction {
+    pub id: &'static str,
+    pub opens: bool,
+}
+
+/// A group of the vehicle page (`pause.page.vehicle.group.<id>.title`).
+pub struct VehicleGroup {
+    pub id: &'static str,
+    pub actions: Vec<VehicleAction>,
 }
 
 /// A chat line with its bad words starred out (rustrict: profanity, slurs and the usual

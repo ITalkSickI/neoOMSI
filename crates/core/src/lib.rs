@@ -69,6 +69,7 @@ mod editor_ctl;
 mod evdev_ff;
 mod ffb_calibration;
 mod game_menu;
+mod lab_menu;
 mod input_keys;
 mod input_mouse;
 mod input_script;
@@ -505,6 +506,7 @@ pub(crate) fn make_app(
         screenshot_mode: None,
         paused: false,
         game_menu: None,
+        lab_menu: None,
         menu_top: None,
         menu_scroll_drag: false,
         pane_scroll: None,

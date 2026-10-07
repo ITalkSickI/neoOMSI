@@ -1,0 +1,78 @@
+//! The nav bar on top of the pages.
+
+use super::*;
+
+impl Ui {
+    pub(super) fn draw_nav(
+        &mut self,
+        r: &Renderer,
+        scene: &mut Scene,
+        f: &Frame,
+        m: Metrics,
+        tab: usize,
+    ) -> f32 {
+        let Metrics { w, u, mx, line, .. } = m;
+        self.lab_tabs.clear();
+        let bar_h = (56.0 * u).round();
+        self.text.rounded(r, scene, [0.0, 0.0, w, bar_h], 0.0, [0, 0, 0, 200]);
+        self.text
+            .rounded(r, scene, [0.0, bar_h, w, bar_h + line], 0.0, BORDER);
+        let brand = self.text.label(r, scene, "neoOMSI", (15.0 * u) as u32, MUTED);
+        brand.place(scene, mx, (bar_h - brand.h as f32) * 0.5);
+
+        let tpx = (17.0 * u) as u32;
+        let gap = 6.0 * u;
+        let widths: Vec<f32> = page::PAGES
+            .iter()
+            .map(|p| self.text.width(&t(p.nav), tpx as f32) + 40.0 * u)
+            .collect();
+        let total = widths.iter().sum::<f32>() + gap * (widths.len() - 1) as f32;
+        let mut x = ((w - total) * 0.5).round();
+        for (label, bx) in [("Q", x - 40.0 * u), ("E", x + total + 12.0 * u)] {
+            let l = self.text.label(r, scene, label, (13.0 * u) as u32, WHITE);
+            let (bw, bh) = (28.0 * u, 24.0 * u);
+            let by = (bar_h - bh) * 0.5;
+            self.text
+                .rounded(r, scene, [bx, by, bx + bw, by + bh], 4.0 * u, [255, 255, 255, 56]);
+            l.place(scene, bx + (bw - l.w as f32) * 0.5, by + (bh - l.h as f32) * 0.5);
+        }
+        let mut lefts = Vec::with_capacity(widths.len());
+        let mut lx = x;
+        for wd in &widths {
+            lefts.push(lx);
+            lx += wd + gap;
+        }
+        let pos = self.ease((201, "pos", 0), tab as f32, 9.0);
+        for (i, p) in page::PAGES.iter().enumerate() {
+            let rc = [x, 0.0, x + widths[i], bar_h];
+            let hot = inside(rc, f.cursor);
+            let hv = self.ease((201, "hover", i), if hot && i != tab { 1.0 } else { 0.0 }, 8.0);
+            let tv = self.easeq((201, "tab", i), if i == tab { 1.0 } else { 0.0 }, 7.0);
+            if hv > 0.0 {
+                self.text.rounded(r, scene, rc, 0.0, fade(LIT, hv));
+            }
+            let name = t(p.nav);
+            let l = self.text.label(
+                r,
+                scene,
+                &name,
+                tpx,
+                mix(if hot { SOFT } else { MUTED }, WHITE, tv),
+            );
+            l.place(scene, x + (widths[i] - l.w as f32) * 0.5, (bar_h - l.h as f32) * 0.5);
+            self.lab_tabs.push(rc);
+            x += widths[i] + gap;
+        }
+        // one underline that slides from tab to tab
+        let last = lefts.len() - 1;
+        let i0 = (pos.floor().max(0.0) as usize).min(last);
+        let i1 = (i0 + 1).min(last);
+        let fr = pos - i0 as f32;
+        let s = fr * fr * (3.0 - 2.0 * fr);
+        let ul = lefts[i0] + (lefts[i1] - lefts[i0]) * s;
+        let uw = widths[i0] + (widths[i1] - widths[i0]) * s;
+        self.text
+            .rounded(r, scene, [ul, bar_h - 3.0 * u, ul + uw, bar_h], 0.0, ACCENT);
+        bar_h
+    }
+}

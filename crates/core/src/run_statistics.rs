@@ -301,8 +301,8 @@ impl crate::App {
         let bus = &player.vehicle;
         let ready = bus.physics.velocity_kmh().abs() < 1.0
             && (report.trip.line.trim().is_empty()
-                || bus.ty.def.passenger_cabin.is_none()
-                || crate::humans::Humans::any_door_open(bus));
+            || bus.ty.def.passenger_cabin.is_none()
+            || crate::humans::Humans::any_door_open(bus));
         if ready {
             self.report_pending = false;
             self.open_run_report(false);
@@ -335,7 +335,7 @@ impl crate::App {
                     .set_file_name(filename)
                     .save_file(),
             )
-            .map(|file| file.path().to_path_buf());
+                .map(|file| file.path().to_path_buf());
             #[cfg(target_os = "android")]
             let path = content_dir.map(|p| p.join("Reports").join(filename));
             let result = (|| -> std::io::Result<Option<std::path::PathBuf>> {
@@ -511,7 +511,7 @@ mod preview {
             None,
             Some(wgpu::TextureFormat::Rgba8UnormSrgb),
         ))
-        .unwrap();
+            .unwrap();
         let camera = ::render::Camera {
             position: glam::DVec3::new(0.0, 0.0, 1.0),
             yaw: 0.0,
@@ -537,7 +537,7 @@ mod preview {
                         3 => "West park",
                         _ => "Central station",
                     }
-                    .into(),
+                        .into(),
                     arr: 28800.0 + i as f64 * 150.0,
                     dep: 28830.0 + i as f64 * 150.0,
                     position: None,
@@ -608,6 +608,8 @@ mod preview {
                 menu_tabs: None,
                 menu_kbd: true,
                 dropdown: None,
+                lab: None,
+                vehicle_menu: &[],
             };
             ui.draw(&renderer, &mut scene, &frame, 0.016);
             assert_eq!(ui.menu_rects.len(), 2);
@@ -632,7 +634,7 @@ mod preview {
                 height,
                 image::ColorType::Rgba8,
             )
-            .unwrap();
+                .unwrap();
         }
         std::fs::write(out.join("evaluation.txt"), report.text()).unwrap();
     }

@@ -21,6 +21,15 @@ impl Ui {
             menu_rects: Vec::new(),
             menu_arrows: Vec::new(),
             menu_scroll_thumb: None,
+            lab_tabs: Vec::new(),
+            pause_items: Vec::new(),
+            lab_groups: Vec::new(),
+            lab_actions: Vec::new(),
+            lab_group: 0,
+            pause_open: 0.0,
+            page_t: 0.0,
+            pause_last: usize::MAX - 1,
+            page_fade: false,
             menu_scroll_track: None,
             menu_ctl: Vec::new(),
             dd_rects: Vec::new(),
@@ -408,6 +417,16 @@ impl Ui {
         self.anim_dt = dt.clamp(0.0, 0.1);
         self.text.flat = true;
         self.draw_menu(r, scene, f);
+        match f.lab {
+            Some(st) => self.draw_pause(r, scene, f, st),
+            None => {
+                self.lab_tabs.clear();
+                self.pause_items.clear();
+                self.lab_groups.clear();
+                self.lab_actions.clear();
+                self.pause_reset();
+            }
+        }
         self.text.flat = false;
         self.vr_tooltip_overlay = None;
         if let Some(t) = f.tooltip.as_ref().filter(|t| !t.is_empty()) {

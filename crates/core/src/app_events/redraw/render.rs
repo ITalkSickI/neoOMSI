@@ -31,6 +31,19 @@ impl App {
             (mode.help_left > 0.0)
                 .then(|| "Screenshot mode: HUD hidden. Press Esc to return.".to_string())
         });
+        let vehicle_menu: Vec<crate::ui::VehicleGroup> = match self.lab_menu {
+            Some(st) if st.page == Some(crate::ui::VEHICLE_PAGE) => game_lists::vehicle_menu(self)
+                .into_iter()
+                .map(|(id, acts)| crate::ui::VehicleGroup {
+                    id,
+                    actions: acts
+                        .into_iter()
+                        .map(|(id, opens)| crate::ui::VehicleAction { id, opens })
+                        .collect(),
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         let menu_tabs = match self.list_kind.as_ref() {
             Some(k) if self.chooser.is_some() => game_lists::page_titles(self, k),
             _ => None,
@@ -300,10 +313,13 @@ impl App {
                         &[]
                     },
                     fps: (!screenshot_mode && ::config::get_bool("ui", "show_fps").unwrap_or(false)).then_some(self.fps),
-                    paused: self.paused && !screenshot_mode,
+                    paused: self.paused && !screenshot_mode && self.lab_menu.is_none(),
                     menu: match chooser_sel {
                         Some(k) => Some((k, &chooser_items[..])),
-                        None => self.game_menu.map(|k| (k, &menu_lines[..])),
+                        None => self
+                            .game_menu
+                            .filter(|_| self.lab_menu.is_none())
+                            .map(|k| (k, &menu_lines[..])),
                     },
                     menu_disabled,
                     menu_kind,
@@ -320,6 +336,8 @@ impl App {
                     menu_tabs,
                     dropdown,
                     menu_kbd: self.menu_kbd,
+                    lab: self.lab_menu,
+                    vehicle_menu: &vehicle_menu,
                     menu_top: self.menu_top,
                     timetable: (!screenshot_mode && self.timetable && !map_open)
                         .then(|| {
@@ -762,9 +780,11 @@ impl App {
                         .window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
-                    self.devtools
-                        .get_or_insert_with(devtools::DevTools::new)
-                        .render(r, &view, scale, &snap, &dev_extra);
+                    if self.lab_menu.is_none() {
+                        self.devtools
+                            .get_or_insert_with(devtools::DevTools::new)
+                            .render(r, &view, scale, &snap, &dev_extra);
+                    }
                 }
                 *self.profile.entry("render").or_default() += __t.elapsed().as_secs_f64();
                 if ::legacy_config::env::var_os("OMSI_PROFILE_GPU").is_some() {

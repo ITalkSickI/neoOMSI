@@ -73,6 +73,7 @@ impl App {
             self.menu_edit = None;
         }
         self.game_menu = None;
+        self.lab_menu = None;
         self.menu_top = None;
         self.key_capture = None;
         self.key_search_stop();
