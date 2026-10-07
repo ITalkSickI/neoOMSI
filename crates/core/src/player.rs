@@ -2604,9 +2604,10 @@ impl Player {
             .and_then(|n| mirror_cams(&self.vehicle).into_iter().nth(n).map(|(t, c)| (n, t, c)))
         {
             let (k, part, c) = c;
-            let aimed = mirror_view(
+            let aimed = aim_camera(
                 &self.vehicle,
                 part,
+                k,
                 c,
                 driver_eye(self),
                 self.mirror_offsets.get(k).copied().unwrap_or([0.0; 2]),

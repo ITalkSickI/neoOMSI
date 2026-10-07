@@ -57,6 +57,7 @@ mod app;
 mod app_events;
 mod applog;
 mod bus_service;
+mod camera_tool;
 mod camera_util;
 mod cli;
 mod controllers;
@@ -95,8 +96,8 @@ mod world_load;
 
 pub(crate) fn ui_language(code: &str) {
     let iso = omsi_launcher_lib::language_iso(code);
-    ::i18n::set_language(iso);
-    ::simulation::vehicle_api::set_locale(iso);
+    i18n::set_language(iso);
+    simulation::vehicle_api::set_locale(iso);
 }
 
 use anyhow::{Context, Result, anyhow};
@@ -137,7 +138,7 @@ pub fn run() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        if ::render::catching() {
+        if render::catching() {
             log::warn!("caught by the renderer: {info}");
             return;
         }
@@ -147,7 +148,7 @@ pub fn run() -> Result<()> {
         );
         default_hook(info);
     }));
-    if let Err(e) = ::config::init(::config::default_path()) {
+    if let Err(e) = config::init(config::default_path()) {
         log::warn!("settings not loaded: {e}");
     }
     log::info!(
@@ -164,7 +165,7 @@ pub fn run() -> Result<()> {
         return Ok(());
     };
     if args.launcher || (bare && !args.menu) {
-        if ::legacy_config::env::var_os("OMSI_LAUNCHER").is_some() && open_launcher()? {
+        if legacy_config::env::var_os("OMSI_LAUNCHER").is_some() && open_launcher()? {
             return Ok(());
         }
         launcher_statics();
@@ -187,12 +188,12 @@ pub fn run() -> Result<()> {
 
 pub(crate) fn launcher_statics() {
     ENHANCED.store(
-        (::config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
+        (config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
     CLASSIC.store(config::get_string("graphics", "graphics").as_deref() == Some("vanilla"), std::sync::atomic::Ordering::Relaxed);
     CLOUDS.store(
-        ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
+        config::get_bool("graphics", "clouds").unwrap_or(true) && legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
     );
 }
@@ -201,7 +202,7 @@ pub(crate) fn prepare(
     mut args: Args,
     bare: bool,
 ) -> Result<Option<(Args, Option<server::ServerCfg>)>> {
-    ui_language(&::config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
+    ui_language(&config::get_string("ui", "language").unwrap_or_else(|| "ENG".into()));
     let server_cfg = match args.server.clone() {
         Some(p) => match server::prepare(&mut args, &p) {
             Ok(c) => Some(c),
@@ -212,7 +213,7 @@ pub(crate) fn prepare(
         },
         None => None,
     };
-    let seed = ::legacy_config::env::var("OMSI_SEED")
+    let seed = legacy_config::env::var("OMSI_SEED")
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok())
         .unwrap_or_else(|| {
@@ -222,7 +223,7 @@ pub(crate) fn prepare(
                 .unwrap_or(1);
             (t ^ ((std::process::id() as u64) << 32)) % 1_000_000_000
         });
-    ::legacy_script::set_session_seed(seed);
+    legacy_script::set_session_seed(seed);
     log::info!("script random seed {seed} (OMSI_SEED={seed} repeats it)");
     let launcher_mode = args.launcher || (bare && !args.menu);
     if !is_omsi_root(&args.root) {
@@ -235,7 +236,7 @@ pub(crate) fn prepare(
                 log::warn!("the original OMSI 2 was not found; the launcher asks for it");
             }
             None => {
-                let missing = ::legacy_config::missing_original_essentials(&args.root);
+                let missing = legacy_config::missing_original_essentials(&args.root);
                 let text = format!(
                     "The original OMSI 2 was not found.\n\n\
                      neoOMSI needs a complete installation of the original game (any version). \
@@ -261,19 +262,19 @@ pub(crate) fn prepare(
         let _ = std::fs::write(memo, args.root.to_string_lossy().as_bytes());
     }
     if let Some(c) = content_dir() {
-        match ::legacy_config::ensure_content_layout(&c) {
+        match legacy_config::ensure_content_layout(&c) {
             Ok(()) => {
-                ::legacy_config::add_content_root(c.clone());
+                legacy_config::add_content_root(c.clone());
                 log::info!("content folder (mods): {}", c.display());
             }
             Err(e) => log::warn!("content folder {}: {e}", c.display()),
         }
     }
-    if ::config::get_string("passengers", "models").unwrap_or_else(|| "omsi".into()) == "realistic" {
+    if config::get_string("passengers", "models").unwrap_or_else(|| "omsi".into()) == "realistic" {
         if let Some(content) = content_dir() {
             let pack = content.join("Packs/RealisticPax");
             if pack.join("Humans").is_dir() {
-                ::legacy_config::add_content_root(pack.clone());
+                legacy_config::add_content_root(pack.clone());
                 log::info!("realistic passengers: {}", pack.display());
             } else {
                 log::warn!(
@@ -284,15 +285,15 @@ pub(crate) fn prepare(
         }
     }
     for z in &args.content_zip {
-        if let Err(e) = ::legacy_config::add_content_zip(z) {
+        if let Err(e) = legacy_config::add_content_zip(z) {
             log::warn!("content zip {}: {e}", z.display());
         }
     }
-    ::legacy_config::vfs::mount_env_zips();
+    legacy_config::vfs::mount_env_zips();
     if let Some(c) = content_dir() {
-        ::legacy_config::vfs::mount_dir_zips(&c.join("Archives"));
+        legacy_config::vfs::mount_dir_zips(&c.join("Archives"));
     }
-    ::legacy_config::add_content_root(args.root.clone());
+    legacy_config::add_content_root(args.root.clone());
     Ok(Some((args, server_cfg)))
 }
 
@@ -308,9 +309,9 @@ pub(crate) fn make_app(
     if let Some(t) = args
         .lan_join
         .clone()
-        .filter(|t| ::network::official::is_alias(t))
+        .filter(|t| network::official::is_alias(t))
     {
-        match ::network::official::resolve_target(&t) {
+        match network::official::resolve_target(&t) {
             Ok(url) => {
                 log::info!("LAN: the official server is at {url}");
                 args.lan_join = Some(url);
@@ -318,7 +319,7 @@ pub(crate) fn make_app(
             Err(e) => log::warn!("LAN: {e}"),
         }
     }
-    if ::config::get_bool("gameplay", "time_sync").unwrap_or(false)
+    if config::get_bool("gameplay", "time_sync").unwrap_or(false)
         && args.lan_join.is_none()
         && args.server.is_none()
         && args.offscreen.is_none()
@@ -330,31 +331,31 @@ pub(crate) fn make_app(
     }
     applog::log_system();
     if args.drive_keys.eq_ignore_ascii_case("simple")
-        && let Some(k) = ::config::get_string("gameplay", "drive-keys")
+        && let Some(k) = config::get_string("gameplay", "drive-keys")
         && !k.eq_ignore_ascii_case("simple")
     {
         args.drive_keys = k;
     }
     ENHANCED.store(
-        (::config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || args.enhanced || ::legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
+        (config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || args.enhanced || legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
     );
     CLOUDS.store(
-        ::config::get_bool("graphics", "clouds").unwrap_or(true) && ::legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
+        config::get_bool("graphics", "clouds").unwrap_or(true) && legacy_config::env::var_os("OMSI_NO_CLOUDS").is_none(),
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_AI.store(
-        (::config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32).to_bits(),
+        (config::get_float("audio", "ai-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
     SOUND_SCENERY.store(
-        (::config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
+        (config::get_float("audio", "scenery-volume").unwrap_or(1.0) as f32).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
-    MIRROR_SIZE.store(::config::get_int("graphics", "mirror_size").unwrap_or(256) as u32, std::sync::atomic::Ordering::Relaxed);
-    ::audio::DOPPLER.store(::config::get_bool("audio", "doppler").unwrap_or(true), std::sync::atomic::Ordering::Relaxed);
+    MIRROR_SIZE.store(config::get_int("graphics", "mirror_size").unwrap_or(256) as u32, std::sync::atomic::Ordering::Relaxed);
+    audio::DOPPLER.store(config::get_bool("audio", "doppler").unwrap_or(true), std::sync::atomic::Ordering::Relaxed);
     CLASSIC.store(
-        (::config::get_string("graphics", "graphics").as_deref() == Some("vanilla")) && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
+        (config::get_string("graphics", "graphics").as_deref() == Some("vanilla")) && !ENHANCED.load(std::sync::atomic::Ordering::Relaxed),
         std::sync::atomic::Ordering::Relaxed,
     );
     let mut lan = if args.export_glb.is_none() {
@@ -388,11 +389,11 @@ pub(crate) fn make_app(
         }
     }
     if let (Some(l), None) = (lan.as_mut(), server_cfg.as_ref()) {
-        if l.role == ::network::Role::Host {
-            l.clock_speed = if ::config::get_bool("gameplay", "time_sync").unwrap_or(false) {
+        if l.role == network::Role::Host {
+            l.clock_speed = if config::get_bool("gameplay", "time_sync").unwrap_or(false) {
                 1.0
             } else {
-                ::config::get_float("gameplay", "time_speed").unwrap_or(1.0).clamp(1.0, 30.0)
+                config::get_float("gameplay", "time_speed").unwrap_or(1.0).clamp(1.0, 30.0)
             };
         }
     }
@@ -466,7 +467,7 @@ pub(crate) fn make_app(
         first_populate: true,
         envir: None,
         weather: None,
-        clock: ::simulation::SimClock::default(),
+        clock: simulation::SimClock::default(),
         started: Instant::now(),
         total_frames: 0,
         mirror_budget: 1.0,
@@ -543,13 +544,13 @@ pub(crate) fn make_app(
         key_filter: String::new(),
         key_search: false,
         route_arrows: Default::default(),
-        game_keys: ::content::KeyboardCfg::load(&keyboard_cfg(&args_root_for_keys))
+        game_keys: content::KeyboardCfg::load(&keyboard_cfg(&args_root_for_keys))
             .unwrap_or_default()
             .with_game_defaults()
             .with_vr_defaults()
             .game,
         own_keys: own_keys(&args_root_for_keys),
-        own_shift: own_bindings(&args_root_for_keys, ::content::input::KEY_SHIFT),
+        own_shift: own_bindings(&args_root_for_keys, content::input::KEY_SHIFT),
         menu_prev_pause: false,
         info_bar: false,
         pending_time: None,
@@ -603,7 +604,7 @@ pub(crate) fn make_app(
     };
     app.lan = lan;
     app.remotes = lan_game;
-    if ::config::get_bool("controls", "mouse_steering").unwrap_or(false) {
+    if config::get_bool("controls", "mouse_steering").unwrap_or(false) {
         app.mouse_drive = true;
         app.mouse_steer = (0.0, 1.0);
         app.center_cursor = true;

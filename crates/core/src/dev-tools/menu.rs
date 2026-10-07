@@ -123,6 +123,13 @@ pub(super) fn draw(
                 show.weather = !show.weather;
             }
             if ui
+                .menu_item_config("Cameras")
+                .selected(show.cameras)
+                .build()
+            {
+                show.cameras = !show.cameras;
+            }
+            if ui
                 .menu_item_config("Light Settings")
                 .selected(show.lights)
                 .build()

@@ -1,6 +1,7 @@
 //! Developer tools (ImGui): the overlay windows, menu and debug drawing.
 #![allow(unused_imports)]
 
+mod camera_ui;
 mod gather;
 mod gpu;
 mod info;
@@ -41,6 +42,7 @@ struct Show {
     translation: bool,
     perf: bool,
     weather: bool,
+    cameras: bool,
 }
 
 pub(crate) struct DevTools {
@@ -110,6 +112,7 @@ impl DevTools {
                 translation: false,
                 perf: false,
                 weather: false,
+                cameras: false,
             },
             actions: Vec::new(),
             connect_addr: String::new(),
@@ -203,6 +206,7 @@ impl DevTools {
             menu::draw(ui, show, actions, extra, editor, names, &mut mode);
 
             lights_ui::lights_window(ui, &mut show.lights);
+            camera_ui::window(ui, &mut show.cameras);
             if editor.open {
                 let s = std::cell::RefCell::new(crate::lights::settings());
                 vehicle_editor::window(

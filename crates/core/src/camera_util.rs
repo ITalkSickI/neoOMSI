@@ -207,7 +207,7 @@ pub(crate) fn follow_camera(traffic: Option<&traffic::Traffic>, id: u64) -> Opti
     // the picture; `yaw` may be a list a/b/c, one per snapshot (--snapshots); a sixth value
     // 1 reads the offset as east, north, up and the yaw as a compass heading, so the view
     // does not turn with the car
-    if let Ok(v) = ::legacy_config::env::var("OMSI_FOLLOW_CAM") {
+    if let Ok(v) = legacy_config::env::var("OMSI_FOLLOW_CAM") {
         thread_local!(static CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
         let mut fields: Vec<String> = v.split(',').map(|x| x.trim().to_string()).collect();
         if let Some(yaws) = fields.get_mut(3).filter(|y| y.contains('/')) {
@@ -301,12 +301,12 @@ const MIRROR_ASPECT: f32 = 1.6;
 /// mirrors, the kerb-side blind-spot mirrors and the door monitors of many buses looked into
 /// the saloon or at the sky.)
 pub(crate) fn mirror_view(
-    v: &::simulation::VehicleInstance,
-    part: Option<&::simulation::vehicle::TrailerPart>,
-    c: &::legacy_vehicle::Camera,
+    v: &simulation::VehicleInstance,
+    part: Option<&simulation::vehicle::TrailerPart>,
+    c: &legacy_vehicle::Camera,
     eye: DVec3,
     off: [f32; 2],
-) -> ::legacy_vehicle::Camera {
+) -> legacy_vehicle::Camera {
     let (base, rot) = match part {
         Some(t) => (t.position, t.body_rotation()),
         None => (v.position, v.body_rotation()),
@@ -328,13 +328,40 @@ pub(crate) fn mirror_view(
     );
     let m = Vec3::new(p.cos() * y.sin(), p.cos() * y.cos(), p.sin());
     let r = d - m * (2.0 * d.dot(m));
-    ::legacy_vehicle::Camera {
+    legacy_vehicle::Camera {
         yaw: r.x.atan2(r.y).to_degrees(),
         pitch: r.z.clamp(-1.0, 1.0).asin().to_degrees(),
         ..c.clone()
     }
 }
 
+pub(crate) fn aim_camera(
+    v: &simulation::VehicleInstance,
+    part: Option<&simulation::vehicle::TrailerPart>,
+    i: usize,
+    c: &legacy_vehicle::Camera,
+    eye: DVec3,
+    off: [f32; 2],
+) -> legacy_vehicle::Camera {
+    let cfg = camera_tool::cfg(i);
+    let mut c = c.clone();
+    c.yaw += cfg.yaw;
+    c.pitch += cfg.pitch;
+    c.pos = [c.pos[0] + cfg.pos[0], c.pos[1] + cfg.pos[1], c.pos[2] + cfg.pos[2]];
+    if cfg.fov > 0.0 {
+        c.fov = cfg.fov;
+    }
+    if cfg.direct {
+        c.yaw += off[0];
+        c.pitch += off[1];
+        return c;
+    }
+    mirror_view(v, part, &c, eye, off)
+}
+
+/// `eye` in the frame of coupled part `t` as if the train stood straight (the joints'
+/// bend left out), so that what a mirror on the part shows turns with the part. None for a
+/// train with a reversed part before it.
 fn eye_in_part_frame(
     v: &simulation::VehicleInstance,
     t: &simulation::vehicle::TrailerPart,
@@ -421,15 +448,17 @@ pub(crate) fn render_mirrors(
         .as_ref()
         .map(|v| v.0.position)
         .unwrap_or_else(|| driver_eye(p));
+    let src = mirror_cams(&p.vehicle);
     let parts: Vec<Option<&simulation::vehicle::TrailerPart>> =
-        mirror_cams(&p.vehicle).into_iter().map(|(t, _)| t).collect();
-    let cams: Vec<legacy_vehicle::Camera> = mirror_cams(&p.vehicle)
-        .into_iter()
+        src.iter().map(|(t, _)| *t).collect();
+    let cams: Vec<legacy_vehicle::Camera> = src
+        .iter()
         .enumerate()
         .map(|(i, (t, c))| {
-            mirror_view(
+            aim_camera(
                 &p.vehicle,
-                t,
+                *t,
+                i,
                 c,
                 eye,
                 p.mirror_offsets.get(i).copied().unwrap_or([0.0; 2]),
@@ -486,6 +515,32 @@ pub(crate) fn render_mirrors(
                 .unwrap_or(true)
         })
         .collect();
+    if camera_tool::wants() {
+        camera_tool::publish(
+            src.iter()
+                .enumerate()
+                .map(|(i, (t, c))| camera_tool::CamInfo {
+                    part: t
+                        .and_then(|t| p.vehicle.trailers.iter().position(|x| std::ptr::eq(x, t)))
+                        .map(|k| k + 1)
+                        .unwrap_or(0),
+                    pos: c.pos,
+                    yaw: c.yaw,
+                    pitch: c.pitch,
+                    fov: c.fov,
+                    radius: c.extra.unwrap_or(0.0),
+                    aimed_yaw: cams[i].yaw,
+                    aimed_pitch: cams[i].pitch,
+                    eye: {
+                        let e = mirror_cam_world_full(&p.vehicle, parts[i], &cams[i]).0;
+                        [e.x, e.y, e.z]
+                    },
+                    seen: seen.contains(&i),
+                    direct: crate::camera_tool::cfg(i).direct,
+                })
+                .collect(),
+        );
+    }
     if seen.is_empty() {
         return 0;
     }
