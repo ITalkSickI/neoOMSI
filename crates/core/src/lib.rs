@@ -507,6 +507,7 @@ pub(crate) fn make_app(
         paused: false,
         game_menu: None,
         lab_menu: None,
+        lab_list: None,
         menu_top: None,
         menu_scroll_drag: false,
         pane_scroll: None,

@@ -98,6 +98,7 @@ pub(crate) struct App {
     pub(crate) paused: bool,
     pub(crate) game_menu: Option<usize>,
     pub(crate) lab_menu: Option<ui::PauseState>,
+    pub(crate) lab_list: Option<(Vec<(String, String)>, game_lists::ListKind, Vec<usize>)>,
     pub(crate) menu_top: Option<f32>,
     pub(crate) menu_scroll_drag: bool,
     pub(crate) pane_scroll: Option<(usize, usize)>,

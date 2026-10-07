@@ -426,6 +426,8 @@ impl Ui {
                 self.pause_items.clear();
                 self.lab_groups.clear();
                 self.lab_actions.clear();
+                self.dialog = None;
+                self.dialog_rects.clear();
                 self.pause_reset();
             }
         }

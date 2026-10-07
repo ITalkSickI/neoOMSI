@@ -26,12 +26,26 @@ impl Ui {
         pt: f32,
     ) {
         let Metrics { w, h, u, mx, line } = m;
-        let top = self.draw_page_head(r, scene, m, "pause.page.vehicle.head", "pause.page.vehicle.note", top, pt);
+        let top = self.draw_page_head(
+            r,
+            scene,
+            m,
+            "pause.page.vehicle.head",
+            "pause.page.vehicle.note",
+            top,
+            pt,
+        );
         self.lab_groups.clear();
         self.lab_actions.clear();
         let groups = f.vehicle_menu;
         if groups.is_empty() {
-            let l = self.text.label(r, scene, &t("pause.page.vehicle.empty"), (16.0 * u) as u32, MUTED);
+            let l = self.text.label(
+                r,
+                scene,
+                &t("pause.page.vehicle.empty"),
+                (16.0 * u) as u32,
+                MUTED,
+            );
             l.place(scene, mx, top + 8.0 * u);
             return;
         }
@@ -52,17 +66,38 @@ impl Ui {
             if y + btn_h > bottom {
                 break;
             }
-            let rc = [mx - 20.0 * u * (1.0 - e), y, mx + side_w - 20.0 * u * (1.0 - e), y + btn_h];
-            let hot = inside(rc, f.cursor);
+            let rc = [
+                mx - 20.0 * u * (1.0 - e),
+                y,
+                mx + side_w - 20.0 * u * (1.0 - e),
+                y + btn_h,
+            ];
+            let hot = inside(rc, f.cursor) && self.dialog.is_none();
             let hv = self.ease((203, "grp", i), if hot { 1.0 } else { 0.0 }, 8.0);
             let sv = self.easeq((203, "grpsel", i), if i == gi { 1.0 } else { 0.0 }, 7.0);
-            let bg = mix(mix([30, 32, 37, 255], [42, 45, 52, 255], hv), [58, 62, 70, 255], sv);
+            let bg = mix(
+                mix([30, 32, 37, 255], [42, 45, 52, 255], hv),
+                [58, 62, 70, 255],
+                sv,
+            );
             self.text.rounded(r, scene, rc, 0.0, fade(bg, e));
             if sv > 0.0 {
-                self.text.rounded(r, scene, [rc[0], rc[1], rc[0] + 4.0 * u, rc[3]], 0.0, fade(ACCENT, e * sv));
+                self.text.rounded(
+                    r,
+                    scene,
+                    [rc[0], rc[1], rc[0] + 4.0 * u, rc[3]],
+                    0.0,
+                    fade(ACCENT, e * sv),
+                );
             }
             let name = clip_to(&self.text, &group_title(g), bpx as f32, side_w - 32.0 * u);
-            let l = self.text.label(r, scene, &name, bpx, mix(if hot { WHITE } else { SOFT }, WHITE, sv));
+            let l = self.text.label(
+                r,
+                scene,
+                &name,
+                bpx,
+                mix(if hot { WHITE } else { SOFT }, WHITE, sv),
+            );
             l.place(scene, rc[0] + 16.0 * u, rc[1] + (btn_h - l.h as f32) * 0.5);
             self.lab_groups.push([mx, y, mx + side_w, y + btn_h]);
         }
@@ -83,14 +118,19 @@ impl Ui {
             let ry = y0 + row_h * i as f32;
             let ox = 24.0 * u * (1.0 - e);
             let rc = [mid_x, ry, mid_x + mid_w, ry + row_h];
-            let hot = inside(rc, f.cursor);
+            let hot = inside(rc, f.cursor) && self.dialog.is_none();
             if hot {
                 hovered = Some(i);
             }
             let hv = self.ease((204, "row", i), if hot { 1.0 } else { 0.0 }, 8.0);
-            let base = if i % 2 == 0 { [28, 30, 35, 255] } else { [22, 24, 28, 255] };
+            let base = if i % 2 == 0 {
+                [28, 30, 35, 255]
+            } else {
+                [22, 24, 28, 255]
+            };
             let rr = [rc[0] + ox, rc[1], rc[2] + ox, rc[3]];
-            self.text.rounded(r, scene, rr, 0.0, fade(mix(base, [46, 49, 57, 255], hv), e));
+            self.text
+                .rounded(r, scene, rr, 0.0, fade(mix(base, [46, 49, 57, 255], hv), e));
             if hv > 0.0 {
                 self.text.rounded(
                     r,
@@ -115,10 +155,21 @@ impl Ui {
             };
             let vw = self.text.width(&val, vpx as f32);
             let vl = self.text.label(r, scene, &val, vpx, mix(AMBER, WHITE, hv));
-            vl.place(scene, rr[2] - 18.0 * u - vw, rr[1] + (row_h - vl.h as f32) * 0.5);
+            vl.place(
+                scene,
+                rr[2] - 18.0 * u - vw,
+                rr[1] + (row_h - vl.h as f32) * 0.5,
+            );
             let npx = (18.0 * u) as u32;
-            let name = clip_to(&self.text, &t(&action_key(a, "name")), npx as f32, mid_w - vw - 56.0 * u);
-            let nl = self.text.label(r, scene, &name, npx, if hot { WHITE } else { SOFT });
+            let name = clip_to(
+                &self.text,
+                &t(&action_key(a, "name")),
+                npx as f32,
+                mid_w - vw - 56.0 * u,
+            );
+            let nl = self
+                .text
+                .label(r, scene, &name, npx, if hot { WHITE } else { SOFT });
             nl.place(scene, rr[0] + 18.0 * u, rr[1] + (row_h - nl.h as f32) * 0.5);
             self.lab_actions.push(rc);
         }
@@ -135,10 +186,14 @@ impl Ui {
                 0.0,
                 fade(BORDER, e),
             );
-            self.text.rounded(r, scene, rc, 0.0, fade([8, 10, 14, 255], e));
+            self.text
+                .rounded(r, scene, rc, 0.0, fade([8, 10, 14, 255], e));
             let a = hovered.and_then(|i| g.actions.get(i));
             let (title, body) = match a {
-                Some(a) => (t(&action_key(a, "name")).to_uppercase(), t(&action_key(a, "desc"))),
+                Some(a) => (
+                    t(&action_key(a, "name")).to_uppercase(),
+                    t(&action_key(a, "desc")),
+                ),
                 None => (group_title(g), t("pause.page.vehicle.hint")),
             };
             let inner = rc[2] - rc[0] - 40.0 * u;
@@ -165,7 +220,13 @@ impl Ui {
             let ry = rc[3] - 14.0 * u;
             let mut dx = rc[0] + 20.0 * u;
             while dx + 6.0 * u < rc[2] - 20.0 * u {
-                self.text.rounded(r, scene, [dx, ry, dx + 6.0 * u, ry + line], 0.0, fade([255, 255, 255, 60], e));
+                self.text.rounded(
+                    r,
+                    scene,
+                    [dx, ry, dx + 6.0 * u, ry + line],
+                    0.0,
+                    fade([255, 255, 255, 60], e),
+                );
                 dx += 10.0 * u;
             }
         }
