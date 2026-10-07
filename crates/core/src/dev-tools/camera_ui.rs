@@ -18,6 +18,15 @@ pub(super) fn window(ui: &imgui::Ui, open: &mut bool) {
                 return;
             }
             ui.text_disabled(format!("{} reflection cameras (front, then coupled parts)", info.len()));
+            let mut ov = camera_tool::overlay_on();
+            if ui.checkbox("Show in world (point and camera axis)##camov", &mut ov) {
+                camera_tool::set_overlay(ov);
+            }
+            let mut ovv = camera_tool::overlay_view();
+            if ui.checkbox("Also the drawn mirror ray (follows your eye)##camovv", &mut ovv) {
+                camera_tool::set_overlay_view(ovv);
+            }
+            ui.text_disabled("cyan: in view, grey: not, magenta: direct, yellow: mirror ray");
             if ui.button("Reset all##camall") {
                 camera_tool::reset_all();
             }

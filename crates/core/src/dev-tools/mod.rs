@@ -23,7 +23,7 @@ use imgui::{BackendFlags, Condition, TextureId};
 use ::render::{Renderer, devtools as rdev};
 
 use gpu::Gpu;
-use overlays::{draw_beams, draw_boxes, draw_doors};
+use overlays::{draw_beams, draw_boxes, draw_cameras, draw_doors};
 
 pub(crate) use types::*;
 pub(crate) use util::project;
@@ -200,6 +200,12 @@ impl DevTools {
             if !extra.beams.is_empty() {
                 if let Some(cam) = extra.cam.as_ref() {
                     draw_beams(ui, cam, (w, h), &extra.beams);
+                }
+            }
+
+            if crate::camera_tool::overlay() {
+                if let Some(cam) = extra.cam.as_ref() {
+                    draw_cameras(ui, cam, (w, h), &crate::camera_tool::info());
                 }
             }
 

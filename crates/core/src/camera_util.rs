@@ -335,6 +335,77 @@ pub(crate) fn mirror_view(
     }
 }
 
+pub(crate) fn publish_camera_info(p: &Player, view: Option<(Camera, f32)>) {
+    let eye = view
+        .as_ref()
+        .map(|v| v.0.position)
+        .unwrap_or_else(|| driver_eye(p));
+    let src = mirror_cams(&p.vehicle);
+    let mut out = Vec::with_capacity(src.len());
+    for (i, (t, c)) in src.iter().enumerate() {
+        let off = p.mirror_offsets.get(i).copied().unwrap_or([0.0; 2]);
+        let cfg = crate::camera_tool::cfg(i);
+        let aimed = aim_camera(&p.vehicle, *t, i, c, eye, off);
+        let (at, view_dir) = view_ray(p, *t, &aimed);
+        let rot = match t {
+            Some(t) => t.body_rotation(),
+            None => p.vehicle.body_rotation(),
+        };
+        let (y, q) = (
+            (c.yaw + cfg.yaw + off[0]).to_radians(),
+            (c.pitch + cfg.pitch + off[1]).to_radians(),
+        );
+        let axis = rot.transform_vector3(glam::Vec3::new(
+            q.cos() * y.sin(),
+            q.cos() * y.cos(),
+            q.sin(),
+        ));
+        out.push(crate::camera_tool::CamInfo {
+            part: t
+                .and_then(|t| p.vehicle.trailers.iter().position(|x| std::ptr::eq(x, t)))
+                .map(|k| k + 1)
+                .unwrap_or(0),
+            pos: c.pos,
+            yaw: c.yaw,
+            pitch: c.pitch,
+            fov: c.fov,
+            radius: c.extra.unwrap_or(0.0),
+            aimed_yaw: aimed.yaw,
+            aimed_pitch: aimed.pitch,
+            eye: at,
+            dir: [axis.x as f64, axis.y as f64, axis.z as f64],
+            view: view_dir,
+            seen: view
+                .as_ref()
+                .map(|v| {
+                    mirror_in_view(
+                        mirror_cam_world_full(&p.vehicle, *t, &aimed).0,
+                        aimed.extra.unwrap_or(0.0).max(MIRROR_MIN_RADIUS),
+                        v,
+                    )
+                })
+                .unwrap_or(true),
+            direct: cfg.direct,
+        });
+    }
+    crate::camera_tool::publish(out);
+}
+
+/// A camera's eye and view direction in the world, for the dev-tools overlay.
+fn view_ray(
+    p: &Player,
+    part: Option<&::simulation::vehicle::TrailerPart>,
+    c: &::legacy_vehicle::Camera,
+) -> ([f64; 3], [f64; 3]) {
+    let (e, yaw, pitch, _) = mirror_cam_world_full(&p.vehicle, part, c);
+    let (sy, cy) = yaw.to_radians().sin_cos();
+    let (sp, cp) = pitch.to_radians().sin_cos();
+    (
+        [e.x, e.y, e.z],
+        [(sy * cp) as f64, (cy * cp) as f64, sp as f64],
+    )
+}
+
 pub(crate) fn aim_camera(
     v: &simulation::VehicleInstance,
     part: Option<&simulation::vehicle::TrailerPart>,
@@ -515,32 +586,6 @@ pub(crate) fn render_mirrors(
                 .unwrap_or(true)
         })
         .collect();
-    if camera_tool::wants() {
-        camera_tool::publish(
-            src.iter()
-                .enumerate()
-                .map(|(i, (t, c))| camera_tool::CamInfo {
-                    part: t
-                        .and_then(|t| p.vehicle.trailers.iter().position(|x| std::ptr::eq(x, t)))
-                        .map(|k| k + 1)
-                        .unwrap_or(0),
-                    pos: c.pos,
-                    yaw: c.yaw,
-                    pitch: c.pitch,
-                    fov: c.fov,
-                    radius: c.extra.unwrap_or(0.0),
-                    aimed_yaw: cams[i].yaw,
-                    aimed_pitch: cams[i].pitch,
-                    eye: {
-                        let e = mirror_cam_world_full(&p.vehicle, parts[i], &cams[i]).0;
-                        [e.x, e.y, e.z]
-                    },
-                    seen: seen.contains(&i),
-                    direct: crate::camera_tool::cfg(i).direct,
-                })
-                .collect(),
-        );
-    }
     if seen.is_empty() {
         return 0;
     }

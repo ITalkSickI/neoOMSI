@@ -99,6 +99,61 @@ pub(super) fn draw_beams(
     }
 }
 
+pub(super) fn draw_cameras(
+    ui: &imgui::Ui,
+    cam: &::render::Camera,
+    size: (u32, u32),
+    infos: &[crate::camera_tool::CamInfo],
+) {
+    let vp = cam.view_proj(size.0 as f32 / size.1.max(1) as f32, cam.position);
+    let list = ui.get_background_draw_list();
+    for (i, inf) in infos.iter().enumerate() {
+        let col = if !inf.seen {
+            [0.6, 0.6, 0.6, 1.0]
+        } else if inf.direct {
+            [1.0, 0.2, 0.9, 1.0]
+        } else {
+            [0.1, 0.9, 1.0, 1.0]
+        };
+        let p = glam::DVec3::from(inf.eye);
+        let d = glam::DVec3::from(inf.dir).normalize_or_zero();
+        let Some(pa) = project(&vp, cam.position, p, size) else {
+            continue;
+        };
+        const SEGS: usize = 16;
+        const LEN: f64 = 12.0;
+        let mut prev = pa;
+        for s in 1..=SEGS {
+            let t = s as f64 / SEGS as f64;
+            let Some(next) = project(&vp, cam.position, p + d * (LEN * t * t), size) else {
+                break;
+            };
+            let f = (1.0 - t) as f32;
+            let c = [col[0], col[1], col[2], 0.15 + 0.85 * f * f];
+            list.add_line(prev, next, c).thickness(0.8 + 1.7 * f).build();
+            prev = next;
+        }
+        if crate::camera_tool::overlay_view() {
+            // (the ray a mirror draws: follows the viewer's eye, so it moves with the camera)
+            let v = glam::DVec3::from(inf.view).normalize_or_zero();
+            if let Some(pv) = project(&vp, cam.position, p + v * 6.0, size) {
+                list.add_line(pa, pv, [1.0, 0.85, 0.1, 0.9]).thickness(1.0).build();
+            }
+        }
+        list.add_circle(pa, 6.0, col).thickness(2.0).build();
+        list.add_line([pa[0] - 9.0, pa[1]], [pa[0] + 9.0, pa[1]], col)
+            .build();
+        list.add_line([pa[0], pa[1] - 9.0], [pa[0], pa[1] + 9.0], col)
+            .build();
+        let part = if inf.part == 0 {
+            String::new()
+        } else {
+            format!(" p{}", inf.part)
+        };
+        list.add_text([pa[0] + 9.0, pa[1] - 16.0], col, format!("#{i}{part}"));
+    }
+}
+
 pub(super) fn draw_doors(
     ui: &imgui::Ui,
     cam: &::render::Camera,

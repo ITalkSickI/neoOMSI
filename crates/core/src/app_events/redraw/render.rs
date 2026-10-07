@@ -541,6 +541,16 @@ impl App {
                 .map(|f| f.texture.create_view(&Default::default()))
                 .or(stand_in);
             if let Some(view) = view {
+                if camera_tool::wants() {
+                    if let Some(p) = self.player.as_ref() {
+                        publish_camera_info(
+                            p,
+                            self.camera.as_ref().map(|c| {
+                                (*c, s.config.width as f32 / s.config.height.max(1) as f32)
+                            }),
+                        );
+                    }
+                }
                 let __t = Instant::now();
                 if ::config::get_int("graphics", "mirror_size").unwrap_or(256) as u32 == 0 {
                     self.mirror_budget = 0.0;

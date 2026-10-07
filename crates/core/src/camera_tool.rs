@@ -31,6 +31,8 @@ pub(crate) struct CamInfo {
     pub aimed_yaw: f32,
     pub aimed_pitch: f32,
     pub eye: [f64; 3],
+    pub dir: [f64; 3],
+    pub view: [f64; 3],
     pub seen: bool,
     pub direct: bool,
 }
@@ -38,6 +40,29 @@ pub(crate) struct CamInfo {
 static CFG: Mutex<Vec<CamCfg>> = Mutex::new(Vec::new());
 static INFO: Mutex<Vec<CamInfo>> = Mutex::new(Vec::new());
 static WANTED: AtomicBool = AtomicBool::new(false);
+static OVERLAY: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn overlay() -> bool {
+    OVERLAY.load(Ordering::Relaxed) && wants()
+}
+
+pub(crate) fn set_overlay(on: bool) {
+    OVERLAY.store(on, Ordering::Relaxed);
+}
+
+static OVERLAY_VIEW: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn overlay_view() -> bool {
+    OVERLAY_VIEW.load(Ordering::Relaxed)
+}
+
+pub(crate) fn set_overlay_view(on: bool) {
+    OVERLAY_VIEW.store(on, Ordering::Relaxed);
+}
+
+pub(crate) fn overlay_on() -> bool {
+    OVERLAY.load(Ordering::Relaxed)
+}
 
 pub(crate) fn cfg(i: usize) -> CamCfg {
     CFG.lock().get(i).copied().unwrap_or(CamCfg::DEFAULT)
