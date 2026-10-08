@@ -9,11 +9,13 @@ export const PageHead = ({ children }: { children: ReactNode }) => (
 export const Tag = ({
   color,
   children,
+  className = "",
 }: {
   color: string;
   children: ReactNode;
+  className?: string;
 }) => (
-  <span className="label" style={{ "--lc": color } as CSSProperties}>
+  <span className={`label ${className}`} style={{ "--lc": color } as CSSProperties}>
     {children}
   </span>
 );
