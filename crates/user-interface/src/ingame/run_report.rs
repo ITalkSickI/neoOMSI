@@ -435,14 +435,13 @@ impl Ui {
             };
             self.text.rounded(r, scene, rect, ROW_R * s, fill);
             let px = (14.0 * s) as u32;
-            let (text, more) = strip_more(label);
+            let text: &str = label;
             let label = clip_to(&self.text, &crate::tr(text), px as f32, bw - 16.0 * s);
             let ink = if i == 1 { ON_ACCENT } else { mix(SOFT, WHITE, glow) };
             let l = self.text.label(r, scene, &label, px, ink);
             let tx = bx + (bw - l.w as f32) * 0.5;
             let ty = rect[1] + (rect[3] - rect[1] - l.h as f32) * 0.5;
             l.place(scene, tx, ty);
-            let _ = more;
         }
         if !f.vr && !f.touch {
             self.report_label(
