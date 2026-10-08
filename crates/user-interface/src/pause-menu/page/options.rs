@@ -120,6 +120,7 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
             sel("pax_models", "pause.options.gameplay.pax_models.name", "pause.options.gameplay.pax_models.desc"),
             sel("boarding", "pause.options.gameplay.boarding.name", "pause.options.gameplay.boarding.desc"),
             sw("pax_prefer_seats", "pause.options.gameplay.pax_prefer_seats.name", "pause.options.gameplay.pax_prefer_seats.desc"),
+            sw("pax_rear_entry", "pause.page.text.boarding_at_the_rear_doors", "pause.page.text.passengers_who_need_no_ticket_from_the_driver_also_get_on_at_the_rear_doors"),
             sel("maintenance", "pause.options.gameplay.maintenance.name", "pause.options.later"),
             sw("coll_objects", "pause.options.gameplay.coll_objects.name", "pause.options.gameplay.coll_objects.desc"),
             sw("coll_vehicles", "pause.options.gameplay.coll_vehicles.name", "pause.options.gameplay.coll_vehicles.desc"),
