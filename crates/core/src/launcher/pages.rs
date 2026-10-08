@@ -5,10 +5,10 @@ use super::state::{fmt_bytes, hhmm, short_map};
 use super::theme::*;
 use super::ui::{ButtonKind, Ui, id_of};
 use super::{Launcher, Page};
-use glam::Vec2;
-use omsi_launcher_lib as core;
 use ::user_interface::paint::Align;
 use ::user_interface::{Color, Rect, Weight};
+use glam::Vec2;
+use omsi_launcher_lib as core;
 use serde_json::{Value, json};
 
 #[derive(Default)]
@@ -151,11 +151,11 @@ pub fn profile(l: &mut Launcher, area: Rect) {
     let half = (inner.w - GAP) * 0.5;
     if !names.is_empty()
         && l.ui.select(
-        "profile",
-        Rect::new(inner.x, inner.y, half, ROW),
-        &mut sel,
-        &names,
-    )
+            "profile",
+            Rect::new(inner.x, inner.y, half, ROW),
+            &mut sel,
+            &names,
+        )
     {
         l.state.config.profile = names[sel].clone();
         let _ = core::save_config(&l.state.config);
@@ -540,10 +540,10 @@ fn sel_setting(
     let mut sel = values.iter().position(|v| {
         *v == cur
             || v.parse::<f64>()
-            .ok()
-            .zip(cur.parse::<f64>().ok())
-            .map(|(a, b)| (a - b).abs() < 1e-6)
-            .unwrap_or(false)
+                .ok()
+                .zip(cur.parse::<f64>().ok())
+                .map(|(a, b)| (a - b).abs() < 1e-6)
+                .unwrap_or(false)
     });
     if sel.is_none() && !cur.is_empty() {
         // a value written by hand gets an entry of its own
@@ -594,9 +594,9 @@ fn cfg_sel(ui: &mut Ui, name: &str, r: Rect, label: &str, key: &str, options: &[
     let mut sel = values.iter().position(|v| {
         *v == cur
             || v.parse::<f64>()
-            .ok()
-            .zip(cur.parse::<f64>().ok())
-            .is_some_and(|(a, b)| (a - b).abs() < 1e-6)
+                .ok()
+                .zip(cur.parse::<f64>().ok())
+                .is_some_and(|(a, b)| (a - b).abs() < 1e-6)
     });
     if sel.is_none() && !cur.is_empty() {
         // a value written by hand gets an entry of its own
@@ -752,7 +752,8 @@ pub fn reset_dialog(l: &mut Launcher) {
     let size = l.ui.size;
     let full = Rect::new(0.0, 0.0, size.x, size.y);
     l.ui.solid(full);
-    l.ui.p().rect(full, ::user_interface::Color::rgba(0, 0, 0, 0.62));
+    l.ui.p()
+        .rect(full, ::user_interface::Color::rgba(0, 0, 0, 0.62));
     let w = (size.x - 48.0).min(520.0);
     let h = 190.0;
     let r = Rect::new((size.x - w) * 0.5, (size.y - h) * 0.5, w, h);
@@ -922,7 +923,10 @@ fn graphics_profiles_block(ui: &mut Ui, c: &mut Col) {
         {
             let name = names[g.sel].clone();
             for (k, v) in ::config::get_table_sub("graphics_profiles", &name) {
-                if ::config::DEFAULTS.iter().any(|(c, key, _)| *c == "graphics" && *key == k) {
+                if ::config::DEFAULTS
+                    .iter()
+                    .any(|(c, key, _)| *c == "graphics" && *key == k)
+                {
                     ::config::set_setting("graphics", &k, v);
                 }
             }
@@ -1084,12 +1088,8 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
             "shadow_size",
             &[("1024", "1024"), ("2048", "2048"), ("4096", "4096")],
         );
-        cfg_toggle(
-            ui,
-            c.row(), "Ambient occlusion", "ssao");
-        cfg_toggle(
-            ui,
-            c.row(), "Sun shadows", "shadows");
+        cfg_toggle(ui, c.row(), "Ambient occlusion", "ssao");
+        cfg_toggle(ui, c.row(), "Sun shadows", "shadows");
         cfg_sel(
             ui,
             "s-casters",
@@ -1101,12 +1101,7 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
                 ("omsi", "[shadow] meshes, as OMSI"),
             ],
         );
-        cfg_toggle(
-            ui,
-            c.row(),
-            "Detail texturing up close",
-            "detail_textures",
-        );
+        cfg_toggle(ui, c.row(), "Detail texturing up close", "detail_textures");
         // (an LED panel's dots are its own light: how bright they burn, and how much of the
         // mip chain the panel's picture and its mask are held at - 0 point-samples them,
         // the sharpest dots and the worst shimmer; higher holds them at the level the
@@ -1151,7 +1146,8 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
             ::config::set_setting("graphics", "nightmap_glow", nm.round() as i64);
             let _ = ::config::save();
         }
-        let mut atmo = ::config::get_float("graphics", "atmosphere_brightness").unwrap_or(1.0) as f32;
+        let mut atmo =
+            ::config::get_float("graphics", "atmosphere_brightness").unwrap_or(1.0) as f32;
         if ui.slider(
             "s-atmo",
             c.row(),
@@ -1162,7 +1158,11 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
             "Atmosphere brightness",
             &|v| format!("{v:.2}"),
         ) {
-            ::config::set_setting("graphics", "atmosphere_brightness", ((atmo / 0.05).round() * 0.05) as f64);
+            ::config::set_setting(
+                "graphics",
+                "atmosphere_brightness",
+                ((atmo / 0.05).round() * 0.05) as f64,
+            );
             let _ = ::config::save();
         }
         let mut mip = ::config::get_float("graphics", "led_mips").unwrap_or(1.3) as f32;
@@ -1200,9 +1200,7 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
         "Reflection maps (paint, chrome, glass)",
         "reflections",
     );
-    cfg_toggle(
-        ui,
-        c.row(), "Clouds", "clouds");
+    cfg_toggle(ui, c.row(), "Clouds", "clouds");
     let left = c.used();
     let mut c = Col::new(ui, cols[1], "Display");
     cfg_sel(
@@ -1236,6 +1234,86 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
             ("1000", "Unlimited"),
         ],
     );
+    c.section(ui, "Triple screens");
+    cfg_toggle(ui, c.row(), "Triple-screen projection", "triple_screen");
+    cfg_toggle(
+        ui,
+        c.row(),
+        "Span three monitors at startup",
+        "triple_screen_span",
+    );
+    cfg_toggle(ui, c.row(), "HUD on centre screen", "triple_screen_hud");
+    for (key, label, min, max, step, default) in [
+        (
+            "triple_screen_width_mm",
+            "Visible width of one screen",
+            300.0,
+            1200.0,
+            10.0,
+            690.0,
+        ),
+        (
+            "triple_screen_distance_mm",
+            "Eye to centre screen",
+            200.0,
+            1500.0,
+            10.0,
+            400.0,
+        ),
+        (
+            "triple_screen_bezel_mm",
+            "Frame width at each join",
+            0.0,
+            50.0,
+            1.0,
+            14.0,
+        ),
+        (
+            "triple_screen_left_angle",
+            "Left screen inward angle",
+            0.0,
+            60.0,
+            1.0,
+            30.0,
+        ),
+        (
+            "triple_screen_right_angle",
+            "Right screen inward angle",
+            0.0,
+            60.0,
+            1.0,
+            30.0,
+        ),
+        (
+            "triple_screen_eye_height_mm",
+            "Eye above centre screen",
+            -400.0,
+            400.0,
+            5.0,
+            0.0,
+        ),
+    ] {
+        let mut value = ::config::get_float("graphics", key).unwrap_or(default) as f32;
+        if ui.slider(
+            &format!("s-{key}"),
+            c.row(),
+            &mut value,
+            min,
+            max,
+            step,
+            label,
+            &|v| {
+                if key.ends_with("angle") {
+                    format!("{v:.0}°")
+                } else {
+                    format!("{v:.0} mm")
+                }
+            },
+        ) {
+            ::config::set_setting("graphics", key, value.round() as f64);
+            let _ = ::config::save();
+        }
+    }
     // (a Mac has Metal only; elsewhere a driver's Vulkan that misbehaves, or a card without
     // it, is got round here)
     if cfg!(windows) {
@@ -1339,8 +1417,7 @@ fn graphics_tab(ui: &mut Ui, s: &Value, cols: [Rect; 2]) -> [f32; 2] {
     );
     // (the game takes the smaller of an eighth of the memory and what the graphics
     // adapter is taken to hold, see `memory::texture_budget`)
-    let adapter_mb =
-        ::render::ADAPTER_TEXTURE_MB.load(std::sync::atomic::Ordering::Relaxed) as i64;
+    let adapter_mb = ::render::ADAPTER_TEXTURE_MB.load(std::sync::atomic::Ordering::Relaxed) as i64;
     let auto_mb = match (
         get(s, "texture_memory_auto").as_i64().unwrap_or(0),
         adapter_mb,
@@ -1589,12 +1666,22 @@ fn driving_tab(
         }
     }
     let mut ff = crate::controllers::ff_enabled();
-    if ui.toggle("set-ff_enabled", c.row(), &mut ff, "Force feedback and vibration") {
+    if ui.toggle(
+        "set-ff_enabled",
+        c.row(),
+        &mut ff,
+        "Force feedback and vibration",
+    ) {
         crate::controllers::set_ff_enabled(ff);
         let _ = ::config::save();
     }
     let mut inv = crate::controllers::global_ff_invert();
-    if ui.toggle("set-ff_invert", c.row(), &mut inv, "Invert force feedback by default") {
+    if ui.toggle(
+        "set-ff_invert",
+        c.row(),
+        &mut inv,
+        "Invert force feedback by default",
+    ) {
         crate::controllers::set_global_ff_invert(inv);
         let _ = ::config::save();
     }
@@ -2604,11 +2691,9 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         ) {
             match crate::keys::dik_code(code) {
                 Some(scan) => {
-                    let m = ::content::input::chord(
-                        l.ui.input.shift,
-                        l.ui.input.ctrl,
-                        l.ui.input.alt,
-                    ) as i64;
+                    let m =
+                        ::content::input::chord(l.ui.input.shift, l.ui.input.ctrl, l.ui.input.alt)
+                            as i64;
                     let section = ["vehicles", "game"][sec];
                     let vr_binding = l
                         .state
@@ -2702,8 +2787,8 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         ("Driving & the bus", "The bus's own keys", "vehicles"),
         ("The game", "Menus, views, pausing", "game"),
     ]
-        .iter()
-        .enumerate()
+    .iter()
+    .enumerate()
     {
         let r = Rect::new(
             body.x + sec as f32 * (half + GAP * 2.0),
@@ -2772,8 +2857,8 @@ pub fn controls(l: &mut Launcher, area: Rect) {
             .map(|(i, a, s, m)| {
                 let clash = *s != 0
                     && list
-                    .iter()
-                    .any(|(j, _, s2, m2)| j != i && s2 == s && m2 == m);
+                        .iter()
+                        .any(|(j, _, s2, m2)| j != i && s2 == s && m2 == m);
                 (
                     *i,
                     action_text(names, a),
@@ -2799,8 +2884,8 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         if shown.is_empty()
             && new_action.len() > 1
             && new_action
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             if l.ui.button(
                 &format!("kb-add-{sec}"),
@@ -3029,13 +3114,13 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let mut sel = pv.selected;
     let several = devices.len()
         + connected
-        .iter()
-        .filter(|c| {
-            !devices
-                .iter()
-                .any(|d| crate::controllers::names_match(&d.name, &c.name))
-        })
-        .count()
+            .iter()
+            .filter(|c| {
+                !devices
+                    .iter()
+                    .any(|d| crate::controllers::names_match(&d.name, &c.name))
+            })
+            .count()
         > 1;
     let mut assign = pv.assign && several;
     let list_r = Rect::new(inner.x - 6.0, inner.y, inner.w + 12.0, inner.h - 58.0);
@@ -3412,7 +3497,9 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             }
             y += ROW + 20.0;
             if !live_dev.is_some_and(|c| c.gamepad) {
-                let mut invert = d.ff_invert.unwrap_or_else(crate::controllers::global_ff_invert);
+                let mut invert = d
+                    .ff_invert
+                    .unwrap_or_else(crate::controllers::global_ff_invert);
                 if ui.toggle(
                     "pad-ff-invert",
                     Rect::new(x0, y, w, ROW),
@@ -3472,11 +3559,11 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             let mut inv = d.axes[a].map(|x| x.1).unwrap_or(false);
             if d.axes[a].is_some()
                 && ui.toggle(
-                &format!("pad-inv-{a}"),
-                Rect::new(bar.right() + GAP + sel_w + GAP, r.y, inv_w, r.h),
-                &mut inv,
-                "Reversed",
-            )
+                    &format!("pad-inv-{a}"),
+                    Rect::new(bar.right() + GAP + sel_w + GAP, r.y, inv_w, r.h),
+                    &mut inv,
+                    "Reversed",
+                )
             {
                 if let Some(x) = d.axes[a].as_mut() {
                     x.1 = inv;
@@ -4047,12 +4134,12 @@ fn wizard(
     }
     let skip = w.step >= 2
         && ui.button(
-        "wiz-skip",
-        Rect::new(r.right() - 260.0, by, 110.0, 36.0),
-        "Skip",
-        None,
-        ButtonKind::Normal,
-    );
+            "wiz-skip",
+            Rect::new(r.right() - 260.0, by, 110.0, 36.0),
+            "Skip",
+            None,
+            ButtonKind::Normal,
+        );
     let next = ui.button(
         "wiz-next",
         Rect::new(r.right() - 140.0, by, 140.0, 36.0),
@@ -4107,8 +4194,8 @@ fn wizard(
     let axes = wizard_result(&w.rest, &w.at);
     if feedback
         && axes
-        .iter()
-        .any(|a| matches!(a, Some((crate::controllers::Func::Steering, _))))
+            .iter()
+            .any(|a| matches!(a, Some((crate::controllers::Func::Steering, _))))
     {
         return None;
     }
@@ -4229,12 +4316,12 @@ fn feedback_setup(
     }
     if !*active
         && ui.button(
-        "wiz-ff-finish",
-        Rect::new(r.right() - 140.0, by, 140.0, 36.0),
-        "Finish",
-        Some("check"),
-        ButtonKind::Primary,
-    )
+            "wiz-ff-finish",
+            Rect::new(r.right() - 140.0, by, 140.0, 36.0),
+            "Finish",
+            Some("check"),
+            ButtonKind::Primary,
+        )
     {
         d.axes = axes;
         d.ff_invert = Some(w.ff_choice.or(d.ff_invert).unwrap_or(global_invert));
@@ -5469,6 +5556,15 @@ mod settings_tests {
     /// `set-<key>`). Taken from the page as it was before the tabs: nothing may go missing.
     fn by_tab() -> Vec<Vec<&'static str>> {
         let mut graphics = vec![
+            "set-triple_screen",
+            "set-triple_screen_span",
+            "set-triple_screen_hud",
+            "s-triple_screen_width_mm",
+            "s-triple_screen_distance_mm",
+            "s-triple_screen_bezel_mm",
+            "s-triple_screen_left_angle",
+            "s-triple_screen_right_angle",
+            "s-triple_screen_eye_height_mm",
             "s-gp-sel",
             "s-gp-load",
             "s-gp-del",

@@ -185,7 +185,7 @@ impl App {
     pub(crate) fn mouse_steers_in_view(&self) -> bool {
         self.player.is_some()
             && (matches!(self.view.as_str(), "driver" | "outside" | "pax")
-            || (self.view == "free" && !self.ego))
+                || (self.view == "free" && !self.ego))
     }
 
     /// The raycast camera is steering: the mouse turns the view, the middle of the
@@ -421,13 +421,14 @@ impl App {
             self.menu_drag = None;
         }
         if let Some(k) = self.menu_drag {
+            let (ui_x, _) = self.ui_cursor();
             let c = self.ui.as_ref().and_then(|u| {
                 k.checked_sub(u.menu_start)
                     .and_then(|i| u.menu_ctl.get(i).copied().flatten())
             });
             match c {
                 Some(c) => {
-                    let fx = ((x - c[0]) / (c[2] - c[0]).max(1.0)).clamp(0.0, 1.0);
+                    let fx = ((ui_x - c[0]) / (c[2] - c[0]).max(1.0)).clamp(0.0, 1.0);
                     self.list_click(k, fx);
                 }
                 None => self.menu_drag = None,
@@ -478,8 +479,9 @@ impl App {
             self.editor_drag_frame();
             return false;
         }
+        let (ui_x, ui_y) = self.ui_cursor();
         if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
-            n.map_move(x, y);
+            n.map_move(ui_x, ui_y);
             return false;
         }
         // looking round in a view of the bus follows the cursor, as Omsi.exe turns it
@@ -494,7 +496,8 @@ impl App {
                 .unwrap_or(1.0)
                 .max(0.1);
             let fov = self.camera.as_ref().map(|c| c.fov_deg).unwrap_or(60.0);
-            let k = look_deg_per_px(fov) * (::config::get_float("camera", "look_sens").unwrap_or(1.0) as f32);
+            let k = look_deg_per_px(fov)
+                * (::config::get_float("camera", "look_sens").unwrap_or(1.0) as f32);
             self.look_by((x - last.0) / scale * k, (y - last.1) / scale * k);
         }
         if self.dragging {
@@ -517,7 +520,7 @@ impl App {
         if self.game_menu.is_none() && self.editor_mouse(pressed) {
             return;
         }
-        let (x, y) = self.cursor;
+        let (x, y) = self.ui_cursor();
         let vr_active = self.vr_active();
         if let Some(n) = self.navigator.as_mut() {
             if n.map_open() {
@@ -830,11 +833,11 @@ impl App {
         #[cfg(windows)]
         if !self.mouse_drive
             && self.vr.as_ref().is_some_and(|vr| {
-            vr.needs_cursor_surface(
-                self.cursor,
-                self.game_menu.is_some() || self.chooser.is_some(),
-            )
-        })
+                vr.needs_cursor_surface(
+                    self.cursor,
+                    self.game_menu.is_some() || self.chooser.is_some(),
+                )
+            })
         {
             let surface = self
                 .player
@@ -860,16 +863,16 @@ impl App {
             self.surface.as_ref(),
         ) {
             (Some(p), Some(cam), Some(s))
-            if self.view != "free"
-                && (self.view != "foot" || self.foot_reaches_bus())
-                && !(self.vr_active()
-                && self.mouse_drive
-                && matches!(self.view.as_str(), "driver" | "pax")) =>
-                {
-                    let (o, d, spread) =
-                        self.cockpit_cursor_ray(cam, (s.config.width, s.config.height));
-                    p.hovered_part(o, d, spread)
-                }
+                if self.view != "free"
+                    && (self.view != "foot" || self.foot_reaches_bus())
+                    && !(self.vr_active()
+                        && self.mouse_drive
+                        && matches!(self.view.as_str(), "driver" | "pax")) =>
+            {
+                let (o, d, spread) =
+                    self.cockpit_cursor_ray(cam, (s.config.width, s.config.height));
+                p.hovered_part(o, d, spread)
+            }
             _ => (None, false),
         };
         let found = if found.0.is_none() && !found.1 && self.view != "free" {
@@ -943,7 +946,7 @@ impl App {
             return 4;
         }
         let Some(u) = self.ui.as_ref() else { return 0 };
-        let (x, y) = self.cursor;
+        let (x, y) = self.ui_cursor();
         let inside = |r: &[f32; 4]| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
         let clickable = u.menu_scroll_thumb.is_some_and(|r| inside(&r))
             || u.menu_side.iter().any(|r| inside(r))
@@ -952,9 +955,9 @@ impl App {
             || u.menu_time.iter().any(|r| inside(r))
             || u.menu_ctl.iter().flatten().any(|r| inside(r))
             || u.menu_rects
-            .iter()
-            .enumerate()
-            .any(|(i, r)| inside(r) && !self.menu_item_off(i + u.menu_start));
+                .iter()
+                .enumerate()
+                .any(|(i, r)| inside(r) && !self.menu_item_off(i + u.menu_start));
         if clickable { 1 } else { 0 }
     }
 }

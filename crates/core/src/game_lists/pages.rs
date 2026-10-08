@@ -72,9 +72,9 @@ pub(super) fn look_options_page(app: &App) -> Page {
             "Shows the name of what the cursor or the screen centre points at",
         ),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     ("Free look", rows)
 }
 pub(super) fn map_options_page(app: &App) -> Page {
@@ -118,9 +118,9 @@ pub(super) fn map_options_page(app: &App) -> Page {
             "Takes effect when the game starts the next time",
         ),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     ("Map", rows)
 }
 
@@ -283,9 +283,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "For wheels without a saved direction",
         ),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     let mut camera: Vec<(String, String)> = vec![
         slider_row(
             app,
@@ -369,7 +369,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "Head tracking",
             &format!(
                 "Head tracking with opentrack (UDP port {})",
-                ::config::get_int("camera", "head_tracking_port").and_then(|v| u16::try_from(v).ok()).unwrap_or(4242)
+                ::config::get_int("camera", "head_tracking_port")
+                    .and_then(|v| u16::try_from(v).ok())
+                    .unwrap_or(4242)
             ),
         ),
         switch_row(
@@ -406,9 +408,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             &cm,
         ),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     camera.push(button(
         "Reset the seat position",
         "Reset",
@@ -489,11 +491,71 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             &|v| format!("{v:.2}"),
         ),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     let display: Vec<(String, String)> = vec![
         pick("window_mode", "Window mode", "Changes how the game fills your display"),
+        switch_row(
+            app,
+            "triple_screen",
+            "Triple-screen projection",
+            "Use three equal monitors arranged side by side",
+        ),
+        switch_row(
+            app,
+            "triple_screen_span",
+            "Span three monitors at startup",
+            "Spans the game window across three aligned monitors at startup",
+        ),
+        switch_row(
+            app,
+            "triple_screen_hud",
+            "HUD on centre screen",
+            "Keeps the game interface on the middle monitor",
+        ),
+        slider_row(
+            app,
+            "triple_screen_width_mm",
+            "Visible width of one screen",
+            "Physical width of each monitor's visible area",
+            &|v| format!("{v:.0} mm"),
+        ),
+        slider_row(
+            app,
+            "triple_screen_distance_mm",
+            "Eye to centre screen",
+            "Distance from your eyes to the middle monitor",
+            &|v| format!("{v:.0} mm"),
+        ),
+        slider_row(
+            app,
+            "triple_screen_bezel_mm",
+            "Frame width at each join",
+            "Width of the monitor frames at each join",
+            &|v| format!("{v:.0} mm"),
+        ),
+        slider_row(
+            app,
+            "triple_screen_left_angle",
+            "Left screen inward angle",
+            "Angle of the left monitor toward you",
+            &|v| format!("{v:.0}°"),
+        ),
+        slider_row(
+            app,
+            "triple_screen_right_angle",
+            "Right screen inward angle",
+            "Angle of the right monitor toward you",
+            &|v| format!("{v:.0}°"),
+        ),
+        slider_row(
+            app,
+            "triple_screen_eye_height_mm",
+            "Eye above centre screen",
+            "Vertical position of your eyes relative to the middle monitor",
+            &|v| format!("{v:.0} mm"),
+        ),
         switch_row(app, "vsync", "V-sync", "Waits for the screen's refresh"),
         pick("max_fps", "Frame limit", "Frames a second at most"),
         switch_row(
@@ -503,9 +565,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
             "Show the frames per second in the top right corner",
         ),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     let sound: Vec<(String, String)> = vec![
         slider_row(
             app,
@@ -536,9 +598,9 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         ),
         pick("pax_voices", "Passenger voices", "What passengers say"),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     let interface: Vec<(String, String)> = vec![
         pick("language", "Language", "The language of the game's interface"),
         pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
@@ -590,8 +652,8 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
                     None
                 },
             ]
-                .into_iter()
-                .flatten(),
+            .into_iter()
+            .flatten(),
         );
     }
     if app.vr_active() && app.player.is_some() {
@@ -658,7 +720,10 @@ pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
             "noop".to_string(),
         )];
     };
-    let names = crate::describe::names(&app.args.root, &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()));
+    let names = crate::describe::names(
+        &app.args.root,
+        &::config::get_string("ui", "language").unwrap_or_else(|| "en".into()),
+    );
     let head = |t: &str, n: usize| {
         (
             row(&t.to_uppercase(), 'i', &n.to_string(), "", None),
@@ -1036,8 +1101,15 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             "METAR sync",
             "The weather follows the real METAR report",
         ));
-        let src = if ::config::get_string("gameplay", "metar_station").unwrap_or_default().is_empty() {
-            format!("{} ({})", app.metar_station(), ::user_interface::tr("automatic"))
+        let src = if ::config::get_string("gameplay", "metar_station")
+            .unwrap_or_default()
+            .is_empty()
+        {
+            format!(
+                "{} ({})",
+                app.metar_station(),
+                ::user_interface::tr("automatic")
+            )
         } else {
             app.metar_station()
         };

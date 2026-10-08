@@ -1422,6 +1422,44 @@ _version: 2
   de: "Lenkung"
 "Steering linearity (keys at OMSI's steady pace)":
   de: "Lenklinearität (Tasten im gleichmäßigen OMSI-Tempo)"
+"Triple-screen projection":
+  de: "Projektion für drei Bildschirme"
+"Use three equal monitors arranged side by side":
+  de: "Drei gleich große Monitore nebeneinander verwenden"
+"Span three monitors at startup":
+  de: "Beim Start über drei Monitore spannen"
+"Spans the game window across three aligned monitors at startup":
+  de: "Spannt das Spielfenster beim Start über drei ausgerichtete Monitore"
+"HUD on centre screen":
+  de: "HUD auf dem mittleren Bildschirm"
+"Keeps the game interface on the middle monitor":
+  de: "Hält die Spieloberfläche auf dem mittleren Monitor"
+"Opens a borderless window across three aligned monitors when available":
+  de: "Öffnet nach Möglichkeit ein randloses Fenster über drei ausgerichtete Monitore"
+"Visible width of one screen":
+  de: "Sichtbare Breite eines Bildschirms"
+"Physical width of each monitor's visible area":
+  de: "Physische Breite der sichtbaren Monitorfläche"
+"Eye to centre screen":
+  de: "Augenabstand zum mittleren Bildschirm"
+"Distance from your eyes to the middle monitor":
+  de: "Abstand der Augen zum mittleren Monitor"
+"Frame width at each join":
+  de: "Rahmenbreite an den Übergängen"
+"Width of the monitor frames at each join":
+  de: "Breite der Monitorrahmen an den Übergängen"
+"Left screen inward angle":
+  de: "Einwärtswinkel des linken Bildschirms"
+"Angle of the left monitor toward you":
+  de: "Winkel des linken Monitors zu dir"
+"Right screen inward angle":
+  de: "Einwärtswinkel des rechten Bildschirms"
+"Angle of the right monitor toward you":
+  de: "Winkel des rechten Monitors zu dir"
+"Eye above centre screen":
+  de: "Augenhöhe über dem mittleren Bildschirm"
+"Vertical position of your eyes relative to the middle monitor":
+  de: "Vertikale Position der Augen relativ zum mittleren Monitor"
 "Steering with the mouse":
   de: "Lenken mit der Maus"
 "Stop brake / door release is on: the bus stands until it is switched off":
