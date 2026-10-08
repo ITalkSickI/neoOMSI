@@ -116,7 +116,7 @@ pub(crate) fn rows(app: &App) -> Rows {
     for c in live.iter().filter(|c| !devices.iter().any(|d| controllers::names_match(&d.name, &c.name))) {
         out.push((row(&c.name, 'a', "pause.controls.setup.name", "pause.controls.setup.desc", None), format!("pad_add {}", c.name)));
     }
-    if devices.is_empty() && live.is_empty() {
+    if live.is_empty() {
         out.push((row("pause.controls.none", 'i', "", "", None), "noop".to_string()));
     }
     out
@@ -127,9 +127,9 @@ pub(crate) fn device_tabs(app: &App) -> Vec<(&'static str, Rows)> {
     let devices = controllers::read_cfg();
     devices
         .iter()
-        .map(|d| {
-            let dev = live.iter().find(|c| controllers::names_match(&d.name, &c.name));
-            (intern(&d.name), device_rows(app, d, dev))
+        .filter_map(|d| {
+            let dev = live.iter().find(|c| controllers::names_match(&d.name, &c.name))?;
+            Some((intern(&d.name), device_rows(app, d, Some(dev))))
         })
         .collect()
 }
@@ -159,7 +159,7 @@ fn device_rows(app: &App, d: &DeviceCfg, dev: Option<&Connected>) -> Rows {
         row("pause.controls.deadzone.name", 'o', &format!("{:.0} %", d.deadzone.unwrap_or(0.0) * 100.0), "pause.controls.deadzone.desc", None),
         "pad_dz".to_string(),
     ));
-    
+
     if dev.is_some_and(|c| c.ff_capable) || d.ff_scale.is_some() || d.ff_invert.is_some() {
         let (steer, vib) = d.ff_scale.unwrap_or((1.0, 1.0));
         out.push(heading("pause.controls.ff.title"));
@@ -312,7 +312,7 @@ pub(crate) fn click(app: &mut App, verb: &str, arg: &str) {
             let at = devices.len() - 1;
             SEL.store(at, Ordering::Relaxed);
             save(app, &devices);
-            
+
             if let Some(u) = app.ui.as_mut() {
                 u.world_sub = at + 2;
                 u.world_scroll = 0;
