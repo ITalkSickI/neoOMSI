@@ -257,7 +257,7 @@ impl App {
             .iter()
             .any(|a| a == "navigator_close")
         {
-            if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open()) {
+            if let Some(n) = self.navigator.as_mut().filter(|n| n.map_open() && n.city.embed.is_none()) {
                 n.toggle_map();
                 return;
             }
@@ -875,11 +875,7 @@ impl App {
                 let msg = self.radio.next_station();
                 self.service_msg = Some((msg, 4.0));
             }
-            "toggle_city_map" => {
-                if let Some(n) = self.navigator.as_mut() {
-                    n.toggle_map();
-                }
-            }
+            "toggle_city_map" => self.toggle_map_page(),
             "show_position" => self.show_position(),
             "save_personnel" => self.save_personnel(),
             "toggel_ctrler" => {

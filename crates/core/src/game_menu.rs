@@ -427,11 +427,13 @@ impl App {
 
     /// The action name of the list row that is entry `idx` of section `sec`.
     fn keybind_name(&self, sec: usize, idx: usize) -> Option<String> {
-        let list = self.admin_list.as_ref()?;
-        (0..list.len())
-            .filter_map(|k| self.keybind_row(k))
-            .find(|r| r.0 == sec && r.1 == idx)
-            .map(|r| r.2)
+        let v = omsi_launcher_lib::get_keybindings().ok()?;
+        v.get(["vehicles", "game"][sec.min(1)])?
+            .as_array()?
+            .get(idx)?
+            .get("action")?
+            .as_str()
+            .map(str::to_string)
     }
 
     /// Opens the Keys page again with the row of entry `idx` of section `sec` selected.
@@ -494,12 +496,6 @@ impl App {
             return;
         }
         self.reload_keys();
-        // (a key changed is a key the player wants: the ready-made layouts would ignore it)
-        if sec == 0 && self.args.drive_keys != "omsi" {
-            self.args.drive_keys = "omsi".into();
-            ::config::set_setting("gameplay", "drive-keys", "omsi");
-            let _ = ::config::save();
-        }
         self.reopen_keys(sec, target);
     }
 
@@ -1162,14 +1158,7 @@ impl App {
             }
             "admin" => self.open_list(crate::game_lists::ListKind::Admin),
             "duty" => self.open_list(crate::game_lists::ListKind::Lines),
-            "map" => {
-                self.close_game_menu();
-                if let Some(n) = self.navigator.as_mut() {
-                    if !n.map_open() {
-                        n.toggle_map();
-                    }
-                }
-            }
+            "map" => self.open_map_page(),
             "save" => {
                 self.quick_save();
                 self.close_game_menu();
@@ -1263,16 +1252,13 @@ impl App {
                 }
             }
             "teleport" => {
-                self.close_game_menu();
-                if let Some(n) = self.navigator.as_mut() {
-                    if !n.map_open() {
-                        n.toggle_map();
-                    }
+                if self.navigator.is_some() {
                     self.teleport_pick = true;
                     self.service_msg = Some((
                         "Click a street on the map: the bus is put there".into(),
                         6.0,
                     ));
+                    self.open_map_page();
                 }
             }
             "driver" => self.open_list(crate::game_lists::ListKind::Drivers),

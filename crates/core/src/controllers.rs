@@ -899,6 +899,15 @@ pub struct Controllers {
 }
 
 impl Controllers {
+    
+    pub(crate) fn connected_devices(&self) -> Vec<Connected> {
+        self.devices.connected()
+    }
+
+    pub(crate) fn reload_cfg(&mut self) {
+        self.cfg = read_cfg();
+    }
+
     pub(crate) fn refresh_devices(&self) {
         self.devices.refresh();
     }

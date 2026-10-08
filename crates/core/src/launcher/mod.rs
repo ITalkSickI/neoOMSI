@@ -13,7 +13,7 @@ pub mod mobile;
 mod multiplayer;
 mod pages;
 pub mod phone;
-mod showroom;
+pub(crate) mod showroom;
 mod state;
 #[cfg_attr(not(target_os = "android"), allow(unused_imports))]
 pub(crate) use state::crash_of;

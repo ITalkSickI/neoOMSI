@@ -17,12 +17,20 @@ impl Ui {
         self.text.rounded(r, scene, [0.0, 0.0, w, bar_h], 0.0, [0, 0, 0, 200]);
         self.text
             .rounded(r, scene, [0.0, bar_h, w, bar_h + line], 0.0, BORDER);
-        let brand = self.text.label(r, scene, "neoOMSI", (15.0 * u) as u32, MUTED);
-        brand.place(scene, mx, (bar_h - brand.h as f32) * 0.5);
+        self.ensure_logo();
+        if let Some((tex, iw, ih)) = self.logo_at(r, scene, (bar_h * 0.46).round()) {
+            let (lw, lh) = (iw as f32, ih as f32);
+            let top = ((bar_h - lh) * 0.5).round();
+            scene.overlays.push((tex, [mx, top, mx + lw, top + lh]));
+        } else {
+            let brand = self.text.label(r, scene, "neoOMSI", (15.0 * u) as u32, MUTED);
+            brand.place(scene, mx, (bar_h - brand.h as f32) * 0.5);
+        }
 
         let tpx = (17.0 * u) as u32;
         let gap = 6.0 * u;
-        let widths: Vec<f32> = page::PAGES
+        let pages = &page::PAGES[..if self.admin_visible { page::PAGES.len() } else { page::PAGES.len() - 1 }];
+        let widths: Vec<f32> = pages
             .iter()
             .map(|p| self.text.width(&t(p.nav), tpx as f32) + 40.0 * u)
             .collect();
@@ -43,7 +51,7 @@ impl Ui {
             lx += wd + gap;
         }
         let pos = self.ease((201, "pos", 0), tab as f32, 9.0);
-        for (i, p) in page::PAGES.iter().enumerate() {
+        for (i, p) in pages.iter().enumerate() {
             let rc = [x, 0.0, x + widths[i], bar_h];
             let hot = inside(rc, f.cursor);
             let hv = self.ease((201, "hover", i), if hot && i != tab { 1.0 } else { 0.0 }, 8.0);

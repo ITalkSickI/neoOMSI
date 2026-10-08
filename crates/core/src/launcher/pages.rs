@@ -1384,21 +1384,6 @@ fn driving_tab(
     cols: [Rect; 2],
 ) -> [f32; 2] {
     let mut c = Col::new(ui, cols[0], "Keyboard & mouse");
-    sel_setting(
-        ui,
-        s,
-        dirty,
-        "s-keys",
-        c.row(),
-        "Driving keys",
-        "drive_keys",
-        &[
-            ("omsi", "Custom controls (Controls page)"),
-            ("simple", "W A S D + arrows"),
-            ("wasd", "W A S D only"),
-            ("arrows", "Arrow keys only"),
-        ],
-    );
     toggle_setting(
         ui,
         s,
@@ -2634,59 +2619,6 @@ pub fn controls(l: &mut Launcher, area: Rect) {
         }
         l.ui.input.raw_key = None;
     }
-    // The keys below are the ones the game uses only with "Custom controls" (Settings →
-    // Driving keys); the ready-made layouts keep W A S D / the arrows for driving. Say so,
-    // with the switch right here - and changing a key switches by itself (see `save_keys`).
-    let preset = l
-        .state
-        .settings
-        .get("drive_keys")
-        .and_then(|v| v.as_str())
-        .unwrap_or("simple")
-        .to_string();
-    let body = if preset != "omsi" {
-        let name = match preset.as_str() {
-            "wasd" => "W A S D only",
-            "arrows" => "Arrow keys only",
-            _ => "W A S D + arrows",
-        };
-        let bw = if body.w < 700.0 { 150.0 } else { 200.0 };
-        let text = format!(
-            "Driving keys: {name} (Settings). Those keys drive the bus and win over the list below. Change any key here and your own layout (Custom controls) is used from then on."
-        );
-        let tw = body.w - bw - 70.0;
-        let th = l.ui.paragraph_height(&text, tw, 12.5, Weight::Medium);
-        let bar = Rect::new(body.x, body.y, body.w, (th + 22.0).max(54.0));
-        l.ui.p().rounded(bar, 8.0, ACCENT.alpha(0.1));
-        l.ui.p().rounded_border(bar, 8.0, 1.0, ACCENT.alpha(0.45));
-        l.ui.icon(
-            "info",
-            Vec2::new(bar.x + 22.0, bar.center().y),
-            20.0,
-            ACCENT,
-        );
-        l.ui.paragraph(
-            &text,
-            Vec2::new(bar.x + 42.0, bar.center().y - th * 0.5),
-            tw,
-            12.5,
-            Weight::Medium,
-            TEXT_SOFT,
-        );
-        if l.ui.button(
-            "kb-use-custom",
-            Rect::new(bar.right() - bw - 10.0, bar.center().y - 18.0, bw, 36.0),
-            "Use these keys",
-            Some("keyboard"),
-            ButtonKind::Primary,
-        ) {
-            use_custom_keys(l);
-        }
-        let used = bar.h + 12.0;
-        Rect::new(body.x, body.y + used, body.w, body.h - used)
-    } else {
-        body
-    };
     let half = (body.w - GAP * 2.0) * 0.5;
     let names = control_names(l);
     for (sec, (title, sub, key)) in [
@@ -4297,20 +4229,6 @@ fn save_gamectrler(devices: &[crate::controllers::DeviceCfg]) -> Result<(), Stri
     ::config::save().map_err(|e| e.to_string())
 }
 
-/// Settings → Driving keys: "Custom controls", the keys of the Controls page.
-fn use_custom_keys(l: &mut Launcher) -> bool {
-    if l.state.settings.get("drive_keys").and_then(|v| v.as_str()) == Some("omsi") {
-        return false;
-    }
-    l.state.settings["drive_keys"] = json!("omsi");
-    l.state.settings_dirty = 0.3;
-    l.state.set_status(
-        "Driving keys: Custom controls - the game uses the keys of this page.",
-        false,
-    );
-    true
-}
-
 fn save_keys(l: &mut Launcher, vr_binding: bool) {
     match core::save_keybindings(&l.state.keybindings) {
         Ok(()) => {
@@ -4318,13 +4236,8 @@ fn save_keys(l: &mut Launcher, vr_binding: bool) {
             if let Ok(k) = core::get_keybindings() {
                 l.state.keybindings = k;
             }
-            // a key changed is a key the player wants to use: with a ready-made layout it
-            // would be ignored wherever that layout has a key of its own
-            if !vr_binding && use_custom_keys(l) {
-                l.state.set_status("Key bindings saved; Driving keys switched to Custom controls so the game uses them.", false);
-            } else {
-                l.state.set_status("Key bindings saved.", false);
-            }
+            let _ = vr_binding;
+            l.state.set_status("Key bindings saved.", false);
         }
         Err(e) => {
             l.state.keybindings_error = format!("{e:#}");

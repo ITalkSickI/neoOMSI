@@ -21,7 +21,9 @@ impl Ui {
         let overlay_start = scene.overlays.len();
         let Some((sel, items)) = f.menu else {
             self.menu_overlay_range = overlay_start..overlay_start;
-            self.anim.clear();
+            if f.lab.is_none() {
+                self.anim.clear();
+            }
             return;
         };
         if let Some(report) = f.report {

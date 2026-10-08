@@ -99,6 +99,7 @@ pub enum MenuKind {
 
 /// The timetable beside a list of lines or tours: a title, a line of facts and rows of
 /// (what, time).
+#[derive(Clone)]
 pub struct Preview {
     pub title: String,
     pub meta: String,

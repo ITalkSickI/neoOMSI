@@ -2,10 +2,13 @@
 
 use super::*;
 
+mod admin;
 mod map;
 mod options;
 mod vehicle;
 mod world;
+
+pub use self::options::{Fmt, OptGroup, OptKind, OptRow, OptShow, OPTION_GROUPS};
 
 pub(super) type DrawFn = fn(&mut Ui, &Renderer, &mut Scene, &Frame, Metrics, f32, f32);
 
@@ -14,11 +17,17 @@ pub(super) struct Page {
     pub draw: DrawFn,
 }
 
-pub(super) const PAGES: [Page; 4] = [map::PAGE, options::PAGE, world::PAGE, vehicle::PAGE];
+pub(super) const PAGES: [Page; 5] = [map::PAGE, options::PAGE, world::PAGE, vehicle::PAGE, admin::PAGE];
 
 pub const PAGE_COUNT: usize = PAGES.len();
 
+pub const OPTIONS_PAGE: usize = 1;
+
 pub const VEHICLE_PAGE: usize = 3;
+
+pub const WORLD_PAGE: usize = 2;
+
+pub const ADMIN_PAGE: usize = 4;
 
 impl Ui {
     pub(in super::super) fn draw_pause_page(
@@ -41,6 +50,12 @@ impl Ui {
         if shown != VEHICLE_PAGE {
             self.lab_groups.clear();
             self.lab_actions.clear();
+        }
+        if shown != WORLD_PAGE && shown != OPTIONS_PAGE && shown != ADMIN_PAGE {
+            self.world_groups_rc.clear();
+            self.world_sub_rc.clear();
+            self.world_rows_rc.clear();
+            self.world_drop_rc.clear();
         }
         (PAGES[shown].draw)(self, r, scene, f, m, bar_bottom + 32.0 * u, pt);
 

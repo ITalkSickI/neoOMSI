@@ -4,6 +4,22 @@ use super::*;
 
 impl App {
     pub(crate) fn wheel(&mut self, amount: f32) {
+        if self.lab_dialog_wheel(amount) {
+            return;
+        }
+        if self.lab_menu.is_some_and(|s| s.page == Some(0)) {
+            let (x, y) = self.cursor;
+            if let Some(n) = self.navigator.as_mut().filter(|n| n.city.embed.is_some()) {
+                let r = n.city.rect;
+                if x >= r[0] && x < r[2] && y >= r[1] && y < r[3] {
+                    n.map_wheel(amount, x, y);
+                }
+            }
+            return;
+        }
+        if self.lab_world_wheel(amount) {
+            return;
+        }
         if self.vr_nav_edit.is_some() {
             self.vr_nav_scroll(amount);
             return;
@@ -80,6 +96,14 @@ impl App {
             return;
         }
         if self.lab_menu.is_some() {
+            if !pressed {
+                if let Some(u) = self.ui.as_mut() {
+                    u.world_drag = None;
+                }
+            }
+            if self.lab_map_mouse(Some(pressed)) {
+                return;
+            }
             if pressed {
                 self.lab_click(event_loop);
             }

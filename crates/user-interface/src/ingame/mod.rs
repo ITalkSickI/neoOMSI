@@ -24,7 +24,7 @@ mod text;
 mod view;
 mod widgets;
 
-pub use self::pause_menu::{Dialog, PauseState, PAGE_COUNT, PAUSE_ENTRIES, VEHICLE_PAGE};
+pub use self::pause_menu::{Dialog, Fmt, OptGroup, OptKind, OptRow, OptShow, PauseState, WorldDrop, WorldGroup, WorldRow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, PAUSE_ENTRIES, VEHICLE_PAGE, WORLD_PAGE};
 pub use self::view::*;
 #[allow(unused_imports)]
 use self::{style::*, text::*};
@@ -59,6 +59,7 @@ pub struct TextCache {
     backdrop: f32,
     /// No outline round the texts that ask for none (the game menu's: flat text on its card).
     flat: bool,
+    alpha: f32,
 }
 
 pub struct Ui {
@@ -72,12 +73,53 @@ pub struct Ui {
     pub menu_arrows: Vec<Option<[f32; 3]>>,
     pub menu_scroll_thumb: Option<[f32; 4]>,
     pub lab_tabs: Vec<[f32; 4]>,
+    pub admin_visible: bool,
     pub pause_items: Vec<[f32; 4]>,
     pub lab_groups: Vec<[f32; 4]>,
     pub lab_actions: Vec<[f32; 4]>,
     pub lab_group: usize,
     pub dialog: Option<Dialog>,
     pub dialog_rects: Vec<[f32; 4]>,
+    pub dialog_box: [f32; 4],
+    pub dialog_back: bool,
+    pub dialog_back_rc: [f32; 4],
+    pub dialog_vis: usize,
+    pub dialog_under: Option<Dialog>,
+    pub place_rects: Vec<[f32; 4]>,
+    pub place_preview_size: (u32, u32),
+    pub place_picture: Option<TextureId>,
+    pub map_rect: [f32; 4],
+    pub map_picture: Option<TextureId>,
+    pub map_btn: [f32; 4],
+    pub map_btn_label: String,
+    pub map_btn_on: bool,
+    pub dialog_preview: Option<Preview>,
+    pub dialog_tall: bool,
+    pub pause_entries: Vec<String>,
+    pub world_view: Vec<WorldGroup>,
+    pub world_view_page: usize,
+    pub world_last_page: usize,
+    pub world_groups_rc: Vec<[f32; 4]>,
+    pub world_rows_rc: Vec<[f32; 4]>,
+    pub world_tracks: Vec<Option<[f32; 4]>>,
+    pub world_group: usize,
+    pub world_sub: usize,
+    pub world_sub_rc: Vec<[f32; 4]>,
+    pub world_scroll: usize,
+    pub world_first: usize,
+    pub world_max: usize,
+    pub world_drag: Option<(usize, [f32; 4])>,
+    pub world_drop: Option<WorldDrop>,
+    pub world_drop_rc: Vec<[f32; 4]>,
+    pub world_drop_first: usize,
+    pub world_drop_vis: usize,
+    pub place_status: String,
+    pub hand: bool,
+    pub place_box: [f32; 4],
+    dialog_t: f32,
+    dialog_ghost: Option<Dialog>,
+    pause_prev: Option<PauseState>,
+    pause_closing: bool,
     pause_open: f32,
     page_t: f32,
     pause_last: usize,

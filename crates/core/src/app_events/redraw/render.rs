@@ -31,6 +31,10 @@ impl App {
             (mode.help_left > 0.0)
                 .then(|| "Screenshot mode: HUD hidden. Press Esc to return.".to_string())
         });
+        self.lab_poll();
+        self.lab_place_preview(dt);
+        self.lab_map_sync();
+        self.lab_entries_sync();
         let vehicle_menu: Vec<crate::ui::VehicleGroup> = match self.lab_menu {
             Some(st) if st.page == Some(crate::ui::VEHICLE_PAGE) => game_lists::vehicle_menu(self)
                 .into_iter()

@@ -1,4 +1,4 @@
-//! The map page (Nothing yet)
+//! The map page: Navigator and more
 
 use super::*;
 
@@ -10,13 +10,18 @@ pub(super) const PAGE: Page = Page {
 impl Ui {
     pub(super) fn draw_map_page(
         &mut self,
-        r: &Renderer,
+        _r: &Renderer,
         scene: &mut Scene,
         _f: &Frame,
         m: Metrics,
         top: f32,
-        pt: f32,
+        _pt: f32,
     ) {
-        self.draw_page_head(r, scene, m, "pause.page.map.head", "pause.page.map.note", top, pt);
+        let Metrics { w, h, u, line, .. } = m;
+        let rc = [0.0, (top - 32.0 * u).round() + line, w, h];
+        self.map_rect = rc;
+        if let Some(tex) = self.map_picture {
+            scene.overlays.push((tex, rc));
+        }
     }
 }

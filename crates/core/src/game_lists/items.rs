@@ -135,6 +135,19 @@ pub(super) fn place_vehicles(app: &App, unknown: &str) -> Vec<(String, String, S
         .collect()
 }
 
+pub(crate) fn place_makers(app: &App) -> Vec<(String, String, usize)> {
+    let all = place_vehicles(app, &::user_interface::tr("Unknown manufacturer"));
+    let mut groups: Vec<(String, String, usize)> = Vec::new();
+    for v in &all {
+        match groups.iter_mut().find(|g| g.0 == v.0) {
+            Some(g) => g.2 += 1,
+            None => groups.push((v.0.clone(), v.1.clone(), 1)),
+        }
+    }
+    groups.sort_by(|a, b| bus_cmp(&a.1, &b.1).then_with(|| a.0.cmp(&b.0)));
+    groups
+}
+
 pub(super) fn liveries(def: &::legacy_vehicle::Vehicle) -> Vec<String> {
     let Some(m) = def.model.as_ref() else {
         return Vec::new();
@@ -166,12 +179,12 @@ pub(super) fn hof_label(p: &std::path::Path) -> String {
         .filter(|n| !n.trim().is_empty())
     {
         Some(n)
-            if !file
-                .to_ascii_lowercase()
-                .starts_with(&n.trim().to_ascii_lowercase()) =>
-        {
-            format!("{}  ({file})", n.trim())
-        }
+        if !file
+            .to_ascii_lowercase()
+            .starts_with(&n.trim().to_ascii_lowercase()) =>
+            {
+                format!("{}  ({file})", n.trim())
+            }
         _ => file,
     }
 }
@@ -211,8 +224,8 @@ pub(crate) fn items(app: &App, kind: &ListKind) -> Vec<(String, String)> {
                     .filter(|l| {
                         l.user_allowed
                             && l.tours
-                                .iter()
-                                .any(|t| tour_listed(sch, &l.name, t, app.clock.time))
+                            .iter()
+                            .any(|t| tour_listed(sch, &l.name, t, app.clock.time))
                     })
                     .collect();
                 lines.sort_by(|a, b| natural(&a.name, &b.name));
@@ -502,7 +515,12 @@ pub(crate) fn menu_extras(
     let Some(sel) = sel else {
         return (MenuKind::Game, None, None);
     };
-    let tr = |t: &str| ::user_interface::tr(t).into_owned();
+    let tr = |t: &str| match t {
+        "Tour" => ::i18n::translate("pause.dialog.duty.tour", &[]),
+        "Line" => ::i18n::translate("pause.dialog.duty.line", &[]),
+        "tours" => ::i18n::translate("pause.dialog.duty.tours", &[]),
+        _ => ::user_interface::tr(t).into_owned(),
+    };
     let title = |t: &str| {
         tr(t)
             .trim_end_matches("...")

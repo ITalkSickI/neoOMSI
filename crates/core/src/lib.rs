@@ -70,6 +70,8 @@ mod evdev_ff;
 mod ffb_calibration;
 mod game_menu;
 mod lab_menu;
+mod lab_options;
+mod lab_pads;
 mod input_keys;
 mod input_mouse;
 mod input_script;
@@ -338,12 +340,7 @@ pub(crate) fn make_app(
         place_on_duty(&mut args);
     }
     applog::log_system();
-    if args.drive_keys.eq_ignore_ascii_case("simple")
-        && let Some(k) = config::get_string("gameplay", "drive-keys")
-        && !k.eq_ignore_ascii_case("simple")
-    {
-        args.drive_keys = k;
-    }
+    args.drive_keys = "omsi".into();
     ENHANCED.store(
         (config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || args.enhanced || legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
@@ -426,6 +423,7 @@ pub(crate) fn make_app(
     let view = args.view.clone();
     let args_root_for_keys = args.root.clone();
     let clock_note = args.clock_moved.clone();
+    let vehicle_scan = Some(lab_menu::scan_vehicles(args.root.clone(), args.map.clone()));
     let mut app = App {
         args,
         instance: graphics_instance(),
@@ -508,6 +506,11 @@ pub(crate) fn make_app(
         game_menu: None,
         lab_menu: None,
         lab_list: None,
+        lab_load: None,
+        lab_place: None,
+        lab_room: None,
+        lab_pic: None,
+        vehicle_scan,
         menu_top: None,
         menu_scroll_drag: false,
         pane_scroll: None,

@@ -2,13 +2,44 @@
 
 use super::*;
 
+mod common;
 mod dialog;
 mod nav;
 mod page;
+mod place;
 mod screen;
 
+use self::common::plain;
 pub use self::dialog::Dialog;
-pub use self::page::{PAGE_COUNT, VEHICLE_PAGE};
+pub use self::page::{Fmt, OptGroup, OptKind, OptRow, OptShow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, VEHICLE_PAGE, WORLD_PAGE};
+
+#[derive(Clone, Debug, Default)]
+pub struct WorldRow {
+    pub name: String,
+    pub kind: char,
+    pub value: String,
+    pub desc: String,
+    pub frac: f32,
+    pub tag: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WorldDrop {
+    pub k: usize,
+    pub labels: Vec<String>,
+    pub actions: Vec<String>,
+    pub sel: usize,
+    pub top: usize,
+    pub current: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WorldGroup {
+    pub title: String,
+    pub tab: String,
+    pub rows: Vec<WorldRow>,
+    pub subs: Vec<WorldGroup>,
+}
 
 pub const PAUSE_ENTRIES: [&str; 6] = [
     "pause.entry.resume",
@@ -98,14 +129,16 @@ impl Ui {
                 self.page_t = 0.0;
             }
         } else if self.pause_last != key {
-            if !self.page_fade || self.page_t >= 1.0 {
-                self.page_fade = true;
-                self.page_t = 0.0;
-            } else if self.page_t > 0.5 {
-                self.page_t = 1.0 - self.page_t;
-            }
+            self.page_fade = false;
+            self.pause_last = key;
+            self.page_t = 1.0;
         }
-        self.pause_open = (self.pause_open + self.anim_dt / 0.3).min(1.0);
+        if self.pause_closing {
+            self.pause_open = (self.pause_open - self.anim_dt / 0.2).max(0.0);
+        } else {
+            self.pause_open = (self.pause_open + self.anim_dt / 0.3).min(1.0);
+            self.pause_prev = Some(st);
+        }
         self.page_t = (self.page_t + self.anim_dt / 0.36).min(1.0);
         if self.page_fade && key != SCREEN && self.pause_last < PAGE_COUNT && self.page_t >= 0.5 {
             self.pause_last = key;
@@ -123,13 +156,50 @@ impl Ui {
                 self.draw_pause_page(r, scene, f, m, tab.min(PAGE_COUNT - 1), shown);
             }
         }
-        
-        match self.dialog.take() {
-            Some(d) => {
-                self.draw_dialog(r, scene, f, m, &d);
-                self.dialog = Some(d);
+        let at = |rs: &[[f32; 4]]| rs.iter().any(|rc| inside(*rc, f.cursor));
+        self.hand = match self.dialog.as_ref() {
+            Some(Dialog::Place { .. }) => at(&self.place_rects),
+            Some(Dialog::Select { drop: Some(_), .. }) => at(&self.dialog_rects) || at(&self.place_rects[..self.place_rects.len().min(4)]),
+            Some(Dialog::Loading { .. }) => false,
+            Some(_) => at(&self.dialog_rects) || at(&[self.dialog_back_rc]) || at(&self.menu_pane) || at(&self.menu_time) || self.menu_pane_go.as_ref().is_some_and(|g| at(&[*g])),
+            None => {
+                at(&self.pause_items)
+                    || at(&self.lab_tabs)
+                    || at(&self.lab_groups)
+                    || at(&self.lab_actions)
+                    || (self.map_btn_on && at(&[self.map_btn]))
+                    || at(&self.world_groups_rc)
+                    || at(&self.world_sub_rc)
+                    || at(&self.world_rows_rc)
+                    || at(&self.world_drop_rc)
             }
-            None => self.dialog_rects.clear(),
+        };
+        if self.pause_closing {
+            if let Some(d) = self.dialog.take() {
+                self.dialog_ghost = Some(d);
+            }
+        }
+        let step = self.anim_dt / 0.15;
+        if let Some(d) = self.dialog.take() {
+            self.dialog_t = (self.dialog_t + step).min(1.0);
+            self.text.alpha = out(self.dialog_t);
+            self.draw_dialog(r, scene, f, m, &d);
+            self.text.alpha = 1.0;
+            self.dialog_ghost = Some(d.clone());
+            self.dialog = Some(d);
+        } else {
+            self.dialog_rects.clear();
+            self.dialog_t = (self.dialog_t - step).max(0.0);
+            match self.dialog_ghost.take() {
+                Some(d) if self.dialog_t > 0.0 => {
+                    self.text.alpha = out(self.dialog_t);
+                    self.draw_dialog(r, scene, f, m, &d);
+                    self.text.alpha = 1.0;
+                    self.dialog_rects.clear();
+                    self.dialog_ghost = Some(d);
+                }
+                _ => {}
+            }
         }
     }
 }

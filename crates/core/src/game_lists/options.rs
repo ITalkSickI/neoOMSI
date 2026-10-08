@@ -459,6 +459,8 @@ pub(super) fn toggle_now(app: &App, id: &str) -> Option<bool> {
         "fullscreen" => ::config::get_bool("graphics", "fullscreen").unwrap_or(false),
         "vsync" => ::config::get_bool("graphics", "vsync").unwrap_or(true),
         "texture_compression" => ::config::get_bool("graphics", "texture_compression").unwrap_or(true),
+        "shadow_blobs" => ::config::get_bool("graphics", "shadow_blobs").unwrap_or(true),
+        "discord_status" => ::config::get_bool("discord", "status").unwrap_or(true),
         "driver" => ::config::get_bool("gameplay", "driver").unwrap_or(true),
         "alt_view" => ::config::get_bool("camera", "alt_view").unwrap_or(true),
         "free_look" => ::config::get_bool("camera", "free_look").unwrap_or(false),
@@ -764,6 +766,16 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
         }
         "vsync" => {
             ::config::set_setting("graphics", "vsync", on);
+            let _ = ::config::save();
+            None
+        }
+        "shadow_blobs" => {
+            ::config::set_setting("graphics", "shadow_blobs", on);
+            let _ = ::config::save();
+            None
+        }
+        "discord_status" => {
+            ::config::set_setting("discord", "status", on);
             let _ = ::config::save();
             None
         }

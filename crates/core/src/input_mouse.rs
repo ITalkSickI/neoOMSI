@@ -414,6 +414,14 @@ impl App {
     pub(crate) fn move_cursor(&mut self, x: f32, y: f32) -> bool {
         let last = self.cursor;
         self.cursor = (x, y);
+        if self.lab_menu.is_some() {
+            if let Some(n) = self.navigator.as_mut().filter(|n| n.city.embed.is_some()) {
+                n.map_move(x, y);
+            }
+            if self.ui.as_ref().is_some_and(|u| u.world_drag.is_some()) {
+                self.lab_world_set(x);
+            }
+        }
         if self.game_menu.is_some() && (x, y) != last {
             self.menu_kbd = false;
         }
@@ -538,7 +546,7 @@ impl App {
                 return;
             }
             if pressed && !vr_active && n.over_panel(x, y) {
-                n.toggle_map();
+                self.open_map_page();
                 return;
             }
         }
@@ -943,6 +951,9 @@ impl App {
             return 4;
         }
         let Some(u) = self.ui.as_ref() else { return 0 };
+        if self.lab_menu.is_some() {
+            return u8::from(u.hand);
+        }
         let (x, y) = self.cursor;
         let inside = |r: &[f32; 4]| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
         let clickable = u.menu_scroll_thumb.is_some_and(|r| inside(&r))

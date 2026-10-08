@@ -2,22 +2,22 @@
 
 use super::*;
 
-pub(super) fn row(name: &str, kind: char, value: &str, desc: &str, frac: Option<f32>) -> String {
+pub(crate) fn row(name: &str, kind: char, value: &str, desc: &str, frac: Option<f32>) -> String {
     format!(
         "{name}\u{1f}{kind}\u{1f}{value}\u{1f}{desc}\u{1f}{}",
         frac.map(|f| format!("{f:.3}")).unwrap_or_default()
     )
 }
 
-pub(super) fn opens(name: &str, desc: &str, id: &str) -> (String, String) {
+pub(crate) fn opens(name: &str, desc: &str, id: &str) -> (String, String) {
     (row(name, 'o', "", desc, None), id.to_string())
 }
 
-pub(super) fn button(name: &str, text: &str, desc: &str, id: &str) -> (String, String) {
+pub(crate) fn button(name: &str, text: &str, desc: &str, id: &str) -> (String, String) {
     (row(name, 'a', text, desc, None), id.to_string())
 }
 
-pub(super) fn switch_row(app: &App, id: &str, name: &str, desc: &str) -> Option<(String, String)> {
+pub(crate) fn switch_row(app: &App, id: &str, name: &str, desc: &str) -> Option<(String, String)> {
     let on = toggle_now(app, id)?;
     Some((
         row(name, 's', if on { "on" } else { "off" }, desc, None),
@@ -25,7 +25,7 @@ pub(super) fn switch_row(app: &App, id: &str, name: &str, desc: &str) -> Option<
     ))
 }
 
-pub(super) fn slider_row(
+pub(crate) fn slider_row(
     app: &App,
     id: &str,
     name: &str,
@@ -198,7 +198,6 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         .flatten()
         .collect();
     let controls: Vec<(String, String)> = vec![
-        pick("drive_keys", "Driving keys", "Which keys drive the vehicle"),
         Some(opens(
             "Key bindings",
             "Set every key of the bus and of the game",
@@ -656,7 +655,7 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
     ]
 }
 
-pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
+pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
     let Ok(v) = omsi_launcher_lib::get_keybindings() else {
         return vec![(
             row("The key bindings could not be read", 'i', "", "", None),
@@ -715,7 +714,7 @@ pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
     ];
     let mut any = false;
     for (title, pick) in groups.iter() {
-        let members: Vec<&(usize, usize, String, i64, i64)> = all
+        let mut members: Vec<&(usize, usize, String, i64, i64)> = all
             .iter()
             .filter(|b| pick(b))
             .filter(|b| {
@@ -729,16 +728,21 @@ pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
         if members.is_empty() {
             continue;
         }
+        // (alphabetical by the name shown)
+        members.sort_by_cached_key(|b| names.control(&b.2).to_lowercase());
         any = true;
         out.push(head(title, members.len()));
         for b in members {
             let (sec, i, action, scan, m) = (b.0, b.1, &b.2, b.3, b.4);
-            let other = (scan != 0)
-                .then(|| {
-                    all.iter()
-                        .find(|o| o.0 == sec && o.1 != i && o.3 == scan && (o.4 & 6) == (m & 6))
-                })
-                .flatten();
+            // (every other binding of the same key, in the game's keys and the vehicle's: both are live)
+            let clash: Vec<String> = if scan == 0 {
+                Vec::new()
+            } else {
+                all.iter()
+                    .filter(|o| (o.0, o.1) != (sec, i) && o.3 == scan && (o.4 & 6) == (m & 6))
+                    .map(|o| names.control(&o.2))
+                    .collect()
+            };
             let label = names.control(action);
             if app.key_capture == Some((sec, i)) {
                 out.push((
@@ -758,9 +762,11 @@ pub(super) fn key_rows(app: &App) -> Vec<(String, String)> {
             } else {
                 crate::keys::key_name(scan, m)
             };
-            let desc = other
-                .map(|o| format!("Same key as: {}", names.control(&o.2)))
-                .unwrap_or_default();
+            let desc = if clash.is_empty() {
+                String::new()
+            } else {
+                format!("Conflict: this key is also used by {}", clash.join(", "))
+            };
             out.push((
                 row(&label, 'k', &value, &desc, None),
                 format!("keybind {sec} {i} {action}"),
@@ -959,6 +965,18 @@ pub(crate) fn vehicle_menu(app: &App) -> Vec<(&'static str, Vec<(&'static str, b
     ]
         .into_iter()
         .filter(|g| !g.1.is_empty())
+        .collect()
+}
+
+pub(crate) fn world_groups(app: &App) -> Vec<(&'static str, Vec<(String, String)>, Vec<(&'static str, Vec<(String, String)>)>)> {
+    world_pages(app)
+        .into_iter()
+        .filter(|p| !p.1.is_empty())
+        .map(|(title, rows)| {
+            let (presets, rows): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.1.starts_with("clock_set "));
+            let subs = if presets.is_empty() { Vec::new() } else { vec![("Presets", presets)] };
+            (title, rows, subs)
+        })
         .collect()
 }
 
