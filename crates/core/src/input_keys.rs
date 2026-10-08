@@ -102,13 +102,6 @@ impl App {
         self.door_key_triggers.insert(code, fire);
     }
 
-    pub(crate) fn saloon_lights(&mut self) {
-        if let Some(p) = self.player.as_mut() {
-            let msg = p.toggle_saloon_lights();
-            self.service_msg = Some((msg, 3.0));
-        }
-    }
-
     pub(crate) fn bus_startup(&mut self) {
         if let Some(p) = self.player.as_mut() {
             let msg = p.start_up();

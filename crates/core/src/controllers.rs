@@ -943,12 +943,6 @@ impl Controllers {
         }
     }
 
-    /// A wheel or joystick steers the bus (then the arrow keys look around, as in OMSI:
-    /// a G29's buttons set to the arrow keys turned the view there).
-    pub fn wheel_steering(&self) -> bool {
-        self.enabled && self.steer.is_some()
-    }
-
     /// Read the devices: the analog controls, and the button actions into `actions`.
     pub fn poll(&mut self) -> Analog {
         let mut out = Analog::default();
