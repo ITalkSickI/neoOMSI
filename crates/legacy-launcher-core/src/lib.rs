@@ -2382,6 +2382,7 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("units", "ui", "units", Choice(&["metric", "uk", "imperial"])),
     ("boarding", "gameplay", "boarding", Text),
     ("pax_prefer_seats", "gameplay", "pax_prefer_seats", Bool),
+    ("pax_rear_entry", "gameplay", "pax_rear_entry", Bool),
     ("exact_fare", "gameplay", "exact_fare", Bool),
     ("driver", "gameplay", "driver", Bool),
     ("maintenance", "gameplay", "maintenance", Int(0, 4)),
