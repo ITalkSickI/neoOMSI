@@ -399,9 +399,6 @@ fn prop(n: usize) -> *const GUID {
 }
 
 impl DirectInput {
-    pub fn is_focused(&self) -> bool {
-        self.focused
-    }
 
     pub fn force_axis(&self, name: &str) -> Option<usize> {
         self.devices
