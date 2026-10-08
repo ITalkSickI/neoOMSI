@@ -16,7 +16,7 @@
       },
       "camera": {
         "alt_view": {
-          "desc": "Shift+right zooms; off: right zooms as in OMSI, the wheel button turns",
+          "desc": "On: the right mouse button turns the view and Shift+right zooms. Off: as in OMSI, the right button zooms and the middle button turns the view",
           "name": "Right mouse button turns the view"
         },
         "cam_smooth": {
@@ -36,11 +36,11 @@
           "name": "Field of view"
         },
         "hands_in_cab": {
-          "desc": "Shows the driver's hand on the steering wheel (Cockpit only)",
-          "name": "Driver's hands in the cab view"
+          "desc": "Shows the driver's hands on the steering wheel (cockpit view only)",
+          "name": "Driver's hands in the cockpit view"
         },
         "head": {
-          "desc": "The view moves with the vehicle's acceleration",
+          "desc": "The view moves with the acceleration of the vehicle",
           "name": "Head movement"
         },
         "headtrack": {
@@ -49,7 +49,7 @@
           "desc_port": "Head tracking with opentrack (UDP port {port})"
         },
         "look_sens": {
-          "desc": "How fast the view turns when looking round with the mouse (100% is OMSI's)",
+          "desc": "How fast the view turns when you look around with the mouse (100% is the speed of OMSI)",
           "name": "Mouse look sensitivity"
         },
         "seat_0": {
@@ -65,11 +65,11 @@
           "name": "Seat height"
         },
         "seat_reset": {
-          "desc": "Put the seat back where the vehicle has it.",
+          "desc": "Moves the seat back to the vehicle's default position",
           "name": "Reset the seat position"
         },
         "steer_look": {
-          "desc": "Camera turns with the steering wheel (cockpit only)",
+          "desc": "The camera turns with the steering wheel (cockpit view only)",
           "name": "View turns with steering"
         },
         "steer_look_angle": {
@@ -89,7 +89,7 @@
           "desc": "Which axes of the head tracking are turned around"
         },
         "free_look": {
-          "desc": "Here you can configure the free look, the crosshair and the button names"
+          "desc": "Configure free look, the crosshair and the button names"
         }
       },
       "controls": {
@@ -98,111 +98,112 @@
           "name": "Driving keys"
         },
         "ff": {
-          "desc": "Enable force feedback for the steering wheel and vibration for controllers",
+          "desc": "Enables force feedback for steering wheels and vibration for controllers",
           "name": "Force feedback and vibration"
         },
         "ff_invert": {
-          "desc": "For wheels without a saved direction",
+          "desc": "Used for steering wheels that have no saved force feedback direction",
           "name": "Invert force feedback by default"
         },
         "keybinds": {
-          "desc": "Set every key of the bus and of the game",
+          "desc": "Set the keys for the bus and for the game",
           "name": "Key bindings"
         },
         "mouse": {
-          "desc": "Steer and control the pedals using the mouse",
+          "desc": "Steer and operate the pedals with the mouse",
           "name": "Steering with the mouse"
         },
         "mouse_right": {
-          "desc": "As in OMSI; off: the right button only looks round",
-          "name": "A right click ends the mouse steering"
+          "desc": "On (as in OMSI): clicking the right mouse button stops steering with the mouse. Off: the right button only turns the view",
+          "name": "Right click stops mouse steering"
         },
         "mouse_sens": {
-          "desc": "Adjust how much the steering wheel turns based on mouse movement",
+          "desc": "How far the steering wheel turns for a given mouse movement",
           "name": "Mouse steering sensitivity"
         },
         "pads": {
-          "desc": "Set up your controllers, steering wheels and pedals.",
+          "desc": "Set up your controllers, steering wheels and pedals",
           "name": "Controllers"
         },
         "pedal_b": {
-          "desc": "Adjust how strongly pedal input affects the brake",
+          "desc": "How strongly the pedal input affects the brake",
           "name": "Brake pedal strength"
         },
         "pedal_t": {
-          "desc": "Adjust how strongly pedal input affects the throttle",
+          "desc": "How strongly the pedal input affects the throttle",
           "name": "Throttle pedal strength"
         },
         "steer_center": {
-          "desc": "Steering a hair off the middle counts as straight",
-          "name": "Wheel returns to the middle"
+          "desc": "Small deviations from the centre position count as driving straight ahead",
+          "name": "Steering centre dead zone"
         },
         "stick_sens": {
-          "desc": "How much a small stick push turns the wheel; a full push is still full lock",
+          "desc": "How far a small stick movement turns the wheel; pushing the stick fully still gives full lock",
           "name": "Gamepad steering sensitivity"
         },
         "wheel_lock": {
-          "desc": "How far the wheel turns for the vehicle's full lock",
-          "name": "Full lock at"
+          "desc": "How far your steering wheel turns when the vehicle's wheels reach full lock",
+          "name": "Steering wheel angle at full lock"
         },
         "wheel_range": {
-          "desc": "The steering wheel's own rotation, lock to lock",
-          "name": "Wheel rotation"
+          "desc": "The total rotation of your steering wheel, from lock to lock",
+          "name": "Steering wheel range"
         }
       },
       "display": {
         "fps": {
-          "desc": "Show the frames per second in the top right corner",
-          "name": "Frame rate"
+          "desc": "Shows the frames per second in the top right corner",
+          "name": "Show FPS"
         },
         "fullscreen": {
-          "desc": "Switches the window between windowed and fullscreen",
+          "desc": "Switches the window between windowed and fullscreen mode",
           "name": "Fullscreen"
         },
         "max_fps": {
-          "desc": "Frames a second at most",
+          "desc": "Limits the number of frames per second",
           "name": "Frame limit"
         },
         "vsync": {
-          "desc": "Waits for the screen's refresh",
+          "desc": "Synchronizes the frames with the refresh rate of the screen",
           "name": "V-sync"
         },
         "window_mode": {
           "name": "Window mode",
-          "desc": "Changes how the game fills your display"
+          "desc": "How the game fills your screen"
         }
       },
       "driving": {
         "auto_clutch": {
-          "desc": "Automatically operate the clutch for you",
+          "desc": "Operates the clutch automatically",
           "name": "Automatic clutch"
         },
         "auto_shift": {
-          "desc": "Shift a manual gearbox's gears for you by the engine speed",
-          "name": "Automated manual gearbox"
+          "desc": "Shifts the gears of a manual transmission automatically, based on engine speed",
+          "name": "Automated manual transmission"
         },
         "blinker_cancel": {
-          "desc": "The bus's script turns the indicator off after a turn; off: it stays on until you turn it off",
+          "desc": "On: the bus's script switches the indicator off after a turn. Off: the indicator stays on until you switch it off",
           "name": "Indicators cancel themselves"
         },
         "brake_hold": {
-          "desc": "Keep the brake applied until the throttle is pressed",
-          "name": "Keyboard brake stays on"
+          "desc": "Keeps the brake applied until you press the throttle",
+          "name": "Keyboard brake stays applied"
         },
         "momentary_gears": {
-          "name": "Hold manual gear buttons (release returns to neutral)"
+          "name": "Momentary gear buttons",
+          "desc": "Hold a gear button to stay in that gear; releasing it returns to neutral"
         },
         "old_steering": {
-          "desc": "The wheel stays where the keys left it",
-          "name": "Old Steering (the wheel stays, turn it back yourself)"
+          "desc": "The steering wheel stays where the keys left it; you have to steer back yourself",
+          "name": "Classic keyboard steering"
         },
         "red_steer_spd": {
-          "desc": "The steering keys act slower at speed",
-          "name": "Dynamic steering (slower keys at speed, OMSI's redSteerSpd)"
+          "desc": "The steering keys act more slowly at higher speeds (OMSI's redSteerSpd)",
+          "name": "Speed-dependent keyboard steering"
         },
         "steering_linear": {
-          "desc": "Keyboard steering at OMSI's steady pace",
-          "name": "Steering linearity (keys at OMSI's steady pace)"
+          "desc": "Keyboard steering turns at a constant rate, as in OMSI",
+          "name": "Linear keyboard steering"
         }
       },
       "fmt": {
@@ -214,26 +215,26 @@
           "name": "Crosshair"
         },
         "free_look": {
-          "desc": "Mouse turns the view, the screen centre operates things; Left Alt shows the cursor",
+          "desc": "The mouse turns the view and the centre of the screen operates controls; hold Left Alt to show the cursor",
           "name": "Free look"
         },
         "tooltips": {
-          "desc": "Shows the name of what the cursor or the screen centre points at",
+          "desc": "Shows the name of the control that the cursor or the centre of the screen points at",
           "name": "Names of buttons"
         }
       },
       "gameplay": {
         "ai_max_parked": {
-          "name": "Parked cars"
+          "name": "Parked vehicles"
         },
         "ai_max_scheduled": {
-          "name": "Timetable vehicles"
+          "name": "Scheduled traffic"
         },
         "ai_unsched_factor": {
-          "name": "Random traffic"
+          "name": "Unscheduled traffic"
         },
         "auto_ibis": {
-          "desc": "When enabled, the selected tour is automatically entered into IBIS",
+          "desc": "The selected tour is entered into the IBIS automatically",
           "name": "Automatic IBIS"
         },
         "boarding": {
@@ -241,58 +242,58 @@
           "name": "Boarding"
         },
         "coll_objects": {
-          "desc": "Enables/disables collisions with objects such as buildings, streetlights, etc.",
+          "desc": "Enables or disables collisions with objects such as buildings and street lights",
           "name": "Collisions with objects"
         },
         "coll_vehicles": {
-          "desc": "Enables/disables collisions with other vehicles",
+          "desc": "Enables or disables collisions with other vehicles",
           "name": "Collisions with vehicles"
         },
         "collision_pedestrians": {
-          "desc": "Enables/disables knocking down people",
+          "desc": "Enables or disables running over pedestrians",
           "name": "Collisions with people"
         },
         "exact_fare": {
-          "desc": "No change is given at the cash desk",
+          "desc": "Passengers pay the exact amount, so no change is given at the cash desk",
           "name": "Passengers pay the exact fare"
         },
         "maintenance": {
           "name": "Maintenance"
         },
         "pax_ik": {
-          "desc": "Use procedural poses instead of OMSI 2 animation poses",
+          "desc": "Uses procedural poses instead of the OMSI 2 animation poses",
           "name": "Procedural passenger animation"
         },
         "pax_models": {
-          "desc": "RealisticPax applies on the next start",
+          "desc": "Which passenger models are used; RealisticPax takes effect the next time the game starts",
           "name": "Passenger models"
         },
         "pax_motion": {
-          "desc": "Natural movement or OMSI 2 comparison mode",
+          "desc": "Natural movement or the OMSI 2 comparison mode",
           "name": "Passenger movement"
         },
         "pax_prefer_seats": {
-          "desc": "Passengers take a free seat when boarding; standing places are used when all seats are taken",
+          "desc": "Passengers take a free seat when boarding and use standing places only when all seats are taken",
           "name": "Passengers prefer available seats"
         }
       },
       "graphics": {
         "anisotropy": {
-          "name": "Anisotropic"
+          "name": "Anisotropic filtering"
         },
         "atmosphere_brightness": {
-          "desc": "How much light the night has",
+          "desc": "How bright the night is",
           "name": "Atmosphere brightness"
         },
         "clouds": {
           "name": "Clouds"
         },
         "detail_textures": {
-          "desc": "The ground and large walls get fine grain when close",
+          "desc": "Adds fine detail to the ground and to large walls when you are close",
           "name": "Detail texturing up close"
         },
         "gfxprofile": {
-          "desc": "Applies a graphics profile saved in the launcher",
+          "desc": "Applies a graphics profile that was saved in the launcher",
           "name": "Load graphics profile"
         },
         "graphics": {
@@ -303,11 +304,11 @@
           "name": "LED glow"
         },
         "led_mips": {
-          "desc": "Keep the mip chain of the LED masks (smoother from a distance).",
+          "desc": "Keeps the mipmaps of the LED masks (smoother from a distance)",
           "name": "LED mask mipmaps"
         },
         "map_detail": {
-          "name": "Map complexity"
+          "name": "Map detail"
         },
         "max_obj_dist": {
           "name": "Object distance"
@@ -319,7 +320,7 @@
           "name": "Mirrors"
         },
         "msaa": {
-          "name": "Anti-aliasing"
+          "name": "Anti-aliasing (MSAA)"
         },
         "nightmap_glow": {
           "desc": "How strongly lit buttons, lamps and windows glow at night",
@@ -339,10 +340,10 @@
           "name": "Shadows cast by"
         },
         "shadow_size": {
-          "name": "Shadow map"
+          "name": "Shadow map resolution"
         },
         "shadows": {
-          "desc": "Enables/disables shadows",
+          "desc": "Enables or disables shadows",
           "name": "Sun shadows"
         },
         "ssao": {
@@ -359,11 +360,11 @@
         },
         "graphics_api": {
           "name": "Graphics API",
-          "desc": "Which graphics interface is used; takes effect when the game starts the next time"
+          "desc": "Which graphics API is used; takes effect the next time the game starts"
         },
         "post_aa": {
           "name": "Post anti-aliasing",
-          "desc": "Smooths the edges in a final pass after drawing"
+          "desc": "Smooths edges in a final pass after drawing"
         },
         "shadow_blobs": {
           "name": "Shadow blobs",
@@ -396,39 +397,39 @@
           "name": "Chat in online games"
         },
         "info_bar": {
-          "desc": "Displays information such as the time, speed, and other details at the top of the screen",
+          "desc": "Shows the time, speed and other information at the top of the screen",
           "name": "Information bar"
         },
         "language": {
-          "desc": "The language of the game's interface",
+          "desc": "The language of the game interface",
           "name": "Language"
         },
         "name_tags": {
-          "desc": "Shows the names of the other players",
-          "name": "Other players' names above their buses"
+          "desc": "Shows the names of the other players above their buses",
+          "name": "Player names above their buses"
         },
         "nav_arrows": {
-          "desc": "Shows OMSI 2's route arrows over the road",
+          "desc": "Shows OMSI 2's route arrows on the road",
           "name": "Route arrows (as in OMSI 2)"
         },
         "notes": {
-          "desc": "Why the vehicle does not move, the change due, what a service did",
+          "desc": "Shows messages such as why the vehicle cannot move, the change still due and the result of a service",
           "name": "Notes in the top-left corner"
         },
         "reset": {
-          "desc": "Everything but the language, the key bindings and the game folder goes back to how it came",
+          "desc": "Resets all settings to their defaults, except the language, the key bindings and the game folder",
           "name": "Reset all settings..."
         },
         "timetable_win": {
-          "desc": "Displays a list of all stops (only when a tour is active)",
+          "desc": "Shows a list of all stops (only while a tour is active)",
           "name": "Timetable window"
         },
         "tooltips": {
-          "desc": "Shows the name of what the cursor points at",
-          "name": "Name of the button under the mouse"
+          "desc": "Shows the name of the control under the cursor",
+          "name": "Names of controls"
         },
         "ui_opacity": {
-          "desc": "How much of the interface's backgrounds shows",
+          "desc": "How opaque the backgrounds of the interface are",
           "name": "Interface opacity"
         },
         "ui_scale": {
@@ -436,7 +437,7 @@
           "name": "Game interface size"
         },
         "ui_scale_window": {
-          "desc": "On a window taller than 1080p the interface grows with it",
+          "desc": "The interface grows with the window when it is taller than 1080p",
           "name": "Interface grows with the window"
         },
         "units": {
@@ -445,20 +446,20 @@
         },
         "discord_status": {
           "name": "Discord status",
-          "desc": "Shows what you are playing on Discord"
+          "desc": "Shows on Discord what you are playing"
         },
         "navigator": {
-          "desc": "Here you can configure the Navigator settings"
+          "desc": "Configure the navigator settings"
         }
       },
       "later": "Takes effect when the game starts the next time",
       "map": {
         "nav_ai": {
-          "desc": "Shows/hides the other (AI) vehicles on the Minimap and the city map",
+          "desc": "Shows or hides the other (AI) vehicles on the minimap and the city map",
           "name": "AI vehicles"
         },
         "nav_stoplist": {
-          "desc": "The next stop below the map",
+          "desc": "Shows the next stop below the map",
           "name": "Stop list"
         },
         "nav_stops_ext": {
@@ -466,28 +467,28 @@
           "name": "Extended stop list"
         },
         "nav_topbar": {
-          "desc": "Speed, speed limit and time at the top of the map",
+          "desc": "Shows speed, speed limit and time at the top of the map",
           "name": "Top bar"
         },
         "nav_turn": {
-          "desc": "The next turn at the top of the map",
+          "desc": "Shows the next turn at the top of the map",
           "name": "Turn indicator"
         },
         "navigator": {
-          "desc": "Enables/disables the Minimap",
-          "name": "Map"
+          "desc": "Enables or disables the minimap",
+          "name": "Minimap"
         },
         "navigator_corner": {
-          "name": "Corner"
+          "name": "Minimap corner"
         }
       },
       "sound": {
         "doppler": {
-          "desc": "Approaching sounds higher, receding ones lower",
+          "desc": "Approaching vehicles sound higher, receding ones lower",
           "name": "Doppler effect"
         },
         "pax_voices": {
-          "desc": "What passengers say",
+          "desc": "Passengers talk and make sounds",
           "name": "Passenger voices"
         },
         "vol_ai": {
@@ -499,13 +500,13 @@
           "name": "Surroundings"
         },
         "volume": {
-          "desc": "Set how loud the game should be",
+          "desc": "How loud the game is",
           "name": "Volume"
         }
       },
       "vr": {
         "navigator": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Position of the navigator display (this bus)",
           "name": "Navigator"
         },
         "vr": {
@@ -521,43 +522,43 @@
           "name": "Bus mirror refresh"
         },
         "vr_nav_edit": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Place the navigator display with the mouse (this bus)",
           "name": "Move and rotate with the mouse..."
         },
         "vr_nav_opacity": {
-          "desc": "Navigator position (this bus)",
-          "name": "Interface opacity"
+          "desc": "How opaque the navigator display is (this bus)",
+          "name": "Navigator opacity"
         },
         "vr_nav_reset": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Puts the navigator display back at its default position (this bus)",
           "name": "Reset navigator position"
         },
         "vr_nav_roll": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Roll of the navigator display (this bus)",
           "name": "Display roll"
         },
         "vr_nav_tilt": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Tilt of the navigator display (this bus)",
           "name": "Display tilt"
         },
         "vr_nav_width": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Width of the navigator display (this bus)",
           "name": "Display width"
         },
         "vr_nav_x": {
-          "desc": "Navigator position (this bus)",
-          "name": "Position right / left"
+          "desc": "Moves the navigator display left or right (this bus)",
+          "name": "Position left / right"
         },
         "vr_nav_y": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Moves the navigator display forward or back (this bus)",
           "name": "Position forward / back"
         },
         "vr_nav_yaw": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Horizontal rotation of the navigator display (this bus)",
           "name": "Display rotation"
         },
         "vr_nav_z": {
-          "desc": "Navigator position (this bus)",
+          "desc": "Moves the navigator display up or down (this bus)",
           "name": "Position up / down"
         },
         "vr_scale": {
@@ -608,7 +609,7 @@
       },
       "vehicle": {
         "choose": "Choose",
-        "empty": "There is no vehicle.",
+        "empty": "No vehicle available.",
         "head": "Vehicle",
         "nav": "Vehicle",
         "note": "Place, switch and service your vehicles.",
@@ -637,7 +638,7 @@
           },
           "place": {
             "name": "Place a vehicle",
-            "desc": "Place a vehicle of your choice"
+            "desc": "Place a vehicle of your choice in the world"
           },
           "swap": {
             "name": "Swap for another vehicle",
@@ -646,12 +647,12 @@
           },
           "couple": {
             "name": "Couple",
-            "desc": "Couple the vehicle to the one in front of or behind it",
+            "desc": "Couples the vehicle to the one in front of or behind it",
             "button": "Couple"
           },
           "uncouple": {
             "name": "Uncouple",
-            "desc": "Separate the coupled vehicles",
+            "desc": "Separates the coupled vehicles",
             "button": "Uncouple"
           },
           "remove": {
@@ -661,7 +662,7 @@
           },
           "clearplaced": {
             "name": "Remove the placed vehicles",
-            "desc": "Removes all vehicles you've placed from the world",
+            "desc": "Removes all vehicles you have placed from the world",
             "button": "Remove"
           },
           "dest": {
@@ -693,7 +694,7 @@
           },
           "reset_vehicle": {
             "name": "Put back on its wheels",
-            "desc": "Return the vehicle to an upright position",
+            "desc": "Puts the vehicle upright again",
             "button": "Reset"
           },
           "reload": {
@@ -706,34 +707,34 @@
             "desc": "Change the current driver profile"
           },
           "getout": {
-            "name": "Get up and out",
-            "desc": "Step out of your car and explore the world",
+            "name": "Get out of the vehicle",
+            "desc": "Leave the vehicle and explore the world on foot",
             "button": "Get out"
           },
           "teleport": {
-            "name": "Move on the map",
+            "name": "Teleport on the map",
             "desc": "Teleports you to any location on the map",
             "button": "Pick"
           },
           "tplist": {
             "name": "Teleport to a start point",
-            "desc": "Teleport to a starting point on the map"
+            "desc": "Teleports you to a start point on the map"
           }
         }
       },
       "world": {
         "head": "World",
         "nav": "World",
-        "note": "Change the time, the weather and other things of the world.",
+        "note": "Change the time, the weather and other settings of the world.",
         "off": "Off",
         "on": "On"
       },
       "text": {
-        "enables_disables_the_minimap": "Enables/Disables the Minimap",
+        "enables_disables_the_minimap": "Enables or disables the minimap",
         "boarding_at_the_rear_doors": "Boarding at the rear doors",
         "passengers_who_need_no_ticket_from_the_driver_also_get_on_at_the_rear_doors": "Passengers who need no ticket from the driver also get on at the rear doors",
-        "enables_disables_collisions_with_other_vehicles": "Enables/Disables Collisions with Other Vehicles",
-        "enables_disabled_shadows": "Enables/Disabled shadows",
+        "enables_disables_collisions_with_other_vehicles": "Enables or disables collisions with other vehicles",
+        "enables_disabled_shadows": "Enables or disables shadows",
         "the_game": "The game"
       },
       "keys": {
@@ -743,9 +744,9 @@
         "group_vr": "Headset (VR)",
         "group_scripted": "Scripted (this vehicle)",
         "press_key": "press a key...",
-        "press_key_desc": "Escape leaves it as it is",
+        "press_key_desc": "Press Escape to keep the current key",
         "not_set": "Not set",
-        "no_match": "Nothing matches",
+        "no_match": "No matches",
         "no_match_desc": "Try another name or key"
       }
     },
@@ -765,8 +766,8 @@
         "date_and_time": "Date and time",
         "synchronized_with_the_real_time": "Synchronized with the real time",
         "exact_time": "Exact time",
-        "press_enter_to_change_esc_to_cancel": "Press Enter to change, Esc to cancel",
-        "change_the_current_time_press_enter_to_change": "Change the current time (Press Enter to change)",
+        "press_enter_to_change_esc_to_cancel": "Press Enter to apply, Esc to cancel",
+        "change_the_current_time_press_enter_to_change": "Change the current time (press Enter to apply)",
         "hour": "Hour",
         "set_the_hour_of_the_day_directly": "Set the hour of the day directly",
         "minute": "Minute",
@@ -776,8 +777,8 @@
         "evening": "Evening",
         "night": "Night",
         "jump_to_this_time_of_day": "Jump to this time of day.",
-        "on_time_with_the_timetable": "On time with the timetable",
-        "move_the_clock_so_that_the_vehicle_is_on_time": "Move the clock so that the vehicle is on time",
+        "on_time_with_the_timetable": "Set clock to timetable",
+        "move_the_clock_so_that_the_vehicle_is_on_time": "Moves the clock so that the vehicle is on time",
         "time_speed": "Time speed",
         "how_fast_the_world_s_clock_runs": "How fast the world's clock runs",
         "metar_sync": "METAR sync",
@@ -788,11 +789,11 @@
         "enter_any_4_letter_icao_station": "Enter any 4-letter ICAO station.",
         "metar_report": "METAR report",
         "refresh_now": "Refresh now",
-        "fetch_the_selected_station_again_without_waiting_for_the_next_automatic_update": "Fetch the selected station again without waiting for the next automatic update.",
+        "fetch_the_selected_station_again_without_waiting_for_the_next_automatic_update": "Fetches the selected station again without waiting for the next automatic update.",
         "load_once": "Load once",
         "load_the_selected_station_once_without_enabling_continuous_metar_sync": "Load the selected station once without enabling continuous METAR sync.",
         "preset": "Preset",
-        "a_ready_made_weather": "A ready-made weather",
+        "a_ready_made_weather": "A ready-made weather setting.",
         "custom_weather": "Custom weather",
         "edit_current": "Edit current",
         "freeze_the_weather_currently_in_force_and_edit_it_as_a_custom_weather": "Freeze the weather currently in force and edit it as a custom weather.",
@@ -804,19 +805,19 @@
         "broken": "Broken",
         "overcast": "Overcast",
         "visibility": "Visibility",
-        "how_far_one_can_see_less_is_fog": "How far one can see; less is fog.",
+        "how_far_one_can_see_less_is_fog": "How far you can see; less is foggier.",
         "brightness": "Brightness",
         "brightness_of_the_custom_weather_lighting": "Brightness of the custom weather lighting.",
         "precipitation": "Precipitation",
-        "rain_or_snow": "Rain or snow.",
+        "rain_or_snow": "The type of precipitation.",
         "rain": "Rain",
         "snow": "Snow",
         "precipitation_strength": "Precipitation strength",
         "how_hard_it_rains_or_snows": "How hard it rains or snows.",
         "wet_roads": "Wet roads",
-        "how_wet_the_roads_are_now_they_dry_in_the_sun_wet_in_the_rain": "How wet the roads are now (they dry in the sun, wet in the rain).",
+        "how_wet_the_roads_are_now_they_dry_in_the_sun_wet_in_the_rain": "How wet the roads are right now (they dry in the sun and get wet in the rain).",
         "snow_cover": "Snow cover",
-        "snow_lying_on_the_world_and_ground": "Snow lying on the world and ground.",
+        "snow_lying_on_the_world_and_ground": "How much snow lies on the ground and the scenery.",
         "snow_on_road": "Snow on road",
         "treat_the_road_surface_as_snow_covered": "Treat the road surface as snow-covered.",
         "temperature": "Temperature",
@@ -844,7 +845,7 @@
       },
       "use": {
         "name": "Use this controller",
-        "desc": "A controller that is off is not read at all."
+        "desc": "A controller that is switched off is ignored."
       },
       "axes": "Axes",
       "axis": {
@@ -895,7 +896,7 @@
         },
         "invert": {
           "name": "Invert force feedback",
-          "desc": "Turns the direction of the force feedback of this device around."
+          "desc": "Reverses the direction of the force feedback of this device."
         }
       },
       "buttons": "Buttons",
@@ -979,8 +980,8 @@
       "bus_doorfront0": "Front door 1",
       "bus_doorfront1": "Front door 2",
       "bus_doorfront5": "Front door 6",
-      "bus_linie_minus": "Line -",
-      "bus_linie_plus": "Line +",
+      "bus_linie_minus": "Previous line",
+      "bus_linie_plus": "Next line",
       "bus_rollband_dn": "Roller blind down",
       "bus_rollband_dn_step": "Roller blind down (step)",
       "bus_rollband_setl1": "Roller blind: line 1",
@@ -989,32 +990,32 @@
       "bus_rollband_sett": "Roller blind: tour",
       "bus_rollband_up": "Roller blind up",
       "bus_rollband_up_step": "Roller blind up (step)",
-      "bus_ziel_minus": "Destination -",
-      "bus_ziel_plus": "Destination +",
-      "cashdesk_changer_0_05": "Change: 0.05",
-      "cashdesk_changer_0_10": "Change: 0.10",
-      "cashdesk_changer_0_15": "Change: 0.15",
-      "cashdesk_changer_0_30": "Change: 0.30",
-      "cashdesk_changer_0_50": "Change: 0.50",
-      "cashdesk_changer_15_00": "Change: 15.00",
-      "cashdesk_changer_1_00": "Change: 1.00",
-      "cashdesk_changer_1_50": "Change: 1.50",
-      "cashdesk_changer_2_00": "Change: 2.00",
-      "cashdesk_changer_4_00": "Change: 4.00",
-      "cashdesk_changer_5_00": "Change: 5.00",
-      "cashdesk_changer_8_00": "Change: 8.00",
+      "bus_ziel_minus": "Previous destination",
+      "bus_ziel_plus": "Next destination",
+      "cashdesk_changer_0_05": "Change 0.05",
+      "cashdesk_changer_0_10": "Change 0.10",
+      "cashdesk_changer_0_15": "Change 0.15",
+      "cashdesk_changer_0_30": "Change 0.30",
+      "cashdesk_changer_0_50": "Change 0.50",
+      "cashdesk_changer_15_00": "Change 15.00",
+      "cashdesk_changer_1_00": "Change 1.00",
+      "cashdesk_changer_1_50": "Change 1.50",
+      "cashdesk_changer_2_00": "Change 2.00",
+      "cashdesk_changer_4_00": "Change 4.00",
+      "cashdesk_changer_5_00": "Change 5.00",
+      "cashdesk_changer_8_00": "Change 8.00",
       "change_give": "Give change",
       "change_take": "Take change",
       "clutch": "Clutch",
       "cp_batterietrennschalter_toggle": "Battery disconnect switch",
       "cp_fahrerlicht_toggle": "Driver's light",
       "cp_licht_oberdeck_toggle": "Upper deck light",
-      "cp_licht_untenrechts_toggle": "Light: lower right",
+      "cp_licht_untenrechts_toggle": "Lower right light",
       "cp_licht_unterdeck_toggle": "Lower deck light",
       "cp_microphone": "Microphone",
       "cp_schalter_kinderwagen": "Stroller switch",
-      "cp_wischer_intervall_toggle": "Wiper interval",
-      "cp_wischer_wascher_button": "Wiper washer",
+      "cp_wischer_intervall_toggle": "Wiper interval mode",
+      "cp_wischer_wascher_button": "Windscreen washer",
       "debug_start_bench2": "Start benchmark 2",
       "debug_threadcalc": "Debug: thread calculation",
       "debug_window": "Debug window",
@@ -1033,7 +1034,7 @@
       "ibis_9": "IBIS: 9",
       "ibis_eingabe": "IBIS: enter",
       "ibis_loeschen": "IBIS: delete",
-      "ibis_setmode_linie_kurs": "IBIS: line / course mode",
+      "ibis_setmode_linie_kurs": "IBIS: line / tour mode",
       "ibis_setmode_route": "IBIS: route mode",
       "ibis_setmode_ziel": "IBIS: destination mode",
       "kw_fernlicht_toggle": "High beam",
@@ -1073,7 +1074,7 @@
       "steering_left": "Steer left",
       "steering_neutral": "Center steering",
       "steering_right": "Steer right",
-      "taster_nebelschluss": "Rear fog light button",
+      "taster_nebelschluss": "Rear fog light",
       "throttle": "Throttle",
       "throttle_amplify": "Throttle boost",
       "ticket_give": "Issue ticket",
@@ -1084,7 +1085,7 @@
       "view_reset_all_directions": "Reset all view directions",
       "view_reset_direction": "Reset view direction",
       "view_set_driver": "View: driver",
-      "view_set_ego": "View: ego (on foot)",
+      "view_set_ego": "View: on foot",
       "view_set_map": "View: map",
       "view_set_outside": "View: outside",
       "view_set_passenger": "View: passenger",
