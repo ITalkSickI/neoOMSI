@@ -413,10 +413,11 @@ impl Ui {
                 let rc = self.world_rows_rc[i];
                 let item_h = 36.0 * u;
                 let vis = d.labels.len().clamp(1, 8);
+                let search_h = if d.hay.is_empty() { 0.0 } else { 44.0 * u };
                 self.world_drop_vis = vis;
                 d.top = d.top.min(d.labels.len().saturating_sub(vis));
                 let dw = (300.0 * u).max(mid_w * 0.5).min(mid_w);
-                let dh = item_h * vis as f32 + 2.0 * line;
+                let dh = item_h * vis as f32 + 2.0 * line + search_h;
                 let x1 = rc[2];
                 let mut dy = rc[3] + 2.0 * u;
                 if dy + dh > h - 8.0 * u {
@@ -426,8 +427,21 @@ impl Ui {
                 self.text.rounded(r, scene, [box_[0] - line, box_[1] - line, box_[2] + line, box_[3] + line], 0.0, [150, 153, 160, 255]);
                 self.text.rounded(r, scene, box_, 0.0, [26, 28, 33, 255]);
                 self.world_drop_first = d.top;
+                if !d.hay.is_empty() {
+                    let rc = [box_[0] + 4.0 * u, box_[1] + 4.0 * u, box_[2] - 4.0 * u, box_[1] + search_h - 4.0 * u];
+                    self.text.rounded(r, scene, rc, 0.0, [8, 10, 14, 255]);
+                    let bpx = 15.0 * u;
+                    let q = &d.filter;
+                    let (txt, col) = if q.is_empty() { (t("pause.dialog.search"), SOFT) } else { (clip_left(&self.text, q, bpx, rc[2] - rc[0] - 28.0 * u), WHITE) };
+                    let l = self.text.label(r, scene, &txt, bpx as u32, col);
+                    l.place(scene, rc[0] + 10.0 * u, rc[1] + (rc[3] - rc[1] - l.h as f32) * 0.5);
+                    if (self.text.frame / 30) % 2 == 0 {
+                        let cx = rc[0] + 10.0 * u + if q.is_empty() { 0.0 } else { l.w as f32 } + 2.0 * u;
+                        self.text.rounded(r, scene, [cx, rc[1] + 6.0 * u, cx + 2.0 * u, rc[3] - 6.0 * u], 0.0, WHITE);
+                    }
+                }
                 for (j, label) in d.labels.iter().enumerate().skip(d.top).take(vis) {
-                    let iy = box_[1] + line + item_h * (j - d.top) as f32;
+                    let iy = box_[1] + line + search_h + item_h * (j - d.top) as f32;
                     let irc = [box_[0] + line, iy, box_[2] - line, iy + item_h];
                     let hot = inside(irc, f.cursor);
                     let chosen = j == d.sel;

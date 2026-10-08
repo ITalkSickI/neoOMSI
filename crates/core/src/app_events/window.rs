@@ -79,6 +79,11 @@ impl App {
                 self.dropdown_text(text);
             }
         }
+        if event.state == ElementState::Pressed && self.ui.as_ref().is_some_and(|u| u.world_drop.is_some()) {
+            if let Some(text) = event.text.as_deref() {
+                self.lab_world_drop_text(text);
+            }
+        }
         if event.state == ElementState::Pressed && self.lab_list.is_some() {
             if let Some(text) = event.text.as_deref() {
                 self.lab_dialog_text(text);

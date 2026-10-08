@@ -234,10 +234,17 @@ impl App {
                     let sel = d.current.unwrap_or(0).min(d.items.len().saturating_sub(1));
                     let vis = self.ui.as_ref().map_or(8, |u| u.world_drop_vis).max(1);
                     if let Some(u) = self.ui.as_mut() {
+                        let labels: Vec<String> = d.items.iter().map(|i| i.0.clone()).collect();
+                        let actions: Vec<String> = d.items.iter().map(|i| i.1.clone()).collect();
+                        let searchable = !d.search.is_empty();
                         u.world_drop = Some(WorldDrop {
                             k,
-                            labels: d.items.iter().map(|i| i.0.clone()).collect(),
-                            actions: d.items.iter().map(|i| i.1.clone()).collect(),
+                            all_labels: if searchable { labels.clone() } else { Vec::new() },
+                            all_actions: if searchable { actions.clone() } else { Vec::new() },
+                            hay: d.search.clone(),
+                            filter: String::new(),
+                            labels,
+                            actions,
                             sel,
                             top: sel.saturating_sub(vis / 2),
                             current: d.current,
@@ -280,6 +287,37 @@ impl App {
         }
     }
 
+    pub(crate) fn lab_world_drop_text(&mut self, text: &str) {
+        let Some(d) = self.ui.as_mut().and_then(|u| u.world_drop.as_mut()) else {
+            return;
+        };
+        if d.hay.is_empty() {
+            return;
+        }
+        d.filter.extend(text.chars().filter(|c| !c.is_control()));
+        self.lab_world_drop_refilter();
+    }
+
+    fn lab_world_drop_refilter(&mut self) {
+        let Some(d) = self.ui.as_mut().and_then(|u| u.world_drop.as_mut()) else {
+            return;
+        };
+        let q = d.filter.trim().to_lowercase();
+        let cur = d.current.and_then(|c| d.actions.get(c)).cloned();
+        let keep: Vec<usize> = (0..d.all_labels.len()).filter(|i| *i == 0 || q.is_empty() || d.hay.get(*i).is_some_and(|h| h.contains(&q))).collect();
+        d.labels = keep.iter().map(|i| d.all_labels[*i].clone()).collect();
+        d.actions = keep.iter().map(|i| d.all_actions[*i].clone()).collect();
+        d.current = cur.and_then(|c| d.actions.iter().position(|x| *x == c));
+        d.sel = if q.is_empty() { d.current.unwrap_or(0) } else { 1.min(d.labels.len().saturating_sub(1)) };
+        d.top = 0;
+        let vis = self.ui.as_ref().map_or(8, |u| u.world_drop_vis).max(1);
+        if let Some(d) = self.ui.as_mut().and_then(|u| u.world_drop.as_mut()) {
+            if d.sel >= vis {
+                d.top = d.sel + 1 - vis;
+            }
+        }
+    }
+
     fn lab_world_drop_key(&mut self, code: KeyCode) {
         let Some(u) = self.ui.as_mut() else {
             return;
@@ -289,13 +327,28 @@ impl App {
             return;
         };
         let n = d.labels.len().max(1);
+        let ss = !d.hay.is_empty();
         match code {
             KeyCode::Escape => u.world_drop = None,
-            KeyCode::ArrowUp | KeyCode::KeyW => d.sel = (d.sel + n - 1) % n,
-            KeyCode::ArrowDown | KeyCode::KeyS => d.sel = (d.sel + 1) % n,
+            KeyCode::Backspace if ss => {
+                d.filter.pop();
+                self.lab_world_drop_refilter();
+                return;
+            }
+            KeyCode::ArrowUp => d.sel = (d.sel + n - 1) % n,
+            KeyCode::KeyW if !ss => d.sel = (d.sel + n - 1) % n,
+            KeyCode::ArrowDown => d.sel = (d.sel + 1) % n,
+            KeyCode::KeyS if !ss => d.sel = (d.sel + 1) % n,
+            KeyCode::PageUp => d.sel = d.sel.saturating_sub(5),
+            KeyCode::PageDown => d.sel = (d.sel + 5).min(n - 1),
             KeyCode::Home => d.sel = 0,
             KeyCode::End => d.sel = n - 1,
-            KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                let i = d.sel;
+                self.lab_world_drop_pick(i);
+                return;
+            }
+            KeyCode::Space if !ss => {
                 let i = d.sel;
                 self.lab_world_drop_pick(i);
                 return;

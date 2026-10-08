@@ -31,6 +31,11 @@ pub struct WorldDrop {
     pub sel: usize,
     pub top: usize,
     pub current: Option<usize>,
+    /// Type-to-filter
+    pub hay: Vec<String>,
+    pub all_labels: Vec<String>,
+    pub all_actions: Vec<String>,
+    pub filter: String,
 }
 
 #[derive(Clone, Debug, Default)]
