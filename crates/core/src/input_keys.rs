@@ -976,10 +976,6 @@ impl App {
                 )
             })
             .unwrap_or((0.0, 0.0));
-        if ::config::get_bool("controls", "mouse_steering").unwrap_or(false) != on {
-            ::config::set_setting("controls", "mouse_steering", on);
-            let _ = ::config::save();
-        }
     }
 
     pub(crate) fn toggle_pause(&mut self) {
