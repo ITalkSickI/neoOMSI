@@ -4,7 +4,8 @@ use super::*;
 
 fn underline(lefts: &[f32], widths: &[f32], pos: f32) -> (f32, f32) {
     let last = lefts.len() - 1;
-    let i0 = (pos.floor().max(0.0) as usize).min(last);
+    let pos = pos.clamp(0.0, last as f32);
+    let i0 = (pos.floor() as usize).min(last);
     let i1 = (i0 + 1).min(last);
     let fr = pos - i0 as f32;
     let s = fr * fr * (3.0 - 2.0 * fr);

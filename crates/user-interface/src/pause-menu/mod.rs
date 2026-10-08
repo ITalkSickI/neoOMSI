@@ -11,10 +11,7 @@ mod screen;
 
 use self::common::plain;
 pub use self::dialog::Dialog;
-pub use self::page::{
-    ADMIN_PAGE, Fmt, OPTION_GROUPS, OPTIONS_PAGE, OptGroup, OptKind, OptRow, OptShow, PAGE_COUNT,
-    VEHICLE_PAGE, WORLD_PAGE,
-};
+pub use self::page::{Fmt, OptGroup, OptKind, OptRow, OptShow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, VEHICLE_PAGE, WORLD_PAGE};
 
 #[derive(Clone, Debug, Default)]
 pub struct WorldRow {
@@ -71,6 +68,16 @@ pub struct PauseState {
     pub sel: usize,
 }
 
+impl PauseState {
+    pub fn moved(self, n: usize, dir: isize) -> PauseState {
+        if n == 0 {
+            return self;
+        }
+        let sel = (self.sel.min(n - 1) as isize + dir).rem_euclid(n as isize) as usize;
+        PauseState { sel, ..self }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Metrics {
     pub w: f32,
@@ -101,12 +108,7 @@ pub(super) fn out(t: f32) -> f32 {
 }
 
 pub(super) fn fade(c: [u8; 4], k: f32) -> [u8; 4] {
-    [
-        c[0],
-        c[1],
-        c[2],
-        (c[3] as f32 * k.clamp(0.0, 1.0)).round() as u8,
-    ]
+    [c[0], c[1], c[2], (c[3] as f32 * k.clamp(0.0, 1.0)).round() as u8]
 }
 
 pub(super) fn mix(a: [u8; 4], b: [u8; 4], t: f32) -> [u8; 4] {
@@ -122,6 +124,7 @@ pub(super) fn inside(rc: [f32; 4], p: (f32, f32)) -> bool {
 }
 
 impl Ui {
+
     pub(super) fn pause_reset(&mut self) {
         self.pause_open = 0.0;
         self.page_t = 0.0;
@@ -163,7 +166,7 @@ impl Ui {
                 self.lab_tabs.clear();
                 self.lab_groups.clear();
                 self.lab_actions.clear();
-                self.draw_pause_screen(r, scene, f, m, st.sel);
+                self.draw_pause_screen(r, scene, m, st.sel);
             }
             Some(tab) => {
                 self.pause_items.clear();
@@ -174,17 +177,9 @@ impl Ui {
         let at = |rs: &[[f32; 4]]| rs.iter().any(|rc| inside(*rc, f.cursor));
         self.hand = match self.dialog.as_ref() {
             Some(Dialog::Place { .. }) => at(&self.place_rects),
-            Some(Dialog::Select { drop: Some(_), .. }) => {
-                at(&self.dialog_rects) || at(&self.place_rects[..self.place_rects.len().min(4)])
-            }
+            Some(Dialog::Select { drop: Some(_), .. }) => at(&self.dialog_rects) || at(&self.place_rects[..self.place_rects.len().min(4)]),
             Some(Dialog::Loading { .. }) => false,
-            Some(_) => {
-                at(&self.dialog_rects)
-                    || at(&[self.dialog_back_rc])
-                    || at(&self.menu_pane)
-                    || at(&self.menu_time)
-                    || self.menu_pane_go.as_ref().is_some_and(|g| at(&[*g]))
-            }
+            Some(_) => at(&self.dialog_rects) || at(&[self.dialog_back_rc]) || at(&self.menu_pane) || at(&self.menu_time) || self.menu_pane_go.as_ref().is_some_and(|g| at(&[*g])),
             None => {
                 at(&self.pause_items)
                     || at(&self.lab_tabs)
@@ -275,6 +270,28 @@ mod tests {
         let st = PauseState::default();
         assert_eq!(st.page, None);
         assert_eq!(st.sel, 0);
+    }
+
+    #[test]
+    fn moved_wraps_both_ways() {
+        let st = |sel| PauseState { page: None, sel };
+        assert_eq!(st(0).moved(6, 1).sel, 1);
+        assert_eq!(st(5).moved(6, 1).sel, 0);
+        assert_eq!(st(0).moved(6, -1).sel, 5);
+        assert_eq!(st(3).moved(6, -1).sel, 2);
+    }
+
+    #[test]
+    fn moved_clamps_stale_selection_and_handles_empty() {
+        let st = PauseState { page: None, sel: 9 };
+        assert_eq!(st.moved(3, 1).sel, 0);
+        assert_eq!(st.moved(0, 1), st);
+    }
+
+    #[test]
+    fn moved_keeps_page() {
+        let st = PauseState { page: Some(2), sel: 0 };
+        assert_eq!(st.moved(4, 1).page, Some(2));
     }
 
     #[test]

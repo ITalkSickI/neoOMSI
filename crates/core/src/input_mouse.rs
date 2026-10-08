@@ -415,6 +415,18 @@ impl App {
         let last = self.cursor;
         self.cursor = (x, y);
         if self.lab_menu.is_some() {
+            if (x, y) != last {
+                if let Some(st) = self.lab_menu.filter(|s| s.page.is_none()) {
+                    let hit = self.ui.as_ref().and_then(|u| {
+                        u.pause_items
+                            .iter()
+                            .position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3])
+                    });
+                    if let Some(k) = hit {
+                        self.lab_menu = Some(crate::ui::PauseState { sel: k, ..st });
+                    }
+                }
+            }
             if let Some(n) = self.navigator.as_mut().filter(|n| n.city.embed.is_some()) {
                 n.map_move(x, y);
             }

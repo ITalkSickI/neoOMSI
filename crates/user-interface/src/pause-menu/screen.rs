@@ -2,10 +2,12 @@
 
 use super::*;
 
+/// A divider goes above entry `i` (resume/save | menus | quit).
 fn break_before(i: usize, n: usize) -> bool {
     n >= 4 && i > 0 && (i == 2 || i == n - 1)
 }
 
+/// Font size of the entries for the room `avail` leaves.
 fn entry_px(avail: f32, n: usize, gap: f32, u: f32) -> f32 {
     (((avail / n as f32) - gap - 10.0 * u) / 1.3).clamp(13.0 * u, 21.0 * u)
 }
@@ -15,9 +17,8 @@ impl Ui {
         &mut self,
         r: &Renderer,
         scene: &mut Scene,
-        f: &Frame,
         m: Metrics,
-        _sel: usize,
+        sel: usize,
     ) {
         let Metrics { w, h, u, mx, line } = m;
         self.pause_items.clear();
@@ -27,17 +28,14 @@ impl Ui {
         let n = entries.len().max(1);
 
         // the picture dims, a panel on the left carries the menu
-        self.text
-            .rounded(r, scene, [0.0, 0.0, w, h], 0.0, [6, 8, 12, 150]);
+        self.text.rounded(r, scene, [0.0, 0.0, w, h], 0.0, [6, 8, 12, 150]);
         let mx = (mx * 0.7).round();
         let row_w = 300.0 * u;
         let pw = mx + row_w + 8.0 * u;
         // it slides in from the left (and out again)
         let dx = -pw * (1.0 - o);
-        self.text
-            .rounded(r, scene, [dx, 0.0, pw + dx, h], 0.0, [8, 10, 14, 238]);
-        self.text
-            .rounded(r, scene, [pw - line + dx, 0.0, pw + dx, h], 0.0, BORDER);
+        self.text.rounded(r, scene, [dx, 0.0, pw + dx, h], 0.0, [8, 10, 14, 238]);
+        self.text.rounded(r, scene, [pw - line + dx, 0.0, pw + dx, h], 0.0, BORDER);
 
         // the logo, then a short accent rule
         let mut y = (h * 0.06).round();
@@ -46,15 +44,11 @@ impl Ui {
         if let Some((tex, iw, ih)) = self.logo_at(r, scene, (38.0 * u).round()) {
             if o > 0.05 {
                 let x = (mx + slide).round();
-                scene
-                    .overlays
-                    .push((tex, [x, y, x + iw as f32, y + ih as f32]));
+                scene.overlays.push((tex, [x, y, x + iw as f32, y + ih as f32]));
             }
             y += ih as f32 + 12.0 * u;
         } else {
-            let title = self
-                .text
-                .label(r, scene, "neoOMSI", (30.0 * u) as u32, WHITE);
+            let title = self.text.label(r, scene, "neoOMSI", (30.0 * u) as u32, WHITE);
             title.place(scene, mx + slide, y);
             y += title.h as f32 + 6.0 * u;
         }
@@ -90,17 +84,28 @@ impl Ui {
                 );
                 y += sep_h;
             }
-            let col = if danger { [222, 78, 68, 0] } else { SOFT };
+            let on = i == sel;
+            let col = if danger {
+                [222, 78, 68, 0]
+            } else if on {
+                WHITE
+            } else {
+                SOFT
+            };
             let l = self.text.label(r, scene, name, px as u32, col);
             let row_h = l.h as f32 + 10.0 * u;
             let rc = [mx - 24.0 * u, y, mx - 24.0 * u + row_w, y + row_h];
-            let hot = inside(rc, f.cursor);
-            let hv = self.ease((200, "hover", i), if hot { 1.0 } else { 0.0 }, 8.0);
+            let hv = self.ease((200, "hover", i), if on { 1.0 } else { 0.0 }, 8.0);
             let ox = dx * e;
             if hv > 0.0 {
                 let rr = [rc[0] + ox, rc[1], rc[2] + ox, rc[3]];
                 let hc = if danger { fade(DANGER, 0.16) } else { LIT };
                 self.text.rounded(r, scene, rr, 6.0 * u, fade(hc, hv * e));
+            }
+            if hv > 0.0 {
+                let bar = [rc[0] + ox, rc[1] + 4.0 * u, rc[0] + ox + 3.0 * u, rc[3] - 4.0 * u];
+                let bc = if danger { DANGER } else { ACCENT };
+                self.text.rounded(r, scene, bar, 0.0, fade(bc, hv * e));
             }
             l.place(scene, mx + ox, y + 5.0 * u);
             self.pause_items.push(rc);

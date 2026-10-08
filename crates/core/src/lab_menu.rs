@@ -1,7 +1,7 @@
 //! The pause menu
 
 use super::*;
-use crate::ui::{Dialog, PauseState, WorldDrop, WorldGroup, WorldRow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, VEHICLE_PAGE, WORLD_PAGE};
+use crate::ui::{ADMIN_PAGE, Dialog, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, PauseState, VEHICLE_PAGE, WORLD_PAGE, WorldDrop, WorldGroup, WorldRow};
 
 #[derive(Clone, Default)]
 pub(crate) struct PlaceSel {
@@ -1099,7 +1099,7 @@ impl App {
         }
     }
 
-    pub(crate) fn lab_key(&mut self, code: KeyCode) {
+    pub(crate) fn lab_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode) {
         SYNC_NOW.with(|c| c.set(true));
         let n = self.lab_pages();
         let st = self.lab_menu.unwrap_or_default();
@@ -1198,6 +1198,15 @@ impl App {
             let go = |p: usize| Some(PauseState { page: Some(p), sel: sels[p] });
             match code {
                 KeyCode::Escape => self.close_game_menu(),
+                KeyCode::ArrowUp | KeyCode::KeyW => {
+                    let cnt = self.lab_entries().len();
+                    self.lab_menu = Some(st.moved(cnt, -1));
+                }
+                KeyCode::ArrowDown | KeyCode::KeyS => {
+                    let cnt = self.lab_entries().len();
+                    self.lab_menu = Some(st.moved(cnt, 1));
+                }
+                KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => self.lab_activate(event_loop, st.sel),
                 KeyCode::ArrowLeft | KeyCode::KeyA | KeyCode::KeyQ => self.lab_menu = go(n - 1),
                 KeyCode::ArrowRight | KeyCode::KeyD | KeyCode::KeyE => {
                     self.lab_menu = go(0)

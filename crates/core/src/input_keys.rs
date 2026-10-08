@@ -413,7 +413,7 @@ impl App {
             }
             if self.lab_menu.is_some() {
                 if pressed && !repeat {
-                    self.lab_key(code);
+                    self.lab_key(event_loop, code);
                 }
                 return;
             }
