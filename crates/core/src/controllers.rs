@@ -76,7 +76,6 @@ pub(crate) struct DeviceCfg {
     pub(crate) second: String,
     /// Per DirectInput axis: the function and whether it runs the other way.
     pub(crate) axes: [Option<(Func, bool)>; 8],
-    /// Per axis the file's flags beyond bit 0 (kept as they are).
     pub(crate) axis_flags: [i32; 8],
     /// Per button: the key action (empty: none) and the number after it.
     pub(crate) buttons: Vec<(String, String)>,
@@ -106,6 +105,28 @@ impl Default for DeviceCfg {
 }
 
 impl DeviceCfg {
+    pub(crate) fn axis_reversed(&self, k: usize) -> bool {
+        self.axes[k].map_or(self.axis_flags[k] & 1 != 0, |(_, reversed)| reversed)
+    }
+
+    pub(crate) fn set_axis_reversed(&mut self, k: usize, reversed: bool) {
+        self.axis_flags[k] = (self.axis_flags[k] & !1) | i32::from(reversed);
+        if let Some((_, value)) = self.axes[k].as_mut() {
+            *value = reversed;
+        }
+    }
+
+    pub(crate) fn set_axis_function(&mut self, k: usize, function: Option<Func>) {
+        let reversed = self.axis_reversed(k);
+        self.axes[k] = function.map(|function| (function, reversed));
+        self.set_axis_reversed(k, reversed);
+    }
+
+    pub(crate) fn axis_preview(&self, k: usize, value: f32) -> f32 {
+        let value = self.calibrated(k, value);
+        if self.axis_reversed(k) { -value } else { value }
+    }
+
     pub(crate) fn calibrated(&self, k: usize, v: f32) -> f32 {
         self.calibration
             .get(k)
@@ -254,7 +275,7 @@ pub(crate) fn read_device(name: &str) -> DeviceCfg {
         let f = int(&format!("axis{a}")).unwrap_or(-1) as i32;
         let flags = int(&format!("axis{a}_flags")).unwrap_or(0) as i32;
         d.axes[a] = Func::from_code(f).map(|f| (f, flags & 1 != 0));
-        d.axis_flags[a] = flags & !1;
+        d.axis_flags[a] = flags;
         d.calibration[a] = dev_get(name, &format!("axis{a}_cal"))
             .and_then(|v| v.as_str().and_then(AxisCal::parse));
     }
@@ -291,12 +312,10 @@ pub(crate) fn write_device(d: &DeviceCfg) {
     dev_put(n, "enabled", Some(Value::from(d.enabled)));
     dev_put(n, "second", Some(Value::from(if d.second.is_empty() { "0" } else { &d.second })));
     for a in 0..8 {
-        let (f, inv) = match d.axes[a] {
-            Some((f, inv)) => (Func::code(Some(f)), inv),
-            None => (-1, false),
-        };
+        let f = Func::code(d.axes[a].map(|(function, _)| function));
+        let flags = (d.axis_flags[a] & !1) | i32::from(d.axis_reversed(a));
         dev_put(n, &format!("axis{a}"), Some(Value::from(f as i64)));
-        dev_put(n, &format!("axis{a}_flags"), Some(Value::from((d.axis_flags[a] | inv as i32) as i64)));
+        dev_put(n, &format!("axis{a}_flags"), Some(Value::from(flags as i64)));
         dev_put(n, &format!("axis{a}_cal"), d.calibration[a].map(|c| Value::from(c.line())));
     }
     dev_put(n, "buttons", Some(Value::from(d.buttons.len() as i64)));
@@ -2237,6 +2256,63 @@ mod cfg_tests {
     fn round(d: &super::DeviceCfg) -> super::DeviceCfg {
         super::write_device(d);
         super::read_device(&d.name)
+    }
+
+    #[test]
+    fn z_inversion_is_saved_before_assignment_and_survives_function_changes() {
+        let mut device = super::DeviceCfg {
+            name: "Z inversion before assignment".into(),
+            ..Default::default()
+        };
+        device.axis_flags[2] = 2 | 8 | 0x10;
+        device.set_axis_reversed(2, true);
+        let mut device = round(&device);
+        assert_eq!(device.axes[2], None);
+        assert!(device.axis_reversed(2));
+        device.set_axis_function(2, Some(super::Func::Throttle));
+        assert_eq!(device.axes[2], Some((super::Func::Throttle, true)));
+        device.set_axis_function(2, None);
+        let mut device = round(&device);
+        assert!(device.axis_reversed(2));
+        device.set_axis_function(2, Some(super::Func::Brake));
+        assert_eq!(device.axes[2], Some((super::Func::Brake, true)));
+        device.set_axis_reversed(2, false);
+        let device = round(&device);
+        assert_eq!(device.axes[2], Some((super::Func::Brake, false)));
+        assert!(!device.axis_reversed(2));
+        assert_eq!(device.axis_flags[2], 2 | 8 | 0x10);
+    }
+
+    #[test]
+    fn an_assigned_axis_can_clear_a_previous_inversion_flag() {
+        let mut device = super::DeviceCfg {
+            name: "Z inversion stale flag".into(),
+            ..Default::default()
+        };
+        device.axis_flags[2] = 1 | 4;
+        device.axes[2] = Some((super::Func::Brake, false));
+        let device = round(&device);
+        assert!(!device.axis_reversed(2));
+        assert_eq!(device.axes[2], Some((super::Func::Brake, false)));
+        assert_eq!(device.axis_flags[2], 4);
+    }
+
+    #[test]
+    fn z_preview_reverses_the_calibrated_range_without_reversing_other_axes() {
+        let mut device = super::DeviceCfg::default();
+        device.calibration[2] = Some(super::AxisCal {
+            min: -0.5,
+            centre: None,
+            max: 0.5,
+            deadzone: None,
+        });
+        assert_eq!(device.axis_preview(2, 0.5), 1.0);
+        device.set_axis_reversed(2, true);
+        assert_eq!(device.axis_preview(2, 0.5), -1.0);
+        assert_eq!(device.axis_preview(2, -0.5), 1.0);
+        assert_eq!(device.axis_preview(2, 0.0), 0.0);
+        assert_eq!(device.axis_preview(0, 0.5), 0.5);
+        assert_eq!(device.calibrated(2, 0.5), 1.0);
     }
 
     #[test]
