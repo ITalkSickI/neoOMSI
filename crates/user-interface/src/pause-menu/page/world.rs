@@ -385,6 +385,20 @@ impl Ui {
                     let vl = self.text.label(r, scene, &txt, vpx, mix(SOFT, WHITE, hv));
                     vl.place(scene, bx - 10.0 * u - vw, ry + (row_h - vl.h as f32) * 0.5);
                     ctl_w = bw + 10.0 * u + vw;
+                    if let Some(m) = row.meter {
+                        let (mw, mh) = (110.0 * u, 6.0 * u);
+                        let x1 = bx - 10.0 * u - vw - 16.0 * u;
+                        let x0 = x1 - mw;
+                        let cy = ry + row_h * 0.5;
+                        let one = row.meter_one_sided;
+                        let mid = if one { x0 } else { (x0 + x1) * 0.5 };
+                        let px = if one { x0 + (x1 - x0) * m.clamp(0.0, 1.0) } else { x0 + (x1 - x0) * (m.clamp(-1.0, 1.0) + 1.0) * 0.5 };
+                        self.text.rounded(r, scene, [x0, cy - mh * 0.5, x1, cy + mh * 0.5], 0.0, fade([24, 26, 31, 255], e));
+                        self.text.rounded(r, scene, [mid.min(px), cy - mh * 0.5, mid.max(px), cy + mh * 0.5], 0.0, fade(mix(ACCENT, ACCENT_HOT, hv), e));
+                        let kd = 12.0 * u;
+                        self.text.rounded(r, scene, [px - kd * 0.3, cy - kd * 0.5, px + kd * 0.3, cy + kd * 0.5], 0.0, fade(WHITE, e));
+                        ctl_w += 16.0 * u + mw;
+                    }
                 }
                 kind => {
                     let col = match kind {

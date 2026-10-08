@@ -21,6 +21,8 @@ pub struct WorldRow {
     pub desc: String,
     pub frac: f32,
     pub tag: String,
+    pub meter: Option<f32>,
+    pub meter_one_sided: bool,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -48,13 +48,6 @@ fn func_text(f: Option<(Func, bool)>) -> String {
     }
 }
 
-fn axis_bar(v: f32) -> String {
-    const N: usize = 11;
-    let at = (((v.clamp(-1.0, 1.0) + 1.0) * 0.5) * (N - 1) as f32).round() as usize;
-    let cells: String = (0..N).map(|i| if i == at { '#' } else if i == N / 2 { '|' } else { '-' }).collect();
-    format!("[{cells}] {v:+.2}")
-}
-
 fn selected(devices: &[DeviceCfg]) -> Option<usize> {
     (!devices.is_empty()).then(|| SEL.load(Ordering::Relaxed).min(devices.len() - 1))
 }
@@ -177,12 +170,23 @@ fn device_rows(app: &App, d: &DeviceCfg, dev: Option<&Connected>) -> Rows {
         if labels[a].is_empty() && d.axes[a].is_none() {
             continue;
         }
-        let mut v = func_text(d.axes[a]);
-        if let Some((_, x)) = dev.and_then(|c| c.axes.iter().find(|(k, _)| *k == a)) {
-            v = format!("{}  {v}", axis_bar(*x));
-        }
+        let v = func_text(d.axes[a]);
         let name = if labels[a].is_empty() { "-" } else { labels[a].as_str() };
-        out.push((row(name, 'o', &v, "pause.controls.axis.desc", None), format!("pad_axis {a}")));
+        let mut r = row(name, 'o', &v, "pause.controls.axis.desc", None);
+        if let Some((_, x)) = dev.and_then(|c| c.axes.iter().find(|(k, _)| *k == a)) {
+            let cal = d.calibrated(a, *x);
+            let (inv, pedal) = match d.axes[a] {
+                Some((f, inv)) => (inv, matches!(f, Func::Throttle | Func::Brake | Func::Clutch)),
+                None => (false, false),
+            };
+            let v = if inv { -cal } else { cal }.clamp(-1.0, 1.0);
+            r = if pedal {
+                format!("{r}\u{1f}\u{1f}{:.3}\u{1f}u", (v + 1.0) * 0.5)
+            } else {
+                format!("{r}\u{1f}\u{1f}{:.3}", v)
+            };
+        }
+        out.push((r, format!("pad_axis {a}")));
     }
     out.push((
         row("pause.controls.deadzone.name", 'o', &format!("{:.0} %", d.deadzone.unwrap_or_else(controllers::global_deadzone) * 100.0), "pause.controls.deadzone.desc", None),
