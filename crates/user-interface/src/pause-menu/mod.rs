@@ -131,7 +131,7 @@ impl Ui {
         } else if self.pause_last != key {
             self.page_fade = false;
             self.pause_last = key;
-            self.page_t = 1.0;
+            self.page_t = 0.0;
         }
         if self.pause_closing {
             self.pause_open = (self.pause_open - self.anim_dt / 0.2).max(0.0);

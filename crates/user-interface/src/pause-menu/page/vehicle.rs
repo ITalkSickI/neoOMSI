@@ -106,16 +106,26 @@ impl Ui {
         let mid_x = mx + side_w + gap;
         let mid_w = ((inner_w - side_w - gap * 2.0) * 0.56).floor();
         let g = &groups[gi];
+        let ck = VEHICLE_PAGE * 10000 + gi * 100;
+        if self.cat_key != ck {
+            self.cat_key = ck;
+            self.cat_t = 0.0;
+        }
+        self.cat_t = (self.cat_t + self.anim_dt / 0.5).min(1.0);
+        let ct = pt.min(self.cat_t);
         let hpx = (22.0 * u) as u32;
+        self.text.alpha = out(self.cat_t.max(0.35));
         let hl = self.text.label(r, scene, &group_title(g), hpx, WHITE);
-        hl.place(scene, mid_x, top);
+        self.text.alpha = 1.0;
+        hl.place(scene, mid_x, top + 10.0 * u * (1.0 - out(self.cat_t)));
         let y0 = top + hl.h as f32 + 12.0 * u;
         let row_h = 52.0 * u;
         let row_gap = 4.0 * u;
         let fit = (((bottom - y0) / (row_h + row_gap)).floor().max(0.0)) as usize;
         let mut hovered: Option<usize> = None;
         for (i, a) in g.actions.iter().enumerate().take(fit) {
-            let e = out((pt - 0.04 * i as f32 - 0.1) / 0.5);
+            let e = out((ct - 0.04 * i.min(8) as f32 - 0.1) / 0.5);
+            self.text.alpha = e;
             let ry = y0 + (row_h + row_gap) * i as f32;
             let ox = 24.0 * u * (1.0 - e);
             let rc = [mid_x, ry, mid_x + mid_w, ry + row_h];
@@ -153,6 +163,7 @@ impl Ui {
             nl.place(scene, rr[0] + 18.0 * u, rr[1] + (row_h - nl.h as f32) * 0.5);
             self.lab_actions.push(rc);
         }
+        self.text.alpha = 1.0;
 
         // right: what the row under the mouse does (nothing there, nothing shown)
         let a = hovered.and_then(|i| g.actions.get(i));

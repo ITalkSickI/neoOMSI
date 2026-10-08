@@ -59,6 +59,18 @@ impl Ui {
         }
         (PAGES[shown].draw)(self, r, scene, f, m, bar_bottom + 32.0 * u, pt);
 
+        if !fade_in && self.page_t < 1.0 {
+            let veil = 0.6 * (1.0 - out(self.page_t / 0.45));
+            if veil > 0.0 {
+                self.text.rounded(
+                    r,
+                    scene,
+                    [0.0, bar_bottom + m.line, w, h],
+                    0.0,
+                    fade([6, 8, 12, 255], veil),
+                );
+            }
+        }
         if fade_in {
             let t = self.page_t;
             let cover = out(if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 });
@@ -86,10 +98,14 @@ impl Ui {
     ) -> f32 {
         let Metrics { u, mx, .. } = m;
         let hs = out(pt / 0.6);
+        self.text.alpha = hs;
         let hl = self.text.label(r, scene, &t(head), (34.0 * u) as u32, WHITE);
         hl.place(scene, mx - 40.0 * u * (1.0 - hs), y);
+        let ns = out((pt - 0.08) / 0.6);
+        self.text.alpha = ns;
         let nl = self.text.label(r, scene, &t(note), (14.0 * u) as u32, MUTED);
-        nl.place(scene, mx - 40.0 * u * (1.0 - hs), y + hl.h as f32);
+        nl.place(scene, mx - 40.0 * u * (1.0 - ns), y + hl.h as f32);
+        self.text.alpha = 1.0;
         y + hl.h as f32 + nl.h as f32 + 18.0 * u
     }
 }

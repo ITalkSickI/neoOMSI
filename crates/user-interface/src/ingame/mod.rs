@@ -122,6 +122,8 @@ pub struct Ui {
     page_t: f32,
     pause_last: usize,
     page_fade: bool,
+    cat_key: usize,
+    cat_t: f32,
     pub menu_scroll_track: Option<[f32; 4]>,
     /// Where the controls of the settings rows were drawn (a slider's track, a stepper), one
     /// entry per line in `menu_rects`: a click there sets the value.

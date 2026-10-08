@@ -73,6 +73,8 @@ impl Ui {
             page_t: 0.0,
             pause_last: usize::MAX - 1,
             page_fade: false,
+            cat_key: usize::MAX,
+            cat_t: 1.0,
             menu_scroll_track: None,
             menu_ctl: Vec::new(),
             dd_rects: Vec::new(),

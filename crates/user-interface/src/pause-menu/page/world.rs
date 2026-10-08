@@ -98,7 +98,7 @@ impl Ui {
         self.world_rows_rc.clear();
         self.world_tracks.clear();
         self.world_drop_rc.clear();
-        
+
         let groups = if self.world_view_page == page { self.world_view.clone() } else { Vec::new() };
         if groups.is_empty() {
             return;
@@ -144,6 +144,14 @@ impl Ui {
         let si = self.world_sub.min(g.subs.len());
         self.world_sub = si;
         let rows = if si == 0 { &g.rows } else { &g.subs[si - 1].rows };
+        // (a new group or sub tab: the rows come in again, one after the other)
+        let ck = page * 10000 + gi * 100 + si;
+        if self.cat_key != ck {
+            self.cat_key = ck;
+            self.cat_t = 0.0;
+        }
+        self.cat_t = (self.cat_t + self.anim_dt / 0.5).min(1.0);
+        let ct = pt.min(self.cat_t);
         let tab_px = (22.0 * u) as u32;
         let tabbed = !g.subs.is_empty();
         let mut head_h = 0.0_f32;
@@ -189,8 +197,10 @@ impl Ui {
             let hot = tabbed && inside(rc, f.cursor) && !busy;
             let sv = if tabbed { self.easeq((218, "sub", i), if i == si { 1.0 } else { 0.0 }, 7.0) } else { 1.0 };
             let col = mix(if hot { WHITE } else { MUTED }, WHITE, sv);
+            self.text.alpha = out(self.cat_t.max(0.35));
             let hl = self.text.label(r, scene, name, tab_px, col);
-            hl.place(scene, tx, top);
+            self.text.alpha = 1.0;
+            hl.place(scene, tx, top + 10.0 * u * (1.0 - out(self.cat_t)));
             head_h = head_h.max(hl.h as f32);
             if tabbed {
                 let uy = top + hl.h as f32 + 4.0 * u;
@@ -229,7 +239,8 @@ impl Ui {
         let mut hovered: Option<usize> = None;
         for (n, row) in rows.iter().enumerate().skip(first).take(fit) {
             let i = n - first;
-            let e = out((pt - 0.04 * i as f32 - 0.1) / 0.5);
+            self.text.alpha = 1.0;
+            let e = out((ct - 0.04 * i.min(8) as f32 - 0.1) / 0.5);
             let ry = y0 + (row_h + row_gap) * i as f32;
             let rc = [mid_x, ry, mid_x + mid_w, ry + row_h];
             if row.kind == 'h' {
@@ -278,6 +289,7 @@ impl Ui {
                 self.world_tracks.push(None);
                 continue;
             }
+            self.text.alpha = e;
             let live = row.kind != 'i';
             let hot = inside(rc, f.cursor) && !busy;
             if hot {
@@ -382,6 +394,8 @@ impl Ui {
             self.world_rows_rc.push(rc);
             self.world_tracks.push(track);
         }
+
+        self.text.alpha = 1.0;
 
         // the scroll bar, when there are more rows than fit
         if max > 0 {
