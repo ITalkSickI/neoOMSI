@@ -85,6 +85,8 @@ pub(crate) struct DeviceCfg {
     pub(crate) ff_invert: Option<bool>,
     pub(crate) calibration: [Option<AxisCal>; 8],
     pub(crate) deadzone: Option<f32>,
+    #[cfg(target_os = "linux")]
+    pub(crate) axis_mode: crate::evdev_axes::AxisMode,
 }
 
 impl Default for DeviceCfg {
@@ -100,6 +102,8 @@ impl Default for DeviceCfg {
             ff_invert: None,
             calibration: [None; 8],
             deadzone: None,
+            #[cfg(target_os = "linux")]
+            axis_mode: Default::default(),
         }
     }
 }
@@ -298,7 +302,19 @@ pub(crate) fn read_device(name: &str) -> DeviceCfg {
     d.deadzone = flt("deadzone")
         .filter(|v| v.is_finite())
         .map(|v| (v as f32).clamp(0.0, 0.3));
+    #[cfg(target_os = "linux")]
+    {
+        d.axis_mode = dev_get(name, "axis_mode")
+            .and_then(|v| v.as_str().map(crate::evdev_axes::AxisMode::from_str))
+            .unwrap_or_default();
+    }
     d
+}
+
+#[cfg(target_os = "linux")]
+fn saved_axis_mode(name: &str) -> crate::evdev_axes::AxisMode {
+    find_device_cfg(&read_cfg(), name)
+        .map_or_else(|| read_device(name).axis_mode, |d| d.axis_mode)
 }
 
 /// Put the devices into the settings (call `::config::save` to write them out).
@@ -343,6 +359,8 @@ pub(crate) fn write_device(d: &DeviceCfg) {
     dev_put(n, "ff_scale_vibration", Some(Value::from(sc.1 as f64)));
     dev_put(n, "ff_invert", d.ff_invert.map(Value::from));
     dev_put(n, "deadzone", d.deadzone.map(|v| Value::from(v as f64)));
+    #[cfg(target_os = "linux")]
+    dev_put(n, "axis_mode", Some(Value::from(d.axis_mode.as_str())));
 }
 
 /// The analog controls a controller gives this frame (None: that one is not on it).
@@ -490,11 +508,22 @@ pub(crate) struct Connected {
     pub hardware_id: Option<(u16, u16)>,
     pub axes: Vec<(usize, f32)>,
     pub gamepad: bool,
+    #[cfg(target_os = "linux")]
+    pub native_axes: bool,
     pub ff: bool,
     /// The hardware advertises FFB, even when this window has not created an effect.
     pub ff_capable: bool,
     /// How many buttons it has (0: the system does not say).
     pub buttons: usize,
+}
+
+impl Connected {
+    pub(crate) fn gamepad_axes(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        return self.gamepad && !self.native_axes;
+        #[cfg(not(target_os = "linux"))]
+        self.gamepad
+    }
 }
 
 /// The first button number of the hat switches' directions (4 hats x up, right, down, left).
@@ -507,7 +536,7 @@ pub(crate) const HAT_BUTTONS: usize = 128;
 pub(crate) struct Devices {
     gilrs: Option<Gilrs>,
     #[cfg(target_os = "linux")]
-    linux_wheels: crate::evdev_axes::Wheels,
+    linux_axes: crate::evdev_axes::Devices,
     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     calibration_wheel: Option<crate::evdev_ff::Wheel>,
     #[cfg(windows)]
@@ -534,10 +563,10 @@ impl Devices {
             .map_err(|e| log::info!("game controllers: {e}"))
             .ok();
         #[cfg(target_os = "linux")]
-        let linux_wheels = {
-            let mut wheels = crate::evdev_axes::Wheels::new();
-            wheels.poll(gilrs.as_ref());
-            wheels
+        let linux_axes = {
+            let mut axes = crate::evdev_axes::Devices::new();
+            axes.poll(gilrs.as_ref(), saved_axis_mode);
+            axes
         };
         #[cfg(windows)]
         let di = hwnd.and_then(|h| crate::dinput::DirectInput::new(h, ff));
@@ -546,7 +575,7 @@ impl Devices {
         Devices {
             gilrs,
             #[cfg(target_os = "linux")]
-            linux_wheels,
+            linux_axes,
             #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
             calibration_wheel: None,
             #[cfg(windows)]
@@ -577,6 +606,11 @@ impl Devices {
         return self.di.is_some();
         #[cfg(not(windows))]
         false
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn set_axis_mode(&mut self, name: &str, mode: crate::evdev_axes::AxisMode) {
+        self.linux_axes.set_mode(name, mode);
     }
 
     /// A device was plugged in or removed; ask the worker to rescan without blocking a frame.
@@ -651,6 +685,10 @@ impl Devices {
 
         if let Some(g) = self.gilrs.as_mut() {
             while let Some(ev) = g.next_event() {
+                #[cfg(target_os = "linux")]
+                if matches!(ev.event, EventType::Connected | EventType::Disconnected) {
+                    self.linux_axes.forget(ev.id);
+                }
                 let pad = g.gamepad(ev.id);
                 match ev.event {
                     EventType::Connected => log::info!(
@@ -732,7 +770,7 @@ impl Devices {
             self.hid_axes = h.read();
         }
         #[cfg(target_os = "linux")]
-        self.linux_wheels.poll(self.gilrs.as_ref());
+        self.linux_axes.poll(self.gilrs.as_ref(), saved_axis_mode);
         out
     }
 
@@ -769,14 +807,14 @@ impl Devices {
         let _ = xinput_pads;
         if let Some(g) = self.gilrs.as_ref() {
             for (_pad_id, pad) in g.gamepads() {
+                #[cfg(not(target_os = "linux"))]
                 #[allow(unused_mut)]
                 let mut gamepad = pad.mapping_source() != gilrs::MappingSource::None;
                 #[cfg(target_os = "linux")]
-                let wheel_axes = self.linux_wheels.axes(_pad_id);
+                let native_axes = self.linux_axes.is_native(_pad_id);
                 #[cfg(target_os = "linux")]
-                if wheel_axes.is_some() {
-                    gamepad = false;
-                }
+                let gamepad = self.linux_axes.mode(_pad_id) == crate::evdev_axes::AxisMode::Gamepad
+                    || self.linux_axes.is_gamepad(_pad_id);
                 // (macOS: a device with sliders or the simulation page's axes is a wheel or
                 // pedals, whatever SDL's list calls it - the HORI Truck Control System was
                 // taken as a gamepad: its left stick steered, with a gamepad's dead zone)
@@ -803,8 +841,8 @@ impl Devices {
                     .map(|(c, d)| (c.into_u32(), d.value()))
                     .collect();
                 #[cfg(target_os = "linux")]
-                if let Some(native) = wheel_axes {
-                    axes = native.to_vec();
+                if native_axes {
+                    axes = self.linux_axes.axes(_pad_id).unwrap_or_default().to_vec();
                 }
                 // (macOS: the device's own axis elements where it is found among them - two
                 // of one usage stay two)
@@ -822,7 +860,11 @@ impl Devices {
                 let buttons = declared_button_count(pad.name());
                 #[cfg(not(target_os = "linux"))]
                 let buttons = 0;
-                let axes = if gamepad {
+                #[cfg(target_os = "linux")]
+                let mapped_axes = gamepad && !native_axes;
+                #[cfg(not(target_os = "linux"))]
+                let mapped_axes = gamepad;
+                let axes = if mapped_axes {
                     gamepad_axes(&pad)
                 } else {
                     di_slots(&axes)
@@ -830,14 +872,16 @@ impl Devices {
                 #[allow(unused_mut)]
                 let mut ff = pad.is_ff_supported();
                 #[cfg(target_os = "linux")]
-                if wheel_axes.is_some() {
-                    ff = true;
+                {
+                    ff |= self.linux_axes.ff_capable(_pad_id).unwrap_or(false);
                 }
                 v.push(Connected {
                     name: pad.name().to_string(),
                     hardware_id: id,
                     axes,
                     gamepad,
+                    #[cfg(target_os = "linux")]
+                    native_axes,
                     ff,
                     ff_capable: ff,
                     buttons,
@@ -1089,7 +1133,7 @@ impl Controllers {
                                 continue;
                             }
                             steering_set_up = true;
-                            if c.gamepad && !c.ff {
+                            if c.gamepad && (cfg!(target_os = "linux") || !c.ff) {
                                 // a pad's stick set up to steer is still a stick (#200)
                                 let x = if inverted { -v } else { v };
                                 let floor = if d.deadzone.is_some() || d.calibration[k].is_some_and(|c| c.deadzone.is_some()) {
@@ -1216,11 +1260,16 @@ impl Controllers {
                 // An Xbox-type pad's DirectInput twin is left out on Windows, so the pad is
                 // read here even when gamectrler.cfg names it (#171).
                 let xinput = cfg!(windows) && xinput_name(pad.name());
-                if pad.mapping_source() == gilrs::MappingSource::None {
+                #[cfg(target_os = "linux")]
+                let forced_gamepad = self.devices.linux_axes.mode(_pad_id)
+                    == crate::evdev_axes::AxisMode::Gamepad;
+                #[cfg(not(target_os = "linux"))]
+                let forced_gamepad = false;
+                if pad.mapping_source() == gilrs::MappingSource::None && !forced_gamepad {
                     continue;
                 }
                 #[cfg(target_os = "linux")]
-                if self.devices.linux_wheels.axes(_pad_id).is_some() {
+                if self.devices.linux_axes.is_native(_pad_id) {
                     continue;
                 }
                 #[cfg(target_os = "macos")]
@@ -2271,6 +2320,51 @@ mod cfg_tests {
     fn round(d: &super::DeviceCfg) -> super::DeviceCfg {
         super::write_device(d);
         super::read_device(&d.name)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn axis_modes_round_trip_without_changing_axis_configuration() {
+        use crate::evdev_axes::AxisMode;
+        let mut device = super::DeviceCfg {
+            name: "Linux axis mode round trip".into(),
+            second: "0".into(),
+            ..Default::default()
+        };
+        device.axes[2] = Some((super::Func::Throttle, true));
+        device.axis_flags[2] = 1 | 8;
+        device.calibration[2] = Some(super::AxisCal {
+            min: -0.75,
+            centre: None,
+            max: 0.75,
+            deadzone: Some(0.05),
+        });
+        device.ff_scale = Some((0.5, 1.0));
+        device.ff_invert = Some(true);
+        for mode in [AxisMode::Auto, AxisMode::Gamepad, AxisMode::Native] {
+            device.axis_mode = mode;
+            let loaded = round(&device);
+            assert_eq!(loaded, device);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn old_or_unknown_axis_modes_use_auto_and_preserve_inversion() {
+        use crate::evdev_axes::AxisMode;
+        let name = "Linux legacy axis mode";
+        let mut device = super::DeviceCfg {
+            name: name.into(),
+            ..Default::default()
+        };
+        device.set_axis_reversed(2, true);
+        super::write_device(&device);
+        for mode in [None, Some(::config::Value::from("future-mode")), Some(::config::Value::from(7))] {
+            super::dev_put(name, "axis_mode", mode);
+            let loaded = super::read_device(name);
+            assert_eq!(loaded.axis_mode, AxisMode::Auto);
+            assert!(loaded.axis_reversed(2));
+        }
     }
 
     #[cfg(target_os = "linux")]

@@ -3010,6 +3010,10 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     let mut pressed: Vec<(String, usize)> = Vec::new();
     let mut connected: Vec<crate::controllers::Connected> = Vec::new();
     if let Some(io) = pv.io.as_mut() {
+        #[cfg(target_os = "linux")]
+        for d in pv.devices.iter().flatten() {
+            io.set_axis_mode(&d.name, d.axis_mode);
+        }
         for (name, n, down) in io.poll() {
             if down {
                 pressed.push((name, n));
@@ -3179,6 +3183,31 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
         &d.name.clone(),
         Some("tune"),
     );
+    let controls_top = inner.y - 36.0;
+    #[cfg(target_os = "linux")]
+    let inner = {
+        use crate::evdev_axes::AxisMode;
+        let mut mode = d.axis_mode.index();
+        let modes = ["Auto", "Gamepad", "Native"].map(String::from);
+        l.ui.label(Rect::new(inner.x, inner.y, 110.0, ROW), "Axis mode");
+        if l.ui.select(
+            "pad-axis-mode",
+            Rect::new(inner.x + 110.0 + GAP, inner.y, (inner.w - 110.0 - GAP).max(80.0), ROW),
+            &mut mode,
+            &modes,
+        ) {
+            release_feedback(&mut pv.io, &mut pv.feedback_test);
+            d.axis_mode = AxisMode::from_index(mode);
+            if let Some(io) = pv.io.as_mut() {
+                io.set_axis_mode(&d.name, d.axis_mode);
+                connected = io.connected();
+            }
+            pv.wizard = None;
+            pv.calibrating = None;
+            pv.dirty = true;
+        }
+        Rect::new(inner.x, inner.y + ROW + 12.0, inner.w, (inner.h - ROW - 12.0).max(0.0))
+    };
     let live_dev = connected
         .iter()
         .find(|c| crate::controllers::names_match(&d.name, &c.name));
@@ -3211,7 +3240,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                 &live,
                 live_dev.is_some(),
                 live_dev.is_some_and(|c| c.ff_capable && !c.gamepad),
-                live_dev.is_some_and(|c| c.gamepad),
+                live_dev.is_some_and(|c| c.gamepad_axes()),
             )
         };
         match done {
@@ -3239,7 +3268,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             c,
             d,
             &live,
-            live_dev.is_some_and(|c| c.gamepad),
+            live_dev.is_some_and(|c| c.gamepad_axes()),
             d.deadzone.unwrap_or(0.0),
         ) {
             Some(true) => {
@@ -3256,7 +3285,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     // this device on or off (a second listing of the same wheel, a device not to be used)
     if l.ui.toggle(
         "pad-on",
-        Rect::new(inner.right() - 400.0, inner.y - 36.0, 170.0, 30.0),
+        Rect::new(inner.right() - 400.0, controls_top, 170.0, 30.0),
         &mut d.enabled,
         "Use this device",
     ) {
@@ -3264,7 +3293,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
     }
     if l.ui.button(
         "pad-wizard",
-        Rect::new(inner.right() - 220.0, inner.y - 36.0, 220.0, 30.0),
+        Rect::new(inner.right() - 220.0, controls_top, 220.0, 30.0),
         "Set up step by step",
         Some("touch_app"),
         ButtonKind::Normal,
@@ -3279,7 +3308,7 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             test_strength: crate::ffb_calibration::PULSE_FORCE,
         });
     }
-    let gamepad = live_dev.is_some_and(|c| c.gamepad);
+    let gamepad = live_dev.is_some_and(|c| c.gamepad_axes());
     let axis_label = axis_names(gamepad);
     let funcs: Vec<String> = Func::LABELS.iter().map(|s| s.to_string()).collect();
     let mut actions: Vec<String> = vec!["<none>".into()];

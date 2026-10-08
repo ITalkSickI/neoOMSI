@@ -1,0 +1,43 @@
+# Linux controller axes
+
+The Linux launcher offers an **Axis mode** selector for each configured device. Press **Save** to retain it after restarting.
+
+| Mode | Axis input |
+| --- | --- |
+| Auto | Use native evdev axes when there is specific wheel, pedal or joystick evidence, or when gilrs has no mapping. Otherwise retain the existing gilrs processing. |
+| Gamepad | Force gilrs processing and its stick/trigger layout. |
+| Native | Read the advertised native axes directly, regardless of device classification or force feedback support. |
+
+The per-device `controller` settings contain `axis_mode = "auto"`, `"gamepad"` or `"native"`. Missing, invalid and unknown values select Auto. Existing assignments, calibration, inversion, curve flags and force feedback settings remain in the existing format. Changing mode does not erase them; assignments made for a different layout may need adjustment.
+
+## Auto selection and classification
+
+Force feedback is never evidence for choosing an axis mode. Auto uses the actual OS device name and advertised axes/buttons. Explicit wheel/gearing controls, gas/brake axes, and joystick controls without gamepad buttons support native input. A mapped controller with normal gamepad buttons and two sticks remains on gilrs when gas/brake axes alone would be ambiguous.
+
+Recognized racing/steering wheel names, Driving Force, Thrustmaster T128/T248, and pedal names also require matching driving axes. A name alone is insufficient. Unknown mapped devices stay on gilrs. Vendor-wide classification is not used.
+
+Native axis layout and gamepad classification are separate: forcing Native on a gamepad exposes its native X/Y/Z/etc. slots while retaining gamepad steering behavior. Only the explicit Gamepad mode forces gamepad processing. A native read failure leaves its axes unavailable instead of silently switching layouts or reusing stale values.
+
+## Cache and snapshots
+
+Each connection gets one cached evdev reader, capabilities, axis inventory and reported ranges. Successful and permanently unsupported results are retained without periodic capability checks. Both gilrs Connected and Disconnected events invalidate the entry, including when an ID and path are reused within one event drain. A changed path also replaces the entry.
+
+Temporary errors such as permission failures, an opening race or interrupted I/O permit at most three attempts, spaced by 500 ms. Other errors stop retries until reconnect. Initial probing, force feedback probing and current-value reads have separate retry state. Failures while reading values retain the capability cache and clear the displayed snapshot. A successful current-value read resets its consecutive failure budget.
+
+Native input uses `EVIOCGABS` for every inventoried axis immediately upon opening and on regular polls. This provides current values even when no movement event has occurred. The returned minimum and maximum are cached with the sample and updated when the driver changes them, such as after adjusting steering rotation. Values normalize to -1..1 using 64-bit arithmetic for the range, with clamping and zero for invalid ranges.
+
+Only advertised ABS codes X through BRAKE are considered. The native-to-OMSI mapping preserves X/Y/Z/Rx/Ry/Rz and slider positions. Hats and miscellaneous reports are excluded. Checking the bitmap first matters: `EVIOCGABS` can succeed with zeroed data for absent codes.
+
+Force feedback capability is queried separately and cached, regardless of axis mode. The existing evdev steering backend requires an advertised `FF_CONSTANT` effect; gilrs rumble support is retained independently. Native input never implies that force feedback is available. The axis reader opens devices read-only and sends no motor commands.
+
+## ioctl requests
+
+`eviocgabs(axis)` corresponds to Linux UAPI `EVIOCGABS(axis)`: `_IOR('E', 0x40 + axis, struct input_absinfo)`. The buffer contains the current value, minimum, maximum, fuzz, flat and resolution as six signed 32-bit integers.
+
+`eviocgbit<N>(event_type)` corresponds to `EVIOCGBIT(event_type, N)`: `_IOC(_IOC_READ, 'E', 0x20 + event_type, N)`. For a fixed `[u8; N]` buffer this is equivalent to `_IOR('E', 0x20 + event_type, [u8; N])`.
+
+Both helpers use the existing `libc::_IOR` implementation. It encodes the read direction, input subsystem type, request number and buffer size using the target architecture's ioctl layout, avoiding hand-written bit shifts and new dependencies.
+
+Sources: [Linux input UAPI](https://github.com/torvalds/linux/blob/master/include/uapi/linux/input.h), [ioctl encoding](https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/ioctl.h), [input event protocol](https://www.kernel.org/doc/html/latest/input/event-codes.html), [gamepad specification](https://www.kernel.org/doc/html/latest/input/gamepad.html).
+
+All new behavior is compiled only on Linux. Windows DirectInput, settings behavior and previews retain their existing implementation.
