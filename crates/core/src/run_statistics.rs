@@ -262,6 +262,7 @@ impl crate::App {
         if self.game_menu.is_none() {
             self.open_game_menu();
         }
+        self.lab_menu = None;
         self.close_list();
         self.report_view = Some(report);
         self.report_status.clear();
@@ -592,7 +593,6 @@ mod preview {
                 paused: true,
                 menu: Some((1, &items)),
                 menu_top: Some(top),
-                menu_disabled: &[],
                 timetable: None,
                 info: None,
                 tutorial: None,

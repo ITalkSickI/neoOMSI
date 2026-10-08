@@ -53,12 +53,6 @@ const PLACE_FIELDS: [&str; 4] = [
 ];
 
 impl App {
-    pub(crate) fn open_lab_menu(&mut self) {
-        self.open_game_menu();
-        self.lab_menu = Some(PauseState::default());
-        self.lab_list = None;
-    }
-
     pub(crate) fn lab_entries(&self) -> Vec<(&'static str, String)> {
         self.game_menu_items()
             .into_iter()
@@ -367,7 +361,7 @@ impl App {
 
     pub(crate) fn open_map_page(&mut self) {
         if self.lab_menu.is_none() {
-            self.open_lab_menu();
+            self.open_game_menu();
         }
         let sel = self.lab_page_sel(0);
         self.lab_menu = Some(PauseState { page: Some(0), sel });

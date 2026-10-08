@@ -1,5 +1,3 @@
-//! The game menu (Esc), its lists, drop-downs and edit fields, and the pages behind it.
-
 use super::*;
 
 pub(crate) fn route_char(code: KeyCode) -> Option<char> {
@@ -58,6 +56,8 @@ impl App {
             self.paused = true;
         }
         self.game_menu = Some(0);
+        self.lab_menu = Some(crate::ui::PauseState::default());
+        self.lab_list = None;
         self.menu_top = None;
         self.menu_kbd = true;
         self.menu_drag = None;
@@ -1039,8 +1039,6 @@ impl App {
             self.chooser_key(code);
             return;
         }
-        let n = self.game_menu_items().len();
-        let sel = self.game_menu.unwrap_or(0);
         let modified = self.keys.iter().any(|key| {
             matches!(
                 *key,
@@ -1056,15 +1054,6 @@ impl App {
         match code {
             KeyCode::KeyP if !modified => self.toggle_pause(),
             KeyCode::Escape => self.close_game_menu(),
-            KeyCode::ArrowUp | KeyCode::KeyW => {
-                self.game_menu = Some(self.menu_step(sel, n, false))
-            }
-            KeyCode::ArrowDown | KeyCode::KeyS => {
-                self.game_menu = Some(self.menu_step(sel, n, true))
-            }
-            KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
-                self.menu_choose(event_loop, sel)
-            }
             _ => {}
         }
     }
@@ -1116,7 +1105,7 @@ impl App {
         }
         match self.chooser {
             Some(_) => self.admin_list.as_ref().unwrap_or(&self.vehicle_list).len(),
-            None => self.game_menu_items().len(),
+            None => 0,
         }
     }
 
@@ -1136,9 +1125,6 @@ impl App {
         };
         if self.chooser.is_some() {
             self.chooser_pick(k);
-            return;
-        }
-        if self.menu_item_off(k) {
             return;
         }
         let Some(id) = self.game_menu_items().get(k).map(|m| m.0) else {
@@ -1446,29 +1432,6 @@ impl App {
         {
             self.service_msg = Some((format!("{}: {code}", ::user_interface::tr("Server code")), 8.0));
         }
-    }
-
-    pub(crate) fn menu_disabled_ids(&self) -> &'static [&'static str] {
-        &[]
-    }
-
-    pub(crate) fn menu_item_off(&self, k: usize) -> bool {
-        self.chooser.is_none()
-            && self
-            .game_menu_items()
-            .get(k)
-            .is_some_and(|m| self.menu_disabled_ids().contains(&m.0))
-    }
-
-    pub(crate) fn menu_step(&self, from: usize, n: usize, down: bool) -> usize {
-        let mut k = from;
-        for _ in 0..n {
-            k = if down { (k + 1) % n } else { (k + n - 1) % n };
-            if !self.menu_item_off(k) {
-                return k;
-            }
-        }
-        from
     }
 }
 

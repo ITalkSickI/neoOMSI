@@ -82,7 +82,6 @@ pub fn backdrop(opacity: f32) -> f32 {
 /// Which menu is open: its layout follows from it.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum MenuKind {
-    /// The game menu itself.
     #[default]
     Game,
     /// A settings window (options, vehicle, world): a sidebar of pages and rows with switches,
@@ -151,13 +150,9 @@ pub struct Frame<'a> {
     pub fps: Option<f32>,
     /// The game stands paused.
     pub paused: bool,
-    /// The game menu is open, with this line chosen (labels from `GAME_MENU`).
     pub menu: Option<(usize, &'a [(&'a str, &'a str)])>,
     /// The first line shown when a finger scrolled the menu (`App::menu_top`).
     pub menu_top: Option<f32>,
-    /// Ids of the game menu's lines that are greyed out and cannot be chosen (the timetable
-    /// without an active route).
-    pub menu_disabled: &'a [&'a str],
     /// The timetable window: its title and per stop (name, time, 0 served / 1 next / 2 ahead).
     pub timetable: Option<(String, Vec<(String, String, u8)>)>,
     /// The information bar along the top.

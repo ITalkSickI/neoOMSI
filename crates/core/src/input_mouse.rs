@@ -962,10 +962,7 @@ impl App {
             || u.menu_pane_go.as_ref().is_some_and(|r| inside(r))
             || u.menu_time.iter().any(|r| inside(r))
             || u.menu_ctl.iter().flatten().any(|r| inside(r))
-            || u.menu_rects
-            .iter()
-            .enumerate()
-            .any(|(i, r)| inside(r) && !self.menu_item_off(i + u.menu_start));
+            || u.menu_rects.iter().any(|r| inside(r));
         if clickable { 1 } else { 0 }
     }
 }

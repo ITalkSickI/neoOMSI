@@ -230,10 +230,6 @@ impl App {
                         .as_ref()
                         .and_then(|u| u.menu_ctl.get(row).copied().flatten());
 
-                    if self.menu_item_off(k) {
-                        return;
-                    }
-
                     if let Some(c) = ctl {
                         if self.chooser.is_some() && self.cursor.0 >= c[0] && self.cursor.0 <= c[2]
                         {
@@ -245,10 +241,6 @@ impl App {
                             }
                             return;
                         }
-                    }
-
-                    if self.chooser.is_none() {
-                        self.game_menu = Some(k);
                     }
 
                     if matches!(self.list_kind, Some(game_lists::ListKind::Tours(..)))
@@ -270,7 +262,10 @@ impl App {
                             self.chooser_adjust(k, "-")
                         }
                         Some([_, _, plus]) if self.cursor.0 >= plus => self.chooser_adjust(k, "+"),
-                        _ => self.menu_choose(event_loop, k),
+                        _ if self.chooser.is_some() || self.report_view.is_some() => {
+                            self.menu_choose(event_loop, k)
+                        }
+                        _ => {}
                     }
                 }
             }

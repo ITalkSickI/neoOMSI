@@ -13,9 +13,7 @@ mod frame;
 #[path = "../pause-menu/mod.rs"]
 mod pause_menu;
 mod loading;
-mod menu;
 mod run_report;
-mod settings;
 mod shapes;
 mod style;
 #[cfg(test)]

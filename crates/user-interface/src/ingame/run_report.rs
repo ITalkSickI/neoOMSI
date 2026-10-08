@@ -93,6 +93,30 @@ impl Ui {
         self.put(r, scene, &text, px, ink, x0 + 10.0 * s, cy);
     }
 
+    pub(super) fn draw_report_screen(&mut self, r: &Renderer, scene: &mut Scene, f: &Frame) {
+        self.menu_rects.clear();
+        self.menu_ctl.clear();
+        self.menu_side.clear();
+        self.menu_pane.clear();
+        self.menu_pane_start = 0;
+        self.menu_pane_go = None;
+        self.menu_pane_box = None;
+        self.menu_time.clear();
+        self.menu_scroll_thumb = None;
+        self.menu_scroll_track = None;
+        self.dd_rects.clear();
+        let overlay_start = scene.overlays.len();
+        match (f.menu, f.report) {
+            (Some((sel, _)), Some(report)) => self.draw_run_report(r, scene, f, report, sel),
+            _ => {
+                if f.lab.is_none() {
+                    self.anim.clear();
+                }
+            }
+        }
+        self.menu_overlay_range = overlay_start..scene.overlays.len();
+    }
+
     pub(super) fn draw_run_report(
         &mut self,
         r: &Renderer,

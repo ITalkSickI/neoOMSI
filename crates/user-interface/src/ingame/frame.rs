@@ -459,7 +459,7 @@ impl Ui {
         }
         self.anim_dt = dt.clamp(0.0, 0.1);
         self.text.flat = true;
-        self.draw_menu(r, scene, f);
+        self.draw_report_screen(r, scene, f);
         match f.lab {
             Some(st) => self.draw_pause(r, scene, f, st),
             None if self.pause_prev.is_some() && self.pause_open > 0.0 => {

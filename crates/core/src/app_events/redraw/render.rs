@@ -14,7 +14,7 @@ impl App {
         self.dev_actions(event_loop);
         #[cfg(all(feature = "devtools", debug_assertions))]
         let dev_extra = self.dev_gather();
-        let menu_lines = if self.game_menu.is_some() {
+        let menu_lines = if self.game_menu.is_some() && self.report_view.is_some() {
             self.game_menu_items()
         } else {
             Vec::new()
@@ -255,19 +255,7 @@ impl App {
                         top: d.top,
                         current: d.current,
                     });
-                let chooser_list = self.admin_list.as_ref().unwrap_or(&self.vehicle_list);
-                let (chooser_items, chooser_sel): (Vec<(&str, &str)>, Option<usize>) =
-                    match self.chooser {
-                        Some(sel) => {
-                            let items = chooser_list
-                                .iter()
-                                .map(|(name, path)| (path.as_str(), name.as_str()))
-                                .collect();
-                            (items, Some(sel))
-                        }
-                        None => (Vec::new(), None),
-                    };
-                let menu_disabled: &[&str] = &[];
+                let chooser_sel = self.chooser;
                 let (menu_kind, menu_head, menu_preview) = game_lists::menu_extras(
                     self.list_kind.as_ref(),
                     self.admin_list.as_deref(),
@@ -318,14 +306,10 @@ impl App {
                     },
                     fps: (!screenshot_mode && ::config::get_bool("ui", "show_fps").unwrap_or(false)).then_some(self.fps),
                     paused: self.paused && !screenshot_mode && self.lab_menu.is_none(),
-                    menu: match chooser_sel {
-                        Some(k) => Some((k, &chooser_items[..])),
-                        None => self
-                            .game_menu
-                            .filter(|_| self.lab_menu.is_none())
-                            .map(|k| (k, &menu_lines[..])),
-                    },
-                    menu_disabled,
+                    menu: self
+                        .game_menu
+                        .filter(|_| self.lab_menu.is_none() && report_view.is_some())
+                        .map(|k| (k, &menu_lines[..])),
                     menu_kind,
                     report: report_view.as_ref(),
                     touch: !screenshot_mode && platform::touch_controls(),
