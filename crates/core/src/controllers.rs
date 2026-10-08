@@ -1920,7 +1920,7 @@ mod tests {
         assert_eq!(back.calibration[5], d.calibration[5]);
         assert_eq!(back.calibration[1], None);
         assert_eq!(back.deadzone(0), 0.05);
-        assert_eq!(back.deadzone(1), 0.0);
+        assert_eq!(back.deadzone(1), super::global_deadzone());
         let mut own = d.clone();
         own.deadzone = Some(0.08);
         let own = round(&own);
