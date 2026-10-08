@@ -1,4 +1,4 @@
-//! The lab pause menu (new pause menu in development)
+//! The lab pause menu
 
 use super::*;
 use crate::ui::{Dialog, PauseState, WorldDrop, WorldGroup, WorldRow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, VEHICLE_PAGE, WORLD_PAGE};
@@ -161,7 +161,7 @@ impl App {
     fn lab_world_click(&mut self) {
         let (x, y) = self.cursor;
         let hit = |list: &[[f32; 4]]| list.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]);
-        
+
         if self.key_capture.take().is_some() {
             return;
         }
@@ -362,6 +362,7 @@ impl App {
     pub(crate) fn open_map_page(&mut self) {
         if self.lab_menu.is_none() {
             self.open_game_menu();
+            self.lab_map_direct = true;
         }
         let sel = self.lab_page_sel(0);
         self.lab_menu = Some(PauseState { page: Some(0), sel });
@@ -498,7 +499,7 @@ impl App {
         };
         let room = self.lab_room.get_or_insert_with(|| {
             let mut room = crate::launcher::showroom::Showroom::new();
-            
+
             room.zoom_by(1.3);
             room
         });
@@ -604,7 +605,7 @@ impl App {
             }
             _ => return,
         };
-        
+
         let list: Vec<(String, String)> = list.into_iter().filter(|l| l.1 != "back").collect();
         if let Some(s) = self.lab_place.as_mut() {
             s.pick = field;
@@ -648,7 +649,7 @@ impl App {
                 _ => s.hof = Some((label, rest("placehof "))),
             }
         }
-        
+
         if let Some(key) = single {
             let types: Vec<(String, String)> = crate::game_lists::items(self, &crate::game_lists::ListKind::PlaceType(key))
                 .into_iter()
@@ -852,7 +853,7 @@ impl App {
             self.lab_place_pick(k);
             return;
         }
-        
+
         if matches!(self.lab_list.as_ref().map(|l| &l.1), Some(crate::game_lists::ListKind::Tours(..))) {
             let is_tour = self
                 .lab_list
@@ -1037,20 +1038,10 @@ impl App {
             return;
         }
         let Some(tab) = st.page else {
-            let m = self.lab_entries().len().max(1);
             let sels: Vec<usize> = (0..PAGE_COUNT).map(|p| self.lab_page_sel(p)).collect();
             let go = |p: usize| Some(PauseState { page: Some(p), sel: sels[p] });
             match code {
                 KeyCode::Escape => self.close_game_menu(),
-                KeyCode::ArrowUp | KeyCode::KeyW => {
-                    self.lab_menu = Some(PauseState { sel: (st.sel + m - 1) % m, ..st })
-                }
-                KeyCode::ArrowDown | KeyCode::KeyS => {
-                    self.lab_menu = Some(PauseState { sel: (st.sel + 1) % m, ..st })
-                }
-                KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
-                    self.lab_activate(event_loop, st.sel)
-                }
                 KeyCode::ArrowLeft | KeyCode::KeyA | KeyCode::KeyQ => self.lab_menu = go(n - 1),
                 KeyCode::ArrowRight | KeyCode::KeyD | KeyCode::KeyE => {
                     self.lab_menu = go(0)
@@ -1067,6 +1058,7 @@ impl App {
         // a page
         let to = |p: usize| Some(PauseState { page: Some(p), ..st });
         match code {
+            KeyCode::Escape if self.lab_map_direct => self.close_game_menu(),
             KeyCode::Escape => self.lab_menu = Some(PauseState { page: None, ..st }),
             KeyCode::ArrowLeft | KeyCode::KeyA | KeyCode::KeyQ => {
                 self.lab_menu = to((tab + n - 1) % n)
@@ -1134,7 +1126,7 @@ impl App {
                     if self.lab_place.is_none() && x >= b[0] && x < b[2] && y >= b[1] && y < b[3] {
                         return;
                     }
-                    
+
                     let other = match self.lab_place.is_some() {
                         true => self.ui.as_ref().and_then(|u| hit(&u.place_rects)).filter(|&i| i < 4),
                         false => None,

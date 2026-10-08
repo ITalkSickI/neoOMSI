@@ -766,7 +766,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
             let desc = if clash.is_empty() {
                 String::new()
             } else {
-                format!("Conflict: this key is also used by {}", clash.join(", "))
+                ::i18n::translate("pause.msg.key_conflict", &[("keys", &clash.join(", "))])
             };
             out.push((
                 row(&label, 'k', &value, &desc, None),

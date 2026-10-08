@@ -177,7 +177,7 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                     h.tt_terminus_index = -1;
                     h.tt_delay = 0.0;
                 }
-                app.service_msg = Some(("Free drive: no duty".into(), 4.0));
+                app.service_msg = Some((::i18n::translate("pause.msg.free_drive", &[]), 4.0));
                 None
             }
             _ => None,
@@ -213,9 +213,9 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                     Ok(h) => {
                         let name = h.name.clone();
                         p.vehicle.host.hof = Some(std::sync::Arc::new(h));
-                        app.service_msg = Some((format!("Depot file: {}", name.trim()), 3.0));
+                        app.service_msg = Some((::i18n::translate("pause.msg.depot_file", &[("name", &name.trim())]), 3.0));
                     }
-                    Err(e) => app.service_msg = Some((format!("Depot file: {e}"), 4.0)),
+                    Err(e) => app.service_msg = Some((::i18n::translate("pause.msg.depot_file", &[("name", &e)]), 4.0)),
                 }
             }
             None
@@ -245,9 +245,9 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
             match found {
                 Some((pos, heading)) => {
                     crate::admin::teleport(app, pos, heading);
-                    app.service_msg = Some(("The bus stands at the start point".into(), 3.0));
+                    app.service_msg = Some((::i18n::translate("pause.msg.start_point_reached", &[]), 3.0));
                 }
-                None => app.service_msg = Some(("That start point is not in the map".into(), 3.0)),
+                None => app.service_msg = Some((::i18n::translate("pause.msg.start_point_missing", &[]), 3.0)),
             }
             None
         }
@@ -310,7 +310,7 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                         name.trim(),
                         p.vehicle.var("IBIS_TerminusCode")
                     );
-                    app.service_msg = Some((format!("Destination: {}", name.trim()), 3.0));
+                    app.service_msg = Some((::i18n::translate("pause.msg.destination", &[("name", &name.trim())]), 3.0));
                 }
             }
             None
@@ -326,7 +326,7 @@ pub(crate) fn run_move(app: &mut App, kind: &ListKind, action: &str, mv: Move) -
                         v.state.str_vars[i as usize] = reg.to_string();
                     }
                 }
-                app.service_msg = Some((format!("Fleet number {n}"), 3.0));
+                app.service_msg = Some((::i18n::translate("pause.msg.fleet_number", &[("number", &n)]), 3.0));
             }
             None
         }

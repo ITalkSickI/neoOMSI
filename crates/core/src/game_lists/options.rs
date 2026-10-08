@@ -335,7 +335,7 @@ pub(super) fn option_set(
                 .as_ref()
                 .is_some_and(|l| l.role == ::network::Role::Client)
             {
-                app.service_msg = Some(("In a LAN session the host sets the clock".into(), 3.0));
+                app.service_msg = Some((::i18n::translate("pause.msg.lan_clock", &[]), 3.0));
                 return None;
             }
             let t = app.clock.time;

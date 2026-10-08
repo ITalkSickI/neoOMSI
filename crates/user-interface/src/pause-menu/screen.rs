@@ -9,7 +9,7 @@ impl Ui {
         scene: &mut Scene,
         f: &Frame,
         m: Metrics,
-        sel: usize,
+        _sel: usize,
     ) {
         let Metrics { w, h, u, mx, line } = m;
         self.pause_items.clear();
@@ -54,39 +54,44 @@ impl Ui {
 
         // the entries: as large as the screen leaves room for
         let gap = 2.0 * u;
-        let avail = (h - y - 28.0 * u).max(100.0 * u);
+        // (groups: resume/save | menus | quit, a divider between them)
+        let brk = |i: usize| n >= 4 && i > 0 && (i == 2 || i == n - 1);
+        let breaks = (0..n).filter(|i| brk(*i)).count() as f32;
+        let sep_h = 20.0 * u;
+        let avail = (h - y - 28.0 * u - breaks * sep_h).max(100.0 * u);
         let px = (((avail / n as f32) - gap - 10.0 * u) / 1.3).clamp(13.0 * u, 21.0 * u);
         for (i, name) in entries.iter().enumerate() {
             let e = 1.0;
-            let l = self.text.label(
-                r,
-                scene,
-                name,
-                px as u32,
-                if i == sel { WHITE } else { SOFT },
-            );
+            let danger = n >= 2 && i == n - 1;
+            if brk(i) {
+                let ly = y + 8.0 * u;
+                let lx = mx - 24.0 * u + dx;
+                self.text.rounded(
+                    r,
+                    scene,
+                    [lx, ly, lx + row_w - 24.0 * u, ly + line],
+                    0.0,
+                    [255, 255, 255, 34],
+                );
+                y += sep_h;
+            }
+            let col = if danger {
+                [222, 78, 68, 0]
+            } else {
+                SOFT
+            };
+            let l = self.text.label(r, scene, name, px as u32, col);
             let row_h = l.h as f32 + 10.0 * u;
             let rc = [mx - 24.0 * u, y, mx - 24.0 * u + row_w, y + row_h];
             let hot = inside(rc, f.cursor);
             let hv = self.ease((200, "hover", i), if hot { 1.0 } else { 0.0 }, 8.0);
-            let sv = self.ease((200, "sel", i), if i == sel { 1.0 } else { 0.0 }, 6.0);
             let ox = dx * e;
             if hv > 0.0 {
                 let rr = [rc[0] + ox, rc[1], rc[2] + ox, rc[3]];
-                self.text.rounded(r, scene, rr, 6.0 * u, fade(LIT, hv * e));
+                let hc = if danger { fade(DANGER, 0.16) } else { LIT };
+                self.text.rounded(r, scene, rr, 6.0 * u, fade(hc, hv * e));
             }
-            if sv > 0.0 {
-                let mid = y + row_h * 0.5;
-                let half = (row_h * 0.5 - 6.0 * u) * sv;
-                self.text.rounded(
-                    r,
-                    scene,
-                    [mx - 24.0 * u + ox, mid - half, mx - 20.0 * u + ox, mid + half],
-                    0.0,
-                    ACCENT,
-                );
-            }
-            l.place(scene, mx + ox + 10.0 * u * sv, y + 5.0 * u);
+            l.place(scene, mx + ox, y + 5.0 * u);
             self.pause_items.push(rc);
             y += row_h + gap;
         }

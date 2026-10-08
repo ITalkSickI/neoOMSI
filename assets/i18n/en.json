@@ -890,6 +890,35 @@
       "no_results": "No results",
       "back": "Back",
       "no_vehicles": "No vehicles found"
+    },
+    "list": {
+      "nothing_to_set": "Nothing to set here",
+      "line_one": "Line {name}  (1 tour)",
+      "line_many": "Line {name}  ({count} tours)",
+      "line_title": "Line {name}",
+      "tours_one": "1 tour",
+      "tours_many": "{count} tours",
+      "no_timetable": "No timetable on this map",
+      "tour": "Tour {number}",
+      "tour_to": "Tour {number}  ›  {end}",
+      "now": "(now)",
+      "route_now": "Route number: {value}...",
+      "route_typing": "Route number: {text}_  (Enter sets it, Esc cancels)",
+      "route_type": "Type a route number...",
+      "route": "Route {line}",
+      "route_set": "Route {line}",
+      "route_number": "Route number",
+      "no_destinations": "This bus has no depot file (.hof) with destinations",
+      "no_routes": "No route numbers in the depot file or the timetable",
+      "no_hofs": "This bus has no depot files (.hof)",
+      "entry": "Entry {number}",
+      "no_entries": "This map has no entry points",
+      "maker_models": "{name}  ({count} models)",
+      "unknown_maker": "Unknown manufacturer",
+      "no_numbers": "This bus has no list of fleet numbers",
+      "driver_set": "Driver: {name}",
+      "preview_meta": "Line {line}  ·  Trip {trip}/{trips}  ·  Choose the stop to start from",
+      "start_trip": "Start trip"
     }
   }
 }

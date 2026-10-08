@@ -57,6 +57,7 @@ impl App {
         }
         self.game_menu = Some(0);
         self.lab_menu = Some(crate::ui::PauseState::default());
+        self.lab_map_direct = false;
         self.lab_list = None;
         self.menu_top = None;
         self.menu_kbd = true;
@@ -195,9 +196,9 @@ impl App {
             self.metar_rx = None;
             self.metar_once = false;
             self.metar_next = 0.0;
-            self.service_msg = Some((format!("METAR source: {code}"), 3.0));
+            self.service_msg = Some((::i18n::translate("pause.msg.metar_source", &[("code", &code)]), 3.0));
         } else if !code.is_empty() {
-            self.service_msg = Some(("ICAO must be exactly 4 letters".into(), 3.0));
+            self.service_msg = Some((::i18n::translate("pause.msg.icao_invalid", &[]), 3.0));
         }
         self.refresh_list();
     }
@@ -287,17 +288,17 @@ impl App {
                 .as_ref()
                 .is_some_and(|l| l.role == ::network::Role::Client)
             {
-                self.service_msg = Some(("In a LAN session the host sets the clock".into(), 3.0));
+                self.service_msg = Some((::i18n::translate("pause.msg.lan_clock", &[]), 3.0));
             } else if self.real_time_locked() {
                 self.service_msg = Some((
-                    "The time cannot be changed while the real-time sync is on".into(),
+                    ::i18n::translate("pause.msg.clock_locked", &[]),
                     3.0,
                 ));
             } else {
                 let t = self.clock.time;
                 let day_start = t - t.rem_euclid(86400.0);
                 self.shift_clock(day_start + (h * 3600 + m * 60 + sec) as f64 - t);
-                self.service_msg = Some((format!("Clock: {:02}:{:02}:{:02}", h, m, sec), 3.0));
+                self.service_msg = Some((::i18n::translate("pause.msg.clock_set", &[("time", &format!("{:02}:{:02}:{:02}", h, m, sec))]), 3.0));
             }
         }
         self.refresh_list();
@@ -1155,7 +1156,7 @@ impl App {
             }
             "endduty" => {
                 self.duty = None;
-                self.service_msg = Some(("Free drive: no duty".into(), 4.0));
+                self.service_msg = Some((::i18n::translate("pause.msg.free_drive", &[]), 4.0));
                 self.close_game_menu();
             }
             "tobus" => {
@@ -1196,7 +1197,7 @@ impl App {
                     self.vehicle_list.sort_by_key(|v| v.0.to_lowercase());
                 }
                 if self.vehicle_list.is_empty() {
-                    self.service_msg = Some(("No vehicles found".into(), 3.0));
+                    self.service_msg = Some((::i18n::translate("pause.msg.no_vehicles", &[]), 3.0));
                 } else {
                     self.open_list(crate::game_lists::ListKind::PlaceMaker);
                 }
@@ -1234,7 +1235,7 @@ impl App {
                 if let Some(p) = self.player.as_ref() {
                     let (at, heading) = (p.vehicle.position, p.vehicle.heading);
                     crate::admin::teleport(self, at, heading);
-                    self.service_msg = Some(("The vehicle stands on its wheels again".into(), 3.0));
+                    self.service_msg = Some((::i18n::translate("pause.msg.vehicle_upright", &[]), 3.0));
                 }
             }
             "teleport" => {
@@ -1288,7 +1289,7 @@ impl App {
                     .unwrap_or(false)
                 {
                     self.service_msg =
-                        Some(("In a LAN session the host sets the clock".into(), 3.0));
+                        Some((::i18n::translate("pause.msg.lan_clock", &[]), 3.0));
                 } else {
                     self.shift_clock(match id {
                         "later" => 3600.0,

@@ -171,7 +171,7 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                 .as_ref()
                 .is_some_and(|l| l.role == ::network::Role::Client)
             {
-                app.service_msg = Some(("In a LAN session the host sets the weather".into(), 3.0));
+                app.service_msg = Some((::i18n::translate("pause.msg.lan_weather", &[]), 3.0));
             } else {
                 app.change_weather(Some(arg.to_string()), true, 1.0);
             }
@@ -289,7 +289,7 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
             let name = arg.trim();
             let profile = ::config::get_table_sub("graphics_profiles", name);
             if profile.is_empty() {
-                app.service_msg = Some((format!("Graphics profile \"{name}\" not found"), 4.0))
+                app.service_msg = Some((::i18n::translate("pause.msg.graphics_missing", &[("name", &name)]), 4.0))
             } else {
                 for (k, v) in profile {
                     if ::config::DEFAULTS.iter().any(|(c, key, _)| *c == "graphics" && *key == k) {
