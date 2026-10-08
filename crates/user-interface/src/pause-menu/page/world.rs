@@ -90,9 +90,12 @@ impl Ui {
             self.world_group = 0;
             self.world_sub = 0;
             self.world_scroll = 0;
+            self.world_pos = 0.0;
             self.world_drop = None;
             self.world_drag = None;
+            self.world_bar_grab = None;
         }
+        self.world_bar = None;
         self.world_groups_rc.clear();
         self.world_sub_rc.clear();
         self.world_rows_rc.clear();
@@ -232,16 +235,35 @@ impl Ui {
         let row_gap = 4.0 * u;
         let fit = (((bottom - y0) / (row_h + row_gap)).floor().max(1.0)) as usize;
         let max = rows.len().saturating_sub(fit);
-        let first = self.world_scroll.min(max);
-        self.world_scroll = first;
-        self.world_first = first;
+        let target = self.world_scroll.min(max);
+        self.world_scroll = target;
         self.world_max = max;
+        // smooth scrolling
+        let mut pos = self.world_pos.clamp(0.0, max as f32);
+        if (target as f32 - pos).abs() < 0.01 {
+            pos = target as f32;
+        } else {
+            pos += (target as f32 - pos) * (1.0 - (-18.0 * self.anim_dt).exp());
+        }
+        self.world_pos = pos;
+        let first = (pos.floor() as usize).min(max);
+        let frac = pos - first as f32;
+        self.world_first = first;
+        let step = row_h + row_gap;
+        let view_end = y0 + step * fit as f32 - row_gap;
         let mut hovered: Option<usize> = None;
-        for (n, row) in rows.iter().enumerate().skip(first).take(fit) {
+        for (n, row) in rows.iter().enumerate().skip(first).take(fit + 1) {
             let i = n - first;
             self.text.alpha = 1.0;
-            let e = out((ct - 0.04 * i.min(8) as f32 - 0.1) / 0.5);
-            let ry = y0 + (row_h + row_gap) * i as f32;
+            let ry = y0 + step * i as f32 - step * frac;
+            // rows leaving at the top or the bottom fade out
+            let edge = ((ry + row_h - y0) / row_h).min((view_end - ry) / row_h).clamp(0.0, 1.0);
+            if edge <= 0.03 {
+                self.world_rows_rc.push([0.0; 4]);
+                self.world_tracks.push(None);
+                continue;
+            }
+            let e = out((ct - 0.04 * i.min(8) as f32 - 0.1) / 0.5) * edge;
             let rc = [mid_x, ry, mid_x + mid_w, ry + row_h];
             if row.kind == 'h' {
                 // a separator: its title and a thin line, no entry
@@ -402,9 +424,15 @@ impl Ui {
             let track_h = (row_h + row_gap) * fit as f32 - row_gap;
             let sx = mid_x + mid_w + 10.0 * u;
             let thumb_h = (track_h * fit as f32 / rows.len() as f32).max(28.0 * u).min(track_h);
-            let ty = y0 + (track_h - thumb_h) * first as f32 / max as f32;
-            self.text.rounded(r, scene, [sx, y0, sx + 4.0 * u, y0 + track_h], 0.0, [34, 36, 42, 255]);
-            self.text.rounded(r, scene, [sx, ty, sx + 4.0 * u, ty + thumb_h], 0.0, ACCENT);
+            let ty = y0 + (track_h - thumb_h) * pos / max as f32;
+            let hit_track = [sx - 8.0 * u, y0, sx + 14.0 * u, y0 + track_h];
+            let hit_thumb = [hit_track[0], ty, hit_track[2], ty + thumb_h];
+            self.world_bar = Some((hit_track, hit_thumb));
+            let grabbed = self.world_bar_grab.is_some();
+            let hot = grabbed || (inside(hit_thumb, f.cursor) && !busy);
+            let bw = self.ease((218, "bar", 0), if hot { 7.0 } else { 4.0 }, 40.0) * u;
+            self.text.rounded(r, scene, [sx, y0, sx + bw, y0 + track_h], 0.0, [34, 36, 42, 255]);
+            self.text.rounded(r, scene, [sx, ty, sx + bw, ty + thumb_h], 0.0, if hot { ACCENT_HOT } else { ACCENT });
         }
 
         // the open drop-down: under its row (over it when the screen ends below)

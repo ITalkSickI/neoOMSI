@@ -179,6 +179,13 @@ impl App {
         let Some(u) = self.ui.as_mut() else {
             return;
         };
+        if let Some((track, thumb)) = u.world_bar {
+            if hit(&[track]).is_some() {
+                u.world_bar_grab = Some(if y >= thumb[1] && y < thumb[3] { y - thumb[1] } else { (thumb[3] - thumb[1]) * 0.5 });
+                self.lab_world_bar_set(y);
+                return;
+            }
+        }
         if let Some(g) = hit(&u.world_groups_rc) {
             u.world_group = g;
             u.world_sub = 0;
@@ -362,6 +369,18 @@ impl App {
                 d.top = d.sel + 1 - vis;
             }
         }
+    }
+
+    pub(crate) fn lab_world_bar_set(&mut self, y: f32) {
+        let Some(u) = self.ui.as_mut() else {
+            return;
+        };
+        let (Some((track, thumb)), Some(grab)) = (u.world_bar, u.world_bar_grab) else {
+            return;
+        };
+        let travel = ((track[3] - track[1]) - (thumb[3] - thumb[1])).max(1.0);
+        let f = ((y - grab - track[1]) / travel).clamp(0.0, 1.0);
+        u.world_scroll = (f * u.world_max as f32).round() as usize;
     }
 
     pub(crate) fn lab_world_set(&mut self, x: f32) {

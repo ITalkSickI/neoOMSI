@@ -421,6 +421,9 @@ impl App {
             if self.ui.as_ref().is_some_and(|u| u.world_drag.is_some()) {
                 self.lab_world_set(x);
             }
+            if self.ui.as_ref().is_some_and(|u| u.world_bar_grab.is_some()) {
+                self.lab_world_bar_set(y);
+            }
         }
         if self.game_menu.is_some() && (x, y) != last {
             self.menu_kbd = false;

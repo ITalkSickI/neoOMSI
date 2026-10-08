@@ -99,6 +99,7 @@ impl App {
             if !pressed {
                 if let Some(u) = self.ui.as_mut() {
                     u.world_drag = None;
+                    u.world_bar_grab = None;
                 }
             }
             if self.lab_map_mouse(Some(pressed)) {
