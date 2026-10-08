@@ -23,7 +23,12 @@ fn world_text(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
-    t(&world_key(text))
+    let key = world_key(text);
+    if ::i18n::lookup("en", &key).is_some() {
+        t(&key)
+    } else {
+        text.to_string()
+    }
 }
 
 fn page_text(page: usize, text: &str) -> String {

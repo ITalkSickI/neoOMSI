@@ -13,7 +13,7 @@ pub(crate) struct PlaceSel {
     pub pick: usize,
 }
 
-type LabGroup = (&'static str, Vec<(String, String)>, crate::lab_options::Subs);
+type LabGroup = (String, Vec<(String, String)>, crate::lab_options::Subs);
 
 fn pick_row(groups: &[LabGroup], g: usize, sub: usize, k: usize) -> Option<(String, String)> {
     let gr = groups.get(g)?;
@@ -98,7 +98,7 @@ impl App {
             };
             groups[g].1.push((format!("{label}\u{1f}a\u{1f}pause.page.admin.run\u{1f}\u{1f}0\u{1f}"), action));
         }
-        groups.into_iter().filter(|g| !g.1.is_empty()).map(|(t, r)| (t, r, Vec::new())).collect()
+        groups.into_iter().filter(|g| !g.1.is_empty()).map(|(t, r)| (t.to_string(), r, Vec::new())).collect()
     }
 
     fn lab_group_page(&self) -> Option<usize> {
@@ -139,9 +139,9 @@ impl App {
             self.lab_world_raw()
                 .into_iter()
                 .map(|(title, rows, subs)| WorldGroup {
-                    title: tr(title),
+                    title: tr(&title),
                     tab: if shown == Some(OPTIONS_PAGE) {
-                        OPTION_GROUPS.iter().find(|g| g.title == title).map_or(String::new(), |g| tr(g.tab))
+                        OPTION_GROUPS.iter().find(|g| g.title == title.as_str()).map_or(String::new(), |g| tr(g.tab))
                     } else {
                         String::new()
                     },

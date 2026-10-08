@@ -504,20 +504,7 @@ pub(crate) fn menu_extras(
     let Some(sel) = sel else {
         return (MenuKind::Game, None, None);
     };
-    let tr = |t: &str| match t {
-        "Tour" => ::i18n::translate("pause.dialog.duty.tour", &[]),
-        "Line" => ::i18n::translate("pause.dialog.duty.line", &[]),
-        "tours" => ::i18n::translate("pause.dialog.duty.tours", &[]),
-        _ => ::user_interface::tr(t).into_owned(),
-    };
-    let title = |t: &str| {
-        tr(t)
-            .trim_end_matches("...")
-            .trim_end_matches('…')
-            .trim_end()
-            .to_string()
-    };
-    let head = |t: &str| Some((title(t), String::new()));
+    let head = |key: &str| Some((::i18n::translate(key, &[]), String::new()));
     let hm = |m: f32| format!("{:02}:{:02}", (m / 60.0) as i32 % 24, (m % 60.0) as i32);
     let trip_of = |name: &str| -> (String, String) {
         schedule
@@ -535,15 +522,15 @@ pub(crate) fn menu_extras(
         .map(|x| x.1.as_str())
         .unwrap_or("");
     let Some(kind) = kind else {
-        return (MenuKind::List, head("Place a vehicle..."), None);
+        return (MenuKind::List, head("pause.dialog.title.place"), None);
     };
     match kind {
         ListKind::Options(t) if *t == KEYS_TAB => {
-            (MenuKind::Options, head("Key bindings..."), None)
+            (MenuKind::Options, head("pause.dialog.title.keys"), None)
         }
-        ListKind::Options(_) => (MenuKind::Options, head("Options..."), None),
-        ListKind::Vehicle(_) => (MenuKind::Options, head("Vehicle options..."), None),
-        ListKind::World(_) => (MenuKind::Options, head("World options..."), None),
+        ListKind::Options(_) => (MenuKind::Options, head("pause.dialog.title.options"), None),
+        ListKind::Vehicle(_) => (MenuKind::Options, head("pause.dialog.title.vehicle"), None),
+        ListKind::World(_) => (MenuKind::Options, head("pause.dialog.title.world"), None),
         ListKind::Lines => {
             let preview = action.strip_prefix("line ").and_then(|name| {
                 let line = schedule?.data.lines.iter().find(|l| l.name == name)?;
@@ -599,7 +586,7 @@ pub(crate) fn menu_extras(
                     time: None,
                 })
             });
-            (MenuKind::Lines, head("Line and tour..."), preview)
+            (MenuKind::Lines, head("pause.dialog.title.line_tour"), preview)
         }
         ListKind::Tours(line_name, pick) => {
             // (the line number of the trip of a tour shown: a tour may run trips of several lines)
@@ -677,29 +664,29 @@ pub(crate) fn menu_extras(
             (
                 MenuKind::Tours,
                 Some((
-                    title("Line and tour..."),
+                    ::i18n::translate("pause.dialog.title.line_tour", &[]),
                     ::i18n::translate("pause.list.line_title", &[("name", &sign)]),
                 )),
                 preview,
             )
         }
-        ListKind::Drivers => (MenuKind::List, head("Driver..."), None),
-        ListKind::Numbers => (MenuKind::List, head("Fleet number..."), None),
-        ListKind::Destinations => (MenuKind::List, head("Destination display..."), None),
+        ListKind::Drivers => (MenuKind::List, head("pause.dialog.title.driver"), None),
+        ListKind::Numbers => (MenuKind::List, head("pause.dialog.title.fleet_number"), None),
+        ListKind::Destinations => (MenuKind::List, head("pause.dialog.title.destination"), None),
         ListKind::RouteNumbers => (
             MenuKind::List,
             Some((::i18n::translate("pause.list.route_number", &[]), String::new())),
             None,
         ),
-        ListKind::Hofs => (MenuKind::List, head("Depot file (HOF)..."), None),
-        ListKind::Spots => (MenuKind::List, head("Teleport to a start point..."), None),
+        ListKind::Hofs => (MenuKind::List, head("pause.dialog.title.hof"), None),
+        ListKind::Spots => (MenuKind::List, head("pause.dialog.title.spot"), None),
         ListKind::PlaceMaker
         | ListKind::PlaceType(_)
         | ListKind::PlaceLivery(_)
-        | ListKind::PlaceHof(..) => (MenuKind::List, head("Place a vehicle..."), None),
+        | ListKind::PlaceHof(..) => (MenuKind::List, head("pause.dialog.title.place"), None),
         ListKind::Admin => (
             MenuKind::List,
-            Some((tr("Administration"), String::new())),
+            head("pause.dialog.title.admin"),
             None,
         ),
     }

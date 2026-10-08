@@ -460,12 +460,8 @@ _version: 2
   de: "Fahrgäste zahlen passend"
 "Passengers prefer available seats":
   de: "Fahrgäste bevorzugen freie Sitzplätze"
-"Passengers take a free seat when boarding; standing places are used when all seats are taken":
-  de: "Fahrgäste wählen beim Einsteigen einen freien Sitzplatz; Stehplätze werden genutzt, wenn alle Sitze belegt sind"
 "Boarding at the rear doors":
   de: "Einstieg an den hinteren Türen"
-"Passengers who need no ticket from the driver also get on at the rear doors":
-  de: "Fahrgäste, die keinen Fahrschein beim Fahrer kaufen, steigen auch hinten ein"
 "Passenger voices":
   de: "Fahrgaststimmen"
 "Greetings and tickets":
@@ -740,14 +736,8 @@ _version: 2
   de: "Screenshots"
 "Resume":
   de: "Fortsetzen"
-"Drive the next vehicle":
-  de: "Nächstes Fahrzeug fahren"
 "Place a vehicle...":
   de: "Fahrzeug einsetzen..."
-"Couple":
-  de: "Kuppeln"
-"Uncouple":
-  de: "Abkuppeln"
 "Save the situation":
   de: "Situation speichern"
 "Load the quicksave":
@@ -764,20 +754,12 @@ _version: 2
   de: "Fahrplan"
 "Information bar":
   de: "Infoleiste"
-"Refuel":
-  de: "Tanken"
-"Wash":
-  de: "Waschen"
-"Repair":
-  de: "Reparieren"
 "Copy server code":
   de: "Servercode kopieren"
 "Server code copied":
   de: "Servercode kopiert"
 "Server code":
   de: "Servercode"
-"Object editor":
-  de: "Objekteditor"
 "End the session":
   de: "Sitzung beenden"
 "Refuel and wash only at a petrol station or in the depot's wash yard":
@@ -790,8 +772,6 @@ _version: 2
   de: "hinauswerfen"
 "send away for the session":
   de: "für die Sitzung hinauswerfen"
-"Time speed":
-  de: "Zeitraffer"
 "(now)":
   de: "(aktuell)"
 "Administration...":
@@ -924,8 +904,6 @@ _version: 2
   de: "Busse"
 "Buttons":
   de: "Tasten"
-"Camera collisions":
-  de: "Kamerakollisionen"
 "Camera collisions (outside view)":
   de: "Kamerakollisionen (Außenansicht)"
 "Check now":
@@ -950,8 +928,6 @@ _version: 2
   de: "Uhrzeit: 23:00 (nachts)"
 "Close":
   de: "Schließen"
-"Collisions with objects":
-  de: "Kollisionen mit Objekten"
 "Collisions with objects (walls, poles)":
   de: "Kollisionen mit Objekten (Wände, Masten)"
 "Continue where you left off":
@@ -1044,8 +1020,6 @@ _version: 2
   de: "Ordner gewählt: Speichern drücken."
 "Force feedback and vibration":
   de: "Force Feedback und Vibration"
-"Frame rate":
-  de: "Bildrate"
 "End the tour":
   de: "Umlauf beenden"
 "Free drive: no duty":
@@ -1064,8 +1038,6 @@ _version: 2
   de: "Grafik, Ton, Controller und Spieleinstellungen werden auf den Ausgangszustand zurückgesetzt. Sprache, Fahrer, Tastenbelegung und Spielordner bleiben erhalten."
 "Handbremse":
   de: "Handbremse"
-"Head movement":
-  de: "Kopfbewegung"
 "Head tracking":
   de: "Head-Tracking"
 "Head tracking (TrackIR and others through opentrack, UDP 4242)":
@@ -1100,8 +1072,6 @@ _version: 2
   de: "Tastatur"
 "The keyboard brake stays on until the throttle (as in OMSI)":
   de: "Die Tastaturbremse bleibt bis zum Gasgeben (wie in OMSI)"
-"Automatic clutch":
-  de: "Automatische Kupplung"
 "Automatic clutch (manual gearboxes)":
   de: "Automatische Kupplung (Schaltgetriebe)"
 "Last situation":
@@ -1180,8 +1150,6 @@ _version: 2
   de: "Zu Fuß: Esc-Menü, „Fahrzeug platzieren...“, dann G an der Fahrertür, um es zu fahren"
 "On foot: W A S D walk, Shift runs, right mouse button looks (F1 back to the bus)":
   de: "Zu Fuß: W A S D gehen, Shift rennt, rechte Maustaste schaut um (F1 zurück zum Bus)"
-"On time with the timetable":
-  de: "Pünktlich nach Fahrplan"
 "Open on GitHub":
   de: "Auf GitHub öffnen"
 "Options...":
@@ -1216,8 +1184,6 @@ _version: 2
   de: "Aktualisieren"
 "Remove from the list":
   de: "Aus der Liste entfernen"
-"Remove the placed vehicles":
-  de: "Platzierte Fahrzeuge entfernen"
 "Remove this trip":
   de: "Diese Fahrt entfernen"
 "Repeat":
@@ -1298,8 +1264,6 @@ _version: 2
   de: "Lenkung"
 "Steering linearity (keys at OMSI's steady pace)":
   de: "Lenklinearität (Tasten im gleichmäßigen OMSI-Tempo)"
-"Steering with the mouse":
-  de: "Lenken mit der Maus"
 "Sun":
   de: "So"
 "TTData":
@@ -1622,8 +1586,6 @@ _version: 2
   de: "neuere darunter"
 "Not sent":
   de: "Nicht gesendet"
-"Mouse steering sensitivity":
-  de: "Empfindlichkeit der Maussteuerung"
 "Mouse steering sensitivity (O)":
   de: "Empfindlichkeit der Maussteuerung (O)"
 "On":
@@ -1727,12 +1689,8 @@ _version: 2
   de: "Navigatorposition konnte nicht gespeichert werden"
 "+{} more":
   de: "+{} weitere"
-"Teleport to a start point":
-  de: "Zu einem Startpunkt teleportieren"
 "Teleport to a start point...":
   de: "Zu einem Startpunkt teleportieren..."
-"Teleport to a starting point on the map":
-  de: "Teleportiere dich zu einem Startpunkt der Karte"
 "This map has no entry points":
   de: "Diese Karte hat keine Einstiegspunkte"
 "entry":
@@ -1831,245 +1789,134 @@ _version: 2
 
 "Reset all settings":
 
-"Enables/Disables the Minimap":
 
-"Shows/hides the other (AI) vehicles on the Minimap and the city map":
 
-"Shows OMSI 2's route arrows over the road":
 
-"Enables/disables collisions with objects such as buildings, streetlights, etc.":
 
-"Enables/Disables Collisions with Other Vehicles":
 
-"Enables/disables knocking down people":
 
-"Timetable window":
 
-"Displays a list of all stops (only when a tour is active)":
 
-"Displays information such as the time, speed, and other details at the top of the screen":
 
-"No change is given at the cash desk":
 
-"Enables/Disabled shadows":
 
-"The ground and large walls get fine grain when close":
 
-"How strongly the dots of LED destination displays glow":
 
-"LED mask mipmaps":
 
-"Keep the mip chain of the LED masks (smoother from a distance).":
 
 "Switches the window between windowed and fullscreen":
 
-"Waits for the screen's refresh":
 
-"Show the frames per second in the top right corner":
 
-"Set how loud the game should be":
 
-"How loud the other vehicles are":
 
-"How loud the sounds of the scenery are":
 
-"Approaching sounds higher, receding ones lower":
 
-"The view moves with the vehicle's acceleration":
 
-"Smooth viewpoint changes":
 
-"Enables a smooth transition between camera perspectives":
 
-"The outside camera cannot pass through objects":
 
-"View turns with steering":
 
-"Camera turns with the steering wheel (cockpit only)":
 
-"How far the view turns at full steering lock":
 
-"How quickly the view follows the steering":
 
-"Shows the driver's hand on the steering wheel (Cockpit only)":
 
-"Shows the driver in the outside views and in the mirrors":
 
-"Right mouse button turns the view":
 
-"Shift+right zooms; off: right zooms as in OMSI, the wheel button turns":
 
-"The view angle of the views from the vehicle":
 
-"Seat forward and back":
 
-"Adjust the driver's seat position forward or backward":
 
-"Seat height":
 
-"Adjust the driver's seat height":
 
-"Seat left and right":
 
-"Adjust the driver's seat position from side to side":
 
-"Put the seat back where the vehicle has it.":
 
-"Steer and control the pedals using the mouse":
 
-"Adjust how much the steering wheel turns based on mouse movement":
 
-"Keyboard steering at OMSI's steady pace":
 
-"The wheel stays where the keys left it":
 
-"The steering keys act slower at speed":
 
-"Enable force feedback for the steering wheel and vibration for controllers":
 
-"For wheels without a saved direction":
 
-"The steering wheel's own rotation, lock to lock":
 
-"How far the wheel turns for the vehicle's full lock":
 
-"Adjust how strongly pedal input affects the throttle":
 
-"Adjust how strongly pedal input affects the brake":
 
-"Keyboard brake stays on":
 
-"Keep the brake applied until the throttle is pressed":
 
-"Automatically operate the clutch for you":
 
-"The size of the texts, the menu, the timetable and the navigator":
 
-"On a window taller than 1080p the interface grows with it":
 
-"How much of the interface's backgrounds shows":
 
-"Shows the name of what the cursor points at":
 
-"Why the vehicle does not move, the change due, what a service did":
 
-"Shows the chat of a LAN session":
 
-"Shows the names of the other players":
 
 "Switch":
 
-"Take the wheel of another vehicle standing in the world":
 
-"Couple the vehicle to the one in front of or behind it":
 
-"Separate the coupled vehicles":
 
-"Get up and out":
 
-"Get out":
 
-"Step out of your car and explore the world":
 
-"Remove this vehicle":
 
 "Remove":
 
-"Removes the current vehicle":
 
-"Removes all vehicles you've placed from the world":
 
-"Fills the tank of the current vehicle":
 
-"Cleans the current vehicle":
 
-"Repairs the current vehicle":
 
-"Put back on its wheels":
 
-"Return the vehicle to an upright position":
 
-"Move on the map":
 
-"Pick":
 
-"Teleports you to any location on the map":
 
-"Real-time sync":
 
-"The game follows your device's date and time":
 
-"Date and time":
 
-"Synchronized with the real time":
 
-"Exact time":
 
-"Press Enter to change, Esc to cancel":
 
-"Change the current time (Press Enter to change)":
 
-"Hour":
 
-"Set the hour of the day directly":
 
-"Minute":
 
-"Set the minute directly":
 
-"Jump to this time of day.":
 
-"Move the clock so that the vehicle is on time":
 
-"How fast the world's clock runs":
 
-"METAR sync":
 
-"The weather follows the real METAR report":
 
-"METAR source":
 
-"Preset":
 
-"A ready-made weather":
 
-"The kind of clouds in the sky.":
 
 "Visibility":
 
-"How far one can see; less is fog.":
 
 "Precipitation":
 
-"Rain or snow.":
 
-"Precipitation strength":
 
-"How hard it rains or snows.":
 
-"Wet roads":
 
-"How wet the roads are now (they dry in the sun, wet in the rain).":
 
 "Temperature":
 
-"The air temperature.":
 
 "Wind speed":
 
-"How fast the wind blows; it drives the clouds.":
 
 "Wind direction":
 
-"The direction of the wind in degrees (0 is north).":
 
 "Open":
 
-"Place and move objects in the world.":
 
-"How many vehicles drive around the map.":
 
-"How many passengers wait at the stops and ride.":
 
 "Vehicle settings":
 
@@ -2100,14 +1947,6 @@ _version: 2
   de: "Ökonomisch"
 "Full":
   de: "Voll"
-"Interface":
-  de: "Oberfläche"
-"VR":
-  de: "VR"
-"Service":
-  de: "Wartung"
-"Teleport":
-  de: "Teleport"
 "Trip evaluation":
   de: "Fahrtauswertung"
 

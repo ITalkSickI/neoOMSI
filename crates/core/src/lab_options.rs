@@ -110,27 +110,27 @@ fn rows_of(app: &App, file: &std::sync::Arc<serde_json::Value>, rows: &[OptRow])
         .collect()
 }
 
-pub(crate) type Subs = Vec<(&'static str, Vec<(String, String)>)>;
+pub(crate) type Subs = Vec<(String, Vec<(String, String)>)>;
 
 fn subs_of(app: &App, file: &std::sync::Arc<serde_json::Value>, g: &OptGroup) -> Subs {
     let mut subs: Subs = g
         .subs
         .iter()
-        .map(|s| (s.title, rows_of(app, file, s.rows)))
+        .map(|s| (s.title.to_string(), rows_of(app, file, s.rows)))
         .filter(|s| !s.1.is_empty())
         .collect();
-    
+
     if g.rows.iter().any(|r| r.kind == OptKind::Pads) {
-        subs.extend(crate::lab_pads::device_tabs(app));
+        subs.extend(crate::lab_pads::device_tabs(app).into_iter().map(|(t, r)| (t.to_string(), r)));
     }
     subs
 }
 
-pub(crate) fn options_groups(app: &App) -> Vec<(&'static str, Vec<(String, String)>, Subs)> {
+pub(crate) fn options_groups(app: &App) -> Vec<(String, Vec<(String, String)>, Subs)> {
     let file = settings_file();
     OPTION_GROUPS
         .iter()
-        .map(|g| (g.title, rows_of(app, &file, g.rows), subs_of(app, &file, g)))
+        .map(|g| (g.title.to_string(), rows_of(app, &file, g.rows), subs_of(app, &file, g)))
         .filter(|g| !g.1.is_empty() || !g.2.is_empty())
         .collect()
 }

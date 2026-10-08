@@ -45,7 +45,8 @@
         },
         "headtrack": {
           "desc": "Head tracking with opentrack (UDP port 4242)",
-          "name": "Head tracking"
+          "name": "Head tracking",
+          "desc_port": "Head tracking with opentrack (UDP port {port})"
         },
         "look_sens": {
           "desc": "How fast the view turns when looking round with the mouse (100% is OMSI's)",
@@ -86,6 +87,9 @@
         "head_tracking_invert": {
           "name": "Invert head tracking",
           "desc": "Which axes of the head tracking are turned around"
+        },
+        "free_look": {
+          "desc": "Here you can configure the free look, the crosshair and the button names"
         }
       },
       "controls": {
@@ -162,6 +166,10 @@
         "vsync": {
           "desc": "Waits for the screen's refresh",
           "name": "V-sync"
+        },
+        "window_mode": {
+          "name": "Window mode",
+          "desc": "Changes how the game fills your display"
         }
       },
       "driving": {
@@ -438,6 +446,9 @@
         "discord_status": {
           "name": "Discord status",
           "desc": "Shows what you are playing on Discord"
+        },
+        "navigator": {
+          "desc": "Here you can configure the Navigator settings"
         }
       },
       "later": "Takes effect when the game starts the next time",
@@ -716,6 +727,26 @@
         "note": "Change the time, the weather and other things of the world.",
         "off": "Off",
         "on": "On"
+      },
+      "text": {
+        "enables_disables_the_minimap": "Enables/Disables the Minimap",
+        "boarding_at_the_rear_doors": "Boarding at the rear doors",
+        "passengers_who_need_no_ticket_from_the_driver_also_get_on_at_the_rear_doors": "Passengers who need no ticket from the driver also get on at the rear doors",
+        "enables_disables_collisions_with_other_vehicles": "Enables/Disables Collisions with Other Vehicles",
+        "enables_disabled_shadows": "Enables/Disabled shadows",
+        "the_game": "The game"
+      },
+      "keys": {
+        "load_error": "The key bindings could not be read",
+        "find": "Find a key binding",
+        "group_driving": "Driving and the bus",
+        "group_vr": "Headset (VR)",
+        "group_scripted": "Scripted (this vehicle)",
+        "press_key": "press a key...",
+        "press_key_desc": "Escape leaves it as it is",
+        "not_set": "Not set",
+        "no_match": "Nothing matches",
+        "no_match_desc": "Try another name or key"
       }
     },
     "world": {
@@ -878,6 +909,20 @@
         "models": "models",
         "random_livery": "Random livery",
         "depot_file": "The map's depot file"
+      },
+      "title": {
+        "place": "Place a vehicle",
+        "keys": "Key bindings",
+        "options": "Options",
+        "vehicle": "Vehicle options",
+        "world": "World options",
+        "line_tour": "Line and tour",
+        "driver": "Driver",
+        "fleet_number": "Fleet number",
+        "destination": "Destination display",
+        "hof": "Depot file (HOF)",
+        "spot": "Teleport to a start point",
+        "admin": "Administration"
       },
       "duty": {
         "tour": "Tour",

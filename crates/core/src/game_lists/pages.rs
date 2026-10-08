@@ -2,6 +2,10 @@
 
 use super::*;
 
+fn tx(key: &str) -> String {
+    ::i18n::translate(key, &[])
+}
+
 pub(crate) fn row(name: &str, kind: char, value: &str, desc: &str, frac: Option<f32>) -> String {
     format!(
         "{name}\u{1f}{kind}\u{1f}{value}\u{1f}{desc}\u{1f}{}",
@@ -56,72 +60,72 @@ pub(super) fn look_options_page(app: &App) -> Page {
         switch_row(
             app,
             "free_look",
-            "Free look",
-            "Mouse turns the view, the screen centre operates things; Left Alt shows the cursor",
+            &tx("pause.options.free_look.free_look.name"),
+            &tx("pause.options.free_look.free_look.desc"),
         ),
         switch_row(
             app,
             "crosshair",
-            "Crosshair",
-            "Shows a small ring in the middle of the screen (not in the F2 and F3 views)",
+            &tx("pause.options.free_look.crosshair.name"),
+            &tx("pause.options.free_look.crosshair.desc"),
         ),
         switch_row(
             app,
             "tooltips",
-            "Names of buttons",
-            "Shows the name of what the cursor or the screen centre points at",
+            &tx("pause.options.free_look.tooltips.name"),
+            &tx("pause.options.free_look.tooltips.desc"),
         ),
     ]
         .into_iter()
         .flatten()
         .collect();
-    ("Free look", rows)
+    (tx("pause.options.group.free_look"), rows)
 }
 pub(super) fn map_options_page(app: &App) -> Page {
     let file = settings_file();
     let rows: Vec<(String, String)> = vec![
-        switch_row(app, "navigator", "Map", "Enables/Disables the Minimap"),
+        switch_row(app, "navigator", &tx("pause.options.group.map"), &tx("pause.page.text.enables_disables_the_minimap")),
         switch_row(
             app,
             "nav_topbar",
-            "Top bar",
-            "Speed, speed limit and time at the top of the map",
+            &tx("pause.options.map.nav_topbar.name"),
+            &tx("pause.options.map.nav_topbar.desc"),
         ),
         switch_row(
             app,
             "nav_turn",
-            "Turn indicator",
-            "The next turn at the top of the map",
+            &tx("pause.options.map.nav_turn.name"),
+            &tx("pause.options.map.nav_turn.desc"),
         ),
         switch_row(
             app,
             "nav_stoplist",
-            "Stop list",
-            "The next stop below the map",
+            &tx("pause.options.map.nav_stoplist.name"),
+            &tx("pause.options.map.nav_stoplist.desc"),
         ),
         switch_row(
             app,
             "nav_stops_ext",
-            "Extended stop list",
-            "Shows more stops below the next stop instead of only the basic information",
+            &tx("pause.options.map.nav_stops_ext.name"),
+            &tx("pause.options.map.nav_stops_ext.desc"),
         ),
         switch_row(
             app,
             "nav_ai",
-            "AI vehicles",
-            "Shows/hides the other (AI) vehicles on the Minimap and the city map",
+            &tx("pause.options.map.nav_ai.name"),
+            &tx("pause.options.map.nav_ai.desc"),
         ),
         select_row(
             &file,
             "navigator_corner",
-            "Corner",
-            "Takes effect when the game starts the next time",
+            &tx("pause.options.map.navigator_corner.name"),
+            &tx("pause.options.later"),
         ),
     ]
         .into_iter()
         .flatten()
         .collect();
-    ("Map", rows)
+    (tx("pause.options.group.map"), rows)
 }
 
 pub(super) fn options_pages(app: &App) -> Vec<Page> {
@@ -129,144 +133,145 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
     let pick = |key: &str, name: &str, desc: &str| select_row(&file, key, name, desc);
     let pct = |v: f32| format!("{:.0} %", v * 100.0);
     let cm = |v: f32| format!("{:+.0} cm", v * 100.0);
-    let later = "Takes effect when the game starts the next time";
+    let later_text = tx("pause.options.later");
+    let later = later_text.as_str();
     let game: Vec<(String, String)> = vec![
         switch_row(
             app,
             "auto_ibis",
-            "Automatic IBIS",
-            "When enabled, the selected tour is automatically entered into IBIS",
+            &tx("pause.options.gameplay.auto_ibis.name"),
+            &tx("pause.options.gameplay.auto_ibis.desc"),
         ),
         switch_row(
             app,
             "exact_fare",
-            "Passengers pay the exact fare",
-            "No change is given at the cash desk",
+            &tx("pause.options.gameplay.exact_fare.name"),
+            &tx("pause.options.gameplay.exact_fare.desc"),
         ),
-        pick("pax_motion", "Passenger movement", "Natural movement or OMSI 2 comparison mode"),
+        pick("pax_motion", &tx("pause.options.gameplay.pax_motion.name"), &tx("pause.options.gameplay.pax_motion.desc")),
         switch_row(
             app,
             "pax_ik",
-            "Procedural passenger animation",
-            "Use procedural poses instead of OMSI 2 animation poses",
+            &tx("pause.options.gameplay.pax_ik.name"),
+            &tx("pause.options.gameplay.pax_ik.desc"),
         ),
-        pick("pax_models", "Passenger models", "RealisticPax applies on the next start"),
-        pick("boarding", "Boarding", "How passengers get their tickets"),
+        pick("pax_models", &tx("pause.options.gameplay.pax_models.name"), &tx("pause.options.gameplay.pax_models.desc")),
+        pick("boarding", &tx("pause.options.gameplay.boarding.name"), &tx("pause.options.gameplay.boarding.desc")),
         switch_row(
             app,
             "pax_prefer_seats",
-            "Passengers prefer available seats",
-            "Passengers take a free seat when boarding; standing places are used when all seats are taken",
+            &tx("pause.options.gameplay.pax_prefer_seats.name"),
+            &tx("pause.options.gameplay.pax_prefer_seats.desc"),
         ),
         switch_row(
             app,
             "pax_rear_entry",
-            "Boarding at the rear doors",
-            "Passengers who need no ticket from the driver also get on at the rear doors",
+            &tx("pause.page.text.boarding_at_the_rear_doors"),
+            &tx("pause.page.text.passengers_who_need_no_ticket_from_the_driver_also_get_on_at_the_rear_doors"),
         ),
-        pick("maintenance", "Maintenance", later),
+        pick("maintenance", &tx("pause.options.gameplay.maintenance.name"), later),
         switch_row(
             app,
             "coll_objects",
-            "Collisions with objects",
-            "Enables/disables collisions with objects such as buildings, streetlights, etc.",
+            &tx("pause.options.gameplay.coll_objects.name"),
+            &tx("pause.options.gameplay.coll_objects.desc"),
         ),
         switch_row(
             app,
             "coll_vehicles",
-            "Collisions with vehicles",
-            "Enables/Disables Collisions with Other Vehicles",
+            &tx("pause.options.gameplay.coll_vehicles.name"),
+            &tx("pause.page.text.enables_disables_collisions_with_other_vehicles"),
         ),
         switch_row(
             app,
             "collision_pedestrians",
-            "Collisions with people",
-            "Enables/disables knocking down people",
+            &tx("pause.options.gameplay.collision_pedestrians.name"),
+            &tx("pause.options.gameplay.collision_pedestrians.desc"),
         ),
-        pick("ai_unsched_factor", "Random traffic", later),
-        pick("ai_max_scheduled", "Timetable vehicles", later),
-        pick("ai_max_parked", "Parked cars", later),
+        pick("ai_unsched_factor", &tx("pause.options.gameplay.ai_unsched_factor.name"), later),
+        pick("ai_max_scheduled", &tx("pause.options.gameplay.ai_max_scheduled.name"), later),
+        pick("ai_max_parked", &tx("pause.options.gameplay.ai_max_parked.name"), later),
     ]
         .into_iter()
         .flatten()
         .collect();
     let driving: Vec<(String, String)> = vec![
-        switch_row(app, "auto_clutch", "Automatic clutch", "Automatically operate the clutch for you"),
-        switch_row(app, "auto_shift", "Automated manual gearbox", "Shift a manual gearbox's gears for you by the engine speed"),
-        switch_row(app, "momentary_gears", "Hold manual gear buttons (release returns to neutral)", later),
-        switch_row(app, "brake_hold", "Keyboard brake stays on", "Keep the brake applied until the throttle is pressed"),
-        switch_row(app, "blinker_cancel", "Indicators cancel themselves", "The bus's script turns the indicator off after a turn; off: it stays on until you turn it off"),
-        switch_row(app, "steering_linear", "Steering linearity (keys at OMSI's steady pace)", "Keyboard steering at OMSI's steady pace"),
-        switch_row(app, "old_steering", "Old Steering (the wheel stays, turn it back yourself)", "The wheel stays where the keys left it"),
-        switch_row(app, "red_steer_spd", "Dynamic steering (slower keys at speed, OMSI's redSteerSpd)", "The steering keys act slower at speed"),
+        switch_row(app, "auto_clutch", &tx("pause.options.driving.auto_clutch.name"), &tx("pause.options.driving.auto_clutch.desc")),
+        switch_row(app, "auto_shift", &tx("pause.options.driving.auto_shift.name"), &tx("pause.options.driving.auto_shift.desc")),
+        switch_row(app, "momentary_gears", &tx("pause.options.driving.momentary_gears.name"), later),
+        switch_row(app, "brake_hold", &tx("pause.options.driving.brake_hold.name"), &tx("pause.options.driving.brake_hold.desc")),
+        switch_row(app, "blinker_cancel", &tx("pause.options.driving.blinker_cancel.name"), &tx("pause.options.driving.blinker_cancel.desc")),
+        switch_row(app, "steering_linear", &tx("pause.options.driving.steering_linear.name"), &tx("pause.options.driving.steering_linear.desc")),
+        switch_row(app, "old_steering", &tx("pause.options.driving.old_steering.name"), &tx("pause.options.driving.old_steering.desc")),
+        switch_row(app, "red_steer_spd", &tx("pause.options.driving.red_steer_spd.name"), &tx("pause.options.driving.red_steer_spd.desc")),
     ]
         .into_iter()
         .flatten()
         .collect();
     let controls: Vec<(String, String)> = vec![
         Some(opens(
-            "Key bindings",
-            "Set every key of the bus and of the game",
+            &tx("pause.options.controls.keybinds.name"),
+            &tx("pause.options.controls.keybinds.desc"),
             "keysopts",
         )),
         switch_row(
             app,
             "mouse",
-            "Steering with the mouse",
-            "Steer and control the pedals using the mouse",
+            &tx("pause.options.controls.mouse.name"),
+            &tx("pause.options.controls.mouse.desc"),
         ),
         switch_row(
             app,
             "mouse_right",
-            "A right click ends the mouse steering",
-            "As in OMSI; off: the right button only looks round",
+            &tx("pause.options.controls.mouse_right.name"),
+            &tx("pause.options.controls.mouse_right.desc"),
         ),
         slider_row(
             app,
             "mouse_sens",
-            "Mouse steering sensitivity",
-            "Adjust how much the steering wheel turns based on mouse movement",
+            &tx("pause.options.controls.mouse_sens.name"),
+            &tx("pause.options.controls.mouse_sens.desc"),
             &pct,
         ),
         slider_row(
             app,
             "stick_sens",
-            "Gamepad steering sensitivity",
-            "How much a small stick push turns the wheel; a full push is still full lock",
+            &tx("pause.options.controls.stick_sens.name"),
+            &tx("pause.options.controls.stick_sens.desc"),
             &pct,
         ),
         switch_row(
             app,
             "steer_center",
-            "Wheel returns to the middle",
-            "Steering a hair off the middle counts as straight",
+            &tx("pause.options.controls.steer_center.name"),
+            &tx("pause.options.controls.steer_center.desc"),
         ),
         slider_row(
             app,
             "pedal_t",
-            "Throttle pedal strength",
-            "Adjust how strongly pedal input affects the throttle",
+            &tx("pause.options.controls.pedal_t.name"),
+            &tx("pause.options.controls.pedal_t.desc"),
             &|v| format!("x{v}"),
         ),
         slider_row(
             app,
             "pedal_b",
-            "Brake pedal strength",
-            "Adjust how strongly pedal input affects the brake",
+            &tx("pause.options.controls.pedal_b.name"),
+            &tx("pause.options.controls.pedal_b.desc"),
             &|v| format!("x{v}"),
         ),
         slider_row(
             app,
             "wheel_range",
-            "Wheel rotation",
-            "The steering wheel's own rotation, lock to lock",
+            &tx("pause.options.controls.wheel_range.name"),
+            &tx("pause.options.controls.wheel_range.desc"),
             &|v| format!("{v:.0}°"),
         ),
         slider_row(
             app,
             "wheel_lock",
-            "Full lock at",
-            "How far the wheel turns for the vehicle's full lock",
+            &tx("pause.options.controls.wheel_lock.name"),
+            &tx("pause.options.controls.wheel_lock.desc"),
             &|v| {
                 if v < 45.0 {
                     "OMSI".to_string()
@@ -278,14 +283,14 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         switch_row(
             app,
             "ff",
-            "Force feedback and vibration",
-            "Enable force feedback for the steering wheel and vibration for controllers",
+            &tx("pause.options.controls.ff.name"),
+            &tx("pause.options.controls.ff.desc"),
         ),
         switch_row(
             app,
             "ff_invert",
-            "Invert force feedback by default",
-            "For wheels without a saved direction",
+            &tx("pause.options.controls.ff_invert.name"),
+            &tx("pause.options.controls.ff_invert.desc"),
         ),
     ]
         .into_iter()
@@ -295,11 +300,11 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         slider_row(
             app,
             "fov",
-            "Field of view",
-            "The view angle of the views from the vehicle",
+            &tx("pause.options.camera.fov.name"),
+            &tx("pause.options.camera.fov.desc"),
             &|v| {
                 if v < 20.0 {
-                    "Default".to_string()
+                    tx("pause.options.fmt.default")
                 } else {
                     format!("{v:.0}°")
                 }
@@ -308,41 +313,41 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         switch_row(
             app,
             "head",
-            "Head movement",
-            "The view moves with the vehicle's acceleration",
+            &tx("pause.options.camera.head.name"),
+            &tx("pause.options.camera.head.desc"),
         ),
         switch_row(
             app,
             "cam_smooth",
-            "Smooth viewpoint changes",
-            "Enables a smooth transition between camera perspectives",
+            &tx("pause.options.camera.cam_smooth.name"),
+            &tx("pause.options.camera.cam_smooth.desc"),
         ),
         switch_row(
             app,
             "camcoll",
-            "Camera collisions",
-            "The outside camera cannot pass through objects",
+            &tx("pause.options.camera.camcoll.name"),
+            &tx("pause.options.camera.camcoll.desc"),
         ),
         slider_row(
             app,
             "look_sens",
-            "Mouse look sensitivity",
-            "How fast the view turns when looking round with the mouse (100% is OMSI's)",
+            &tx("pause.options.camera.look_sens.name"),
+            &tx("pause.options.camera.look_sens.desc"),
             &pct,
         ),
         switch_row(
             app,
             "alt_view",
-            "Right mouse button turns the view",
-            "Shift+right zooms; off: right zooms as in OMSI, the wheel button turns",
+            &tx("pause.options.camera.alt_view.name"),
+            &tx("pause.options.camera.alt_view.desc"),
         ),
         toggle_now(app, "free_look").map(|on| {
             (
                 row(
-                    "Free look",
+                    &tx("pause.options.free_look.free_look.name"),
                     'm',
                     if on { "on" } else { "off" },
-                    "Here you can configure the free look, the crosshair and the button names",
+                    &tx("pause.options.camera.free_look.desc"),
                     None,
                 ),
                 "lookopts".to_string(),
@@ -351,63 +356,63 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         switch_row(
             app,
             "steer_look",
-            "View turns with steering",
-            "Camera turns with the steering wheel (cockpit only)",
+            &tx("pause.options.camera.steer_look.name"),
+            &tx("pause.options.camera.steer_look.desc"),
         ),
         slider_row(
             app,
             "steer_look_angle",
-            "Steering view angle",
-            "How far the view turns at full steering lock",
+            &tx("pause.options.camera.steer_look_angle.name"),
+            &tx("pause.options.camera.steer_look_angle.desc"),
             &|v| format!("{v:.0}°"),
         ),
         slider_row(
             app,
             "steer_look_response",
-            "Steering view response",
-            "How quickly the view follows the steering",
+            &tx("pause.options.camera.steer_look_response.name"),
+            &tx("pause.options.camera.steer_look_response.desc"),
             &|v| format!("{:.0} ms", v * 1000.0),
         ),
         switch_row(
             app,
             "headtrack",
-            "Head tracking",
-            &format!(
-                "Head tracking with opentrack (UDP port {})",
-                ::config::get_int("camera", "head_tracking_port").and_then(|v| u16::try_from(v).ok()).unwrap_or(4242)
+            &tx("pause.options.camera.headtrack.name"),
+            &::i18n::translate(
+                "pause.options.camera.headtrack.desc_port",
+                &[("port", &::config::get_int("camera", "head_tracking_port").and_then(|v| u16::try_from(v).ok()).unwrap_or(4242))],
             ),
         ),
         switch_row(
             app,
             "hands_in_cab",
-            "Driver's hands in the cab view",
-            "Shows the driver's hand on the steering wheel (Cockpit only)",
+            &tx("pause.options.camera.hands_in_cab.name"),
+            &tx("pause.options.camera.hands_in_cab.desc"),
         ),
         switch_row(
             app,
             "driver",
-            "Driver at the wheel (outside views)",
-            "Shows the driver in the outside views and in the mirrors",
+            &tx("pause.options.camera.driver.name"),
+            &tx("pause.options.camera.driver.desc"),
         ),
         slider_row(
             app,
             "seat 1",
-            "Seat forward and back",
-            "Adjust the driver's seat position forward or backward",
+            &tx("pause.options.camera.seat_1.name"),
+            &tx("pause.options.camera.seat_1.desc"),
             &cm,
         ),
         slider_row(
             app,
             "seat 2",
-            "Seat height",
-            "Adjust the driver's seat height",
+            &tx("pause.options.camera.seat_2.name"),
+            &tx("pause.options.camera.seat_2.desc"),
             &cm,
         ),
         slider_row(
             app,
             "seat 0",
-            "Seat left and right",
-            "Adjust the driver's seat position from side to side",
+            &tx("pause.options.camera.seat_0.name"),
+            &tx("pause.options.camera.seat_0.desc"),
             &cm,
         ),
     ]
@@ -415,82 +420,82 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         .flatten()
         .collect();
     camera.push(button(
-        "Reset the seat position",
-        "Reset",
-        "Put the seat back where the vehicle has it.",
+        &tx("pause.options.camera.seat_reset.name"),
+        &tx("pause.options.button.reset"),
+        &tx("pause.options.camera.seat_reset.desc"),
         "seat_reset",
     ));
     let graphics: Vec<(String, String)> = vec![
         preset_row(
-            "Quality preset",
-            "Sets most of the graphics options at once",
+            &tx("pause.options.graphics.preset.name"),
+            &tx("pause.options.graphics.preset.desc"),
         ),
         (!::config::get_subs("graphics_profiles").is_empty()).then(|| {
             opens(
-                "Load graphics profile",
-                "Applies a graphics profile saved in the launcher",
+                &tx("pause.options.graphics.gfxprofile.name"),
+                &tx("pause.options.graphics.gfxprofile.desc"),
                 "gfxprofile",
             )
         }),
-        pick("graphics", "Graphics", later),
-        pick("msaa", "Anti-aliasing", later),
-        pick("render_scale", "Render scale", later),
-        pick("anisotropy", "Anisotropic", later),
-        switch_row(app, "shadows", "Sun shadows", "Enables/Disabled shadows"),
-        pick("shadow_size", "Shadow map", later),
-        pick("shadow_casters", "Shadows cast by", later),
-        switch_row(app, "ssao", "Ambient occlusion", later),
+        pick("graphics", &tx("pause.options.graphics.graphics.name"), later),
+        pick("msaa", &tx("pause.options.graphics.msaa.name"), later),
+        pick("render_scale", &tx("pause.options.graphics.render_scale.name"), later),
+        pick("anisotropy", &tx("pause.options.graphics.anisotropy.name"), later),
+        switch_row(app, "shadows", &tx("pause.options.graphics.shadows.name"), &tx("pause.page.text.enables_disabled_shadows")),
+        pick("shadow_size", &tx("pause.options.graphics.shadow_size.name"), later),
+        pick("shadow_casters", &tx("pause.options.graphics.shadow_casters.name"), later),
+        switch_row(app, "ssao", &tx("pause.options.graphics.ssao.name"), later),
         switch_row(
             app,
             "reflections",
-            "Reflection maps (paint, chrome, glass)",
+            &tx("pause.options.graphics.reflections.name"),
             later,
         ),
-        switch_row(app, "clouds", "Clouds", later),
+        switch_row(app, "clouds", &tx("pause.options.graphics.clouds.name"), later),
         switch_row(
             app,
             "detail_textures",
-            "Detail texturing up close",
-            "The ground and large walls get fine grain when close",
+            &tx("pause.options.graphics.detail_textures.name"),
+            &tx("pause.options.graphics.detail_textures.desc"),
         ),
-        pick("map_detail", "Map complexity", later),
-        pick("view_distance", "View distance", later),
-        pick("max_obj_dist", "Object distance", later),
-        pick("min_obj_size", "Small objects", later),
-        pick("mirror_size", "Mirrors", later),
-        pick("texture_memory", "Texture memory", later),
+        pick("map_detail", &tx("pause.options.graphics.map_detail.name"), later),
+        pick("view_distance", &tx("pause.options.graphics.view_distance.name"), later),
+        pick("max_obj_dist", &tx("pause.options.graphics.max_obj_dist.name"), later),
+        pick("min_obj_size", &tx("pause.options.graphics.min_obj_size.name"), later),
+        pick("mirror_size", &tx("pause.options.graphics.mirror_size.name"), later),
+        pick("texture_memory", &tx("pause.options.graphics.texture_memory.name"), later),
         switch_row(
             app,
             "texture_compression",
-            "Compress textures on loading",
+            &tx("pause.options.graphics.texture_compression.name"),
             later,
         ),
         slider_row(
             app,
             "led_glow",
-            "LED glow",
-            "How strongly the dots of LED destination displays glow",
+            &tx("pause.options.graphics.led_glow.name"),
+            &tx("pause.options.graphics.led_glow.desc"),
             &|v| format!("{}/15", v as i64),
         ),
         slider_row(
             app,
             "nightmap_glow",
-            "Night map glow",
-            "How strongly lit buttons, lamps and windows glow at night",
+            &tx("pause.options.graphics.nightmap_glow.name"),
+            &tx("pause.options.graphics.nightmap_glow.desc"),
             &|v| format!("{}/15", v as i64),
         ),
         slider_row(
             app,
             "atmosphere_brightness",
-            "Atmosphere brightness",
-            "How much light the night has",
+            &tx("pause.options.graphics.atmosphere_brightness.name"),
+            &tx("pause.options.graphics.atmosphere_brightness.desc"),
             &|v| format!("{v:.2}"),
         ),
         slider_row(
             app,
             "led_mips",
-            "LED mask mipmaps",
-            "Keep the mip chain of the LED masks (smoother from a distance).",
+            &tx("pause.options.graphics.led_mips.name"),
+            &tx("pause.options.graphics.led_mips.desc"),
             &|v| format!("{v:.2}"),
         ),
     ]
@@ -498,14 +503,14 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         .flatten()
         .collect();
     let display: Vec<(String, String)> = vec![
-        pick("window_mode", "Window mode", "Changes how the game fills your display"),
-        switch_row(app, "vsync", "V-sync", "Waits for the screen's refresh"),
-        pick("max_fps", "Frame limit", "Frames a second at most"),
+        pick("window_mode", &tx("pause.options.display.window_mode.name"), &tx("pause.options.display.window_mode.desc")),
+        switch_row(app, "vsync", &tx("pause.options.display.vsync.name"), &tx("pause.options.display.vsync.desc")),
+        pick("max_fps", &tx("pause.options.display.max_fps.name"), &tx("pause.options.display.max_fps.desc")),
         switch_row(
             app,
             "fps",
-            "Frame rate",
-            "Show the frames per second in the top right corner",
+            &tx("pause.options.display.fps.name"),
+            &tx("pause.options.display.fps.desc"),
         ),
     ]
         .into_iter()
@@ -515,50 +520,50 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         slider_row(
             app,
             "volume",
-            "Volume",
-            "Set how loud the game should be",
+            &tx("pause.options.sound.volume.name"),
+            &tx("pause.options.sound.volume.desc"),
             &pct,
         ),
         slider_row(
             app,
             "vol_ai",
-            "Traffic",
-            "How loud the other vehicles are",
+            &tx("pause.options.sound.vol_ai.name"),
+            &tx("pause.options.sound.vol_ai.desc"),
             &pct,
         ),
         slider_row(
             app,
             "vol_scenery",
-            "Surroundings",
-            "How loud the sounds of the scenery are",
+            &tx("pause.options.sound.vol_scenery.name"),
+            &tx("pause.options.sound.vol_scenery.desc"),
             &pct,
         ),
         switch_row(
             app,
             "doppler",
-            "Doppler effect",
-            "Approaching sounds higher, receding ones lower",
+            &tx("pause.options.sound.doppler.name"),
+            &tx("pause.options.sound.doppler.desc"),
         ),
-        pick("pax_voices", "Passenger voices", "What passengers say"),
+        pick("pax_voices", &tx("pause.options.sound.pax_voices.name"), &tx("pause.options.sound.pax_voices.desc")),
     ]
         .into_iter()
         .flatten()
         .collect();
     let interface: Vec<(String, String)> = vec![
-        pick("language", "Language", "The language of the game's interface"),
-        pick("units", "Units", "Shows speed, distance and temperature in metric or imperial units"),
-        slider_row(app, "ui_scale", "Game interface size", "The size of the texts, the menu, the timetable and the navigator", &pct),
-        switch_row(app, "ui_scale_window", "Interface grows with the window", "On a window taller than 1080p the interface grows with it"),
-        slider_row(app, "ui_opacity", "Interface opacity", "How much of the interface's backgrounds shows", &pct),
-        toggle_now(app, "navigator").map(|on| (row("Navigator", 'm', if on { "on" } else { "off" }, "Here you can configure the Navigator settings", None), "mapopts".to_string())),
-        switch_row(app, "nav_arrows", "Route arrows (as in OMSI 2)", "Shows OMSI 2's route arrows over the road"),
-        switch_row(app, "info_bar", "Information bar", "Displays information such as the time, speed, and other details at the top of the screen"),
-        switch_row(app, "timetable_win", "Timetable window", "Displays a list of all stops (only when a tour is active)"),
-        switch_row(app, "notes", "Notes in the top-left corner", "Why the vehicle does not move, the change due, what a service did"),
-        switch_row(app, "tooltips", "Name of the button under the mouse", "Shows the name of what the cursor points at"),
-        switch_row(app, "chat", "Chat in online games", "Shows the chat of a LAN session"),
-        switch_row(app, "name_tags", "Other players' names above their buses", "Shows the names of the other players"),
-        Some(opens("Reset all settings...", "Everything but the language, the key bindings and the game folder goes back to how it came", "reset")),
+        pick("language", &tx("pause.options.interface.language.name"), &tx("pause.options.interface.language.desc")),
+        pick("units", &tx("pause.options.interface.units.name"), &tx("pause.options.interface.units.desc")),
+        slider_row(app, "ui_scale", &tx("pause.options.interface.ui_scale.name"), &tx("pause.options.interface.ui_scale.desc"), &pct),
+        switch_row(app, "ui_scale_window", &tx("pause.options.interface.ui_scale_window.name"), &tx("pause.options.interface.ui_scale_window.desc")),
+        slider_row(app, "ui_opacity", &tx("pause.options.interface.ui_opacity.name"), &tx("pause.options.interface.ui_opacity.desc"), &pct),
+        toggle_now(app, "navigator").map(|on| (row(&tx("pause.options.vr.navigator.name"), 'm', if on { "on" } else { "off" }, &tx("pause.options.interface.navigator.desc"), None), "mapopts".to_string())),
+        switch_row(app, "nav_arrows", &tx("pause.options.interface.nav_arrows.name"), &tx("pause.options.interface.nav_arrows.desc")),
+        switch_row(app, "info_bar", &tx("pause.options.interface.info_bar.name"), &tx("pause.options.interface.info_bar.desc")),
+        switch_row(app, "timetable_win", &tx("pause.options.interface.timetable_win.name"), &tx("pause.options.interface.timetable_win.desc")),
+        switch_row(app, "notes", &tx("pause.options.interface.notes.name"), &tx("pause.options.interface.notes.desc")),
+        switch_row(app, "tooltips", &tx("pause.options.interface.tooltips.name"), &tx("pause.options.interface.tooltips.desc")),
+        switch_row(app, "chat", &tx("pause.options.interface.chat.name"), &tx("pause.options.interface.chat.desc")),
+        switch_row(app, "name_tags", &tx("pause.options.interface.name_tags.name"), &tx("pause.options.interface.name_tags.desc")),
+        Some(opens(&tx("pause.options.interface.reset.name"), &tx("pause.options.interface.reset.desc"), "reset")),
     ]
         .into_iter()
         .flatten()
@@ -568,19 +573,19 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
     if cfg!(windows) {
         vr.extend(
             vec![
-                switch_row(app, "vr", "Use OpenXR headset", later),
+                switch_row(app, "vr", &tx("pause.options.vr.vr.name"), later),
                 if vr_on {
-                    pick("vr_scale", "Eye resolution", later)
+                    pick("vr_scale", &tx("pause.options.vr.vr_scale.name"), later)
                 } else {
                     None
                 },
                 if vr_on {
-                    pick("vr_head_smoothing_ms", "Head tracking smoothing", later)
+                    pick("vr_head_smoothing_ms", &tx("pause.options.vr.vr_head_smoothing_ms.name"), later)
                 } else {
                     None
                 },
                 if vr_on {
-                    pick("vr_mirror_rate", "Bus mirror refresh", later)
+                    pick("vr_mirror_rate", &tx("pause.options.vr.vr_mirror_rate.name"), later)
                 } else {
                     None
                 },
@@ -588,7 +593,7 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
                     switch_row(
                         app,
                         "vr_desktop_mirror",
-                        "Show headset picture on monitor",
+                        &tx("pause.options.vr.vr_desktop_mirror.name"),
                         later,
                     )
                 } else {
@@ -600,26 +605,26 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         );
     }
     if app.vr_active() && app.player.is_some() {
-        let desc = "Navigator position (this bus)";
-        vr.extend(switch_row(app, "navigator", "Navigator", desc));
+        let desc = &tx("pause.options.vr.navigator.desc");
+        vr.extend(switch_row(app, "navigator", &tx("pause.options.vr.navigator.name"), desc));
         vr.push(button(
-            "Move and rotate with the mouse...",
-            "Open",
+            &tx("pause.options.vr.vr_nav_edit.name"),
+            &tx("pause.options.button.open"),
             desc,
             "vr_nav_edit",
         ));
         for (id, label) in [
-            ("x", "Position right / left"),
-            ("y", "Position forward / back"),
-            ("z", "Position up / down"),
-            ("width", "Display width"),
+            ("x", &tx("pause.options.vr.vr_nav_x.name")),
+            ("y", &tx("pause.options.vr.vr_nav_y.name")),
+            ("z", &tx("pause.options.vr.vr_nav_z.name")),
+            ("width", &tx("pause.options.vr.vr_nav_width.name")),
         ] {
             vr.extend(slider_row(app, &format!("vr_nav_{id}"), label, desc, &cm));
         }
         for (id, label) in [
-            ("yaw", "Display rotation"),
-            ("tilt", "Display tilt"),
-            ("roll", "Display roll"),
+            ("yaw", &tx("pause.options.vr.vr_nav_yaw.name")),
+            ("tilt", &tx("pause.options.vr.vr_nav_tilt.name")),
+            ("roll", &tx("pause.options.vr.vr_nav_roll.name")),
         ] {
             vr.extend(slider_row(
                 app,
@@ -632,34 +637,34 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         vr.extend(slider_row(
             app,
             "vr_nav_opacity",
-            "Interface opacity",
+            &tx("pause.options.interface.ui_opacity.name"),
             desc,
             &pct,
         ));
         vr.push(button(
-            "Reset navigator position",
-            "Reset",
+            &tx("pause.options.vr.vr_nav_reset.name"),
+            &tx("pause.options.button.reset"),
             desc,
             "vr_nav_reset",
         ));
     }
     vec![
-        ("Gameplay", game),
-        ("Driving", driving),
-        ("Controls", controls),
-        ("Camera", camera),
-        ("Graphics", graphics),
-        ("Display", display),
-        ("Sound", sound),
-        ("Interface", interface),
-        ("VR", vr),
+        (tx("pause.options.group.gameplay"), game),
+        (tx("pause.options.group.driving"), driving),
+        (tx("pause.options.group.controls"), controls),
+        (tx("pause.options.group.camera"), camera),
+        (tx("pause.options.group.graphics"), graphics),
+        (tx("pause.options.group.display"), display),
+        (tx("pause.options.group.sound"), sound),
+        (tx("pause.options.group.interface"), interface),
+        (tx("pause.options.group.vr"), vr),
     ]
 }
 
 pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
     let Ok(v) = omsi_launcher_lib::get_keybindings() else {
         return vec![(
-            row("The key bindings could not be read", 'i', "", "", None),
+            row(&tx("pause.page.keys.load_error"), 'i', "", "", None),
             "noop".to_string(),
         )];
     };
@@ -673,7 +678,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
     let q = app.key_filter.trim().to_lowercase();
     let mut out = vec![(
         row(
-            "Find a key binding",
+            &tx("pause.page.keys.find"),
             if app.key_search { 'E' } else { 'a' },
             &app.key_filter,
             "",
@@ -702,14 +707,14 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
             }
         }
     }
-    let groups: [(&str, Box<dyn Fn(&(usize, usize, String, i64, i64)) -> bool>); 3] = [
-        ("Driving and the bus", Box::new(|b| b.0 == 0)),
+    let groups: [(String, Box<dyn Fn(&(usize, usize, String, i64, i64)) -> bool>); 3] = [
+        (tx("pause.page.keys.group_driving"), Box::new(|b| b.0 == 0)),
         (
-            "The game",
+            tx("pause.page.text.the_game"),
             Box::new(|b| b.0 == 1 && !b.2.starts_with("vr_")),
         ),
         (
-            "Headset (VR)",
+            tx("pause.page.keys.group_vr"),
             Box::new(|b| b.0 == 1 && b.2.starts_with("vr_")),
         ),
     ];
@@ -728,17 +733,17 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
         .collect();
     if !scripted.is_empty() {
         any = true;
-        out.push(head("Scripted (this vehicle)", scripted.len()));
+        out.push(head(&tx("pause.page.keys.group_scripted"), scripted.len()));
         for (i, action) in scripted {
             let label = names.control(&action);
             let id = format!("keybind 2 {i} {action}");
             if app.key_capture == Some((2, i)) {
                 out.push((
-                    row(&label, 'E', "press a key...", "Escape leaves it as it is", None),
+                    row(&label, 'E', &tx("pause.page.keys.press_key"), &tx("pause.page.keys.press_key_desc"), None),
                     id,
                 ));
             } else {
-                out.push((row(&label, 'k', "Not set", "", None), id));
+                out.push((row(&label, 'k', &tx("pause.page.keys.not_set"), "", None), id));
             }
         }
     }
@@ -778,8 +783,8 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
                     row(
                         &label,
                         'E',
-                        "press a key...",
-                        "Escape leaves it as it is",
+                        &tx("pause.page.keys.press_key"),
+                        &tx("pause.page.keys.press_key_desc"),
                         None,
                     ),
                     format!("keybind {sec} {i} {action}"),
@@ -787,7 +792,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
                 continue;
             }
             let value = if scan == 0 {
-                "Not set".to_string()
+                tx("pause.page.keys.not_set")
             } else {
                 crate::keys::key_name(scan, m)
             };
@@ -804,7 +809,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
     }
     if !any {
         out.push((
-            row("Nothing matches", 'i', "", "Try another name or key", None),
+            row(&tx("pause.page.keys.no_match"), 'i', "", &tx("pause.page.keys.no_match_desc"), None),
             HEADING.to_string(),
         ));
     }
@@ -817,130 +822,130 @@ pub(super) fn vehicle_pages(app: &App) -> Vec<Page> {
     let mut display: Vec<(String, String)> = Vec::new();
     if has {
         display.push(opens(
-            "Destination display",
-            "Change the current destination",
+            &tx("pause.page.vehicle.action.dest.name"),
+            &tx("pause.page.vehicle.action.dest.desc"),
             "dest",
         ));
         display.push(opens(
-            "Depot file (HOF)",
-            "Change the current depot file (used for the timetable)",
+            &tx("pause.page.vehicle.action.hof.name"),
+            &tx("pause.page.vehicle.action.hof.desc"),
             "hof",
         ));
         display.push(opens(
-            "Fleet number",
-            "Change the vehicle's current fleet number",
+            &tx("pause.page.vehicle.action.number.name"),
+            &tx("pause.page.vehicle.action.number.desc"),
             "number",
         ));
     }
     let mut fleet: Vec<(String, String)> = Vec::new();
     if has || !app.placed.is_empty() {
         fleet.push(button(
-            "Drive the next vehicle",
-            "Switch",
-            "Take the wheel of another vehicle standing in the world",
+            &tx("pause.page.vehicle.action.switch.name"),
+            &tx("pause.page.vehicle.action.switch.button"),
+            &tx("pause.page.vehicle.action.switch.desc"),
             "switch",
         ));
     }
     fleet.push(opens(
-        "Place a vehicle",
-        "Place a vehicle of your choice",
+        &tx("pause.page.vehicle.action.place.name"),
+        &tx("pause.page.vehicle.action.place.desc"),
         "place",
     ));
     if has {
         // (#728: another bus in this one's place, or this one again with its files read
         // anew - a script or a .bus changed - without starting the game again)
         fleet.push(button(
-            "Swap for another vehicle",
-            "Swap",
-            "Put another vehicle in this one's place and drive it",
+            &tx("pause.page.vehicle.action.swap.name"),
+            &tx("pause.page.vehicle.action.swap.button"),
+            &tx("pause.page.vehicle.action.swap.desc"),
             "swap",
         ));
         fleet.push(button(
-            "Couple",
-            "Couple",
-            "Couple the vehicle to the one in front of or behind it",
+            &tx("pause.page.vehicle.action.couple.name"),
+            &tx("pause.page.vehicle.action.couple.name"),
+            &tx("pause.page.vehicle.action.couple.desc"),
             "couple",
         ));
         fleet.push(button(
-            "Uncouple",
-            "Uncouple",
-            "Separate the coupled vehicles",
+            &tx("pause.page.vehicle.action.uncouple.name"),
+            &tx("pause.page.vehicle.action.uncouple.name"),
+            &tx("pause.page.vehicle.action.uncouple.desc"),
             "uncouple",
         ));
         fleet.push(button(
-            "Remove this vehicle",
-            "Remove",
-            "Removes the current vehicle",
+            &tx("pause.page.vehicle.action.remove.name"),
+            &tx("pause.page.vehicle.action.remove.button"),
+            &tx("pause.page.vehicle.action.remove.desc"),
             "remove",
         ));
     }
     if !app.placed.is_empty() {
         fleet.push(button(
-            "Remove the placed vehicles",
-            "Remove",
-            "Removes all vehicles you've placed from the world",
+            &tx("pause.page.vehicle.action.clearplaced.name"),
+            &tx("pause.page.vehicle.action.remove.button"),
+            &tx("pause.page.vehicle.action.clearplaced.desc"),
             "clearplaced",
         ));
     }
     let mut service: Vec<(String, String)> = Vec::new();
     if has {
         service.push(button(
-            "Refuel",
-            "Refuel",
-            "Fills the tank of the current vehicle",
+            &tx("pause.page.vehicle.action.refuel.name"),
+            &tx("pause.page.vehicle.action.refuel.name"),
+            &tx("pause.page.vehicle.action.refuel.desc"),
             "refuel",
         ));
-        service.push(button("Wash", "Wash", "Cleans the current vehicle", "wash"));
+        service.push(button(&tx("pause.page.vehicle.action.wash.name"), &tx("pause.page.vehicle.action.wash.name"), &tx("pause.page.vehicle.action.wash.desc"), "wash"));
         service.push(button(
-            "Repair",
-            "Repair",
-            "Repairs the current vehicle",
+            &tx("pause.page.vehicle.action.repair.name"),
+            &tx("pause.page.vehicle.action.repair.name"),
+            &tx("pause.page.vehicle.action.repair.desc"),
             "repair",
         ));
         service.push(button(
-            "Put back on its wheels",
-            "Reset",
-            "Return the vehicle to an upright position",
+            &tx("pause.page.vehicle.action.reset_vehicle.name"),
+            &tx("pause.page.vehicle.action.reset_vehicle.button"),
+            &tx("pause.page.vehicle.action.reset_vehicle.desc"),
             "reset_vehicle",
         ));
-        service.push(button("Reload this vehicle", "Reload", "Read the vehicle's files again (.bus, model and sound configuration, scripts) and drive it from here", "reload"));
+        service.push(button(&tx("pause.page.vehicle.action.reload.name"), &tx("pause.page.vehicle.action.reload.button"), &tx("pause.page.vehicle.action.reload.desc"), "reload"));
     }
     let mut driver: Vec<(String, String)> = Vec::new();
     if !server {
         driver.push(opens(
-            "Driver",
-            "Change the current driver profile",
+            &tx("pause.page.vehicle.group.driver.title"),
+            &tx("pause.page.vehicle.action.driver.desc"),
             "driver",
         ));
     }
     if has && app.on_foot.is_none() {
         driver.push(button(
-            "Get up and out",
-            "Get out",
-            "Step out of your car and explore the world",
+            &tx("pause.page.vehicle.action.getout.name"),
+            &tx("pause.page.vehicle.action.getout.button"),
+            &tx("pause.page.vehicle.action.getout.desc"),
             "getout",
         ));
     }
     let mut teleport: Vec<(String, String)> = Vec::new();
     if has && !server && app.navigator.is_some() {
         teleport.push(button(
-            "Move on the map",
-            "Pick",
-            "Teleports you to any location on the map",
+            &tx("pause.page.vehicle.action.teleport.name"),
+            &tx("pause.page.vehicle.action.teleport.button"),
+            &tx("pause.page.vehicle.action.teleport.desc"),
             "teleport",
         ));
         teleport.push(opens(
-            "Teleport to a start point",
-            "Teleport to a starting point on the map",
+            &tx("pause.page.vehicle.action.tplist.name"),
+            &tx("pause.page.vehicle.action.tplist.desc"),
             "tplist",
         ));
     }
     vec![
-        ("Vehicles", fleet),
-        ("Display", display),
-        ("Service", service),
-        ("Driver", driver),
-        ("Teleport", teleport),
+        (tx("pause.page.vehicle.group.fleet.title"), fleet),
+        (tx("pause.page.vehicle.group.display.title"), display),
+        (tx("pause.page.vehicle.group.service.title"), service),
+        (tx("pause.page.vehicle.group.driver.title"), driver),
+        (tx("pause.page.vehicle.group.teleport.title"), teleport),
     ]
 }
 
@@ -997,13 +1002,13 @@ pub(crate) fn vehicle_menu(app: &App) -> Vec<(&'static str, Vec<(&'static str, b
         .collect()
 }
 
-pub(crate) fn world_groups(app: &App) -> Vec<(&'static str, Vec<(String, String)>, Vec<(&'static str, Vec<(String, String)>)>)> {
+pub(crate) fn world_groups(app: &App) -> Vec<(String, Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>)> {
     world_pages(app)
         .into_iter()
         .filter(|p| !p.1.is_empty())
         .map(|(title, rows)| {
             let (presets, rows): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.1.starts_with("clock_set "));
-            let subs = if presets.is_empty() { Vec::new() } else { vec![("Presets", presets)] };
+            let subs = if presets.is_empty() { Vec::new() } else { vec![(tx("pause.world.text.presets"), presets)] };
             (title, rows, subs)
         })
         .collect()
@@ -1029,8 +1034,8 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         time.extend(switch_row(
             app,
             "time_sync",
-            "Real-time sync",
-            "The game follows your device's date and time",
+            &tx("pause.world.text.real_time_sync"),
+            &tx("pause.world.text.the_game_follows_your_device_s_date_and_time"),
         ));
         if app.real_time_locked() {
             let (d, m) = app.clock.day_month();
@@ -1042,10 +1047,10 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             );
             time.push((
                 row(
-                    "Date and time",
+                    &tx("pause.world.text.date_and_time"),
                     'i',
                     &text,
-                    "Synchronized with the real time",
+                    &tx("pause.world.text.synchronized_with_the_real_time"),
                     None,
                 ),
                 "noop".to_string(),
@@ -1058,10 +1063,10 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
                     let typed = format!("{}{}:{}{}:{}{}", c[0], c[1], c[2], c[3], c[4], c[5]);
                     time.push((
                         row(
-                            "Exact time",
+                            &tx("pause.world.text.exact_time"),
                             'E',
                             &typed,
-                            "Press Enter to change, Esc to cancel",
+                            &tx("pause.world.text.press_enter_to_change_esc_to_cancel"),
                             None,
                         ),
                         "time_edit".to_string(),
@@ -1071,10 +1076,10 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
                     let secs = format!("{}:{:02}", now, (t as i64) % 60);
                     time.push((
                         row(
-                            "Exact time",
+                            &tx("pause.world.text.exact_time"),
                             'e',
                             &secs,
-                            "Change the current time (Press Enter to change)",
+                            &tx("pause.world.text.change_the_current_time_press_enter_to_change"),
                             None,
                         ),
                         "time_edit".to_string(),
@@ -1084,27 +1089,27 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             time.extend(slider_row(
                 app,
                 "hour",
-                "Hour",
-                "Set the hour of the day directly",
+                &tx("pause.world.text.hour"),
+                &tx("pause.world.text.set_the_hour_of_the_day_directly"),
                 &|v| format!("{:02}", v as i64),
             ));
             time.extend(slider_row(
                 app,
                 "minute",
-                "Minute",
-                "Set the minute directly",
+                &tx("pause.world.text.minute"),
+                &tx("pause.world.text.set_the_minute_directly"),
                 &|v| format!("{:02}", v as i64),
             ));
             for (name, hm, secs) in [
-                ("Morning", "06:00", 6 * 3600),
-                ("Noon", "12:00", 12 * 3600),
-                ("Evening", "18:00", 18 * 3600),
-                ("Night", "23:00", 23 * 3600),
+                (&tx("pause.world.text.morning"), "06:00", 6 * 3600),
+                (&tx("pause.world.text.noon"), "12:00", 12 * 3600),
+                (&tx("pause.world.text.evening"), "18:00", 18 * 3600),
+                (&tx("pause.world.text.night"), "23:00", 23 * 3600),
             ] {
                 time.push(button(
                     name,
                     hm,
-                    "Jump to this time of day.",
+                    &tx("pause.world.text.jump_to_this_time_of_day"),
                     &format!("clock_set {secs}"),
                 ));
             }
@@ -1118,9 +1123,9 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
                         d.abs() as i64 % 60
                     );
                     time.push(button(
-                        "On time with the timetable",
+                        &tx("pause.world.text.on_time_with_the_timetable"),
                         &text,
-                        "Move the clock so that the vehicle is on time",
+                        &tx("pause.world.text.move_the_clock_so_that_the_vehicle_is_on_time"),
                         "clock_ontime",
                     ));
                 }
@@ -1129,8 +1134,8 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
                 time.extend(slider_row(
                     app,
                     "speed",
-                    "Time speed",
-                    "How fast the world's clock runs",
+                    &tx("pause.world.text.time_speed"),
+                    &tx("pause.world.text.how_fast_the_world_s_clock_runs"),
                     &|v| format!("x{v}"),
                 ));
             }
@@ -1138,8 +1143,8 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         weather.extend(switch_row(
             app,
             "metar_sync",
-            "METAR sync",
-            "The weather follows the real METAR report",
+            &tx("pause.world.text.metar_sync"),
+            &tx("pause.world.text.the_weather_follows_the_real_metar_report"),
         ));
         let src = if ::config::get_string("gameplay", "metar_station").unwrap_or_default().is_empty() {
             format!("{} ({})", app.metar_station(), ::user_interface::tr("automatic"))
@@ -1148,10 +1153,10 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         };
         weather.push((
             row(
-                "METAR source",
+                &tx("pause.world.text.metar_source"),
                 'o',
                 &src,
-                "The airport used for real weather.",
+                &tx("pause.world.text.the_airport_used_for_real_weather"),
                 None,
             ),
             "metar_src".to_string(),
@@ -1170,41 +1175,41 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
                 "ICAO",
                 if app.menu_edit_icao { 'E' } else { 'e' },
                 &typed,
-                "Enter any 4-letter ICAO station.",
+                &tx("pause.world.text.enter_any_4_letter_icao_station"),
                 None,
             ),
             "metar_icao_edit".to_string(),
         ));
         if app.metar_locked() {
             weather.push(button(
-                "METAR report",
-                "Refresh now",
-                "Fetch the selected station again without waiting for the next automatic update.",
+                &tx("pause.world.text.metar_report"),
+                &tx("pause.world.text.refresh_now"),
+                &tx("pause.world.text.fetch_the_selected_station_again_without_waiting_for_the_next_automatic_update"),
                 "metar_refresh",
             ));
         } else {
             weather.push(button(
-                "METAR report",
-                "Load once",
-                "Load the selected station once without enabling continuous METAR sync.",
+                &tx("pause.world.text.metar_report"),
+                &tx("pause.world.text.load_once"),
+                &tx("pause.world.text.load_the_selected_station_once_without_enabling_continuous_metar_sync"),
                 "metar_once",
             ));
         }
         weather.push((
             row(
-                "Preset",
+                &tx("pause.world.text.preset"),
                 'o',
                 &weather_name(app),
-                "A ready-made weather",
+                &tx("pause.world.text.a_ready_made_weather"),
                 None,
             ),
             "weather".to_string(),
         ));
         if !app.metar_locked() {
             weather.push(button(
-                "Custom weather",
-                "Edit current",
-                "Freeze the weather currently in force and edit it as a custom weather.",
+                &tx("pause.world.text.custom_weather"),
+                &tx("pause.world.text.edit_current"),
+                &tx("pause.world.text.freeze_the_weather_currently_in_force_and_edit_it_as_a_custom_weather"),
                 "weather_custom",
             ));
         }
@@ -1217,10 +1222,10 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             .unwrap_or_default();
         weather.push((
             row(
-                "Clouds",
+                &tx("pause.world.text.clouds"),
                 'o',
                 &cloud,
-                "The kind of clouds in the sky.",
+                &tx("pause.world.text.the_kind_of_clouds_in_the_sky"),
                 None,
             ),
             "cloudkind".to_string(),
@@ -1228,8 +1233,8 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         weather.extend(slider_row(
             app,
             "visibility",
-            "Visibility",
-            "How far one can see; less is fog.",
+            &tx("pause.world.text.visibility"),
+            &tx("pause.world.text.how_far_one_can_see_less_is_fog"),
             &|v| {
                 if v >= 1000.0 {
                     format!("{:.1} km", v / 1000.0)
@@ -1241,8 +1246,8 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         weather.extend(slider_row(
             app,
             "brightness",
-            "Brightness",
-            "Brightness of the custom weather lighting.",
+            &tx("pause.world.text.brightness"),
+            &tx("pause.world.text.brightness_of_the_custom_weather_lighting"),
             &|v| format!("{:.0} %", v * 100.0),
         ));
         let kind = app
@@ -1255,10 +1260,10 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             .unwrap_or(0);
         weather.push((
             row(
-                "Precipitation",
+                &tx("pause.world.text.precipitation"),
                 'o',
                 PRECIP_KINDS[kind],
-                "Rain or snow.",
+                &tx("pause.world.text.rain_or_snow"),
                 None,
             ),
             "precipkind".to_string(),
@@ -1266,46 +1271,47 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         weather.extend(slider_row(
             app,
             "rain_amt",
-            "Precipitation strength",
-            "How hard it rains or snows.",
+            &tx("pause.world.text.precipitation_strength"),
+            &tx("pause.world.text.how_hard_it_rains_or_snows"),
             &pct,
         ));
         weather.extend(slider_row(
             app,
             "wet",
-            "Wet roads",
-            "How wet the roads are now (they dry in the sun, wet in the rain).",
+            &tx("pause.world.text.wet_roads"),
+            &tx("pause.world.text.how_wet_the_roads_are_now_they_dry_in_the_sun_wet_in_the_rain"),
             &pct,
         ));
         weather.extend(switch_row(
             app,
             "snow_cover",
-            "Snow cover",
-            "Snow lying on the world and ground.",
+            &tx("pause.world.text.snow_cover"),
+            &tx("pause.world.text.snow_lying_on_the_world_and_ground"),
         ));
         weather.extend(switch_row(
             app,
             "snow_road",
-            "Snow on road",
-            "Treat the road surface as snow-covered.",
+            &tx("pause.world.text.snow_on_road"),
+            &tx("pause.world.text.treat_the_road_surface_as_snow_covered"),
         ));
         climate.extend(slider_row(
             app,
             "temp",
-            "Temperature",
-            "The air temperature.",
+            &tx("pause.world.text.temperature"),
+            &tx("pause.world.text.the_air_temperature"),
             &|v| format!("{} °C", v as i64),
         ));
         let dew_temp = app.weather.as_ref().map(|w| w.temp.0).unwrap_or(15.0);
         climate.extend(slider_row(
             app,
             "humidity",
-            "Humidity",
-            "Relative humidity of the air.",
+            &tx("pause.world.text.humidity"),
+            &tx("pause.world.text.relative_humidity_of_the_air"),
             &|v| {
                 format!(
-                    "{:.0} % · dew {:.0} °C",
+                    "{:.0} % · {} {:.0} °C",
                     v,
+                    tx("pause.world.dew"),
                     crate::weather_setup::dew_point_c(dew_temp, v)
                 )
             },
@@ -1313,15 +1319,15 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
         climate.extend(slider_row(
             app,
             "wind_speed",
-            "Wind speed",
-            "How fast the wind blows; it drives the clouds.",
+            &tx("pause.world.text.wind_speed"),
+            &tx("pause.world.text.how_fast_the_wind_blows_it_drives_the_clouds"),
             &|v| format!("{} m/s", v as i64),
         ));
         climate.extend(slider_row(
             app,
             "wind_dir",
-            "Wind direction",
-            "The direction of the wind in degrees (0 is north).",
+            &tx("pause.world.text.wind_direction"),
+            &tx("pause.world.text.the_direction_of_the_wind_in_degrees_0_is_north"),
             &|v| format!("{}°", v as i64),
         ));
         // the METAR sync on: only its own rows stay (the weather is the report's)
@@ -1335,9 +1341,9 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
             climate.clear();
         }
         tools.push(button(
-            "Object editor",
-            "Open",
-            "Place and move objects in the world.",
+            &tx("pause.world.text.object_editor"),
+            &tx("pause.world.text.open"),
+            &tx("pause.world.text.place_and_move_objects_in_the_world"),
             "editor",
         ));
     }
@@ -1345,23 +1351,23 @@ pub(super) fn world_pages(app: &App) -> Vec<Page> {
     people.extend(slider_row(
         app,
         "traffic",
-        "Traffic",
-        "How many vehicles drive around the map.",
+        &tx("pause.world.text.traffic"),
+        &tx("pause.world.text.how_many_vehicles_drive_around_the_map"),
         &|v| format!("{} vehicles", v as i64),
     ));
     people.extend(slider_row(
         app,
         "pax",
-        "Passengers",
-        "How many passengers wait at the stops and ride.",
+        &tx("pause.world.text.passengers"),
+        &tx("pause.world.text.how_many_passengers_wait_at_the_stops_and_ride"),
         &pct,
     ));
     vec![
-        ("Time", time),
-        ("Weather", weather),
-        ("Temperature and wind", climate),
-        ("Traffic and people", people),
-        ("Tools", tools),
+        (tx("pause.world.text.time"), time),
+        (tx("pause.world.text.weather"), weather),
+        (tx("pause.world.text.temperature_and_wind"), climate),
+        (tx("pause.world.text.traffic_and_people"), people),
+        (tx("pause.world.text.tools"), tools),
     ]
 }
 
@@ -1404,7 +1410,7 @@ pub(crate) fn page_titles(app: &App, kind: &ListKind) -> Option<(Vec<String>, us
     }
     let (pages, tab) = pages_of(app, kind)?;
     let r = (
-        pages.iter().map(|p| p.0.to_string()).collect::<Vec<_>>(),
+        pages.iter().map(|p| p.0.clone()).collect::<Vec<_>>(),
         tab,
     );
     TITLES.with(|c| {
