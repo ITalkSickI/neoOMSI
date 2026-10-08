@@ -22,6 +22,7 @@ pub struct WorldRow {
     pub frac: f32,
     pub tag: String,
     pub meter: Option<f32>,
+    /// The meter is a pedal (0 .. 1, filling from the left), not centred (-1 .. 1).
     pub meter_one_sided: bool,
 }
 
@@ -178,6 +179,7 @@ impl Ui {
                     || at(&self.world_groups_rc)
                     || at(&self.world_sub_rc)
                     || at(&self.world_rows_rc)
+                    || self.world_clear.iter().any(|(_, r)| at(&[*r]))
                     || at(&self.world_drop_rc)
             }
         };

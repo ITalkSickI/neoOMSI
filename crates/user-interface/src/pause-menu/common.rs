@@ -39,6 +39,7 @@ impl Ui {
         self.world_sub_rc.clear();
         self.world_rows_rc.clear();
         self.world_tracks.clear();
+        self.world_clear.clear();
         self.world_drop_rc.clear();
 
         let groups = if self.world_view_page == page { self.world_view.clone() } else { Vec::new() };
@@ -341,12 +342,25 @@ impl Ui {
                         'c' => [235, 150, 60, 255],
                         _ => MUTED,
                     };
+                    // a key binding that is set: a small x behind it takes the key away
+                    let mut vr = rx;
+                    if kind == 'k' && live && row.value != t("pause.page.keys.not_set") {
+                        let xw = 22.0 * u;
+                        let xr = [rx - xw, ry, rx + pad * 0.5, ry + row_h];
+                        let hx = inside(xr, f.cursor) && !busy;
+                        let xv = self.ease((215, "keyx", n), if hx { 1.0 } else { 0.0 }, 10.0);
+                        let xl = self.text.label(r, scene, "\u{d7}", (18.0 * u) as u32, plain(mix([110, 113, 120, 255], [235, 90, 80, 255], xv)));
+                        xl.place(scene, rx - xw * 0.5 - xl.w as f32 * 0.5, ry + (row_h - xl.h as f32) * 0.5);
+                        self.world_clear.push((n, xr));
+                        vr = rx - xw - 6.0 * u;
+                        ctl_w = xw + 6.0 * u;
+                    }
                     let txt = clip_to(&self.text, &value.to_uppercase(), vpx as f32, mid_w * 0.4);
                     if !txt.is_empty() {
                         let vw = self.text.width(&txt, vpx as f32);
                         let vl = self.text.label(r, scene, &txt, vpx, plain(col));
-                        vl.place(scene, rx - vw, ry + (row_h - vl.h as f32) * 0.5);
-                        ctl_w = vw;
+                        vl.place(scene, vr - vw, ry + (row_h - vl.h as f32) * 0.5);
+                        ctl_w += vw;
                     }
                 }
             }

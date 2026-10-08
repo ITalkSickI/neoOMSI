@@ -168,6 +168,37 @@ impl App {
         }
     }
 
+    fn lab_key_clear(&mut self, id: &str) {
+        let mut it = id.splitn(4, ' ');
+        if it.next() != Some("keybind") {
+            return;
+        }
+        if let (Some(sec), Some(idx), Some(name)) = (
+            it.next().and_then(|x| x.parse::<usize>().ok()),
+            it.next().and_then(|x| x.parse::<usize>().ok()),
+            it.next(),
+        ) {
+            let name = name.to_string();
+            self.keybind_edit(sec, idx, &name, crate::game_menu::KeyEdit::Clear);
+        }
+    }
+
+    /// Delete / Backspace on the key binding under the mouse.
+    fn lab_key_clear_hovered(&mut self) {
+        let (x, y) = self.cursor;
+        let Some(u) = self.ui.as_ref() else {
+            return;
+        };
+        let Some(i) = u.world_rows_rc.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]) else {
+            return;
+        };
+        let (k, g, sub) = (u.world_first + i, u.world_group, u.world_sub);
+        let groups = self.lab_world_raw();
+        if let Some((_, id)) = pick_row(&groups, g, sub, k) {
+            self.lab_key_clear(&id);
+        }
+    }
+
     fn lab_world_click(&mut self) {
         let (x, y) = self.cursor;
         let hit = |list: &[[f32; 4]]| list.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]);
@@ -177,6 +208,18 @@ impl App {
         }
         if self.key_search {
             self.key_search_stop();
+        }
+
+        let clear = self.ui.as_ref().and_then(|u| {
+            let r = u.world_clear.iter().find(|(_, r)| hit(&[*r]).is_some())?;
+            Some((r.0, u.world_group, u.world_sub))
+        });
+        if let Some((k, g, sub)) = clear {
+            let groups = self.lab_world_raw();
+            if let Some((_, id)) = pick_row(&groups, g, sub, k) {
+                self.lab_key_clear(&id);
+            }
+            return;
         }
         let Some(u) = self.ui.as_mut() else {
             return;
@@ -1151,6 +1194,7 @@ impl App {
         match code {
             KeyCode::Escape if self.lab_map_direct => self.close_game_menu(),
             KeyCode::Escape => self.lab_menu = Some(PauseState { page: None, ..st }),
+            KeyCode::Delete | KeyCode::Backspace => self.lab_key_clear_hovered(),
             KeyCode::ArrowLeft | KeyCode::KeyA | KeyCode::KeyQ => {
                 self.lab_menu = to((tab + n - 1) % n)
             }
