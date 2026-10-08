@@ -444,8 +444,7 @@ impl App {
         let Some(p) = self.player.as_ref() else {
             return Vec::new();
         };
-        let bound: Vec<String> = omsi_launcher_lib::get_keybindings()
-            .ok()
+        let bound: Vec<String> = crate::keys::keybindings()
             .and_then(|v| {
                 v.get("vehicles")?.as_array().map(|a| {
                     a.iter()
@@ -545,6 +544,7 @@ impl App {
 
     /// Reads `keyboard.cfg` anew into what the running game uses.
     fn reload_keys(&mut self) {
+        crate::keys::keybindings_changed();
         let path = crate::startup::keyboard_cfg(&self.args.root);
         self.game_keys = ::content::KeyboardCfg::load(&path)
             .unwrap_or_default()

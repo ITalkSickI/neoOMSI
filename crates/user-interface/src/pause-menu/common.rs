@@ -42,7 +42,7 @@ impl Ui {
         self.world_clear.clear();
         self.world_drop_rc.clear();
 
-        let groups = if self.world_view_page == page { self.world_view.clone() } else { Vec::new() };
+        let groups = if self.world_view_page == page { self.world_view.clone() } else { Default::default() };
         if groups.is_empty() {
             return;
         }

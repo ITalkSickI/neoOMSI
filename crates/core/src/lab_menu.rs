@@ -40,6 +40,8 @@ fn view_rows(rows: &[(String, String)]) -> Vec<WorldRow> {
 }
 
 thread_local! {
+    static SYNC: std::cell::Cell<Option<(std::time::Instant, Option<usize>)>> = const { std::cell::Cell::new(None) };
+    static SYNC_NOW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static ADMIN_CACHE: std::cell::RefCell<Option<(std::time::Instant, Vec<(String, String)>)>> = const { std::cell::RefCell::new(None) };
 }
 
@@ -125,6 +127,23 @@ impl App {
         }
     }
 
+    fn lab_sync_due(&self) -> bool {
+        let page = self.lab_group_page();
+        let live = self.ui.as_ref().is_some_and(|u| {
+            u.world_drag.is_some() || u.world_bar_grab.is_some() || (page == Some(OPTIONS_PAGE) && u.world_sub >= 2)
+        });
+        let forced = SYNC_NOW.with(|c| c.replace(false));
+        SYNC.with(|c| {
+            let due = live
+                || forced
+                || c.get().map_or(true, |(t, p)| p != page || t.elapsed() >= std::time::Duration::from_millis(100));
+            if due {
+                c.set(Some((std::time::Instant::now(), page)));
+            }
+            due
+        })
+    }
+
     fn lab_world_sync(&mut self) {
         let shown = self.lab_group_page();
         let on = shown.is_some();
@@ -162,7 +181,7 @@ impl App {
                 u.world_drag = None;
                 u.world_drop = None;
             }
-            u.world_view = view;
+            u.world_view = std::sync::Arc::new(view);
             u.world_view_page = shown.unwrap_or(usize::MAX);
             crate::lab_pads::set_tab(u.world_sub);
         }
@@ -200,6 +219,7 @@ impl App {
     }
 
     fn lab_world_click(&mut self) {
+        SYNC_NOW.with(|c| c.set(true));
         let (x, y) = self.cursor;
         let hit = |list: &[[f32; 4]]| list.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]);
 
@@ -209,7 +229,6 @@ impl App {
         if self.key_search {
             self.key_search_stop();
         }
-
         let clear = self.ui.as_ref().and_then(|u| {
             let r = u.world_clear.iter().find(|(_, r)| hit(&[*r]).is_some())?;
             Some((r.0, u.world_group, u.world_sub))
@@ -469,7 +488,9 @@ impl App {
         if let Some(u) = self.ui.as_mut() {
             u.admin_visible = admin;
         }
-        self.lab_world_sync();
+        if self.lab_sync_due() {
+            self.lab_world_sync();
+        }
         if self.lab_menu.is_none() {
             return;
         }
@@ -1079,6 +1100,7 @@ impl App {
     }
 
     pub(crate) fn lab_key(&mut self, code: KeyCode) {
+        SYNC_NOW.with(|c| c.set(true));
         let n = self.lab_pages();
         let st = self.lab_menu.unwrap_or_default();
         if self.lab_load.is_some() {
@@ -1211,6 +1233,7 @@ impl App {
     }
 
     pub(crate) fn lab_click(&mut self, event_loop: &ActiveEventLoop) {
+        SYNC_NOW.with(|c| c.set(true));
         let (x, y) = self.cursor;
         let st = self.lab_menu.unwrap_or_default();
         let hit = |list: &[[f32; 4]]| {

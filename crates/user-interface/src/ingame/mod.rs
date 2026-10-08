@@ -99,7 +99,7 @@ pub struct Ui {
     pub dialog_preview: Option<Preview>,
     pub dialog_tall: bool,
     pub pause_entries: Vec<String>,
-    pub world_view: Vec<WorldGroup>,
+    pub world_view: std::sync::Arc<Vec<WorldGroup>>,
     pub world_view_page: usize,
     pub world_last_page: usize,
     pub world_groups_rc: Vec<[f32; 4]>,

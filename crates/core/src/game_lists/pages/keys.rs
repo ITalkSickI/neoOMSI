@@ -3,7 +3,7 @@
 use super::*;
 
 pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
-    let Ok(v) = omsi_launcher_lib::get_keybindings() else {
+    let Some(v) = crate::keys::keybindings() else {
         return vec![(
             row(&tx("pause.page.keys.load_error"), 'i', "", "", None),
             "noop".to_string(),

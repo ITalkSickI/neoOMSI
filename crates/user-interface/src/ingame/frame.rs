@@ -49,7 +49,7 @@ impl Ui {
             dialog_preview: None,
             dialog_tall: false,
             pause_entries: Vec::new(),
-            world_view: Vec::new(),
+            world_view: Default::default(),
             world_view_page: usize::MAX,
             world_last_page: usize::MAX,
             world_groups_rc: Vec::new(),
