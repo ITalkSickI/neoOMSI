@@ -621,6 +621,9 @@ fn cfg_toggle(ui: &mut Ui, r: Rect, label: &str, key: &str) {
     let mut v = ::config::get_bool("graphics", key).unwrap_or(false);
     if ui.toggle(&format!("set-{key}"), r, &mut v, label) {
         ::config::set_setting("graphics", key, v);
+        if key == "triple_screen" && v {
+            ::config::set_setting("graphics", "window_mode", "windowed");
+        }
         let _ = ::config::save();
     }
 }

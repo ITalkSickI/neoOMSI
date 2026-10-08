@@ -181,12 +181,13 @@ impl App {
         ) else {
             return true;
         };
-        let (o, d) = cursor_ray(
+        let (o, d) = cursor_ray_with_zoom(
             cam,
             self.cursor.0,
             self.cursor.1,
             s.config.width as f32,
             s.config.height as f32,
+            self.view_zoom.get(&self.view).copied().unwrap_or(1.0),
         );
         let ed = self.editor.as_mut().unwrap();
         let on_added = ed
@@ -218,12 +219,13 @@ impl App {
         ) else {
             return;
         };
-        let (o, d) = cursor_ray(
+        let (o, d) = cursor_ray_with_zoom(
             cam,
             self.cursor.0,
             self.cursor.1,
             s.config.width as f32,
             s.config.height as f32,
+            self.view_zoom.get(&self.view).copied().unwrap_or(1.0),
         );
         let Some(hit) = crate::placing::ground_hit(&world, o, d.as_dvec3(), 400.0) else {
             return;

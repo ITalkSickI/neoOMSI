@@ -120,7 +120,18 @@ pub(crate) fn pixel_angle(cam: &Camera, height: f32) -> f32 {
 
 /// World-space ray through a window pixel: (camera position, unit direction).
 pub(crate) fn cursor_ray(cam: &Camera, x: f32, y: f32, w: f32, h: f32) -> (DVec3, Vec3) {
-    if let Some(views) = triple_screen_cameras(cam, w.max(0.0) as u32, h.max(0.0) as u32) {
+    cursor_ray_with_zoom(cam, x, y, w, h, 1.0)
+}
+
+pub(crate) fn cursor_ray_with_zoom(
+    cam: &Camera,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    zoom: f32,
+) -> (DVec3, Vec3) {
+    if let Some(views) = triple_screen_cameras(cam, w.max(0.0) as u32, h.max(0.0) as u32, zoom) {
         let panel_width = w / 3.0;
         let panel = ((x / panel_width).floor() as usize).min(2);
         let local_x = x - panel as f32 * panel_width;
@@ -157,6 +168,7 @@ pub(crate) fn triple_screen_cameras(
     camera: &Camera,
     width: u32,
     height: u32,
+    zoom: f32,
 ) -> Option<TripleScreenViews> {
     if width == 0
         || height == 0
@@ -182,6 +194,12 @@ pub(crate) fn triple_screen_cameras(
     let eye_height = ::config::get_float("graphics", "triple_screen_eye_height_mm")
         .unwrap_or(0.0)
         .clamp(-400.0, 400.0) as f32;
+    let base_fov = ::config::get_float("camera", "fov")
+        .filter(|fov| *fov >= 20.0)
+        .unwrap_or(60.0)
+        .min(120.0) as f32;
+    let current_fov = (base_fov * zoom.clamp(0.2, 1.6)).clamp(8.0, 120.0);
+    let zoom_scale = (current_fov.to_radians() * 0.5).tan() / (base_fov.to_radians() * 0.5).tan();
     let left_angle = ::config::get_float("graphics", "triple_screen_left_angle")
         .unwrap_or(30.0)
         .clamp(0.0, TRIPLE_SCREEN_MAX_INWARD_ANGLE_DEG as f64) as f32;
@@ -199,8 +217,11 @@ pub(crate) fn triple_screen_cameras(
         let angle = angles[panel].to_radians();
         let (sin, cos) = angle.sin_cos();
         let tangent = base_right * cos - base_forward * sin;
-        let panel_forward = base_forward * cos + base_right * sin;
-        let panel_right = base_right * cos - base_forward * sin;
+        let screen_right = zoom_direction(tangent, base_forward, base_right, base_up, zoom_scale);
+        let screen_up = zoom_direction(base_up, base_forward, base_right, base_up, zoom_scale);
+        let panel_forward = screen_up.cross(screen_right).normalize_or_zero();
+        let panel_up = screen_up.normalize_or_zero();
+        let panel_right = panel_forward.cross(panel_up).normalize_or_zero();
         let centre = match panel {
             0 => {
                 base_right * (-half_width - bezel - half_width * cos)
@@ -217,28 +238,22 @@ pub(crate) fn triple_screen_cameras(
         panel_camera.pitch = panel_forward.z.clamp(-1.0, 1.0).asin().to_degrees();
         let level_right = Vec3::new(panel_forward.y, -panel_forward.x, 0.0).normalize_or_zero();
         let level_up = level_right.cross(panel_forward).normalize_or_zero();
-        panel_camera.roll = base_up
+        panel_camera.roll = panel_up
             .dot(level_right)
-            .atan2(base_up.dot(level_up))
+            .atan2(panel_up.dot(level_up))
             .to_degrees();
-        if panel_camera.roll.abs() < 1e-4 && (base_up - Vec3::Z).length() > 1e-4 {
+        if panel_camera.roll.abs() < 1e-4 && (panel_up - Vec3::Z).length() > 1e-4 {
             panel_camera.roll = 1e-4;
         }
-        let mut left = f32::INFINITY;
-        let mut right_edge = f32::NEG_INFINITY;
-        let mut bottom = f32::INFINITY;
-        let mut top = f32::NEG_INFINITY;
-        for x in [-half_width, half_width] {
-            for z in [-half_height, half_height] {
-                let corner = centre + tangent * x + base_up * z;
-                let relative = corner;
-                let depth = relative.dot(panel_forward).max(1.0);
-                left = left.min(relative.dot(panel_right) / depth);
-                right_edge = right_edge.max(relative.dot(panel_right) / depth);
-                bottom = bottom.min(relative.dot(base_up) / depth);
-                top = top.max(relative.dot(base_up) / depth);
-            }
-        }
+        let corners = [
+            centre - tangent * half_width - base_up * half_height,
+            centre + tangent * half_width - base_up * half_height,
+            centre - tangent * half_width + base_up * half_height,
+            centre + tangent * half_width + base_up * half_height,
+        ]
+        .map(|corner| zoom_direction(corner, base_forward, base_right, base_up, zoom_scale));
+        let (left, right_edge, bottom, top) =
+            panel_frustum_bounds(corners, panel_forward, panel_right, panel_up);
         panel_camera.fov_deg = (top.abs().max(bottom.abs()) * 2.0).atan().to_degrees();
         cameras[panel] = panel_camera;
         projections[panel] = reverse_z_frustum(
@@ -256,6 +271,35 @@ pub(crate) fn triple_screen_cameras(
     })
 }
 
+fn zoom_direction(ray: Vec3, forward: Vec3, right: Vec3, up: Vec3, scale: f32) -> Vec3 {
+    forward * ray.dot(forward) + right * ray.dot(right) * scale + up * ray.dot(up) * scale
+}
+
+fn panel_frustum_bounds(
+    corners: [Vec3; 4],
+    forward: Vec3,
+    right: Vec3,
+    up: Vec3,
+) -> (f32, f32, f32, f32) {
+    corners.into_iter().fold(
+        (
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ),
+        |(left, right_edge, bottom, top), corner| {
+            let depth = corner.dot(forward).max(1.0);
+            (
+                left.min(corner.dot(right) / depth),
+                right_edge.max(corner.dot(right) / depth),
+                bottom.min(corner.dot(up) / depth),
+                top.max(corner.dot(up) / depth),
+            )
+        },
+    )
+}
+
 fn reverse_z_frustum(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Mat4 {
     let projection_near = far;
     glam::camera::rh::proj::directx::frustum(
@@ -270,7 +314,138 @@ fn reverse_z_frustum(left: f32, right: f32, bottom: f32, top: f32, near: f32, fa
 
 #[cfg(test)]
 mod tests {
-    use super::reverse_z_frustum;
+    use super::{panel_frustum_bounds, reverse_z_frustum, zoom_direction};
+    use glam::Vec3;
+
+    #[test]
+    fn triple_screen_zoom_is_shared_by_rays_at_monitor_joins() {
+        let forward = Vec3::Y;
+        let right = Vec3::X;
+        let up = Vec3::Z;
+        let half_width = 345.0;
+        let distance = 400.0;
+        let angle = 30.0f32.to_radians();
+        let (sin, cos) = angle.sin_cos();
+        let left_centre =
+            right * (-half_width - half_width * cos) + forward * (distance - half_width * sin);
+        let left_tangent = right * cos + forward * sin;
+        let centre_centre = forward * distance;
+        let side_corners = [
+            left_centre - left_tangent * half_width - up * half_width,
+            left_centre + left_tangent * half_width - up * half_width,
+            left_centre - left_tangent * half_width + up * half_width,
+            left_centre + left_tangent * half_width + up * half_width,
+        ]
+        .map(|corner| zoom_direction(corner, forward, right, up, 0.5));
+        let centre_corners = [
+            centre_centre - right * half_width - up * half_width,
+            centre_centre + right * half_width - up * half_width,
+            centre_centre - right * half_width + up * half_width,
+            centre_centre + right * half_width + up * half_width,
+        ]
+        .map(|corner| zoom_direction(corner, forward, right, up, 0.5));
+        let side_screen_right = zoom_direction(left_tangent, forward, right, up, 0.5);
+        let side_screen_up = zoom_direction(up, forward, right, up, 0.5);
+        let side_up = side_screen_up.normalize();
+        let side_forward = side_screen_up.cross(side_screen_right).normalize();
+        let side_right = side_forward.cross(side_up).normalize();
+        let centre_forward = forward;
+        let (side_left, side_right_edge, side_bottom, side_top) =
+            panel_frustum_bounds(side_corners, side_forward, side_right, side_up);
+        let (centre_left, centre_right, centre_bottom, centre_top) =
+            panel_frustum_bounds(centre_corners, centre_forward, right, up);
+        let side_inner_top = side_corners[3];
+        let centre_left_top = centre_corners[2];
+
+        assert!((side_inner_top - centre_left_top).length() < 1e-6);
+        assert!(
+            (ndc(
+                side_inner_top,
+                side_forward,
+                side_right,
+                up,
+                side_left,
+                side_right_edge,
+                side_bottom,
+                side_top
+            )
+            .0 - 1.0)
+                .abs()
+                < 1e-5
+        );
+        assert!(
+            (ndc(
+                centre_left_top,
+                centre_forward,
+                right,
+                up,
+                centre_left,
+                centre_right,
+                centre_bottom,
+                centre_top
+            )
+            .0 + 1.0)
+                .abs()
+                < 1e-5
+        );
+        assert!(
+            (ndc(
+                side_inner_top,
+                side_forward,
+                side_right,
+                side_up,
+                side_left,
+                side_right_edge,
+                side_bottom,
+                side_top
+            )
+            .1 - 1.0)
+                .abs()
+                < 1e-5
+        );
+        assert!(
+            (ndc(
+                centre_left_top,
+                centre_forward,
+                right,
+                up,
+                centre_left,
+                centre_right,
+                centre_bottom,
+                centre_top
+            )
+            .1 - 1.0)
+                .abs()
+                < 1e-5
+        );
+    }
+
+    #[test]
+    fn triple_screen_zoom_one_preserves_physical_rays() {
+        let ray = Vec3::new(0.3, 0.8, 0.5).normalize();
+        let projected = zoom_direction(ray, Vec3::Y, Vec3::X, Vec3::Z, 1.0).normalize();
+
+        assert!((projected - ray).length() < 1e-6);
+    }
+
+    fn ndc(
+        point: Vec3,
+        forward: Vec3,
+        right: Vec3,
+        up: Vec3,
+        left: f32,
+        right_edge: f32,
+        bottom: f32,
+        top: f32,
+    ) -> (f32, f32) {
+        let depth = point.dot(forward);
+        let x = point.dot(right) / depth;
+        let y = point.dot(up) / depth;
+        (
+            (2.0 * x - left - right_edge) / (right_edge - left),
+            (2.0 * y - bottom - top) / (top - bottom),
+        )
+    }
 
     #[test]
     fn reverse_z_frustum_preserves_panel_view_angles() {

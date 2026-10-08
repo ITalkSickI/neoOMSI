@@ -879,7 +879,7 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
             let _ = ::config::save();
             None
         }
-        "triple_screen" | "triple_screen_span" | "triple_screen_hud" => {
+        "triple_screen_span" | "triple_screen_hud" => {
             ::config::set_setting("graphics", id, on);
             let _ = ::config::save();
             None

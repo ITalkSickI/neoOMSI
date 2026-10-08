@@ -29,6 +29,7 @@ impl App {
                 .surface
                 .as_ref()
                 .is_some_and(|s| s.config.width >= s.config.height.saturating_mul(2));
+        let triple_zoom = self.view_zoom.get(&self.view).copied().unwrap_or(1.0);
         let crosshair = !screenshot_mode
             && ::config::get_bool("camera", "crosshair").unwrap_or(true)
             && !matches!(self.view.as_str(), "pax" | "outside")
@@ -240,7 +241,12 @@ impl App {
                 ui.chat.hidden = self.remotes.chat.hidden;
                 let triple_views = if triple_hud {
                     self.camera.as_ref().and_then(|camera| {
-                        camera_util::triple_screen_cameras(camera, s.config.width, s.config.height)
+                        camera_util::triple_screen_cameras(
+                            camera,
+                            s.config.width,
+                            s.config.height,
+                            triple_zoom,
+                        )
                     })
                 } else {
                     None
@@ -808,7 +814,12 @@ impl App {
                     let xr_active = false;
                     if !xr_active
                         && let Some(views) =
-                            camera_util::triple_screen_cameras(cam, s.config.width, s.config.height)
+                            camera_util::triple_screen_cameras(
+                                cam,
+                                s.config.width,
+                                s.config.height,
+                                triple_zoom,
+                            )
                     {
                         r.render_triple(
                             scene,

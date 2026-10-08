@@ -90,12 +90,13 @@ impl App {
         ) else {
             return;
         };
-        let (o, d) = crate::camera_util::cursor_ray(
+        let (o, d) = crate::camera_util::cursor_ray_with_zoom(
             cam,
             self.cursor.0,
             self.cursor.1,
             s.config.width as f32,
             s.config.height as f32,
+            self.view_zoom.get(&self.view).copied().unwrap_or(1.0),
         );
         let hit = ground_hit(&w, o, d.as_dvec3(), 400.0);
         // in another vehicle (the own bus, the traffic, another placed one)?

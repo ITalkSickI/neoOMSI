@@ -813,12 +813,13 @@ impl App {
         {
             return (ray.0, ray.1, ray.2 * 6.0);
         }
-        let (o, d) = cursor_ray(
+        let (o, d) = cursor_ray_with_zoom(
             cam,
             self.cursor.0,
             self.cursor.1,
             size.0 as f32,
             size.1 as f32,
+            self.view_zoom.get(&self.view).copied().unwrap_or(1.0),
         );
         (o, d, pixel_angle(cam, size.1 as f32) * 6.0)
     }
