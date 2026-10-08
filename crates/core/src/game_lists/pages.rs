@@ -531,8 +531,8 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         slider_row(
             app,
             "triple_screen_bezel_mm",
-            "Frame width at each join",
-            "Width of the monitor frames at each join",
+            "Frame gap or overlap at each join",
+            "Positive values leave room for monitor frames; negative values overlap adjacent views",
             &|v| format!("{v:.0} mm"),
         ),
         slider_row(

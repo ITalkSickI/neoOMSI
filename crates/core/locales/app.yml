@@ -1444,10 +1444,10 @@ _version: 2
   de: "Augenabstand zum mittleren Bildschirm"
 "Distance from your eyes to the middle monitor":
   de: "Abstand der Augen zum mittleren Monitor"
-"Frame width at each join":
-  de: "Rahmenbreite an den Übergängen"
-"Width of the monitor frames at each join":
-  de: "Breite der Monitorrahmen an den Übergängen"
+"Frame gap or overlap at each join":
+  de: "Rahmenabstand oder Überlappung an den Übergängen"
+"Positive values leave room for monitor frames; negative values overlap adjacent views":
+  de: "Positive Werte berücksichtigen Monitorrahmen; negative Werte überlappen benachbarte Ansichten"
 "Left screen inward angle":
   de: "Einwärtswinkel des linken Bildschirms"
 "Angle of the left monitor toward you":
