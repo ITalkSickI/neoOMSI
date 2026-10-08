@@ -92,7 +92,7 @@ pub struct TripTimes {
     pub stops: Vec<bool>,
     /// `[profile_otherstopping]` per station (0 when not given): 1 and 4 stop whoever
     /// wants to get on or off, 2 is passed, 3 is served when the bus would be more than 20 s
-    /// early (Omsi.exe 0x7da6f0 .. 0x7da8bf; see `bus_service::BusService::must_serve`).
+    /// early (Omsi.exe 0x7da6f0 .. 0x7da8bf; see `traffic::service::ServiceCoordinator`).
     pub kinds: Vec<u8>,
     /// Seconds from the departure to the arrival at the last station.
     pub duration: f64,
@@ -2821,7 +2821,7 @@ impl Schedule {
         // on its layover only when it stands at its first stop now (the trip's first station
         // may lie on a part of the track that is not loaded): it waits there for its departure
         if let Some(b) = car.bus.as_mut() {
-            b.layover = departure > day_time
+            b.state.layover = departure > day_time
                 && b.stops
                     .front()
                     .map(|st| st.route_index == 0 && (st.s - s).abs() < 2.0)
@@ -4303,7 +4303,7 @@ impl Schedule {
                     OnRoad {
                         next,
                         dwelling: car.at_stop(),
-                        late: car.bus.as_ref().map(|b| b.delay).unwrap_or(0.0).max(0.0),
+                        late: car.bus.as_ref().map(|b| b.state.delay).unwrap_or(0.0).max(0.0),
                     },
                 );
             }
