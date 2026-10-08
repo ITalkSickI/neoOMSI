@@ -1,4 +1,4 @@
-//! The lab pause menu
+//! The pause menu
 
 use super::*;
 use crate::ui::{Dialog, PauseState, WorldDrop, WorldGroup, WorldRow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, VEHICLE_PAGE, WORLD_PAGE};
@@ -541,6 +541,15 @@ impl App {
     pub(crate) fn lab_dialog_wheel(&mut self, amount: f32) -> bool {
         if self.lab_list.is_none() {
             return false;
+        }
+        let (cx, cy) = self.cursor;
+        if let Some(u) = self.ui.as_mut() {
+            let r = u.dialog_pane_rc;
+            if u.dialog_pane_max > 0 && cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3] {
+                let top = (u.dialog_pane_top.unwrap_or(0) as f32 - amount * 2.0).clamp(0.0, u.dialog_pane_max as f32).round() as usize;
+                u.dialog_pane_top = Some(top);
+                return true;
+            }
         }
         let vis = self.ui.as_ref().map_or(1, |u| u.dialog_vis);
         if let Some(Dialog::Select { scroll, options, .. }) = self.ui.as_mut().and_then(|u| u.dialog.as_mut()) {

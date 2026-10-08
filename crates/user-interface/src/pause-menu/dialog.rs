@@ -31,6 +31,8 @@ impl Ui {
         let Metrics { w, h, u, line, .. } = m;
         self.dialog_rects.clear();
         self.dialog_back_rc = [0.0; 4];
+        self.dialog_pane_rc = [0.0; 4];
+        self.dialog_pane_max = 0;
         self.menu_pane.clear();
         self.menu_pane_go = None;
         self.menu_time.clear();
@@ -190,13 +192,14 @@ impl Ui {
 
         if back {
             let rc = [bx, y + bh - pad - btn_h, bx + inner, y + bh - pad];
-            self.dialog_button(r, scene, f, m, rc, &t("pause.dialog.back"), 22, false);
+            self.dialog_button(r, scene, f, m, rc, &t("pause.dialog.back"), 23, false);
             self.dialog_back_rc = rc;
         }
 
         if pane > 0.0 {
             let px0 = x + bw - pane;
             self.text.rounded(r, scene, [px0, y + 3.0 * u, px0 + line, y + bh], 0.0, BORDER);
+            self.dialog_pane_rc = [px0, y, x + bw, y + bh];
             if let Some(p) = self.dialog_preview.clone() {
                 let (lx, rx) = (px0 + 18.0 * u, x + bw - pad);
                 let mut ty = y + pad;
@@ -225,33 +228,65 @@ impl Ui {
                 let total = p.rows.len();
                 let fit = (((bottom - ty) / rh) as usize).max(1);
                 let n = fit.min(total);
-                let first = match p.chosen {
-                    Some(c) if total > fit => c.saturating_sub(fit / 2).min(total - fit),
-                    _ => 0,
-                };
+                if self.dialog_pane_key != p.title {
+                    self.dialog_pane_key = p.title.clone();
+                    self.dialog_pane_top = None;
+                    self.dialog_pane_pos = 0.0;
+                }
+                let max_first = total.saturating_sub(fit);
+                let target = self.dialog_pane_top.unwrap_or(0).min(max_first);
+                let mut pos = self.dialog_pane_pos.clamp(0.0, max_first as f32);
+                if (target as f32 - pos).abs() < 0.01 {
+                    pos = target as f32;
+                } else {
+                    pos += (target as f32 - pos) * (1.0 - (-18.0 * self.anim_dt).exp());
+                }
+                self.dialog_pane_pos = pos;
+                self.dialog_pane_max = max_first;
+                let first = (pos.floor() as usize).min(max_first);
+                let frac = pos - first as f32;
                 self.menu_pane_start = first;
-                for (i, (what, when)) in p.rows.iter().enumerate().skip(first).take(n) {
-                    let rc = [lx - 8.0 * u, ty, rx + 4.0 * u, ty + rh];
+                let (list_top, view_end) = (ty, ty + rh * n as f32);
+                if max_first > 0 {
+                    let tx = x + bw - 10.0 * u;
+                    let th = view_end - list_top;
+                    self.text.rounded(r, scene, [tx, list_top, tx + 4.0 * u, view_end], 0.0, [34, 36, 42, 255]);
+                    let by = list_top + th * pos / total as f32;
+                    self.text.rounded(r, scene, [tx, by, tx + 4.0 * u, by + th * fit as f32 / total as f32], 0.0, ACCENT);
+                }
+                for (i, (what, when)) in p.rows.iter().enumerate().skip(first).take(n + 1) {
+                    let ry = list_top + rh * (i - first) as f32 - rh * frac;
+                    // rows leaving at the top or the bottom fade out
+                    let edge = ((ry + rh - list_top) / rh).min((view_end - ry) / rh).clamp(0.0, 1.0);
+                    if edge <= 0.03 {
+                        if pick {
+                            self.menu_pane.push([0.0; 4]);
+                        }
+                        continue;
+                    }
+                    let rc = [lx - 8.0 * u, ry.max(list_top), rx + 4.0 * u, (ry + rh).min(view_end)];
                     if pick {
                         let on = p.chosen == Some(i);
                         let hot = inside(rc, f.cursor);
                         if on || hot {
-                            self.text.rounded(r, scene, rc, 0.0, if on { [46, 49, 57, 255] } else { [34, 36, 42, 255] });
+                            self.text.rounded(r, scene, rc, 0.0, fade(if on { [46, 49, 57, 255] } else { [34, 36, 42, 255] }, edge));
                         }
                         if on {
-                            self.text.rounded(r, scene, [rc[0], rc[1], rc[0] + 3.0 * u, rc[3]], 0.0, ACCENT);
+                            self.text.rounded(r, scene, [rc[0], rc[1], rc[0] + 3.0 * u, rc[3]], 0.0, fade(ACCENT, edge));
                         }
                         self.menu_pane.push(rc);
                     }
+                    self.text.alpha = edge;
                     let tw = self.text.width(when, 14.0 * u);
                     let name = clip_to(&self.text, what, 14.0 * u, (rx - lx - tw - 14.0 * u).max(20.0 * u));
                     let l = self.text.label(r, scene, &name, (14.0 * u) as u32, if p.chosen == Some(i) { WHITE } else { SOFT });
-                    l.place(scene, lx, ty + (rh - l.h as f32) * 0.5);
+                    l.place(scene, lx, ry + (rh - l.h as f32) * 0.5);
                     let tl = self.text.label(r, scene, when, (14.0 * u) as u32, WHITE);
-                    tl.place(scene, rx - tl.w as f32, ty + (rh - tl.h as f32) * 0.5);
-                    self.text.rounded(r, scene, [lx, ty + rh - line, rx, ty + rh], 0.0, [34, 36, 42, 255]);
-                    ty += rh;
+                    tl.place(scene, rx - tl.w as f32, ry + (rh - tl.h as f32) * 0.5);
+                    self.text.alpha = 1.0;
+                    self.text.rounded(r, scene, [lx, ry + rh - line, rx, ry + rh], 0.0, fade([34, 36, 42, 255], edge));
                 }
+                ty = view_end;
                 if !pick && total > n {
                     let more = format!("+ {}", total - n);
                     let l = self.text.label(r, scene, &more, (13.0 * u) as u32, MUTED);
