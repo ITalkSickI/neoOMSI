@@ -472,6 +472,8 @@ pub(crate) const HAT_BUTTONS: usize = 128;
 /// never show up in the system's newer interface that gilrs uses there.
 pub(crate) struct Devices {
     gilrs: Option<Gilrs>,
+    #[cfg(target_os = "linux")]
+    linux_wheels: crate::evdev_axes::Wheels,
     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     calibration_wheel: Option<crate::evdev_ff::Wheel>,
     #[cfg(windows)]
@@ -497,12 +499,20 @@ impl Devices {
             .build()
             .map_err(|e| log::info!("game controllers: {e}"))
             .ok();
+        #[cfg(target_os = "linux")]
+        let linux_wheels = {
+            let mut wheels = crate::evdev_axes::Wheels::new();
+            wheels.poll(gilrs.as_ref());
+            wheels
+        };
         #[cfg(windows)]
         let di = hwnd.and_then(|h| crate::dinput::DirectInput::new(h, ff));
         #[cfg(not(windows))]
         let _ = (hwnd, ff);
         Devices {
             gilrs,
+            #[cfg(target_os = "linux")]
+            linux_wheels,
             #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
             calibration_wheel: None,
             #[cfg(windows)]
@@ -687,6 +697,8 @@ impl Devices {
         if let Some(h) = self.hid.as_mut() {
             self.hid_axes = h.read();
         }
+        #[cfg(target_os = "linux")]
+        self.linux_wheels.poll(self.gilrs.as_ref());
         out
     }
 
@@ -722,9 +734,15 @@ impl Devices {
         }
         let _ = xinput_pads;
         if let Some(g) = self.gilrs.as_ref() {
-            for (_, pad) in g.gamepads() {
+            for (_pad_id, pad) in g.gamepads() {
                 #[allow(unused_mut)]
                 let mut gamepad = pad.mapping_source() != gilrs::MappingSource::None;
+                #[cfg(target_os = "linux")]
+                let wheel_axes = self.linux_wheels.axes(_pad_id);
+                #[cfg(target_os = "linux")]
+                if wheel_axes.is_some() {
+                    gamepad = false;
+                }
                 // (macOS: a device with sliders or the simulation page's axes is a wheel or
                 // pedals, whatever SDL's list calls it - the HORI Truck Control System was
                 // taken as a gamepad: its left stick steered, with a gamepad's dead zone)
@@ -750,6 +768,10 @@ impl Devices {
                     .axes()
                     .map(|(c, d)| (c.into_u32(), d.value()))
                     .collect();
+                #[cfg(target_os = "linux")]
+                if let Some(native) = wheel_axes {
+                    axes = native.to_vec();
+                }
                 // (macOS: the device's own axis elements where it is found among them - two
                 // of one usage stay two)
                 #[cfg(target_os = "macos")]
@@ -771,13 +793,19 @@ impl Devices {
                 } else {
                     di_slots(&axes)
                 };
+                #[allow(unused_mut)]
+                let mut ff = pad.is_ff_supported();
+                #[cfg(target_os = "linux")]
+                if wheel_axes.is_some() {
+                    ff = true;
+                }
                 v.push(Connected {
                     name: pad.name().to_string(),
                     hardware_id: id,
                     axes,
                     gamepad,
-                    ff: pad.is_ff_supported(),
-                    ff_capable: pad.is_ff_supported(),
+                    ff,
+                    ff_capable: ff,
                     buttons,
                 });
             }
@@ -1150,11 +1178,15 @@ impl Controllers {
         // gamepads: the left stick steers, the triggers are the pedals
         let di = self.devices.direct_input();
         if let Some(g) = self.devices.gilrs.as_ref() {
-            for (_, pad) in g.gamepads() {
+            for (_pad_id, pad) in g.gamepads() {
                 // An Xbox-type pad's DirectInput twin is left out on Windows, so the pad is
                 // read here even when gamectrler.cfg names it (#171).
                 let xinput = cfg!(windows) && xinput_name(pad.name());
                 if pad.mapping_source() == gilrs::MappingSource::None {
+                    continue;
+                }
+                #[cfg(target_os = "linux")]
+                if self.devices.linux_wheels.axes(_pad_id).is_some() {
                     continue;
                 }
                 #[cfg(target_os = "macos")]
@@ -2159,6 +2191,21 @@ mod tests {
 #[cfg(test)]
 mod slot_tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn thrustmaster_pedals_keep_z_and_rz_without_rx_or_ry() {
+        let axes = [
+            (0x3_0000, 0.0),
+            (0x3_0001, 1.0),
+            (0x3_0002, 1.0),
+            (0x3_0005, 1.0),
+        ];
+        assert_eq!(
+            di_slots(&axes),
+            [(0, 0.0), (1, 1.0), (2, 1.0), (5, 1.0)]
+        );
+    }
 
     #[test]
     fn a_missing_axis_does_not_shift_the_rest() {
