@@ -10,7 +10,7 @@
   <a href="https://github.com/neoOMSI/neoOMSI/actions/workflows/build.yml"><img alt="Build" height="28" src="https://img.shields.io/github/actions/workflow/status/neoOMSI/neoOMSI/build.yml?branch=main&style=for-the-badge&label=Nightly&labelColor=fd6b00&color=ffffff&logo=github&logoColor=white"></a>
   <a href="https://neoomsi.com/"><img alt="Docs" height="28" src="https://img.shields.io/badge/Docs-Website-ffffff?style=for-the-badge&labelColor=fd6b00&logo=googledocs&logoColor=white"></a>
   <a href="https://github.com/neoOMSI/neoOMSI/releases/latest"><img alt="Release" height="28" src="https://img.shields.io/github/v/release/neoOMSI/neoOMSI?style=for-the-badge&label=Release&labelColor=fd6b00&color=ffffff&logo=rust&logoColor=white"></a>
-  <a href="https://discord.gg/Gk7EngX6JK"><img alt="Discord" height="28" src="https://img.shields.io/badge/Discord-Join%20Chat-ffffff?style=for-the-badge&labelColor=fd6b00&logo=discord&logoColor=white"></a>
+  <a href="https://discord.gg/neoomsi"><img alt="Discord" height="28" src="https://img.shields.io/badge/Discord-Join%20Chat-ffffff?style=for-the-badge&labelColor=fd6b00&logo=discord&logoColor=white"></a>
   <a href="LICENSE"><img alt="License" height="28" src="https://img.shields.io/github/license/neoOMSI/neoOMSI?style=for-the-badge&labelColor=fd6b00&color=ffffff&logo=open-source-initiative&logoColor=white"></a>
 </p>
 
@@ -65,7 +65,7 @@ See [Building](docs/BUILDING.md) for platform prerequisites, dev-release builds,
 
 ## Community
 
-Join our [Discord server](https://discord.gg/Gk7EngX6JK) for questions, discussions, and development updates.
+Join our [Discord server](https://discord.gg/neoomsi) for questions, discussions, and development updates.
 
 ## License and trademarks
 

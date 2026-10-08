@@ -433,7 +433,9 @@ struct VsOut {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) params: vec4<f32>,
-    @location(4) params2: vec4<f32>,
+    // Encoded instance data must stay exact: interpolating lamp code 1 can round it
+    // below 1, where interior_lamps treats it as full scalar cabin brightness.
+    @location(4) @interpolate(flat) params2: vec4<f32>,
     // the D3D material's highlight, lit at the vertex as Omsi.exe's fixed function lights
     // it: from the sun (light A) and from the light above (light B)
     @location(5) spec_sun: vec3<f32>,
@@ -449,7 +451,7 @@ struct FsIn {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) params: vec4<f32>,
-    @location(4) params2: vec4<f32>,
+    @location(4) @interpolate(flat) params2: vec4<f32>,
     @location(5) spec_sun: vec3<f32>,
     @location(6) spec_sky: vec3<f32>,
     @location(7) wipe_uv: vec3<f32>,
@@ -1696,7 +1698,7 @@ fn rain_env_vanilla(d: vec3<f32>) -> vec3<f32> {
     return mix(ground, sky, smoothstep(-0.06, 0.04, d.z));
 }
 
-fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>) -> vec4<f32> {
+fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>, capture: bool) -> vec4<f32> {
     *puddle_weight = 0.0;
     if (material.emissive.w > 1.5) {
         // a pane's film of water: drops, not the sliding texture
@@ -1750,7 +1752,7 @@ fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>) -> vec4<f32> {
     // Tighten the transition around the cutout edge before MSAA turns it into sample
     // coverage. The depth prepass leaves these draws out so its binary cutoff cannot hide
     // the scene behind samples that the colour pass leaves open.
-    if (ALPHA_TEST && mode > 0.5 && mode < 1.5) {
+    if ((ALPHA_TEST || capture) && mode > 0.5 && mode < 1.5) {
         if (ALPHA_TO_COVERAGE) {
             let aa = max(fwidth(tex.a) * 0.5, 1.0 / 255.0);
             if (tex.a < 0.5 - aa) {
@@ -1771,7 +1773,7 @@ fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>) -> vec4<f32> {
     var ao = 1.0;
     // (not on a blended surface: the AO is the opaque depth's, and a translucent door
     // showed the shade of what stood behind it)
-    if (camera.clouds.w > 0.5 && mode < 1.5) {
+    if (camera.clouds.w > 0.5 && mode < 1.5 && !capture) {
         ao = ao_at(in.clip.xy, in.world);
     }
     var diffuse = camera.sun_color.rgb * camera.sun_dir.w * ndl * shadow + (camera.sky_color.rgb * from_above * (0.6 + 0.4 * shadow) + camera.ambient.xyz) * ao;
@@ -2033,5 +2035,5 @@ fn shade_vanilla(in: FsIn, puddle_weight: ptr<function, f32>) -> vec4<f32> {
 @fragment
 fn fs_main(in: FsIn) -> @location(0) vec4<f32> {
     var unused = 0.0;
-    return shade_vanilla(in, &unused);
+    return shade_vanilla(in, &unused, false);
 }

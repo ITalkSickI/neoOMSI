@@ -90,7 +90,7 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     // [graphics]
     ("graphics", "graphics", Def::Str("vanilla_plus")),
     ("graphics", "graphics_api", Def::Str("auto")),
-    ("graphics", "fullscreen", Def::Bool(false)),
+    ("graphics", "window_mode", Def::Str("windowed")),
     ("graphics", "vsync", Def::Bool(true)),
     ("graphics", "max_fps", Def::Int(0)),
     ("graphics", "msaa", Def::Int(4)),
