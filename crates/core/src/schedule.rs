@@ -7,8 +7,8 @@ use hashbrown::{HashMap, HashSet};
 use ::render::{Renderer, Scene};
 use ::simulation::VehicleType;
 use ::simulation::traffic::{
-    LaneId, LaneKey, Network, RouteStatus, RouteStepState, TileState, bridge_gaps, compile_route,
-    joins, way_between,
+    LaneId, LaneKey, Network, Reason, RouteStatus, RouteStepState, TileState, bridge_gaps,
+    compile_route, joins, way_between,
 };
 use ::timetable::TimetableData;
 use std::path::Path;
@@ -2344,6 +2344,10 @@ impl Schedule {
                 "trip {trip_name}: the bus is on a tile that is not loaded (again at {:.2} min)",
                 retry / 60.0
             );
+            // Ask for the tile the bus needs next, so it reaches loaded ground where feasible.
+            if let Some(key) = steps[at].key {
+                traffic.request_topology_tile(key.tile);
+            }
             self.retry_at.insert(i, retry);
             return Placed::Wait;
         }
@@ -2757,7 +2761,7 @@ impl Schedule {
         };
         let tour = self.departures[i].tour.clone();
         let terminus = self.data.trips[self.departures[i].trip].terminus.clone();
-        let Some(ci) = traffic.spawn_bus(
+        let ci = match traffic.spawn_bus(
             world,
             renderer,
             scene,
@@ -2768,8 +2772,13 @@ impl Schedule {
             number.clone(),
             hof.clone(),
             Some(scheme),
-        ) else {
-            return Placed::Drop;
+        ) {
+            Ok(ci) => ci,
+            // A full scheduled budget or a busy entrance is a real, diagnosed wait: the duty
+            // keeps its place and is retried, it is never silently dropped.
+            Err(Reason::AtCapacity) | Err(Reason::EntranceBusy) => return Placed::Busy,
+            // No usable path at all is a content/duty fault, not a capacity wait.
+            Err(_) => return Placed::Drop,
         };
         self.car_departure.insert(traffic.car(ci).id.get(), i);
         if let Some(t) = &turned {
