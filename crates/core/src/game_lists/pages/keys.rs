@@ -74,7 +74,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
         .filter(|(_, n)| {
             q.is_empty()
                 || app.key_capture.is_some_and(|c| c.0 == 2)
-                || names.control(n).to_lowercase().contains(&q)
+                || names.key_label(n).to_lowercase().contains(&q)
                 || n.to_lowercase().contains(&q)
         })
         .collect();
@@ -82,7 +82,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
         any = true;
         out.push(head(&tx("pause.page.keys.group_scripted"), scripted.len()));
         for (i, action) in scripted {
-            let label = names.control(&action);
+            let label = names.key_label(&action);
             let id = format!("keybind 2 {i} {action}");
             if app.key_capture == Some((2, i)) {
                 out.push((
@@ -110,7 +110,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
             .filter(|b| {
                 q.is_empty()
                     || app.key_capture == Some((b.0, b.1))
-                    || names.control(&b.2).to_lowercase().contains(&q)
+                    || names.key_label(&b.2).to_lowercase().contains(&q)
                     || b.2.to_lowercase().contains(&q)
                     || crate::keys::key_name(b.3, b.4).to_lowercase().contains(&q)
             })
@@ -119,7 +119,7 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
             continue;
         }
         // (alphabetical by the name shown)
-        members.sort_by_cached_key(|b| names.control(&b.2).to_lowercase());
+        members.sort_by_cached_key(|b| names.key_label(&b.2).to_lowercase());
         any = true;
         out.push(head(title, members.len()));
         for b in members {
@@ -130,10 +130,10 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
             } else {
                 all.iter()
                     .filter(|o| (o.0, o.1) != (sec, i) && o.3 == scan && (o.4 & 6) == (m & 6))
-                    .map(|o| names.control(&o.2))
+                    .map(|o| names.key_label(&o.2))
                     .collect()
             };
-            let label = names.control(action);
+            let label = names.key_label(action);
             if app.key_capture == Some((sec, i)) {
                 out.push((
                     row(
