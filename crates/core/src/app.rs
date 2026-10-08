@@ -18,6 +18,10 @@ pub(crate) struct App {
     pub(crate) renderer: Option<Renderer>,
     /// Pending size during a resize drag.
     pub(crate) resize_pending: Option<(Instant, winit::dpi::PhysicalSize<u32>)>,
+    pub(crate) pending_triple_screen_span: Option<(
+        winit::dpi::PhysicalPosition<i32>,
+        winit::dpi::PhysicalSize<u32>,
+    )>,
     #[cfg(windows)]
     pub(crate) vr: Option<openxr::Vr>,
     pub(crate) scene: Option<Scene>,
@@ -282,12 +286,7 @@ impl App {
         if let Some(at) = at {
             attrs = attrs.with_position(at);
         }
-        if let Some((position, size)) = span_rect {
-            attrs = attrs
-                .with_decorations(false)
-                .with_position(position)
-                .with_inner_size(size);
-        } else if window_mode == "borderless" {
+        if span_rect.is_none() && window_mode == "borderless" {
             attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
         }
         if ::legacy_config::env::var_os("OMSI_BACKGROUND").is_some() {
@@ -394,6 +393,7 @@ impl App {
             surface.config.present_mode
         );
         let scene = renderer.new_scene();
+        self.pending_triple_screen_span = span_rect;
         self.window = Some(window);
         self.surface = Some(surface);
         self.renderer = Some(renderer);
@@ -406,6 +406,19 @@ impl App {
             self.hud = Some(hud::Hud::new(&mut fonts));
             self.menu = Some(menu::Menu::new(&self.args.root, &self.args.map));
         }
+    }
+
+    fn apply_pending_triple_screen_span(&mut self) {
+        let Some((position, size)) = self.pending_triple_screen_span.take() else {
+            return;
+        };
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        window.set_fullscreen(None);
+        window.set_decorations(false);
+        window.set_outer_position(position);
+        let _ = window.request_inner_size(size);
     }
 
     pub(crate) fn present_splash(&mut self, caption: &str) {
@@ -966,6 +979,7 @@ impl App {
                 self.world = Some(w);
             }
         }
+        self.apply_pending_triple_screen_span();
         self.last = Instant::now();
     }
 
