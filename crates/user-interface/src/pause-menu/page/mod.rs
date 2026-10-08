@@ -8,7 +8,7 @@ mod options;
 mod vehicle;
 mod world;
 
-pub use self::options::{Fmt, OptGroup, OptKind, OptRow, OptShow, OPTION_GROUPS};
+pub use self::options::{Fmt, OPTION_GROUPS, OptGroup, OptKind, OptRow, OptShow};
 
 pub(super) type DrawFn = fn(&mut Ui, &Renderer, &mut Scene, &Frame, Metrics, f32, f32);
 
@@ -17,7 +17,13 @@ pub(super) struct Page {
     pub draw: DrawFn,
 }
 
-pub(super) const PAGES: [Page; 5] = [map::PAGE, options::PAGE, world::PAGE, vehicle::PAGE, admin::PAGE];
+pub(super) const PAGES: [Page; 5] = [
+    map::PAGE,
+    options::PAGE,
+    world::PAGE,
+    vehicle::PAGE,
+    admin::PAGE,
+];
 
 pub const PAGE_COUNT: usize = PAGES.len();
 
@@ -99,13 +105,54 @@ impl Ui {
         let Metrics { u, mx, .. } = m;
         let hs = out(pt / 0.6);
         self.text.alpha = hs;
-        let hl = self.text.label(r, scene, &t(head), (34.0 * u) as u32, WHITE);
+        let hl = self
+            .text
+            .label(r, scene, &t(head), (34.0 * u) as u32, WHITE);
         hl.place(scene, mx - 40.0 * u * (1.0 - hs), y);
         let ns = out((pt - 0.08) / 0.6);
         self.text.alpha = ns;
-        let nl = self.text.label(r, scene, &t(note), (14.0 * u) as u32, MUTED);
+        let nl = self
+            .text
+            .label(r, scene, &t(note), (14.0 * u) as u32, MUTED);
         nl.place(scene, mx - 40.0 * u * (1.0 - ns), y + hl.h as f32);
         self.text.alpha = 1.0;
         y + hl.h as f32 + nl.h as f32 + 18.0 * u
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_indices_match_table() {
+        assert_eq!(PAGE_COUNT, PAGES.len());
+        assert_eq!(PAGES[OPTIONS_PAGE].nav, "pause.page.options.nav");
+        assert!(PAGES[WORLD_PAGE].nav.contains("world"));
+        assert!(PAGES[VEHICLE_PAGE].nav.contains("vehicle"));
+        assert!(PAGES[ADMIN_PAGE].nav.contains("admin"));
+    }
+
+    #[test]
+    fn page_indices_are_distinct_and_in_range() {
+        let all = [OPTIONS_PAGE, WORLD_PAGE, VEHICLE_PAGE, ADMIN_PAGE];
+        for (i, a) in all.iter().enumerate() {
+            assert!(*a < PAGE_COUNT);
+            assert!(!all[i + 1..].contains(a));
+        }
+    }
+
+    #[test]
+    fn admin_is_last_page() {
+        // the nav bar hides the last page when the admin tab is not visible
+        assert_eq!(ADMIN_PAGE, PAGE_COUNT - 1);
+    }
+
+    #[test]
+    fn nav_keys_are_unique() {
+        for (i, p) in PAGES.iter().enumerate() {
+            assert!(!p.nav.is_empty());
+            assert!(PAGES[i + 1..].iter().all(|q| q.nav != p.nav));
+        }
     }
 }

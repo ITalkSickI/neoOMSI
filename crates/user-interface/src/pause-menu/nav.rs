@@ -2,6 +2,18 @@
 
 use super::*;
 
+fn underline(lefts: &[f32], widths: &[f32], pos: f32) -> (f32, f32) {
+    let last = lefts.len() - 1;
+    let i0 = (pos.floor().max(0.0) as usize).min(last);
+    let i1 = (i0 + 1).min(last);
+    let fr = pos - i0 as f32;
+    let s = fr * fr * (3.0 - 2.0 * fr);
+    (
+        lefts[i0] + (lefts[i1] - lefts[i0]) * s,
+        widths[i0] + (widths[i1] - widths[i0]) * s,
+    )
+}
+
 impl Ui {
     pub(super) fn draw_nav(
         &mut self,
@@ -72,15 +84,51 @@ impl Ui {
             x += widths[i] + gap;
         }
         // one underline that slides from tab to tab
-        let last = lefts.len() - 1;
-        let i0 = (pos.floor().max(0.0) as usize).min(last);
-        let i1 = (i0 + 1).min(last);
-        let fr = pos - i0 as f32;
-        let s = fr * fr * (3.0 - 2.0 * fr);
-        let ul = lefts[i0] + (lefts[i1] - lefts[i0]) * s;
-        let uw = widths[i0] + (widths[i1] - widths[i0]) * s;
+        let (ul, uw) = underline(&lefts, &widths, pos);
         self.text
             .rounded(r, scene, [ul, bar_h - 3.0 * u, ul + uw, bar_h], 0.0, ACCENT);
         bar_h
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const L: [f32; 3] = [0.0, 100.0, 220.0];
+    const W: [f32; 3] = [90.0, 110.0, 70.0];
+
+    #[test]
+    fn underline_sits_on_tab_at_integer_pos() {
+        for i in 0..3 {
+            assert_eq!(underline(&L, &W, i as f32), (L[i], W[i]));
+        }
+    }
+
+    #[test]
+    fn underline_halfway_is_midpoint() {
+        assert_eq!(underline(&L, &W, 0.5), (50.0, 100.0));
+        assert_eq!(underline(&L, &W, 1.5), (160.0, 90.0));
+    }
+
+    #[test]
+    fn underline_clamps_out_of_range() {
+        assert_eq!(underline(&L, &W, -3.0), (L[0], W[0]));
+        assert_eq!(underline(&L, &W, 9.0), (L[2], W[2]));
+    }
+
+    #[test]
+    fn underline_single_tab() {
+        assert_eq!(underline(&[5.0], &[7.0], 0.7), (5.0, 7.0));
+    }
+
+    #[test]
+    fn underline_is_monotonic_between_tabs() {
+        let mut prev = underline(&L, &W, 0.0).0;
+        for k in 1..=10 {
+            let x = underline(&L, &W, k as f32 / 10.0).0;
+            assert!(x >= prev);
+            prev = x;
+        }
     }
 }

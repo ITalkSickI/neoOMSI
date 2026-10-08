@@ -11,7 +11,10 @@ mod screen;
 
 use self::common::plain;
 pub use self::dialog::Dialog;
-pub use self::page::{Fmt, OptGroup, OptKind, OptRow, OptShow, ADMIN_PAGE, OPTIONS_PAGE, OPTION_GROUPS, PAGE_COUNT, VEHICLE_PAGE, WORLD_PAGE};
+pub use self::page::{
+    ADMIN_PAGE, Fmt, OPTION_GROUPS, OPTIONS_PAGE, OptGroup, OptKind, OptRow, OptShow, PAGE_COUNT,
+    VEHICLE_PAGE, WORLD_PAGE,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct WorldRow {
@@ -98,7 +101,12 @@ pub(super) fn out(t: f32) -> f32 {
 }
 
 pub(super) fn fade(c: [u8; 4], k: f32) -> [u8; 4] {
-    [c[0], c[1], c[2], (c[3] as f32 * k.clamp(0.0, 1.0)).round() as u8]
+    [
+        c[0],
+        c[1],
+        c[2],
+        (c[3] as f32 * k.clamp(0.0, 1.0)).round() as u8,
+    ]
 }
 
 pub(super) fn mix(a: [u8; 4], b: [u8; 4], t: f32) -> [u8; 4] {
@@ -114,7 +122,6 @@ pub(super) fn inside(rc: [f32; 4], p: (f32, f32)) -> bool {
 }
 
 impl Ui {
-
     pub(super) fn pause_reset(&mut self) {
         self.pause_open = 0.0;
         self.page_t = 0.0;
@@ -167,9 +174,17 @@ impl Ui {
         let at = |rs: &[[f32; 4]]| rs.iter().any(|rc| inside(*rc, f.cursor));
         self.hand = match self.dialog.as_ref() {
             Some(Dialog::Place { .. }) => at(&self.place_rects),
-            Some(Dialog::Select { drop: Some(_), .. }) => at(&self.dialog_rects) || at(&self.place_rects[..self.place_rects.len().min(4)]),
+            Some(Dialog::Select { drop: Some(_), .. }) => {
+                at(&self.dialog_rects) || at(&self.place_rects[..self.place_rects.len().min(4)])
+            }
             Some(Dialog::Loading { .. }) => false,
-            Some(_) => at(&self.dialog_rects) || at(&[self.dialog_back_rc]) || at(&self.menu_pane) || at(&self.menu_time) || self.menu_pane_go.as_ref().is_some_and(|g| at(&[*g])),
+            Some(_) => {
+                at(&self.dialog_rects)
+                    || at(&[self.dialog_back_rc])
+                    || at(&self.menu_pane)
+                    || at(&self.menu_time)
+                    || self.menu_pane_go.as_ref().is_some_and(|g| at(&[*g]))
+            }
             None => {
                 at(&self.pause_items)
                     || at(&self.lab_tabs)
@@ -209,6 +224,70 @@ impl Ui {
                 }
                 _ => {}
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn out_clamps_and_eases() {
+        assert_eq!(out(-1.0), 0.0);
+        assert_eq!(out(0.0), 0.0);
+        assert_eq!(out(1.0), 1.0);
+        assert_eq!(out(2.0), 1.0);
+        assert!(out(0.5) > 0.5);
+    }
+
+    #[test]
+    fn fade_scales_alpha_only() {
+        assert_eq!(fade([1, 2, 3, 200], 0.5), [1, 2, 3, 100]);
+        assert_eq!(fade([1, 2, 3, 200], 0.0), [1, 2, 3, 0]);
+        assert_eq!(fade([1, 2, 3, 200], 5.0), [1, 2, 3, 200]);
+        assert_eq!(fade([1, 2, 3, 200], -5.0), [1, 2, 3, 0]);
+    }
+
+    #[test]
+    fn mix_interpolates_and_clamps() {
+        let (a, b) = ([0, 0, 0, 0], [100, 200, 50, 255]);
+        assert_eq!(mix(a, b, 0.0), a);
+        assert_eq!(mix(a, b, 1.0), b);
+        assert_eq!(mix(a, b, -3.0), a);
+        assert_eq!(mix(a, b, 3.0), b);
+        assert_eq!(mix(a, b, 0.5), [50, 100, 25, 128]);
+    }
+
+    #[test]
+    fn inside_is_half_open() {
+        let rc = [10.0, 20.0, 30.0, 40.0];
+        assert!(inside(rc, (10.0, 20.0)));
+        assert!(inside(rc, (29.9, 39.9)));
+        assert!(!inside(rc, (30.0, 30.0)));
+        assert!(!inside(rc, (20.0, 40.0)));
+        assert!(!inside(rc, (9.9, 30.0)));
+        assert!(!inside(rc, (20.0, 19.9)));
+    }
+
+    #[test]
+    fn pause_state_default_is_main_screen() {
+        let st = PauseState::default();
+        assert_eq!(st.page, None);
+        assert_eq!(st.sel, 0);
+    }
+
+    #[test]
+    fn screen_marker_is_not_a_page() {
+        assert!(SCREEN >= PAGE_COUNT);
+        assert!(SCREEN - 1 >= PAGE_COUNT);
+    }
+
+    #[test]
+    fn pause_entries_are_unique_keys() {
+        for (i, a) in PAUSE_ENTRIES.iter().enumerate() {
+            assert!(a.starts_with("pause.entry."));
+            assert!(!PAUSE_ENTRIES[i + 1..].contains(a));
         }
     }
 }

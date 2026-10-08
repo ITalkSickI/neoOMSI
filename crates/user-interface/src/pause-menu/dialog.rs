@@ -301,3 +301,32 @@ impl Ui {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dialog_clone_keeps_fields() {
+        let d = Dialog::Select {
+            title: "t".into(),
+            options: vec!["a".into(), "b".into()],
+            sel: 1,
+            scroll: 0,
+            search: Some("x".into()),
+            drop: Some(2),
+        };
+        let Dialog::Select { options, sel, search, drop, .. } = d.clone() else {
+            panic!("variant changed");
+        };
+        assert_eq!(options, ["a", "b"]);
+        assert_eq!(sel, 1);
+        assert_eq!(search.as_deref(), Some("x"));
+        assert_eq!(drop, Some(2));
+    }
+
+    #[test]
+    fn max_height_is_positive() {
+        assert!(MAX_HEIGHT > 0.0);
+    }
+}

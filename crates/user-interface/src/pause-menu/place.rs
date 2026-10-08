@@ -1,7 +1,16 @@
 use super::*;
 
+fn field_width(inner: f32, create_w: f32, gap: f32, u: f32) -> f32 {
+    ((inner - create_w - 6.0 * gap) / 4.0).max(40.0 * u)
+}
+
+fn field_rect(left: f32, top: f32, fw: f32, gap: f32, h: f32, i: usize) -> [f32; 4] {
+    let x = left + (fw + gap) * i as f32;
+    [x, top, x + fw, top + h]
+}
+
 impl Ui {
-    
+
     pub(super) fn draw_place(&mut self, r: &Renderer, scene: &mut Scene, f: &Frame, m: Metrics, d: &Dialog, open: Option<usize>) {
         let Dialog::Place { title, preview, fields, create, can_create } = d else {
             return;
@@ -62,10 +71,10 @@ impl Ui {
         // buttons
         let by = pr[3] + gap;
         let create_w = 160.0 * u;
-        let fw = ((inner - create_w - 6.0 * gap) / 4.0).max(40.0 * u);
+        let fw = field_width(inner, create_w, gap, u);
         self.place_rects.clear();
         for (i, (cap, val, on)) in fields.iter().enumerate().take(4) {
-            let rc = [pr[0] + (fw + gap) * i as f32, by, pr[0] + (fw + gap) * i as f32 + fw, by + btn_h];
+            let rc = field_rect(pr[0], by, fw, gap, btn_h, i);
             let hot = *on && inside(rc, f.cursor) && open.is_none();
             let hv = self.ease((205, "pf", i), if hot || open == Some(i) { 1.0 } else { 0.0 }, 8.0);
             let k = if *on { 1.0 } else { 0.4 };
@@ -162,5 +171,40 @@ impl Ui {
             self.dialog_rects.push(rc);
             cy += step;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_width_splits_remaining_room() {
+        assert_eq!(field_width(800.0, 160.0, 10.0, 1.0), 145.0);
+    }
+
+    #[test]
+    fn field_width_has_a_minimum() {
+        assert_eq!(field_width(10.0, 160.0, 10.0, 1.0), 40.0);
+        assert_eq!(field_width(10.0, 160.0, 10.0, 2.0), 80.0);
+    }
+
+    #[test]
+    fn field_rects_are_adjacent_with_gap() {
+        let (fw, gap) = (100.0, 10.0);
+        let rs: Vec<[f32; 4]> = (0..4).map(|i| field_rect(20.0, 5.0, fw, gap, 60.0, i)).collect();
+        assert_eq!(rs[0], [20.0, 5.0, 120.0, 65.0]);
+        for p in rs.windows(2) {
+            assert_eq!(p[1][0] - p[0][2], gap);
+            assert_eq!((p[0][1], p[0][3]), (p[1][1], p[1][3]));
+        }
+    }
+
+    #[test]
+    fn fields_and_create_button_fit_in_inner_width() {
+        let (inner, create_w, gap) = (700.0, 160.0, 10.0);
+        let fw = field_width(inner, create_w, gap, 1.0);
+        let last = field_rect(0.0, 0.0, fw, gap, 1.0, 3);
+        assert!(last[2] + gap + create_w <= inner + 0.001);
     }
 }
