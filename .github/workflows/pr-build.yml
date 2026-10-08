@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     outputs:
       should_build: ${{ steps.request.outputs.should_build }}
       matrix: ${{ steps.request.outputs.matrix }}
@@ -65,6 +65,7 @@ jobs:
     permissions:
       actions: read
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
