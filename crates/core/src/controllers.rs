@@ -93,6 +93,12 @@ impl Default for DeviceCfg {
     }
 }
 
+pub(crate) fn global_deadzone() -> f32 {
+    ::config::get_float("controller", "deadzone")
+        .filter(|v| v.is_finite())
+        .map_or(0.0, |v| (v as f32).clamp(0.0, 0.3))
+}
+
 impl DeviceCfg {
     pub(crate) fn calibrated(&self, k: usize, v: f32) -> f32 {
         self.calibration
@@ -109,7 +115,7 @@ impl DeviceCfg {
             .flatten()
             .and_then(|c| c.deadzone)
             .or(self.deadzone)
-            .unwrap_or(0.0)
+            .unwrap_or_else(global_deadzone)
             .clamp(0.0, 0.3)
     }
 }
@@ -519,8 +525,8 @@ impl Devices {
         self.hid_axes.iter().any(|(n, axes)| {
             names_match(n, name)
                 && axes
-                    .iter()
-                    .any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2)
+                .iter()
+                .any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2)
         })
     }
 
@@ -566,7 +572,7 @@ impl Devices {
                 d.devices.iter().any(|dev| {
                     include_direct_input_device(&dev.name, dev.ff_capable(), xinput_pads)
                         && (names_match(&dev.name, pad.name())
-                            || id.is_some_and(|id| dev.hardware_id == Some(id)))
+                        || id.is_some_and(|id| dev.hardware_id == Some(id)))
                 })
             })
         };
@@ -586,55 +592,55 @@ impl Devices {
                     // DirectInput handles wheels on Windows; system-mapped gamepads
                     // such as Xbox controllers are listed through gilrs.
                     EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code)
-                        if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) =>
-                    {
-                        if let Some(n) = button_number(&pad, code) {
-                            out.push((
-                                pad.name().to_string(),
-                                n,
-                                matches!(ev.event, EventType::ButtonPressed(..)),
-                            ));
+                    if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) =>
+                        {
+                            if let Some(n) = button_number(&pad, code) {
+                                out.push((
+                                    pad.name().to_string(),
+                                    n,
+                                    matches!(ev.event, EventType::ButtonPressed(..)),
+                                ));
+                            }
                         }
-                    }
                     #[cfg(target_os = "linux")]
                     EventType::AxisChanged(_, value, code)
-                        if code.into_u32() >> 16 == 3
-                            && (0x10..0x18).contains(&(code.into_u32() & 0xFFFF)) =>
-                    {
-                        let axis = (code.into_u32() & 0xFFFF) as usize - 0x10;
-                        let name = pad.name().to_string();
-                        let k = match self.hats.iter().position(|(n, _)| *n == name) {
-                            Some(k) => k,
-                            None => {
-                                self.hats.push((name.clone(), [0; 8]));
-                                self.hats.len() - 1
-                            }
-                        };
-                        let now = if value > 0.5 {
-                            1
-                        } else if value < -0.5 {
-                            -1
-                        } else {
-                            0
-                        };
-                        let was = std::mem::replace(&mut self.hats[k].1[axis], now);
-                        let (hat, y) = (axis / 2, axis % 2 == 1);
-                        let dir = |v: i8| match (y, v) {
-                            (true, -1) => Some(0),
-                            (false, 1) => Some(1),
-                            (true, 1) => Some(2),
-                            (false, -1) => Some(3),
-                            _ => None,
-                        };
-                        if was != now {
-                            if let Some(d) = dir(was) {
-                                out.push((name.clone(), HAT_BUTTONS + hat * 4 + d, false));
-                            }
-                            if let Some(d) = dir(now) {
-                                out.push((name, HAT_BUTTONS + hat * 4 + d, true));
+                    if code.into_u32() >> 16 == 3
+                        && (0x10..0x18).contains(&(code.into_u32() & 0xFFFF)) =>
+                        {
+                            let axis = (code.into_u32() & 0xFFFF) as usize - 0x10;
+                            let name = pad.name().to_string();
+                            let k = match self.hats.iter().position(|(n, _)| *n == name) {
+                                Some(k) => k,
+                                None => {
+                                    self.hats.push((name.clone(), [0; 8]));
+                                    self.hats.len() - 1
+                                }
+                            };
+                            let now = if value > 0.5 {
+                                1
+                            } else if value < -0.5 {
+                                -1
+                            } else {
+                                0
+                            };
+                            let was = std::mem::replace(&mut self.hats[k].1[axis], now);
+                            let (hat, y) = (axis / 2, axis % 2 == 1);
+                            let dir = |v: i8| match (y, v) {
+                                (true, -1) => Some(0),
+                                (false, 1) => Some(1),
+                                (true, 1) => Some(2),
+                                (false, -1) => Some(3),
+                                _ => None,
+                            };
+                            if was != now {
+                                if let Some(d) = dir(was) {
+                                    out.push((name.clone(), HAT_BUTTONS + hat * 4 + d, false));
+                                }
+                                if let Some(d) = dir(now) {
+                                    out.push((name, HAT_BUTTONS + hat * 4 + d, true));
+                                }
                             }
                         }
-                    }
                     _ => {}
                 }
             }
@@ -1144,9 +1150,9 @@ impl Controllers {
                 // "the sticks do nothing" then says which way the pad came in)
                 if x.abs() > 0.5
                     && !self
-                        .announced
-                        .iter()
-                        .any(|n| n == &format!("stick:{}", pad.name()))
+                    .announced
+                    .iter()
+                    .any(|n| n == &format!("stick:{}", pad.name()))
                 {
                     self.announced.push(format!("stick:{}", pad.name()));
                     log::info!(
@@ -1288,8 +1294,8 @@ impl Controllers {
             let other = self.wheel.as_ref().is_some_and(|w| w.name != name);
             let retry = self.wheel.is_none()
                 && self.wheel_tried.as_ref().is_none_or(|(n, t)| {
-                    *n != name || t.elapsed() > std::time::Duration::from_secs(2)
-                });
+                *n != name || t.elapsed() > std::time::Duration::from_secs(2)
+            });
             if other || retry {
                 self.wheel_tried = Some((name.clone(), std::time::Instant::now()));
                 self.wheel = crate::evdev_ff::Wheel::open(&name);

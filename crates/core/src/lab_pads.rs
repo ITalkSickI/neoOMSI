@@ -48,6 +48,13 @@ fn func_text(f: Option<(Func, bool)>) -> String {
     }
 }
 
+fn axis_bar(v: f32) -> String {
+    const N: usize = 11;
+    let at = (((v.clamp(-1.0, 1.0) + 1.0) * 0.5) * (N - 1) as f32).round() as usize;
+    let cells: String = (0..N).map(|i| if i == at { '#' } else if i == N / 2 { '|' } else { '-' }).collect();
+    format!("[{cells}] {v:+.2}")
+}
+
 fn selected(devices: &[DeviceCfg]) -> Option<usize> {
     (!devices.is_empty()).then(|| SEL.load(Ordering::Relaxed).min(devices.len() - 1))
 }
@@ -132,6 +139,7 @@ pub(crate) fn rows(app: &App) -> Rows {
 pub(crate) fn device_tabs(app: &App) -> Vec<(&'static str, Rows)> {
     let live = connected(app);
     let devices = controllers::read_cfg();
+    let sel = selected(&devices).unwrap_or(usize::MAX);
     let mut map = Vec::new();
     let tabs = devices
         .iter()
@@ -139,7 +147,11 @@ pub(crate) fn device_tabs(app: &App) -> Vec<(&'static str, Rows)> {
         .filter_map(|(i, d)| {
             let dev = live.iter().find(|c| controllers::names_match(&d.name, &c.name))?;
             map.push(i);
-            Some((intern(&d.name), device_rows(app, d, Some(dev))))
+            let fresh = (i == sel)
+                .then(|| app.controllers.as_ref().map(|c| c.connected_devices()))
+                .flatten()
+                .and_then(|v| v.into_iter().find(|c| controllers::names_match(&d.name, &c.name)));
+            Some((intern(&d.name), device_rows(app, d, Some(fresh.as_ref().unwrap_or(dev)))))
         })
         .collect();
     if let Ok(mut m) = TABMAP.lock() {
@@ -165,12 +177,15 @@ fn device_rows(app: &App, d: &DeviceCfg, dev: Option<&Connected>) -> Rows {
         if labels[a].is_empty() && d.axes[a].is_none() {
             continue;
         }
-        let v = func_text(d.axes[a]);
+        let mut v = func_text(d.axes[a]);
+        if let Some((_, x)) = dev.and_then(|c| c.axes.iter().find(|(k, _)| *k == a)) {
+            v = format!("{}  {v}", axis_bar(*x));
+        }
         let name = if labels[a].is_empty() { "-" } else { labels[a].as_str() };
         out.push((row(name, 'o', &v, "pause.controls.axis.desc", None), format!("pad_axis {a}")));
     }
     out.push((
-        row("pause.controls.deadzone.name", 'o', &format!("{:.0} %", d.deadzone.unwrap_or(0.0) * 100.0), "pause.controls.deadzone.desc", None),
+        row("pause.controls.deadzone.name", 'o', &format!("{:.0} %", d.deadzone.unwrap_or_else(controllers::global_deadzone) * 100.0), "pause.controls.deadzone.desc", None),
         "pad_dz".to_string(),
     ));
 
@@ -232,7 +247,7 @@ pub(crate) fn dropdown(app: &App, row_k: usize, id: &str) -> Option<Dropdown> {
             }
         }
         "pad_dz" => {
-            let now = (d.deadzone.unwrap_or(0.0) * 100.0).round() as usize;
+            let now = (d.deadzone.unwrap_or_else(controllers::global_deadzone) * 100.0).round() as usize;
             for v in 0..=30usize {
                 if v == now {
                     current = Some(v);
