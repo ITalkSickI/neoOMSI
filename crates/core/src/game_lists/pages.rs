@@ -714,6 +714,34 @@ pub(crate) fn key_rows(app: &App) -> Vec<(String, String)> {
         ),
     ];
     let mut any = false;
+    // scripted keybinds
+    let scripted: Vec<(usize, String)> = app
+        .scripted_names()
+        .into_iter()
+        .enumerate()
+        .filter(|(_, n)| {
+            q.is_empty()
+                || app.key_capture.is_some_and(|c| c.0 == 2)
+                || names.control(n).to_lowercase().contains(&q)
+                || n.to_lowercase().contains(&q)
+        })
+        .collect();
+    if !scripted.is_empty() {
+        any = true;
+        out.push(head("Scripted (this vehicle)", scripted.len()));
+        for (i, action) in scripted {
+            let label = names.control(&action);
+            let id = format!("keybind 2 {i} {action}");
+            if app.key_capture == Some((2, i)) {
+                out.push((
+                    row(&label, 'E', "press a key...", "Escape leaves it as it is", None),
+                    id,
+                ));
+            } else {
+                out.push((row(&label, 'k', "Not set", "", None), id));
+            }
+        }
+    }
     for (title, pick) in groups.iter() {
         let mut members: Vec<&(usize, usize, String, i64, i64)> = all
             .iter()

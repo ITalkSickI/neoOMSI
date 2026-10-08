@@ -428,6 +428,9 @@ impl App {
 
     /// The action name of the list row that is entry `idx` of section `sec`.
     fn keybind_name(&self, sec: usize, idx: usize) -> Option<String> {
+        if sec == 2 {
+            return self.scripted_names().get(idx).cloned();
+        }
         let v = omsi_launcher_lib::get_keybindings().ok()?;
         v.get(["vehicles", "game"][sec.min(1)])?
             .as_array()?
@@ -435,6 +438,30 @@ impl App {
             .get("action")?
             .as_str()
             .map(str::to_string)
+    }
+
+    pub(crate) fn scripted_names(&self) -> Vec<String> {
+        let Some(p) = self.player.as_ref() else {
+            return Vec::new();
+        };
+        let bound: Vec<String> = omsi_launcher_lib::get_keybindings()
+            .ok()
+            .and_then(|v| {
+                v.get("vehicles")?.as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|b| b.get("action")?.as_str())
+                        .map(|s| s.to_ascii_lowercase())
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        p.vehicle
+            .ty
+            .program
+            .trigger_names()
+            .into_iter()
+            .filter(|n| !bound.contains(&n.to_ascii_lowercase()))
+            .collect()
     }
 
     /// Opens the Keys page again with the row of entry `idx` of section `sec` selected.
@@ -453,13 +480,29 @@ impl App {
     }
 
     pub(crate) fn keybind_edit(&mut self, sec: usize, idx: usize, name: &str, edit: KeyEdit) {
-        let section = ["vehicles", "game"][sec.min(1)];
+        let section = ["vehicles", "game", "vehicles"][sec.min(2)];
         let mut v = match omsi_launcher_lib::get_keybindings() {
             Ok(v) => v,
             Err(e) => {
                 self.service_msg = Some((format!("{e:#}"), 4.0));
                 return;
             }
+        };
+        let (sec, idx) = if sec == 2 {
+            if self.scripted_names().get(idx).map(String::as_str) != Some(name) {
+                self.reopen_keys(sec, idx);
+                return;
+            }
+            let Some(arr) = v.get_mut("vehicles").and_then(|a| a.as_array_mut()) else {
+                return;
+            };
+            if matches!(edit, KeyEdit::Clear) {
+                return;
+            }
+            arr.push(serde_json::json!({ "action": name, "scan_code": 0, "modifier": 0 }));
+            (0, arr.len() - 1)
+        } else {
+            (sec, idx)
         };
         let target = idx;
         {
