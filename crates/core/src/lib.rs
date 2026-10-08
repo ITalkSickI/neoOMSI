@@ -66,7 +66,6 @@ mod duty_start;
 mod editor_ctl;
 #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 mod evdev_ff;
-mod ffb_calibration;
 mod game_menu;
 mod lab_menu;
 mod lab_options;

@@ -225,9 +225,8 @@ pub(crate) fn read_cfg() -> Vec<DeviceCfg> {
 
 pub(crate) fn read_device(name: &str) -> DeviceCfg {
     let int = |k: &str| dev_get(name, k).and_then(|v| v.as_integer());
-    let flt = |k: &str| {
-        dev_get(name, k).and_then(|v| v.as_float().or(v.as_integer().map(|i| i as f64)))
-    };
+    let flt =
+        |k: &str| dev_get(name, k).and_then(|v| v.as_float().or(v.as_integer().map(|i| i as f64)));
     let mut d = DeviceCfg {
         name: name.to_string(),
         enabled: dev_get(name, "enabled")
@@ -256,7 +255,9 @@ pub(crate) fn read_device(name: &str) -> DeviceCfg {
         d.buttons
             .push((s(format!("Button{b}"), ""), s(format!("Button{b}_n"), "0")));
     }
-    d.ff_scale = flt("ff_scale_steer").zip(flt("ff_scale_vibration")).map(|(a, b)| (a as f32, b as f32));
+    d.ff_scale = flt("ff_scale_steer")
+        .zip(flt("ff_scale_vibration"))
+        .map(|(a, b)| (a as f32, b as f32));
     d.ff_invert = dev_get(name, "ff_invert").and_then(|v| v.as_bool());
     d.deadzone = flt("deadzone")
         .filter(|v| v.is_finite())
@@ -277,20 +278,40 @@ pub(crate) fn write_device(d: &DeviceCfg) {
     use ::config::Value;
     let n = d.name.as_str();
     dev_put(n, "enabled", Some(Value::from(d.enabled)));
-    dev_put(n, "second", Some(Value::from(if d.second.is_empty() { "0" } else { &d.second })));
+    dev_put(
+        n,
+        "second",
+        Some(Value::from(if d.second.is_empty() {
+            "0"
+        } else {
+            &d.second
+        })),
+    );
     for a in 0..8 {
         let (f, inv) = match d.axes[a] {
             Some((f, inv)) => (Func::code(Some(f)), inv),
             None => (-1, false),
         };
         dev_put(n, &format!("axis{a}"), Some(Value::from(f as i64)));
-        dev_put(n, &format!("axis{a}_flags"), Some(Value::from((d.axis_flags[a] | inv as i32) as i64)));
-        dev_put(n, &format!("axis{a}_cal"), d.calibration[a].map(|c| Value::from(c.line())));
+        dev_put(
+            n,
+            &format!("axis{a}_flags"),
+            Some(Value::from((d.axis_flags[a] | inv as i32) as i64)),
+        );
+        dev_put(
+            n,
+            &format!("axis{a}_cal"),
+            d.calibration[a].map(|c| Value::from(c.line())),
+        );
     }
     dev_put(n, "buttons", Some(Value::from(d.buttons.len() as i64)));
     for (b, (action, num)) in d.buttons.iter().enumerate() {
         dev_put(n, &format!("Button{b}"), Some(Value::from(action.as_str())));
-        dev_put(n, &format!("Button{b}_n"), Some(Value::from(if num.is_empty() { "0" } else { num })));
+        dev_put(
+            n,
+            &format!("Button{b}_n"),
+            Some(Value::from(if num.is_empty() { "0" } else { num })),
+        );
     }
     let sc = d.ff_scale.unwrap_or((1.0, 1.0));
     dev_put(n, "ff_scale_steer", Some(Value::from(sc.0 as f64)));
@@ -363,15 +384,6 @@ pub(crate) fn parse_assign(text: &str) -> [Option<String>; 4] {
         }
     }
     out
-}
-
-pub(crate) fn assign_text(sources: &[Option<String>; 4]) -> String {
-    ASSIGNABLE
-        .iter()
-        .zip(sources)
-        .filter_map(|((k, _), v)| v.as_ref().map(|v| format!("{k}={v}")))
-        .collect::<Vec<_>>()
-        .join("|")
 }
 
 fn may_give(sources: &[Option<String>; 4], present: &[String], i: usize, name: &str) -> bool {
@@ -460,8 +472,6 @@ pub(crate) const HAT_BUTTONS: usize = 128;
 /// never show up in the system's newer interface that gilrs uses there.
 pub(crate) struct Devices {
     gilrs: Option<Gilrs>,
-    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
-    calibration_wheel: Option<crate::evdev_ff::Wheel>,
     #[cfg(windows)]
     di: Option<crate::dinput::DirectInput>,
     /// macOS: every axis element of every wheel and joystick, as last read (see `mac_hid`)
@@ -491,8 +501,6 @@ impl Devices {
         let _ = (hwnd, ff);
         Devices {
             gilrs,
-            #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
-            calibration_wheel: None,
             #[cfg(windows)]
             di,
             #[cfg(target_os = "macos")]
@@ -511,8 +519,8 @@ impl Devices {
         self.hid_axes.iter().any(|(n, axes)| {
             names_match(n, name)
                 && axes
-                .iter()
-                .any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2)
+                    .iter()
+                    .any(|(c, _)| matches!(*c, 0x10036 | 0x10037) || (*c >> 16) == 2)
         })
     }
 
@@ -533,40 +541,12 @@ impl Devices {
 
     /// Release foreground wheel effects when the game loses focus.
     pub(crate) fn set_focus(&mut self, focused: bool) {
-        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
-        if !focused {
-            self.calibration_wheel = None;
-        }
         #[cfg(windows)]
         if let Some(d) = self.di.as_mut() {
             d.set_focus(focused);
         }
         #[cfg(not(windows))]
         let _ = focused;
-    }
-
-    pub(crate) fn calibration_pulse(&mut self, name: &str, axis: usize, force: f32) -> bool {
-        #[cfg(windows)]
-        return self
-            .di
-            .as_mut()
-            .is_some_and(|di| di.force_axis(name) == Some(axis) && di.pulse_force(name, force));
-        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
-        {
-            let _ = axis;
-            if self.calibration_wheel.is_none() {
-                self.calibration_wheel = crate::evdev_ff::Wheel::open(name);
-            }
-            return self
-                .calibration_wheel
-                .as_mut()
-                .is_some_and(|wheel| wheel.pulse_force(force));
-        }
-        #[cfg(not(any(windows, all(target_os = "linux", target_pointer_width = "64"))))]
-        {
-            let _ = (name, axis, force);
-            false
-        }
     }
 
     /// Read the devices; the buttons pressed (true) and let go since the last call:
@@ -586,7 +566,7 @@ impl Devices {
                 d.devices.iter().any(|dev| {
                     include_direct_input_device(&dev.name, dev.ff_capable(), xinput_pads)
                         && (names_match(&dev.name, pad.name())
-                        || id.is_some_and(|id| dev.hardware_id == Some(id)))
+                            || id.is_some_and(|id| dev.hardware_id == Some(id)))
                 })
             })
         };
@@ -606,55 +586,55 @@ impl Devices {
                     // DirectInput handles wheels on Windows; system-mapped gamepads
                     // such as Xbox controllers are listed through gilrs.
                     EventType::ButtonPressed(_, code) | EventType::ButtonReleased(_, code)
-                    if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) =>
-                        {
-                            if let Some(n) = button_number(&pad, code) {
-                                out.push((
-                                    pad.name().to_string(),
-                                    n,
-                                    matches!(ev.event, EventType::ButtonPressed(..)),
-                                ));
-                            }
+                        if use_gilrs_buttons(di, is_system_gamepad(pad.name(), is_di(&pad))) =>
+                    {
+                        if let Some(n) = button_number(&pad, code) {
+                            out.push((
+                                pad.name().to_string(),
+                                n,
+                                matches!(ev.event, EventType::ButtonPressed(..)),
+                            ));
                         }
+                    }
                     #[cfg(target_os = "linux")]
                     EventType::AxisChanged(_, value, code)
-                    if code.into_u32() >> 16 == 3
-                        && (0x10..0x18).contains(&(code.into_u32() & 0xFFFF)) =>
-                        {
-                            let axis = (code.into_u32() & 0xFFFF) as usize - 0x10;
-                            let name = pad.name().to_string();
-                            let k = match self.hats.iter().position(|(n, _)| *n == name) {
-                                Some(k) => k,
-                                None => {
-                                    self.hats.push((name.clone(), [0; 8]));
-                                    self.hats.len() - 1
-                                }
-                            };
-                            let now = if value > 0.5 {
-                                1
-                            } else if value < -0.5 {
-                                -1
-                            } else {
-                                0
-                            };
-                            let was = std::mem::replace(&mut self.hats[k].1[axis], now);
-                            let (hat, y) = (axis / 2, axis % 2 == 1);
-                            let dir = |v: i8| match (y, v) {
-                                (true, -1) => Some(0),
-                                (false, 1) => Some(1),
-                                (true, 1) => Some(2),
-                                (false, -1) => Some(3),
-                                _ => None,
-                            };
-                            if was != now {
-                                if let Some(d) = dir(was) {
-                                    out.push((name.clone(), HAT_BUTTONS + hat * 4 + d, false));
-                                }
-                                if let Some(d) = dir(now) {
-                                    out.push((name, HAT_BUTTONS + hat * 4 + d, true));
-                                }
+                        if code.into_u32() >> 16 == 3
+                            && (0x10..0x18).contains(&(code.into_u32() & 0xFFFF)) =>
+                    {
+                        let axis = (code.into_u32() & 0xFFFF) as usize - 0x10;
+                        let name = pad.name().to_string();
+                        let k = match self.hats.iter().position(|(n, _)| *n == name) {
+                            Some(k) => k,
+                            None => {
+                                self.hats.push((name.clone(), [0; 8]));
+                                self.hats.len() - 1
+                            }
+                        };
+                        let now = if value > 0.5 {
+                            1
+                        } else if value < -0.5 {
+                            -1
+                        } else {
+                            0
+                        };
+                        let was = std::mem::replace(&mut self.hats[k].1[axis], now);
+                        let (hat, y) = (axis / 2, axis % 2 == 1);
+                        let dir = |v: i8| match (y, v) {
+                            (true, -1) => Some(0),
+                            (false, 1) => Some(1),
+                            (true, 1) => Some(2),
+                            (false, -1) => Some(3),
+                            _ => None,
+                        };
+                        if was != now {
+                            if let Some(d) = dir(was) {
+                                out.push((name.clone(), HAT_BUTTONS + hat * 4 + d, false));
+                            }
+                            if let Some(d) = dir(now) {
+                                out.push((name, HAT_BUTTONS + hat * 4 + d, true));
                             }
                         }
+                    }
                     _ => {}
                 }
             }
@@ -886,7 +866,6 @@ pub struct Controllers {
 }
 
 impl Controllers {
-
     pub(crate) fn connected_devices(&self) -> Vec<Connected> {
         self.devices.connected()
     }
@@ -1026,7 +1005,9 @@ impl Controllers {
                             if c.gamepad && !c.ff {
                                 // a pad's stick set up to steer is still a stick (#200)
                                 let x = if inverted { -v } else { v };
-                                let floor = if d.deadzone.is_some() || d.calibration[k].is_some_and(|c| c.deadzone.is_some()) {
+                                let floor = if d.deadzone.is_some()
+                                    || d.calibration[k].is_some_and(|c| c.deadzone.is_some())
+                                {
                                     dz
                                 } else {
                                     dz.max(0.08)
@@ -1072,14 +1053,12 @@ impl Controllers {
                             Func::Steering | Func::LookX | Func::LookY => {
                                 unreachable!("steering and looking handled before pedal mapping")
                             }
-                            Func::Throttle if gives(1, &c.name) => set(
-                                &mut out.throttle,
-                                pedal_curve(pedal, self.pedal_throttle),
-                            ),
-                            Func::Brake if gives(2, &c.name) => set(
-                                &mut out.brake,
-                                pedal_curve(pedal, self.pedal_brake),
-                            ),
+                            Func::Throttle if gives(1, &c.name) => {
+                                set(&mut out.throttle, pedal_curve(pedal, self.pedal_throttle))
+                            }
+                            Func::Brake if gives(2, &c.name) => {
+                                set(&mut out.brake, pedal_curve(pedal, self.pedal_brake))
+                            }
                             Func::Clutch if gives(3, &c.name) => set(&mut out.clutch, pedal),
                             Func::ThrottleBrake => {
                                 // Omsi.exe: throttle = 2v-1 and brake = 1-2v (v = 0..1), so the
@@ -1087,19 +1066,13 @@ impl Controllers {
                                 if gives(1, &c.name) {
                                     set(
                                         &mut out.throttle,
-                                        pedal_curve(
-                                            v.max(0.0),
-                                            self.pedal_throttle,
-                                        ),
+                                        pedal_curve(v.max(0.0), self.pedal_throttle),
                                     );
                                 }
                                 if gives(2, &c.name) {
                                     set(
                                         &mut out.brake,
-                                        pedal_curve(
-                                            (-v).max(0.0),
-                                            self.pedal_brake,
-                                        ),
+                                        pedal_curve((-v).max(0.0), self.pedal_brake),
                                     );
                                 }
                             }
@@ -1171,9 +1144,9 @@ impl Controllers {
                 // "the sticks do nothing" then says which way the pad came in)
                 if x.abs() > 0.5
                     && !self
-                    .announced
-                    .iter()
-                    .any(|n| n == &format!("stick:{}", pad.name()))
+                        .announced
+                        .iter()
+                        .any(|n| n == &format!("stick:{}", pad.name()))
                 {
                     self.announced.push(format!("stick:{}", pad.name()));
                     log::info!(
@@ -1199,8 +1172,7 @@ impl Controllers {
                         .get_or_insert(pedal_curve(rt, self.pedal_throttle));
                 }
                 if free.brake && gives(2, pad.name()) {
-                    out.brake
-                        .get_or_insert(pedal_curve(lt, self.pedal_brake));
+                    out.brake.get_or_insert(pedal_curve(lt, self.pedal_brake));
                 }
                 // the right stick looks round, as the truck games have it (#454)
                 if free.look && out.look == [0.0, 0.0] {
@@ -1316,8 +1288,8 @@ impl Controllers {
             let other = self.wheel.as_ref().is_some_and(|w| w.name != name);
             let retry = self.wheel.is_none()
                 && self.wheel_tried.as_ref().is_none_or(|(n, t)| {
-                *n != name || t.elapsed() > std::time::Duration::from_secs(2)
-            });
+                    *n != name || t.elapsed() > std::time::Duration::from_secs(2)
+                });
             if other || retry {
                 self.wheel_tried = Some((name.clone(), std::time::Instant::now()));
                 self.wheel = crate::evdev_ff::Wheel::open(&name);
@@ -1619,16 +1591,6 @@ pub(crate) fn di_slots(axes: &[(u32, f32)]) -> Vec<(usize, f32)> {
     out
 }
 
-/// One fixed layout: the system's own axis codes differ between Windows, Linux and pads.
-pub(crate) const GAMEPAD_AXES: [&str; 6] = [
-    "Left stick X",
-    "Left stick Y",
-    "Left trigger",
-    "Right stick X",
-    "Right stick Y",
-    "Right trigger",
-];
-
 /// Triggers run -1 released to 1 pressed, like a pedal.
 fn gamepad_axes(pad: &gilrs::Gamepad) -> Vec<(usize, f32)> {
     let trigger =
@@ -1849,15 +1811,6 @@ pub(crate) fn axis_shape(v: f32, flags: i32) -> f32 {
     v.clamp(0.0, 1.0)
 }
 
-/// The characteristics the set-up offers, with their flag bits (Omsi.exe's combo, 0x652ac4).
-pub(crate) const AXIS_SHAPES: [(&str, i32); 5] = [
-    ("Linear", 0),
-    ("Progressive", 8),
-    ("Degressive", 4),
-    ("Bi-progressive", 8 | 0x10),
-    ("Bi-degressive", 4 | 0x10),
-];
-
 #[cfg(test)]
 mod axis_shape_tests {
     use super::axis_shape;
@@ -1984,7 +1937,6 @@ mod tests {
         );
         assert_eq!(sources[1], None);
         assert_eq!(sources[2].as_deref(), Some("Heusinkveld Sprint"));
-        assert_eq!(super::parse_assign(&super::assign_text(&sources)), sources);
         let present = vec![
             "G29 Driving Force Racing Wheel".to_string(),
             "Controller (Xbox One For Windows)".to_string(),
