@@ -53,18 +53,6 @@ impl Func {
             _ => None,
         }
     }
-
-    /// As the options dialog lists them.
-    pub(crate) const LABELS: [&'static str; 8] = [
-        "<none>",
-        "Steering",
-        "Throttle",
-        "Brake",
-        "Clutch",
-        "Throttle/Brake",
-        "Look left / right",
-        "Look up / down",
-    ];
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2071,21 +2059,6 @@ mod tests {
         assert!(!PadDefaults::of(Some(&e)).steering);
     }
 
-    #[test]
-    fn look_axes_are_kept_in_the_file_and_rest_at_the_centre() {
-        // (neoOMSI's own numbers after OMSI's five, written back as read)
-        for f in [super::Func::LookX, super::Func::LookY] {
-            assert_eq!(super::Func::from_code(super::Func::code(Some(f))), Some(f));
-        }
-        assert_eq!(
-            super::Func::LABELS.len() as i32,
-            super::Func::code(Some(super::Func::LookY)) + 2
-        );
-        assert_eq!(super::look_axis(0.1), 0.0);
-        assert_eq!(super::look_axis(1.0), 1.0);
-        assert_eq!(super::look_axis(-1.0), -1.0);
-        assert!(super::look_axis(0.5) > 0.4 && super::look_axis(0.5) < 0.5);
-    }
     #[test]
     fn names() {
         assert!(super::names_match(

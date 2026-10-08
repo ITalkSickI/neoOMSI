@@ -33,7 +33,6 @@ mod platform;
 mod radio;
 mod rail_drive;
 mod touch;
-mod pax_pack;
 mod updater;
 mod vr_navigator;
 
