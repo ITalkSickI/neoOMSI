@@ -338,7 +338,6 @@ pub(crate) fn make_app(
         place_on_duty(&mut args);
     }
     applog::log_system();
-    args.drive_keys = "omsi".into();
     ENHANCED.store(
         (config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || args.enhanced || legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
@@ -522,7 +521,7 @@ pub(crate) fn make_app(
         headtrack: None,
         headtrack_failed: None,
         controllers: None,
-        mouse_drive: false,
+        mouse_drive: ::config::get_bool("controls", "mouse_steering").unwrap_or(false),
         mouse_steer: (0.0, 0.0),
         mouse_edge: 0.0,
         steer_cursor: None,

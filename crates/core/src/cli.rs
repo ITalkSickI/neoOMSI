@@ -49,9 +49,6 @@ pub(crate) struct Args {
     /// from the game menu, or a placed one taken over at its driver's door (G).
     #[arg(long)]
     pub(crate) on_foot: bool,
-    /// Unused: the vehicle is always driven by the stored key bindings only.
-    #[arg(long, default_value = "omsi")]
-    pub(crate) drive_keys: String,
     /// LAN play: host a session on this UDP port (27015 when the value is 0).
     #[arg(long)]
     pub(crate) lan_host: Option<u16>,

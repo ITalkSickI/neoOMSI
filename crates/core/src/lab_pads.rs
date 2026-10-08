@@ -461,7 +461,18 @@ pub(crate) fn dropdown(app: &App, row_k: usize, id: &str) -> Option<Dropdown> {
     })
 }
 
+fn rescan(app: &App) {
+    if let Some(c) = app.controllers.as_ref() {
+        c.refresh_devices();
+    }
+}
+
 pub(crate) fn apply(app: &mut App, verb: &str, arg: &str) {
+    apply_inner(app, verb, arg);
+    rescan(app);
+}
+
+fn apply_inner(app: &mut App, verb: &str, arg: &str) {
     let mut devices = controllers::read_cfg();
     let Some(i) = selected(&devices) else {
         return;
@@ -521,6 +532,11 @@ pub(crate) fn apply(app: &mut App, verb: &str, arg: &str) {
 }
 
 pub(crate) fn click(app: &mut App, verb: &str, arg: &str) {
+    click_inner(app, verb, arg);
+    rescan(app);
+}
+
+fn click_inner(app: &mut App, verb: &str, arg: &str) {
     let mut devices = controllers::read_cfg();
     match verb {
         "pad_add" => {

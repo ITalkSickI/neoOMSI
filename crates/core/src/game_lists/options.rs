@@ -572,6 +572,7 @@ pub(super) fn toggle_set(app: &mut App, id: &str, on: bool) -> Option<(&'static 
         }
         "mouse" => {
             app.mouse_drive = on;
+            App::save_mouse_drive(on);
             if !app.mouse_drive {
                 player::keep_wheel(app.player.as_mut());
             }
