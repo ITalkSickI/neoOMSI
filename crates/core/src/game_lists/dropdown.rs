@@ -33,6 +33,10 @@ pub(crate) struct Dropdown {
     pub sel: usize,
     pub top: usize,
     pub current: Option<usize>,
+    /// Type-to-filter
+    pub search: Vec<String>,
+    pub all: Vec<(String, String)>,
+    pub filter: String,
 }
 
 pub(crate) fn value_label(setting: &str, value: &str, label: &str) -> String {
@@ -148,6 +152,9 @@ pub(crate) fn dropdown_for(app: &App, row: usize, id: &str) -> Option<Dropdown> 
         sel,
         top: 0,
         current,
+        search: Vec::new(),
+        all: Vec::new(),
+        filter: String::new(),
     })
 }
 

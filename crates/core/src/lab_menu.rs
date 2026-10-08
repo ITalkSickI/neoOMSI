@@ -126,6 +126,14 @@ impl App {
     fn lab_world_sync(&mut self) {
         let shown = self.lab_group_page();
         let on = shown.is_some();
+        if shown == Some(OPTIONS_PAGE) {
+            let hwnd = self.window.as_deref().and_then(crate::controllers::window_handle);
+            let root = self.args.root.clone();
+            let ctl = self
+                .controllers
+                .get_or_insert_with(|| crate::controllers::Controllers::new(&root, hwnd));
+            ctl.refresh_devices();
+        }
         let view: Vec<WorldGroup> = if on {
             let tr = |t: &str| t.to_string();
             self.lab_world_raw()

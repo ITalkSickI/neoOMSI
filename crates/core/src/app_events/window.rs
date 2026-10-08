@@ -74,6 +74,11 @@ impl App {
                 self.key_search_text(text);
             }
         }
+        if event.state == ElementState::Pressed && self.dropdown.is_some() {
+            if let Some(text) = event.text.as_deref() {
+                self.dropdown_text(text);
+            }
+        }
         if event.state == ElementState::Pressed && self.lab_list.is_some() {
             if let Some(text) = event.text.as_deref() {
                 self.lab_dialog_text(text);

@@ -705,7 +705,6 @@ impl Devices {
             v.extend(
                 d.devices
                     .iter()
-                    .filter(|_| d.is_focused())
                     // A G920's DirectInput name contains "Xbox One", but it is the
                     // force-feedback wheel. Keep it even when gilrs also lists a pad.
                     .filter(|d| include_direct_input_device(&d.name, d.ff_capable(), xinput_pads))
@@ -899,7 +898,7 @@ pub struct Controllers {
 }
 
 impl Controllers {
-    
+
     pub(crate) fn connected_devices(&self) -> Vec<Connected> {
         self.devices.connected()
     }

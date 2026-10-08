@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 static SEL: AtomicUsize = AtomicUsize::new(0);
 static LIVE: Mutex<Option<(Instant, Vec<Connected>)>> = Mutex::new(None);
+static TABMAP: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 
 type Rows = Vec<(String, String)>;
 
@@ -14,7 +15,7 @@ fn connected(app: &App) -> Vec<Connected> {
     let Ok(mut g) = LIVE.lock() else {
         return Vec::new();
     };
-    if g.as_ref().map_or(true, |(t, _)| t.elapsed() > Duration::from_secs(1)) {
+    if g.as_ref().map_or(true, |(t, v)| t.elapsed() > Duration::from_millis(if v.is_empty() { 200 } else { 1000 })) {
         let v = app.controllers.as_ref().map(|c| c.connected_devices()).unwrap_or_default();
         *g = Some((Instant::now(), v));
     }
@@ -106,32 +107,45 @@ fn intern(name: &str) -> &'static str {
 }
 
 pub(crate) fn set_tab(sub: usize) {
-    SEL.store(sub.saturating_sub(2), Ordering::Relaxed);
+    let n = sub.saturating_sub(2);
+    let at = TABMAP.lock().ok().and_then(|m| m.get(n).copied()).unwrap_or(n);
+    SEL.store(at, Ordering::Relaxed);
 }
 
 pub(crate) fn rows(app: &App) -> Rows {
     let live = connected(app);
     let devices = controllers::read_cfg();
     let mut out: Rows = Vec::new();
-    for c in live.iter().filter(|c| !devices.iter().any(|d| controllers::names_match(&d.name, &c.name))) {
-        out.push((row(&c.name, 'a', "pause.controls.setup.name", "pause.controls.setup.desc", None), format!("pad_add {}", c.name)));
+    let mut tab = 2;
+    for c in live.iter() {
+        if let Some(i) = devices.iter().position(|d| controllers::names_match(&d.name, &c.name)) {
+            out.push((row(&c.name, 'o', "", "pause.controls.use.desc", None), format!("pad_open {i}")));
+            tab += 1;
+        } else {
+            out.push((row(&c.name, 'a', "pause.controls.setup.name", "pause.controls.setup.desc", None), format!("pad_add {}", c.name)));
+        }
     }
-    if live.is_empty() {
-        out.push((row("pause.controls.none", 'i', "", "", None), "noop".to_string()));
-    }
+    let _ = tab;
     out
 }
 
 pub(crate) fn device_tabs(app: &App) -> Vec<(&'static str, Rows)> {
     let live = connected(app);
     let devices = controllers::read_cfg();
-    devices
+    let mut map = Vec::new();
+    let tabs = devices
         .iter()
-        .filter_map(|d| {
+        .enumerate()
+        .filter_map(|(i, d)| {
             let dev = live.iter().find(|c| controllers::names_match(&d.name, &c.name))?;
+            map.push(i);
             Some((intern(&d.name), device_rows(app, d, Some(dev))))
         })
-        .collect()
+        .collect();
+    if let Ok(mut m) = TABMAP.lock() {
+        *m = map;
+    }
+    tabs
 }
 
 fn device_rows(app: &App, d: &DeviceCfg, dev: Option<&Connected>) -> Rows {
@@ -140,7 +154,7 @@ fn device_rows(app: &App, d: &DeviceCfg, dev: Option<&Connected>) -> Rows {
             "pause.controls.use.name",
             's',
             if d.enabled { "on" } else { "off" },
-            if dev.is_some() { "pause.controls.use.desc" } else { "pause.controls.use.missing" },
+            "pause.controls.use.desc",
             None,
         ),
         "pad_on".to_string(),
@@ -198,6 +212,7 @@ pub(crate) fn dropdown(app: &App, row_k: usize, id: &str) -> Option<Dropdown> {
     let (verb, arg) = id.split_once(' ').unwrap_or((id, ""));
     let mut items: Vec<(String, String)> = Vec::new();
     let mut current = None;
+    let mut search: Vec<String> = Vec::new();
     match verb {
         "pad_axis" => {
             let a: usize = arg.parse().ok().filter(|a| *a < 8)?;
@@ -240,18 +255,31 @@ pub(crate) fn dropdown(app: &App, row_k: usize, id: &str) -> Option<Dropdown> {
             let b: usize = arg.parse().ok()?;
             let names = names_of(app);
             let now = d.buttons.get(b).map(|x| x.0.trim().to_string()).unwrap_or_default();
+            let bound = omsi_launcher_lib::get_keybindings().ok();
             for (i, a) in actions().into_iter().enumerate() {
                 if a.eq_ignore_ascii_case(&now) {
                     current = Some(i);
                 }
                 let label = if a.is_empty() { func_text(None) } else { names.control(&a) };
+                let mut hay = format!("{label} {a}");
+                for sec in ["vehicles", "game"] {
+                    for e in bound.iter().filter_map(|v| v.get(sec)?.as_array()).flatten() {
+                        let scan = e.get("scan_code").and_then(|x| x.as_i64()).unwrap_or(0);
+                        if scan != 0 && e.get("action").and_then(|x| x.as_str()).is_some_and(|x| !a.is_empty() && x.eq_ignore_ascii_case(&a)) {
+                            let m = e.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0);
+                            hay.push(' ');
+                            hay.push_str(&crate::keys::key_name(scan, m));
+                        }
+                    }
+                }
+                search.push(hay.to_lowercase());
                 items.push((label, format!("pad_set_btn {b} {a}")));
             }
         }
         _ => return None,
     }
     let sel = current.unwrap_or(0);
-    Some(Dropdown { row: row_k, items, sel, top: 0, current })
+    Some(Dropdown { row: row_k, all: if search.is_empty() { Vec::new() } else { items.clone() }, items, sel, top: 0, current, search, filter: String::new() })
 }
 
 pub(crate) fn apply(app: &mut App, verb: &str, arg: &str) {
@@ -313,8 +341,20 @@ pub(crate) fn click(app: &mut App, verb: &str, arg: &str) {
             SEL.store(at, Ordering::Relaxed);
             save(app, &devices);
 
+            let tab = TABMAP.lock().map_or(0, |m| m.len());
             if let Some(u) = app.ui.as_mut() {
-                u.world_sub = at + 2;
+                u.world_sub = tab + 2;
+                u.world_scroll = 0;
+            }
+        }
+        "pad_open" => {
+            let Some(i) = arg.parse::<usize>().ok().filter(|i| *i < devices.len()) else {
+                return;
+            };
+            let tab = TABMAP.lock().ok().and_then(|m| m.iter().position(|x| *x == i));
+            if let (Some(t), Some(u)) = (tab, app.ui.as_mut()) {
+                SEL.store(i, Ordering::Relaxed);
+                u.world_sub = t + 2;
                 u.world_scroll = 0;
             }
         }

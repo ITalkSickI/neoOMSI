@@ -863,24 +863,68 @@ impl App {
             return;
         };
         let n = d.items.len().max(1);
+        let ss = !d.search.is_empty();
         match code {
             KeyCode::Escape => {
                 self.dropdown = None;
                 return;
             }
-            KeyCode::ArrowUp | KeyCode::KeyW => d.sel = (d.sel + n - 1) % n,
-            KeyCode::ArrowDown | KeyCode::KeyS => d.sel = (d.sel + 1) % n,
+            KeyCode::Backspace if ss => {
+                d.filter.pop();
+                self.dropdown_refilter();
+                return;
+            }
+            KeyCode::ArrowUp => d.sel = (d.sel + n - 1) % n,
+            KeyCode::KeyW if !ss => d.sel = (d.sel + n - 1) % n,
+            KeyCode::ArrowDown => d.sel = (d.sel + 1) % n,
+            KeyCode::KeyS if !ss => d.sel = (d.sel + 1) % n,
             KeyCode::PageUp => d.sel = d.sel.saturating_sub(5),
             KeyCode::PageDown => d.sel = (d.sel + 5).min(n - 1),
             KeyCode::Home => d.sel = 0,
             KeyCode::End => d.sel = n - 1,
-            KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                let i = d.sel;
+                self.dropdown_pick(i);
+                return;
+            }
+            KeyCode::Space if !ss => {
                 let i = d.sel;
                 self.dropdown_pick(i);
                 return;
             }
             _ => return,
         }
+        self.dd_reveal();
+    }
+
+    pub(crate) fn dropdown_text(&mut self, text: &str) {
+        let Some(d) = self.dropdown.as_mut() else {
+            return;
+        };
+        if d.search.is_empty() {
+            return;
+        }
+        d.filter.extend(text.chars().filter(|c| !c.is_control()));
+        self.dropdown_refilter();
+    }
+
+    fn dropdown_refilter(&mut self) {
+        let Some(d) = self.dropdown.as_mut() else {
+            return;
+        };
+        let q = d.filter.trim().to_lowercase();
+        let cur = d.current.and_then(|c| d.items.get(c)).map(|x| x.1.clone());
+        d.items = d
+            .all
+            .iter()
+            .zip(d.search.iter())
+            .enumerate()
+            .filter(|(i, (_, h))| *i == 0 || q.is_empty() || h.contains(&q))
+            .map(|(_, (it, _))| it.clone())
+            .collect();
+        d.current = cur.and_then(|c| d.items.iter().position(|x| x.1 == c));
+        d.sel = if q.is_empty() { d.current.unwrap_or(0) } else { 1.min(d.items.len() - 1) };
+        d.top = 0;
         self.dd_reveal();
     }
 

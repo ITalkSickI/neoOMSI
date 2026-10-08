@@ -807,15 +807,13 @@
       }
     },
     "controls": {
-      "none": "No controller found.",
       "setup": {
         "name": "Set up",
         "desc": "Set up this controller so it can be used in the game."
       },
       "use": {
         "name": "Use this controller",
-        "desc": "A controller that is off is not read at all.",
-        "missing": "This controller is not connected right now."
+        "desc": "A controller that is off is not read at all."
       },
       "axes": "Axes",
       "axis": {
