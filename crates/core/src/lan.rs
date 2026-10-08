@@ -4,7 +4,7 @@ use glam::DVec3;
 use ::network::{Footprint, LanEvent, LanSession, PartPose, Pose, Role};
 use ::render::{Renderer, Scene};
 use ::legacy_script::VarId;
-use ::simulation::traffic::{Lane, LaneKind, Network};
+use ::traffic::{Lane, LaneKind, Network};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

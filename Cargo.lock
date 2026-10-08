@@ -717,6 +717,7 @@ dependencies = [
  "simulation",
  "texture",
  "timetable",
+ "traffic",
  "ureq",
  "user-interface",
  "wgpu",
@@ -3739,7 +3740,6 @@ dependencies = [
  "parking_lot",
  "scenery",
  "texture",
- "traffic",
 ]
 
 [[package]]

@@ -6,7 +6,7 @@ use crate::traffic::Traffic;
 use hashbrown::{HashMap, HashSet};
 use ::render::{Renderer, Scene};
 use ::simulation::VehicleType;
-use ::simulation::traffic::{
+use ::traffic::{
     LaneId, LaneKey, Network, Reason, RouteStatus, RouteStepState, TileState, bridge_gaps,
     compile_route, joins, way_between,
 };
@@ -1014,7 +1014,7 @@ impl Schedule {
         scene: &mut Scene,
         day_time: f64,
     ) {
-        let done: Vec<::simulation::traffic::VehicleId> = traffic
+        let done: Vec<::traffic::VehicleId> = traffic
             .cars()
             .iter()
             .filter(|c| c.trip_done())
@@ -1675,7 +1675,7 @@ impl Schedule {
     /// The lanes a trip runs on in `net` - the navigator's network of the whole map, which
     /// has every tile's lanes whether loaded or not - chosen as `slots` chooses them (of a
     /// two-way path the direction that joins the lanes before and after).
-    pub fn trip_route_in(&self, net: &::simulation::traffic::Network, trip_name: &str) -> Vec<usize> {
+    pub fn trip_route_in(&self, net: &::traffic::Network, trip_name: &str) -> Vec<usize> {
         let Some(trip) = self
             .data
             .trips
@@ -2637,7 +2637,7 @@ impl Schedule {
         };
         self.next_number += 1;
         let rail =
-            traffic.net().lanes[section[start_index]].kind == ::simulation::traffic::LaneKind::Rail;
+            traffic.net().lanes[section[start_index]].kind == ::traffic::LaneKind::Rail;
         // every further car of the train with the cars of its unit, as Omsi.exe creates
         // each car of a `.zug` (the first has its own with `create_car`): the ones before it
         // (towards the front of the train), the car, the ones behind it
@@ -2900,7 +2900,7 @@ fn track_is_air(traffic: &Traffic, lane: usize) -> bool {
         .net()
         .lanes
         .get(lane)
-        .map(|l| l.kind == ::simulation::traffic::LaneKind::Air)
+        .map(|l| l.kind == ::traffic::LaneKind::Air)
         .unwrap_or(false)
 }
 

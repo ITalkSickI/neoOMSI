@@ -730,15 +730,15 @@ pub(crate) fn run_offscreen(
                     .and_then(|p| p.vehicle.var("TrafficPriority"))
                     .is_some_and(|v| v > 0.5),
             );
-            let steps = ::simulation::traffic::advance_fixed_clock(
+            let steps = ::traffic::advance_fixed_clock(
                 &mut sim_accum,
                 dt,
-                ::simulation::traffic::SIM_DT,
-                ::simulation::traffic::MAX_SIM_STEPS,
+                ::traffic::SIM_DT,
+                ::traffic::MAX_SIM_STEPS,
             );
             for _ in 0..steps {
                 t.tick(
-                    ::simulation::traffic::SIM_DT,
+                    ::traffic::SIM_DT,
                     player.as_ref().map(|p| player_outline(p)),
                 );
             }
@@ -877,7 +877,7 @@ pub(crate) fn run_offscreen(
                     let fwd = DVec3::new(h.sin(), h.cos(), 0.0);
                     let probe = v.position + fwd * 3.0;
                     if let Some((mut lane, mut s, _)) =
-                        net.nearest_lane(probe, ::simulation::traffic::LaneKind::Street)
+                        net.nearest_lane(probe, ::traffic::LaneKind::Street)
                     {
                         // (the lane that runs our way)
                         let lh = net.lanes[lane].at(s).1 as f64;
@@ -885,7 +885,7 @@ pub(crate) fn run_offscreen(
                         if dh.abs() > 100.0 {
                             if let Some((l2, s2, _)) = (0..net.lanes.len())
                                 .filter(|&k| {
-                                    net.lanes[k].kind == ::simulation::traffic::LaneKind::Street
+                                    net.lanes[k].kind == ::traffic::LaneKind::Street
                                 })
                                 .filter_map(|k| {
                                     net.lanes[k].nearest_point(probe).map(|(s, d)| (k, s, d))
@@ -2367,7 +2367,7 @@ pub(crate) fn run_offscreen(
                 .net()
                 .lanes
                 .iter()
-                .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street && !l.invisible)
+                .filter(|l| l.kind == ::traffic::LaneKind::Street && !l.invisible)
             {
                 let len = l.length();
                 let mut s = 0.0f32;
@@ -2413,7 +2413,7 @@ pub(crate) fn run_offscreen(
                         .lanes
                         .iter()
                         .enumerate()
-                        .filter(|(_, l)| l.kind == ::simulation::traffic::LaneKind::Street)
+                        .filter(|(_, l)| l.kind == ::traffic::LaneKind::Street)
                     {
                         if let Some(k) = l
                             .points
@@ -2462,7 +2462,7 @@ pub(crate) fn run_offscreen(
                 .net()
                 .lanes
                 .iter()
-                .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street && !l.invisible)
+                .filter(|l| l.kind == ::traffic::LaneKind::Street && !l.invisible)
             {
                 let len = l.length();
                 let mut s = 1.0f32;
@@ -2535,11 +2535,11 @@ pub(crate) fn run_offscreen(
     // What the map says about traffic on its roads
     if ::legacy_config::env::var_os("OMSI_CHECK_ROADS").is_some() {
         if let Some(t) = traffic.as_ref() {
-            let street: Vec<&::simulation::traffic::Lane> = t
+            let street: Vec<&::traffic::Lane> = t
                 .net()
                 .lanes
                 .iter()
-                .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street)
+                .filter(|l| l.kind == ::traffic::LaneKind::Street)
                 .collect();
             let no_cars = street.iter().filter(|l| l.no_cars).count();
             let zero = street
@@ -2568,7 +2568,7 @@ pub(crate) fn run_offscreen(
                 .net()
                 .lanes
                 .iter()
-                .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street && !l.invisible)
+                .filter(|l| l.kind == ::traffic::LaneKind::Street && !l.invisible)
             {
                 let len = l.length();
                 let mut s = 0.0f32;
@@ -2624,7 +2624,7 @@ pub(crate) fn run_offscreen(
                     .net()
                     .lanes
                     .iter()
-                    .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street && !l.invisible)
+                    .filter(|l| l.kind == ::traffic::LaneKind::Street && !l.invisible)
                 {
                     let len = l.length();
                     let mut s = 0.0f32;
@@ -2716,7 +2716,7 @@ pub(crate) fn run_offscreen(
                     .net()
                     .lanes
                     .iter()
-                    .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street && !l.invisible)
+                    .filter(|l| l.kind == ::traffic::LaneKind::Street && !l.invisible)
                 {
                     let len = l.length();
                     let mut ground = surface(l.at(0.0).0);
@@ -3206,7 +3206,7 @@ pub(crate) fn run_offscreen(
                 .net()
                 .lanes
                 .iter()
-                .filter(|l| l.kind == ::simulation::traffic::LaneKind::Street && !l.invisible)
+                .filter(|l| l.kind == ::traffic::LaneKind::Street && !l.invisible)
             {
                 let len = l.length();
                 let mut s = 3.0f32;

@@ -1,7 +1,7 @@
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec2, Vec3};
 use hashbrown::HashMap;
 use ::render::{Renderer, Scene, TextureId};
-use ::simulation::traffic::{LaneKey, LaneKind, Network};
+use ::traffic::{LaneKey, LaneKind, Network};
 use ::user_interface::paint::Align;
 use ::user_interface::{Atlas, Color, Draw, Fonts, Gpu, Layer, Painter, Rect, Weight};
 
@@ -424,7 +424,7 @@ impl Navigator {
         self.global.as_deref()
     }
 
-    pub fn add_lanes(&mut self, lanes: Vec<::simulation::traffic::Lane>) {
+    pub fn add_lanes(&mut self, lanes: Vec<::traffic::Lane>) {
         if lanes.is_empty() {
             return;
         }
@@ -773,9 +773,9 @@ impl Navigator {
                 break;
             }
             let (h0, h1) = (lane.start_heading(), lane.end_heading());
-            let mut d = ::simulation::traffic::wrap_deg(h1 - h0);
+            let mut d = ::traffic::wrap_deg(h1 - h0);
             if let Some(pe) = prev_end {
-                d += ::simulation::traffic::wrap_deg(h0 - pe);
+                d += ::traffic::wrap_deg(h0 - pe);
             }
             if d.abs() > 35.0 && (len < 60.0 || d.abs() > 70.0) && acc + len as f64 > 0.0 {
                 let dir = if d.abs() > 150.0 {
@@ -1890,7 +1890,7 @@ impl<'a> NavFrame<'a> {
     }
 }
 
-fn visible_road_lanes(net: &Network) -> Vec<(usize, &::simulation::traffic::Lane)> {
+fn visible_road_lanes(net: &Network) -> Vec<(usize, &::traffic::Lane)> {
     let mut seen = hashbrown::HashSet::<(LaneKey, u32)>::new();
     net.lanes
         .iter()
@@ -2019,7 +2019,7 @@ fn confirm_road_surfaces(net: &mut Network, surfaces: &[(Vec<DVec3>, f32)]) {
 fn road_geometry(net: &Network) -> Vec<MapRoad> {
     let mut roads = Vec::new();
     let mut splines =
-        std::collections::BTreeMap::<((i32, i32), i64), Vec<&::simulation::traffic::Lane>>::new();
+        std::collections::BTreeMap::<((i32, i32), i64), Vec<&::traffic::Lane>>::new();
     for (_, lane) in visible_road_lanes(net) {
         if let Some(key) = lane.key.filter(|_| lane.source == 1) {
             splines.entry((key.tile, key.id)).or_default().push(lane);
@@ -2071,7 +2071,7 @@ fn road_geometry(net: &Network) -> Vec<MapRoad> {
             } else {
                 0.0
             };
-            let point = |l: &::simulation::traffic::Lane, i: usize| {
+            let point = |l: &::traffic::Lane, i: usize| {
                 l.points[if l.reversed {
                     l.points.len() - 1 - i
                 } else {
@@ -2292,8 +2292,8 @@ fn lane_from_right(net: &Network, lane: usize, bus: DVec3) -> usize {
     let Some(mut cur) = net.lanes.get(lane).map(|_| lane) else {
         return 0;
     };
-    let kerb = |l: &::simulation::traffic::Lane| if net.left_hand { l.left } else { l.right };
-    let away = |l: &::simulation::traffic::Lane| if net.left_hand { l.right } else { l.left };
+    let kerb = |l: &::traffic::Lane| if net.left_hand { l.left } else { l.right };
+    let away = |l: &::traffic::Lane| if net.left_hand { l.right } else { l.left };
     for _ in 0..6 {
         match kerb(&net.lanes[cur]) {
             Some(n) if n < net.lanes.len() && net.lanes[n].kind == LaneKind::Street => cur = n,
@@ -2338,7 +2338,7 @@ fn build_route(
         let mut acc = 0.0f32;
         for &j in lanes.iter().skip(k + 1).take(40) {
             let Some(l) = net.lanes.get(j) else { break };
-            let d = ::simulation::traffic::wrap_deg(l.end_heading() - l.start_heading());
+            let d = ::traffic::wrap_deg(l.end_heading() - l.start_heading());
             if d.abs() > 35.0 && l.length() < 60.0 {
                 return if d > 0.0 { 1 } else { -1 };
             }
@@ -2474,9 +2474,9 @@ fn build_streets(net: &Network, signs: &[(DVec3, f64, String)]) -> Streets {
             }
         }
     }
-    let straight = |l: &::simulation::traffic::Lane| {
+    let straight = |l: &::traffic::Lane| {
         l.kind == LaneKind::Street
-            && ::simulation::traffic::wrap_deg(l.end_heading() - l.start_heading()).abs() < 30.0
+            && ::traffic::wrap_deg(l.end_heading() - l.start_heading()).abs() < 30.0
     };
     let debug = ::legacy_config::env::var_os("OMSI_DEBUG_NAV").is_some();
     let mut hist = [0u32; 12];
@@ -2573,7 +2573,7 @@ fn build_streets(net: &Network, signs: &[(DVec3, f64, String)]) -> Streets {
                 let m = &net.lanes[j];
                 if of_lane[j] == u32::MAX
                     && straight(m)
-                    && ::simulation::traffic::wrap_deg(m.start_heading() - l.end_heading()).abs() < 20.0
+                    && ::traffic::wrap_deg(m.start_heading() - l.end_heading()).abs() < 20.0
                 {
                     queue.push((j, far + m.length()));
                 }
@@ -2582,7 +2582,7 @@ fn build_streets(net: &Network, signs: &[(DVec3, f64, String)]) -> Streets {
                 let m = &net.lanes[j];
                 if of_lane[j] == u32::MAX
                     && straight(m)
-                    && ::simulation::traffic::wrap_deg(l.start_heading() - m.end_heading()).abs() < 20.0
+                    && ::traffic::wrap_deg(l.start_heading() - m.end_heading()).abs() < 20.0
                 {
                     queue.push((j, far + m.length()));
                 }
@@ -2780,9 +2780,9 @@ impl Navigator {
                 break;
             }
             let (h0, h1) = (lane.start_heading(), lane.end_heading());
-            let mut d = ::simulation::traffic::wrap_deg(h1 - h0);
+            let mut d = ::traffic::wrap_deg(h1 - h0);
             if let Some(pe) = prev_end {
-                d += ::simulation::traffic::wrap_deg(h0 - pe);
+                d += ::traffic::wrap_deg(h0 - pe);
             }
             let junction =
                 net.crossings.get(l).map(|c| !c.is_empty()).unwrap_or(false) || lane.turn != 0;
@@ -3430,10 +3430,10 @@ impl Navigator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::simulation::traffic::Lane;
+    use ::traffic::Lane;
 
     fn straight(a: (f64, f64), b: (f64, f64)) -> Lane {
-        ::simulation::traffic::LaneBuilder::polyline(
+        ::traffic::LaneBuilder::polyline(
             vec![DVec3::new(a.0, a.1, 0.0), DVec3::new(b.0, b.1, 0.0)],
             LaneKind::Street,
             3.0,

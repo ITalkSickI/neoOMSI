@@ -10,7 +10,6 @@ legacy-config = { path = "../legacy-config" }
 legacy-script = { path = "../legacy-script" }
 model = { path = "../model" }
 legacy-vehicle = { path = "../vehicle" }
-traffic = { path = "../traffic" }
 legacy-o3d = { path = "../legacy-o3d" }
 geometry = { path = "../geometry" }
 content = { path = "../content" }
