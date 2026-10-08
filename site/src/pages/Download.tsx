@@ -204,11 +204,12 @@ export function Download() {
         {release && (
           <div className="mt-8 max-w-[42em]">
             <div className="flex flex-wrap items-center gap-3">
-              <Tag color={release.prerelease ? "#d8a020" : "#2da44e"}>
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon name={selected!.icon} size={15} />
-                  {selected!.name}
-                </span>
+              <Tag
+                color={release.prerelease ? "#d8a020" : "#2da44e"}
+                className="inline-flex items-center gap-1.5 py-0.5"
+              >
+                <Icon name={selected!.icon} size={15} />
+                {selected!.name}
               </Tag>
               <span className="text-muted">
                 {version(release)} · {date(release.published_at)}
@@ -219,10 +220,10 @@ export function Download() {
             </div>
             {release.prerelease && (
               <div className="card mt-4 flex gap-3 p-4">
-                <span className="shrink-0 text-accent">
+                <span className="flex h-6 shrink-0 items-center text-accent">
                   <Icon name="info" size={22} />
                 </span>
-                <div className="min-w-0 text-[16px]">
+                <div className="min-w-0 text-[16px] leading-6">
                   <p className="font-semibold text-heading">
                     {selected?.key === "rc"
                       ? "Release candidate"
@@ -306,7 +307,7 @@ export function Download() {
       </PageHead>
 
       {release && (
-        <section className="bleed">
+        <section className="wrap">
           <h2 id="dl-all" className="section-title scroll-mt-24">
             Download for your system
           </h2>
@@ -314,7 +315,7 @@ export function Download() {
             Choose your operating system and processor. All downloads below are
             from the selected {selected!.name.toLowerCase()} build.
           </p>
-          <div className="mt-8 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <Tiles builds={DOWNLOAD_PLATFORMS} release={release} mine={mine} />
           </div>
         </section>
