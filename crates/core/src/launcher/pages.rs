@@ -3458,7 +3458,10 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
             let bar = Rect::new(r.x + lab_w + GAP, r.y + 12.0, bar_w, r.h - 24.0);
             ui.p().rounded(bar, 4.0, Color::WHITE.alpha(0.06));
             if let Some((_, v)) = live.iter().find(|(k, _)| *k == a) {
+                #[cfg(target_os = "linux")]
                 let v = d.axis_preview(a, *v);
+                #[cfg(not(target_os = "linux"))]
+                let v = d.calibrated(a, *v);
                 let x = bar.x + (v.clamp(-1.0, 1.0) + 1.0) * 0.5 * bar.w;
                 ui.p().rounded(
                     Rect::new(x - 2.0, bar.y - 3.0, 4.0, bar.h + 6.0),
@@ -3473,18 +3476,32 @@ fn game_controllers(l: &mut Launcher, body: Rect) {
                 &mut sel,
                 &funcs,
             ) {
+                #[cfg(target_os = "linux")]
                 d.set_axis_function(a, Func::from_code(sel as i32 - 1));
+                #[cfg(not(target_os = "linux"))]
+                {
+                    let inv = d.axes[a].map(|x| x.1).unwrap_or(false);
+                    d.axes[a] = Func::from_code(sel as i32 - 1).map(|f| (f, inv));
+                }
                 dirty = true;
             }
+            #[cfg(target_os = "linux")]
             let mut inv = d.axis_reversed(a);
-            if ui.toggle(
+            #[cfg(not(target_os = "linux"))]
+            let mut inv = d.axes[a].map(|x| x.1).unwrap_or(false);
+            if (cfg!(target_os = "linux") || d.axes[a].is_some()) && ui.toggle(
                 &format!("pad-inv-{a}"),
                 Rect::new(bar.right() + GAP + sel_w + GAP, r.y, inv_w, r.h),
                 &mut inv,
-                "Invert",
+                if cfg!(target_os = "linux") { "Invert" } else { "Reversed" },
             )
             {
+                #[cfg(target_os = "linux")]
                 d.set_axis_reversed(a, inv);
+                #[cfg(not(target_os = "linux"))]
+                if let Some(x) = d.axes[a].as_mut() {
+                    x.1 = inv;
+                }
                 dirty = true;
             }
             if d.axes[a].is_some() {
@@ -3857,6 +3874,7 @@ fn calibration(
                 );
             }
             let out = cal.map_or(v, |c| c.apply(v));
+            #[cfg(target_os = "linux")]
             let out = if d.axis_reversed(k) { -out } else { out };
             ui.p().rounded(
                 Rect::new(

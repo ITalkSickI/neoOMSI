@@ -105,10 +105,12 @@ impl Default for DeviceCfg {
 }
 
 impl DeviceCfg {
+    #[cfg(target_os = "linux")]
     pub(crate) fn axis_reversed(&self, k: usize) -> bool {
         self.axes[k].map_or(self.axis_flags[k] & 1 != 0, |(_, reversed)| reversed)
     }
 
+    #[cfg(target_os = "linux")]
     pub(crate) fn set_axis_reversed(&mut self, k: usize, reversed: bool) {
         self.axis_flags[k] = (self.axis_flags[k] & !1) | i32::from(reversed);
         if let Some((_, value)) = self.axes[k].as_mut() {
@@ -116,12 +118,14 @@ impl DeviceCfg {
         }
     }
 
+    #[cfg(target_os = "linux")]
     pub(crate) fn set_axis_function(&mut self, k: usize, function: Option<Func>) {
         let reversed = self.axis_reversed(k);
         self.axes[k] = function.map(|function| (function, reversed));
         self.set_axis_reversed(k, reversed);
     }
 
+    #[cfg(target_os = "linux")]
     pub(crate) fn axis_preview(&self, k: usize, value: f32) -> f32 {
         let value = self.calibrated(k, value);
         if self.axis_reversed(k) { -value } else { value }
@@ -275,7 +279,7 @@ pub(crate) fn read_device(name: &str) -> DeviceCfg {
         let f = int(&format!("axis{a}")).unwrap_or(-1) as i32;
         let flags = int(&format!("axis{a}_flags")).unwrap_or(0) as i32;
         d.axes[a] = Func::from_code(f).map(|f| (f, flags & 1 != 0));
-        d.axis_flags[a] = flags;
+        d.axis_flags[a] = if cfg!(target_os = "linux") { flags } else { flags & !1 };
         d.calibration[a] = dev_get(name, &format!("axis{a}_cal"))
             .and_then(|v| v.as_str().and_then(AxisCal::parse));
     }
@@ -312,8 +316,19 @@ pub(crate) fn write_device(d: &DeviceCfg) {
     dev_put(n, "enabled", Some(Value::from(d.enabled)));
     dev_put(n, "second", Some(Value::from(if d.second.is_empty() { "0" } else { &d.second })));
     for a in 0..8 {
-        let f = Func::code(d.axes[a].map(|(function, _)| function));
-        let flags = (d.axis_flags[a] & !1) | i32::from(d.axis_reversed(a));
+        #[cfg(target_os = "linux")]
+        let (f, flags) = (
+            Func::code(d.axes[a].map(|(function, _)| function)),
+            (d.axis_flags[a] & !1) | i32::from(d.axis_reversed(a)),
+        );
+        #[cfg(not(target_os = "linux"))]
+        let (f, flags) = {
+            let (f, inv) = match d.axes[a] {
+                Some((f, inv)) => (Func::code(Some(f)), inv),
+                None => (-1, false),
+            };
+            (f, d.axis_flags[a] | i32::from(inv))
+        };
         dev_put(n, &format!("axis{a}"), Some(Value::from(f as i64)));
         dev_put(n, &format!("axis{a}_flags"), Some(Value::from(flags as i64)));
         dev_put(n, &format!("axis{a}_cal"), d.calibration[a].map(|c| Value::from(c.line())));
@@ -2258,6 +2273,7 @@ mod cfg_tests {
         super::read_device(&d.name)
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn z_inversion_is_saved_before_assignment_and_survives_function_changes() {
         let mut device = super::DeviceCfg {
@@ -2283,6 +2299,7 @@ mod cfg_tests {
         assert_eq!(device.axis_flags[2], 2 | 8 | 0x10);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn an_assigned_axis_can_clear_a_previous_inversion_flag() {
         let mut device = super::DeviceCfg {
@@ -2297,6 +2314,7 @@ mod cfg_tests {
         assert_eq!(device.axis_flags[2], 4);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn z_preview_reverses_the_calibrated_range_without_reversing_other_axes() {
         let mut device = super::DeviceCfg::default();
