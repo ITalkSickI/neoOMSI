@@ -1532,7 +1532,7 @@ fn driving_tab(
         c.row(),
         &mut range,
         180.0,
-        1800.0,
+        2880.0,
         30.0,
         "Wheel rotation",
         &|v| format!("{v:.0}°"),
@@ -1546,7 +1546,7 @@ fn driving_tab(
         c.row(),
         &mut lock,
         0.0,
-        1800.0,
+        2880.0,
         30.0,
         "Full lock at",
         &|v| {
