@@ -220,18 +220,10 @@ _version: 2
   de: "Fahrplanbusse"
 "Put the bus into service on start (Shift+U)":
   de: "Bus beim Start in Betrieb nehmen (Shift+U)"
-"LAN play":
-  de: "Netzwerkspiel"
-"Alone":
-  de: "Allein"
 "Host":
   de: "Hosten"
 "Join":
   de: "Beitreten"
-"Session code OMSI-XXXX-…, or an address; empty = search the LAN":
-  de: "Sitzungscode OMSI-XXXX-… oder Adresse; leer = LAN durchsuchen"
-"Once the game runs, the Sessions page shows the session code with a copy button; your friend pastes it into Join. It works at home and over the internet - no VPN needed.":
-  de: "Sobald das Spiel läuft, zeigt die Seite Sitzungen den Code mit Kopier-Knopf; dein Freund fügt ihn bei Beitreten ein. Funktioniert zu Hause und über das Internet - ohne VPN."
 "Weather":
   de: "Wetter"
 "Map default":
@@ -284,8 +276,6 @@ _version: 2
   de: "Tutorials"
 "Setup":
   de: "Einrichtung"
-"The original OMSI 2 was not found automatically. Choose its folder (the one with OMSI, maps and Vehicles) and press Save.":
-  de: "Das originale OMSI 2 wurde nicht automatisch gefunden. Wähle seinen Ordner (mit OMSI, maps und Vehicles) und drücke Speichern."
 "No preview":
   de: "Keine Vorschau"
 "Loading…":
@@ -302,8 +292,6 @@ _version: 2
   de: "Tutorial wird gestartet…"
 "Settings saved.":
   de: "Einstellungen gespeichert."
-"The original OMSI 2 was not found automatically: choose its folder (the one with OMSI, maps and Vehicles) and press Save.":
-  de: "Das originale OMSI 2 wurde nicht automatisch gefunden: wähle seinen Ordner (mit OMSI, maps und Vehicles) und drücke Speichern."
 "The driver whose personnel file the game writes: hours, kilometres, punctuality, tickets.":
   de: "Der Fahrer, dessen Personalakte das Spiel führt: Stunden, Kilometer, Pünktlichkeit, Fahrscheine."
 "Driver":
@@ -332,8 +320,6 @@ _version: 2
   de: "Fahrscheine verkauft"
 "pedestrians hurt":
   de: "Fußgänger verletzt"
-"driving (0 = best)":
-  de: "Fahrweise (0 = beste)"
 "ticket selling":
   de: "Fahrscheinverkauf"
 "Recent runs":
@@ -410,8 +396,6 @@ _version: 2
   de: "KI-Fahrzeuge auf der Karte"
 "Route arrows (as in OMSI 2)":
   de: "Routenpfeile (wie in OMSI 2)"
-"Opacity":
-  de: "Deckkraft"
 "Corner":
   de: "Ecke"
 "Interface & online":
@@ -488,18 +472,8 @@ _version: 2
   de: "Still"
 "How many passengers":
   de: "Wie viele Fahrgäste"
-"Controls & sound":
-  de: "Steuerung & Ton"
 "Driving keys":
   de: "Fahrtasten"
-"Custom controls (Controls page)":
-  de: "Eigene (Seite Steuerung)"
-"W A S D + arrows":
-  de: "W A S D + Pfeiltasten"
-"W A S D only":
-  de: "Nur W A S D"
-"Arrow keys only":
-  de: "Nur Pfeiltasten"
 "Volume":
   de: "Lautstärke"
 "Doppler effect":
@@ -526,10 +500,6 @@ _version: 2
   de: "Höchstens 100"
 "At most 250":
   de: "Höchstens 250"
-"Start at the real time":
-  de: "Zur echten Uhrzeit starten"
-"Start on today's date":
-  de: "Mit dem heutigen Datum starten"
 "Collisions with vehicles":
   de: "Kollisionen mit Fahrzeugen"
 "Collisions with people":
@@ -618,10 +588,6 @@ _version: 2
   de: "Taste drücken…"
 "Key bindings saved.":
   de: "Tastenbelegung gespeichert."
-"The games you started: their logs, and their LAN session - the code to give a friend, who joined, the chat.":
-  de: "Die gestarteten Spiele: ihre Protokolle und ihre LAN-Sitzung - der Code für einen Freund, wer beigetreten ist, der Chat."
-"No game is running. Start a duty on the Drive page; to drive with a friend, choose LAN play → Host there, and give them the session code shown here.":
-  de: "Kein Spiel läuft. Starte einen Dienst auf der Seite Fahren; um mit einem Freund zu fahren, wähle dort Netzwerkspiel → Hosten und gib ihm den hier gezeigten Code."
 "Stopping…":
   de: "Wird beendet…"
 "Stop":
@@ -630,10 +596,6 @@ _version: 2
   de: "Protokoll ausblenden"
 "Show log":
   de: "Protokoll zeigen"
-"LAN SESSION CODE":
-  de: "LAN-SITZUNGSCODE"
-"Your friend pastes it into LAN play → Join - at home or anywhere on the internet.":
-  de: "Dein Freund fügt ihn bei Netzwerkspiel → Beitreten ein - zu Hause oder irgendwo im Internet."
 "Copy code":
   de: "Code kopieren"
 "PLAYERS":
@@ -646,22 +608,14 @@ _version: 2
   de: "WARNUNG"
 "Session code copied.":
   de: "Sitzungscode kopiert."
-"A bus, a map, scenery, a whole OMSI folder - as a folder or a .zip. The original OMSI 2 folder is never written to.":
-  de: "Ein Bus, eine Karte, Szenerie, ein ganzer OMSI-Ordner - als Ordner oder .zip. In den originalen OMSI-2-Ordner wird nie geschrieben."
 "Install a mod":
   de: "Mod installieren"
 "Choose a folder":
   de: "Ordner wählen"
-"Choose a .zip":
-  de: ".zip wählen"
-"A .zip archive is":
-  de: "Ein .zip-Archiv wird"
 "Unpacked":
   de: "Entpackt"
 "Used in place":
   de: "An Ort und Stelle genutzt"
-"…or drop a mod folder or .zip onto this window":
-  de: "…oder einen Mod-Ordner oder eine .zip auf dieses Fenster ziehen"
 "can be used in place":
   de: "kann direkt genutzt werden"
 "The Mods folder":
@@ -732,8 +686,6 @@ _version: 2
   de: "Innenbeleuchtung aus"
 "Putting the vehicle into service ...":
   de: "Fahrzeug wird in Betrieb genommen ..."
-"Shutting the vehicle down ...":
-  de: "Fahrzeug wird abgestellt ..."
 "No game controller found":
   de: "Kein Gamecontroller gefunden"
 "Game controller on":
@@ -826,12 +778,6 @@ _version: 2
   de: "Sitzung beenden"
 "Refuel and wash only at a petrol station or in the depot's wash yard":
   de: "Tanken und Waschen nur an einer Tankstelle oder in der Waschanlage des Betriebshofs"
-"Get up":
-  de: "Aufstehen"
-"Sit down":
-  de: "Hinsetzen"
-"No free seat here: stand by a bus's door":
-  de: "Hier ist kein Platz frei: stell dich an eine Bustür"
 "go to":
   de: "hinfahren"
 "bring here":
@@ -854,8 +800,6 @@ _version: 2
   de: "Wieder am Steuer"
 "Real time":
   de: "Echtzeit"
-"Time speed (not in multiplayer)":
-  de: "Zeitraffer (nicht im Mehrspieler)"
 "Your next duty opens a session. Give the code to your friends: it works at home and over the internet.":
   de: "Dein nächster Dienst öffnet eine Sitzung. Gib deinen Freunden den Code: er funktioniert zu Hause und über das Internet."
 "Friends can join from anywhere":
@@ -864,8 +808,6 @@ _version: 2
   de: "Vorbereitung für Freunde im Internet…"
 "Server address":
   de: "Serveradresse"
-"That is not a server address: copy it again from its owner":
-  de: "Das ist keine Serveradresse: kopiere sie erneut vom Besitzer"
 "No servers yet. Add a server by the address its owner gives you.":
   de: "Noch keine Server. Füge einen Server mit der Adresse hinzu, die dir sein Besitzer gibt."
 "The games you started, and who drives with you.":
@@ -902,24 +844,14 @@ _version: 2
   de: "Füge den Code aus dem Spiel deines Freundes ein. Karte, Zeit und Wetter sind die des Hosts; den Bus wählst du."
 "Drive with friends by a code, or on servers that are always on.":
   de: "Fahre mit Freunden per Code oder auf Servern, die immer laufen."
-"Online: nobody else yet":
-  de: "Online: noch niemand sonst"
-"Online: 1 other player":
-  de: "Online: 1 weiterer Spieler"
-"Get in through an open door of the bus, then G by a seat sits down":
-  de: "Steig durch eine offene Tür ein, dann G am Sitz zum Hinsetzen"
 "No free seat near: walk up to one":
   de: "Kein freier Sitz in der Nähe: geh zu einem hin"
 "The host brought you to them":
   de: "Der Host hat dich zu sich geholt"
-"You administer this server now: Esc → Administration":
-  de: "Du verwaltest jetzt diesen Server: Esc → Verwaltung"
 "Wrong admin password":
   de: "Falsches Admin-Passwort"
 "That player has no bus to go to":
   de: "Dieser Spieler hat keinen Bus"
-"livery":
-  de: "Lackierung"
 "liveries":
   de: "Lackierungen"
 "Screen refresh rate":
@@ -932,8 +864,6 @@ _version: 2
   de: " (beendet – lief nicht von selbst aus, die Fahrt wird nicht gespeichert)"
 " ERROR ":
   de: " FEHLER "
-" · multiplayer":
-  de: " · Mehrspieler"
 "(unbound)":
   de: "(nicht belegt)"
 "+1 min":
@@ -956,12 +886,8 @@ _version: 2
   de: "500 MB"
 "60 fps":
   de: "60 fps"
-"< Back":
-  de: "< Zurück"
 "<1 min":
   de: "<1 min"
-"A LAN session goes on while the menu is open":
-  de: "Eine LAN-Sitzung läuft weiter, während das Menü geöffnet ist"
 "A complete OMSI 2 installation":
   de: "Eine vollständige OMSI-2-Installation"
 "A departure is not a time (h:mm).":
@@ -1002,8 +928,6 @@ _version: 2
   de: "Jetzt prüfen"
 "Checking…":
   de: "Prüfe…"
-"Choose a mod archive (.zip)":
-  de: "Mod-Archiv wählen (.zip)"
 "Choose the OMSI 2 folder":
   de: "OMSI-2-Ordner wählen"
 "Choose the mod folder":
@@ -1012,10 +936,6 @@ _version: 2
   de: "Stadtplan"
 "Click a street on the map: the bus is put there":
   de: "Klicke auf eine Straße der Karte: Der Bus wird dorthin gesetzt"
-"Clock +10 minutes":
-  de: "Uhr +10 Minuten"
-"Clock -10 minutes":
-  de: "Uhr −10 Minuten"
 "Clock: 06:00 (morning)":
   de: "Uhrzeit: 06:00 (morgens)"
 "Clock: 12:00 (noon)":
@@ -1076,16 +996,12 @@ _version: 2
   de: "DirectX 12"
 "Do":
   de: "Do"
-"Doors are open":
-  de: "Türen sind offen"
 "Down":
   de: "Runter"
 "Driver...":
   de: "Fahrer..."
 "Drivers":
   de: "Fahrer"
-"Driving keys: Custom controls - the game uses the keys of this page.":
-  de: "Fahrtasten: Eigene Steuerung – das Spiel nutzt die Tasten dieser Seite."
 "EDDB - Berlin Brandenburg":
   de: "EDDB - Berlin Brandenburg"
 "End":
@@ -1126,14 +1042,8 @@ _version: 2
   de: "Force Feedback und Vibration"
 "Frame rate":
   de: "Bildrate"
-"Free drive (no duty)":
-  de: "Freie Fahrt (ohne Dienst)"
 "End the tour":
   de: "Umlauf beenden"
-"No active route":
-  de: "Keine aktive Route"
-"Free drive · multiplayer":
-  de: "Freie Fahrt · Mehrspieler"
 "Free drive: no duty":
   de: "Freie Fahrt: kein Dienst"
 "Fri":
@@ -1142,8 +1052,6 @@ _version: 2
   de: "Voller Einschlag bei"
 "Game controllers":
   de: "Gamecontroller"
-"Get up and out (on foot)":
-  de: "Aufstehen und aussteigen (zu Fuß)"
 "GivenTicket":
   de: "GivenTicket"
 "Graphics API":
@@ -1184,12 +1092,8 @@ _version: 2
   de: "Force Feedback invertieren"
 "Jeu":
   de: "Do"
-"Key bindings saved; Driving keys switched to Custom controls so the game uses them.":
-  de: "Tastenbelegung gespeichert; Fahrtasten auf „Eigene Steuerung“ umgestellt, damit das Spiel sie nutzt."
 "Keyboard":
   de: "Tastatur"
-"Keyboard brake stays on until the throttle":
-  de: "Tastaturbremse bleibt bis zum Gasgeben"
 "The keyboard brake stays on until the throttle (as in OMSI)":
   de: "Die Tastaturbremse bleibt bis zum Gasgeben (wie in OMSI)"
 "Automatic clutch":
@@ -1216,8 +1120,6 @@ _version: 2
   de: "Mo"
 "M_Wheel":
   de: "M_Wheel"
-"Manual gearbox in neutral: 1-5 select a gear (R reverse, N neutral); the clutch works itself unless auto_clutch=0":
-  de: "Schaltgetriebe im Leerlauf: 1-5 wählen einen Gang (R Rückwärts, N Leerlauf); die Kupplung arbeitet selbst, außer bei auto_clutch=0"
 "Mer":
   de: "Mi"
 "Mi":
@@ -1226,12 +1128,6 @@ _version: 2
   de: "Mo"
 "More":
   de: "Mehr"
-"More...":
-  de: "Mehr..."
-"Mouse steering (O)":
-  de: "Mauslenkung (O)"
-"Move the bus on the map...":
-  de: "Bus auf der Karte verschieben..."
 "New line (name)":
   de: "Neue Linie (Name)"
 "New tour":
@@ -1262,8 +1158,6 @@ _version: 2
   de: "Hier ist nichts"
 "Nothing moved far enough. Hold it all the way, then press Next (or Skip).":
   de: "Nichts wurde weit genug bewegt. Bis zum Anschlag halten, dann Weiter (oder Überspringen) drücken."
-"Now":
-  de: "Jetzt"
 "OMSI-XXXX-XXXX-…":
   de: "OMSI-XXXX-XXXX-…"
 "Object editor: Enter picks the object in the middle of the view":
@@ -1292,8 +1186,6 @@ _version: 2
   de: "PageDown"
 "PageUp":
   de: "PageUp"
-"Parking brake is on  (. releases it)":
-  de: "Feststellbremse ist angezogen  (. löst sie)"
 "Passenger's view":
   de: "Fahrgastansicht"
 "Paste a session code first":
@@ -1310,12 +1202,8 @@ _version: 2
   de: "Kupplungspedal ganz durchtreten und halten, dann Weiter drücken. Keine Kupplung: Überspringen."
 "Press the throttle pedal all the way down and hold it, then press Next. No pedals: Skip.":
   de: "Gaspedal ganz durchtreten und halten, dann Weiter drücken. Keine Pedale: Überspringen."
-"Put the vehicle back on its wheels":
-  de: "Fahrzeug wieder auf die Räder stellen"
 "Random livery":
   de: "Zufällige Lackierung"
-"Ready":
-  de: "Bereit"
 "Recalculating route":
   de: "Route wird neu berechnet"
 "Reflection maps (paint, chrome, glass)":
@@ -1328,8 +1216,6 @@ _version: 2
   de: "Platzierte Fahrzeuge entfernen"
 "Remove this trip":
   de: "Diese Fahrt entfernen"
-"Remove this vehicle (on foot)":
-  de: "Dieses Fahrzeug entfernen (zu Fuß)"
 "Repeat":
   de: "Wiederholen"
 "Report on GitHub":
@@ -1368,30 +1254,16 @@ _version: 2
   de: "Sa"
 "Saved":
   de: "Gespeichert"
-"Seat back":
-  de: "Sitz zurück"
-"Seat down":
-  de: "Sitz runter"
-"Seat forward":
-  de: "Sitz vor"
 "Seat forward / back":
   de: "Sitz vor / zurück"
-"Seat left":
-  de: "Sitz nach links"
-"Seat right":
-  de: "Sitz nach rechts"
 "Seat right / left":
   de: "Sitz rechts / links"
-"Seat up":
-  de: "Sitz hoch"
 "Seat up / down":
   de: "Sitz hoch / runter"
 "Sell ticket":
   de: "Fahrschein verkaufen"
 "Session code copied":
   de: "Sitzungscode kopiert"
-"Set the clock...":
-  de: "Uhrzeit einstellen..."
 "Set up step by step":
   de: "Schritt für Schritt einrichten"
 "Set up: press Save to keep it (the buttons can be given their keys below).":
@@ -1424,8 +1296,6 @@ _version: 2
   de: "Lenklinearität (Tasten im gleichmäßigen OMSI-Tempo)"
 "Steering with the mouse":
   de: "Lenken mit der Maus"
-"Stop brake / door release is on: the bus stands until it is switched off":
-  de: "Haltestellenbremse / Türfreigabe ist an: Der Bus steht, bis sie ausgeschaltet wird"
 "Sun":
   de: "So"
 "TTData":
@@ -1434,8 +1304,6 @@ _version: 2
   de: "TTData, kopiert vom Fahrplaneditor des neoOMSI-Launchers; das Zurücksetzen löscht diesen Ordner\\n"
 "Take your hands off the wheel and your feet off the pedals (the wheel in the middle), then press Next.":
   de: "Nimm die Hände vom Lenkrad und die Füße von den Pedalen (Lenkrad in der Mitte), dann drücke Weiter."
-"Tap a .zip to install it":
-  de: "Tippe auf eine .zip, um sie zu installieren"
 "That server is in the list already":
   de: "Dieser Server ist schon in der Liste"
 "The bus fell through the ground: it was put back where it last stood":
@@ -1446,14 +1314,10 @@ _version: 2
   de: "Das Gerät ist nicht verbunden: Stecke es an (in der Liste links ist es grün markiert)."
 "The device shows no axis yet: move the wheel and the pedals a little, let go, and press Next again.":
   de: "Das Gerät zeigt noch keine Achse: Bewege Lenkrad und Pedale ein wenig, lass los und drücke erneut Weiter."
-"The engine is off  (E electrics, M starter; mod buses with an ignition key turn it with E: press again and hold. Shift+U does it all)":
-  de: "Der Motor ist aus  (E Elektrik, M Anlasser; Mod-Busse mit Zündschlüssel starten mit E: erneut drücken und halten. Shift+U macht alles)"
 "The game closed on an error":
   de: "Das Spiel wurde wegen eines Fehlers beendet"
 "The game draws with DirectX 12 from the next start (Settings → Graphics API to change it back).":
   de: "Ab dem nächsten Start rendert das Spiel mit DirectX 12 (Zurückstellen unter Einstellungen → Grafik-API)."
-"The gearbox is in N: press D (Shift+D when W A S D drive), or click it. Buses like the Citaro take D only with the brake held":
-  de: "Das Getriebe steht auf N: D drücken (Shift+D, wenn W A S D fährt) oder anklicken. Busse wie der Citaro nehmen D nur bei getretener Bremse"
 "The graphics driver stopped the game. Updating the graphics driver usually helps.":
   de: "Der Grafiktreiber hat das Spiel gestoppt. Ein Update des Grafiktreibers hilft meist."
 "The graphics driver stopped the game. Updating the graphics driver usually helps; you can also let the game draw with DirectX 12 instead of Vulkan (the button below, or Settings → Graphics API).":
@@ -1524,8 +1388,6 @@ _version: 2
   de: "Updates"
 "Use DirectX 12":
   de: "DirectX 12 verwenden"
-"Use these keys":
-  de: "Diese Tasten verwenden"
 "Use this device":
   de: "Dieses Gerät verwenden"
 "Use this folder":
@@ -1540,8 +1402,6 @@ _version: 2
   de: "Neuigkeiten"
 "Wheel rotation":
   de: "Lenkradeinschlag"
-"Wheel_RotationSpeed_1_L":
-  de: "Wheel_RotationSpeed_1_L"
 "Wipers":
   de: "Scheibenwischer"
 "X axis":
@@ -1572,8 +1432,6 @@ _version: 2
   de: "automatic_N"
 "automatic_R":
   de: "automatic_R"
-"bremse_ABS_eingriff":
-  de: "bremse_ABS_eingriff"
 "bremse_p_Brzyl_FBA":
   de: "bremse_p_Brzyl_FBA"
 "bus preview":
@@ -1624,18 +1482,6 @@ _version: 2
   de: "ihren Bus wieder auf die Räder stellen"
 "repair and refuel their bus":
   de: "ihren Bus reparieren und betanken"
-"seat 0 -0.05":
-  de: "seat 0 -0.05"
-"seat 0 0.05":
-  de: "seat 0 0.05"
-"seat 1 -0.05":
-  de: "seat 1 -0.05"
-"seat 1 0.05":
-  de: "seat 1 0.05"
-"seat 2 -0.05":
-  de: "seat 2 -0.05"
-"seat 2 0.05":
-  de: "seat 2 0.05"
 "sent away by an admin":
   de: "von einem Admin entfernt"
 "sent away by the host":
@@ -1654,8 +1500,6 @@ _version: 2
   de: "Beende – Fahrt wird gespeichert…"
 "t,dt,cursor_x,kmh,target,steer,steer_deg":
   de: "t,dt,cursor_x,kmh,target,steer,steer_deg"
-"that pack":
-  de: "dieses Paket"
 "the game stopped on an error":
   de: "das Spiel wurde wegen eines Fehlers angehalten"
 "the graphics device was lost":
@@ -1672,8 +1516,6 @@ _version: 2
   de: "Wetter der Karte"
 "the way to the route":
   de: "der Weg zur Route"
-"those packs":
-  de: "diese Pakete"
 "tile without a name":
   de: "Kachel ohne Namen"
 "time -3600":
@@ -1712,8 +1554,6 @@ _version: 2
   de: "Die Rate verteilt sich auf alle Busspiegel. Höhere Werte können die Spiel-FPS senken."
 "Show headset picture on monitor":
   de: "Headset-Bild auf dem Monitor anzeigen"
-"VR keys: Controls → Keyboard (search VR)":
-  de: "VR-Tasten: Steuerung → Tastatur (nach VR suchen)"
 "VR: Reset view":
   de: "VR: Ansicht zurücksetzen"
 "VR: Monitor preview":
@@ -1737,8 +1577,6 @@ _version: 2
 "Vibration":
   de: "Vibration"
 
-"On foot: W A S D walk, Shift runs, F4 free camera / F1 back, G sits down (by the driver's place: back at the wheel), Ctrl+Shift+G steps out of the bus":
-"No door within reach here (or no room outside it): walk to a door first":
 "There is no vehicle to remove: you are on foot":
 "Placing: point at the ground, mouse wheel or Q / E turns it, R turns it round, click sets it down, Esc takes it away":
 "It would stand in another vehicle here":
@@ -1766,12 +1604,8 @@ _version: 2
   de: "Lenkrad oder Pedale einrichten"
 "Change the VR keys":
   de: "VR-Tasten ändern"
-"Interface size":
-  de: "Größe der Oberfläche"
 "Game interface size":
   de: "Größe der Spieloberfläche"
-"Display & sound":
-  de: "Anzeige & Ton"
 "Page":
   de: "Seite"
 "Enter next":
@@ -1799,8 +1633,6 @@ _version: 2
 
 "Choose a bus":
   de: "Bus auswählen"
-"Search models or variants…":
-  de: "Modelle oder Varianten suchen…"
 "No buses found. Try another search.":
   de: "Keine Busse gefunden. Versuche einen anderen Suchbegriff."
 "Vehicle settings & details":
@@ -1809,10 +1641,6 @@ _version: 2
   de: "Vorherige Lackierung anzeigen"
 "Preview next livery":
   de: "Nächste Lackierung anzeigen"
-"Single variant":
-  de: "Eine Variante"
-"Standard":
-  de: "Standard"
 "model":
   de: "Modell"
 "models":
@@ -1969,8 +1797,6 @@ _version: 2
 
 "Your next game is hosted: its code shows in the game for your friends":
 
-"More servers: add them by their address in the desktop launcher, or type one above.":
-
 "Weather cycle":
 
 "Clear the AI traffic (a jam)":
@@ -2006,8 +1832,6 @@ _version: 2
 "Shows/hides the other (AI) vehicles on the Minimap and the city map":
 
 "Shows OMSI 2's route arrows over the road":
-
-"Allows you to get out of the car and explore the world":
 
 "Enables/disables collisions with objects such as buildings, streetlights, etc.":
 
@@ -2115,8 +1939,6 @@ _version: 2
 
 "Automatically operate the clutch for you":
 
-"Translates texts nobody has translated, on this machine":
-
 "The size of the texts, the menu, the timetable and the navigator":
 
 "On a window taller than 1080p the interface grows with it":
@@ -2202,8 +2024,6 @@ _version: 2
 "The weather follows the real METAR report":
 
 "METAR source":
-
-"The airport whose METAR report the weather follows.":
 
 "Preset":
 
