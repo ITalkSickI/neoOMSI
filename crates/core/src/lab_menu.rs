@@ -944,7 +944,7 @@ impl App {
         }
     }
 
-    pub(crate) fn lab_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode) {
+    pub(crate) fn lab_key(&mut self, code: KeyCode) {
         let n = self.lab_pages();
         let st = self.lab_menu.unwrap_or_default();
         if self.lab_load.is_some() {
