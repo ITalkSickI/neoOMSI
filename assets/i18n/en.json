@@ -888,6 +888,11 @@
       }
     },
     "controls": {
+      "import": {
+        "title": "Import from OMSI 2",
+        "name": "Import",
+        "desc": "Takes the controllers of OMSI 2's Inputs/gamectrler.cfg"
+      },
       "setup": {
         "name": "Set up",
         "desc": "Set up this controller so it can be used in the game."

@@ -28,6 +28,19 @@ fn connected(app: &App) -> Vec<Connected> {
     g.as_ref().map(|x| x.1.clone()).unwrap_or_default()
 }
 
+fn row_import() -> (String, String) {
+    (
+        row(
+            "pause.controls.import.title",
+            'a',
+            "pause.controls.import.name",
+            "pause.controls.import.desc",
+            None,
+        ),
+        "pad_import".to_string(),
+    )
+}
+
 fn heading(text: &str) -> (String, String) {
     (row(text, 'h', "", "", None), HEADING.to_string())
 }
@@ -195,6 +208,7 @@ pub(crate) fn rows(app: &App) -> Rows {
         }
     }
     let _ = tab;
+    out.push(row_import());
     out
 }
 
@@ -538,6 +552,22 @@ pub(crate) fn click(app: &mut App, verb: &str, arg: &str) {
 }
 
 fn click_inner(app: &mut App, verb: &str, arg: &str) {
+    if verb == "pad_import" {
+        let done = omsi_launcher_lib::omsi_gamectrler_cfg()
+            .map_err(|e| e.to_string())
+            .and_then(|p| controllers::import_omsi_cfg(&p));
+        match done {
+            Ok(names) => {
+                let _ = ::config::save();
+                if let Some(c) = app.controllers.as_mut() {
+                    c.reload_cfg();
+                }
+                log::info!("controllers imported from OMSI 2: {}", names.join(", "));
+            }
+            Err(e) => log::warn!("controller import: {e}"),
+        }
+        return;
+    }
     let mut devices = controllers::read_cfg();
     match verb {
         "pad_add" => {

@@ -2235,6 +2235,10 @@ fn keyboard_cfg_read_path() -> Result<PathBuf> {
     Ok(::legacy_config::original_keyboard_cfg(&root()?))
 }
 
+pub fn omsi_gamectrler_cfg() -> Result<PathBuf> {
+    Ok(::legacy_config::original_gamectrler_cfg(&root()?))
+}
+
 /// The `keyboard.cfg` the launcher saved, if there is one: where [`save_keybindings`] writes it.
 pub fn saved_keyboard_cfg() -> Option<PathBuf> {
     let own = keyboard_cfg_write_path().ok()?;

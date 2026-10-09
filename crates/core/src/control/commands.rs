@@ -41,6 +41,7 @@ pub(super) const COMMANDS: &[&str] = &[
     "keybindings",
     "save_keybindings",
     "controllers",
+    "import_controllers",
     "save_controllers",
     "preview",
     "situations",
@@ -228,6 +229,12 @@ pub(super) fn call(cmd: &str, a: &Value) -> Result<Value> {
             let _file = settings_file();
             lib::init_settings();
             save_controllers(a)?;
+            controllers_now()
+        }
+        "import_controllers" => {
+            let _file = settings_file();
+            lib::init_settings();
+            import_controllers(a)?;
             controllers_now()
         }
         "preview" => json!(lib::bus_preview(&s("bus"), &s("paint"))?),
@@ -502,6 +509,22 @@ fn apply(d: &mut DeviceCfg, c: &ControllerIn) {
         (true, false) => Some((1.0, vibration)),
         (true, true) => d.ff_scale,
     };
+}
+
+fn import_controllers(a: &Value) -> Result<()> {
+    let path = match a.get("path").and_then(|p| p.as_str()).filter(|p| !p.trim().is_empty()) {
+        Some(p) => {
+            let p = PathBuf::from(p.trim());
+            if p.is_dir() {
+                ::legacy_config::original_gamectrler_cfg(&p)
+            } else {
+                p
+            }
+        }
+        None => lib::omsi_gamectrler_cfg()?,
+    };
+    controllers::import_omsi_cfg(&path).map_err(|e| anyhow!("{e}"))?;
+    ::config::save().map_err(|e| anyhow!("{e}"))
 }
 
 fn save_controllers(a: &Value) -> Result<()> {
