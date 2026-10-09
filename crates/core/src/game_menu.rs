@@ -12,12 +12,12 @@ pub(crate) fn route_char(code: KeyCode) -> Option<char> {
 }
 
 pub(crate) const SERVER_GAME_MENU: [(&str, &str); 6] = [
-    ("resume", "Resume"),
-    ("options", "Options..."),
-    ("vehicle", "Vehicle options..."),
-    ("world", "World options..."),
-    ("map", "City map"),
-    ("quit", "Leave the server"),
+    ("resume", "pause.entry.resume"),
+    ("options", "pause.entry.options"),
+    ("vehicle", "pause.entry.vehicle"),
+    ("world", "pause.entry.world"),
+    ("map", "pause.entry.map"),
+    ("quit", "pause.entry.quit_server"),
 ];
 
 pub(crate) fn on_server(args: &crate::Args) -> bool {
@@ -36,17 +36,17 @@ pub(crate) fn game_menu_for(args: &crate::Args) -> &'static [(&'static str, &'st
 }
 
 pub(crate) const GAME_MENU: [(&str, &str); 11] = [
-    ("resume", "Resume"),
-    ("options", "Options..."),
-    ("vehicle", "Vehicle options..."),
-    ("world", "World options..."),
-    ("map", "City map"),
-    ("duty", "Line and tour..."),
-    ("endduty", "End the tour"),
-    ("save", "Save the situation"),
-    ("saveslot", "Save to a new slot"),
-    ("load", "Load the quicksave"),
-    ("quit", "End the session"),
+    ("resume", "pause.entry.resume"),
+    ("options", "pause.entry.options"),
+    ("vehicle", "pause.entry.vehicle"),
+    ("world", "pause.entry.world"),
+    ("map", "pause.entry.map"),
+    ("duty", "pause.entry.duty"),
+    ("end-duty", "pause.entry.end-duty"),
+    ("save", "pause.entry.save"),
+    ("save-slot", "pause.entry.save-slot"),
+    ("load", "pause.entry.load"),
+    ("quit", "pause.entry.quit"),
 ];
 
 impl App {
@@ -1237,11 +1237,11 @@ impl App {
                 self.quick_save();
                 self.close_game_menu();
             }
-            "saveslot" => {
+            "save-slot" => {
                 self.save_slot();
                 self.close_game_menu();
             }
-            "endduty" => {
+            "end-duty" => {
                 self.duty = None;
                 self.service_msg = Some((::i18n::translate("pause.msg.free_drive", &[]), 4.0));
                 self.close_game_menu();
@@ -1393,28 +1393,28 @@ impl App {
 
     pub(crate) fn game_menu_items(&self) -> Vec<(&'static str, &'static str)> {
         if self.report_view.is_some() {
-            return vec![("report_save", "Save as text…"), ("resume", "Continue")];
+            return vec![("report_save", "pause.entry.report_save"), ("resume", "pause.entry.continue")];
         }
         let mut v: Vec<(&'static str, &'static str)> = game_menu_for(&self.args).to_vec();
         if self.duty.is_some() {
-            v.insert(1, ("report_current", "Current trip evaluation…"));
+            v.insert(1, ("report_current", "pause.entry.report_current"));
         }
         if self.last_report.is_some() {
-            v.insert(1, ("report_last", "Last trip evaluation…"));
+            v.insert(1, ("report_last", "pause.entry.report_last"));
         }
         if self.lan.is_none() {
-            v.insert(1, ("screenshot", "Screenshot mode"));
+            v.insert(1, ("screenshot", "pause.entry.screenshot"));
         }
         let mut at = 1;
         if self.on_foot.is_some() && self.player.is_some() {
-            v.insert(at, ("tobus", "Back to my bus"));
+            v.insert(at, ("tobus", "pause.entry.tobus"));
             at += 1;
         }
         if self.player.is_none() {
             v.retain(|x| x.0 != "duty");
         }
         if self.duty.is_none() {
-            v.retain(|x| x.0 != "endduty");
+            v.retain(|x| x.0 != "end-duty");
         }
         if self.navigator.is_none() {
             v.retain(|x| x.0 != "map");
@@ -1426,7 +1426,7 @@ impl App {
             .unwrap_or(false);
         if self.lan.is_some() || on_server(&self.args) {
             if let Some(w) = v.iter().position(|x| x.0 == "world") {
-                v.insert(w + 1, ("copycode", "Copy server code"));
+                v.insert(w + 1, ("copycode", "pause.entry.copycode"));
                 at = at.max(w + 2);
             }
         }
@@ -1436,7 +1436,7 @@ impl App {
                 .position(|x| x.0 == "quit")
                 .unwrap_or(v.len())
                 .max(at);
-            v.insert(before_quit, ("admin", "Administration..."));
+            v.insert(before_quit, ("admin", "pause.entry.admin"));
         }
         v
     }

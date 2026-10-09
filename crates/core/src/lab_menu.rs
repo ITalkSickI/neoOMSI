@@ -61,11 +61,7 @@ impl App {
         self.game_menu_items()
             .into_iter()
             .filter(|(id, _)| !id.starts_with("report"))
-            .map(|(id, label)| {
-                let key = format!("pause.entry.{id}");
-                let shown = ::i18n::translate(&key, &[]);
-                (id, if shown == key { label.trim_end_matches(['.', '\u{2026}']).to_string() } else { shown })
-            })
+            .map(|(id, label)| (id, ::i18n::translate(label, &[])))
             .collect()
     }
 
