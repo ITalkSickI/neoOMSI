@@ -366,13 +366,20 @@ impl Ui {
                 rc[2] + 24.0 * u * (1.0 - e),
                 rc[3],
             ];
+            let lit = self.ease((216, "lit", n), if row.lit { 1.0 } else { 0.0 }, 20.0);
             self.text.rounded(
                 r,
                 scene,
                 rr,
                 0.0,
-                fade(mix([34, 36, 40, 255], [58, 61, 67, 255], hv), e),
+                fade(
+                    mix(mix([34, 36, 40, 255], [58, 61, 67, 255], hv), ACCENT, lit * 0.55),
+                    e,
+                ),
             );
+            if lit > 0.0 {
+                self.draw_frame(r, scene, rr, (2.0 * u).max(line), fade(ACCENT_HOT, e * lit));
+            }
             if hv > 0.0 && !matches!(row.kind, 'a' | 'e' | 'E' | 'c') {
                 // (the row under the mouse gets a light frame, buttons don't)
                 self.draw_frame(r, scene, rr, (1.5 * u).max(line), fade(WHITE, e * hv));

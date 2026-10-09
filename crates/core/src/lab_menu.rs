@@ -34,7 +34,8 @@ fn view_rows(rows: &[(String, String)]) -> Vec<WorldRow> {
             let tag = p.next().unwrap_or("").to_string();
             let meter = p.next().and_then(|m| m.parse::<f32>().ok());
             let meter_one_sided = p.next() == Some("u");
-            WorldRow { name: tr(name), kind, value: value.to_string(), desc: tr(desc), frac, tag, meter, meter_one_sided }
+            let lit = p.next() == Some("1");
+            WorldRow { name: tr(name), kind, value: value.to_string(), desc: tr(desc), frac, tag, meter, meter_one_sided, lit }
         })
         .collect()
 }

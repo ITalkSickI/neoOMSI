@@ -11,6 +11,16 @@
 
 use gilrs::{Axis, EventType, Gilrs};
 use std::path::Path;
+use std::sync::Mutex;
+
+static PRESSED: Mutex<Vec<(String, usize)>> = Mutex::new(Vec::new());
+
+pub(crate) fn is_pressed(device: &str, n: usize) -> bool {
+    PRESSED
+        .lock()
+        .map(|p| p.iter().any(|(d, b)| *b == n && names_match(d, device)))
+        .unwrap_or(false)
+}
 
 /// What one axis of a device does.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -947,6 +957,12 @@ impl Controllers {
     pub fn poll(&mut self) -> Analog {
         let mut out = Analog::default();
         for (name, n, down) in self.devices.poll() {
+            if let Ok(mut p) = PRESSED.lock() {
+                p.retain(|(d, b)| !(*b == n && d == &name));
+                if down {
+                    p.push((name.clone(), n));
+                }
+            }
             if self.off(&name) {
                 continue;
             }

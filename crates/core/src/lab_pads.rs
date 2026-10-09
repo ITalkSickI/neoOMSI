@@ -334,16 +334,17 @@ fn device_rows(app: &App, d: &DeviceCfg, dev: Option<&Connected>) -> Rows {
             } else {
                 names.key_label(act)
             };
-            out.push((
-                row(
-                    &format!("{} {}", tl("pause.controls.button.name"), b + 1),
-                    'o',
-                    &v,
-                    "pause.controls.button.desc",
-                    None,
-                ),
-                format!("pad_btn {b}"),
-            ));
+            let mut r = row(
+                &format!("{} {}", tl("pause.controls.button.name"), b + 1),
+                'o',
+                &v,
+                "pause.controls.button.desc",
+                None,
+            );
+            if controllers::is_pressed(&d.name, b) {
+                r.push_str("\u{1f}\u{1f}\u{1f}\u{1f}1");
+            }
+            out.push((r, format!("pad_btn {b}")));
         }
     }
     out
@@ -429,8 +430,8 @@ pub(crate) fn dropdown(app: &App, row_k: usize, id: &str) -> Option<Dropdown> {
                         let scan = e.get("scan_code").and_then(|x| x.as_i64()).unwrap_or(0);
                         if scan != 0
                             && e.get("action")
-                                .and_then(|x| x.as_str())
-                                .is_some_and(|x| !a.is_empty() && x.eq_ignore_ascii_case(&a))
+                            .and_then(|x| x.as_str())
+                            .is_some_and(|x| !a.is_empty() && x.eq_ignore_ascii_case(&a))
                         {
                             let m = e.get("modifier").and_then(|x| x.as_i64()).unwrap_or(0);
                             hay.push(' ');

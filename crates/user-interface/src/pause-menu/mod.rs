@@ -24,6 +24,8 @@ pub struct WorldRow {
     pub meter: Option<f32>,
     /// The meter is a pedal (0 .. 1, filling from the left), not centred (-1 .. 1).
     pub meter_one_sided: bool,
+    /// The row's control is pressed now (a controller button): shown highlighted.
+    pub lit: bool,
 }
 
 #[derive(Clone, Debug, Default)]
