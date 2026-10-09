@@ -4,7 +4,7 @@ use super::*;
 
 /// The launcher's settings file as the lists show it: read once (until something is
 /// written), with the keys still waiting to be written on top.
-pub(super) fn settings_file() -> std::sync::Arc<serde_json::Value> {
+pub(crate) fn settings_file() -> std::sync::Arc<serde_json::Value> {
     // lock order: MERGED_SETTINGS, then SETTINGS_CACHE and PENDING_SETTINGS
     let mut merged = MERGED_SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(v) = merged.as_ref() {

@@ -2,6 +2,8 @@ use super::*;
 
 const SLOW_UPLOAD_MB_S: f64 = 300.0;
 
+pub(crate) type VehicleScan = (Vec<(String, String)>, std::collections::HashMap<String, (String, String)>);
+
 /// The view and pause state to restore when screenshot mode ends.
 pub(crate) struct ScreenshotMode {
     pub(crate) view: String,
@@ -97,6 +99,21 @@ pub(crate) struct App {
     pub(crate) screenshot_mode: Option<ScreenshotMode>,
     pub(crate) paused: bool,
     pub(crate) game_menu: Option<usize>,
+    pub(crate) lab_menu: Option<ui::PauseState>,
+    pub(crate) lab_map_direct: bool,
+    /// The list a vehicle page row opened, shown as a select dialog: the list, its kind and
+    /// the list index of each option.
+    /// The action of the vehicle page that waits for the vehicle list.
+    pub(crate) lab_load: Option<&'static str>,
+    /// The place-a-vehicle dialog's choices, while it is open.
+    pub(crate) lab_place: Option<crate::lab_menu::PlaceSel>,
+    /// The showroom that draws the vehicle the place dialog shows, and the interface texture
+    /// its picture is in (texture, width, height).
+    pub(crate) lab_room: Option<crate::launcher::showroom::Showroom>,
+    pub(crate) lab_pic: Option<(usize, u32, u32)>,
+    /// The vehicle list being read on a thread since start-up.
+    pub(crate) vehicle_scan: Option<std::sync::mpsc::Receiver<VehicleScan>>,
+    pub(crate) lab_list: Option<(Vec<(String, String)>, game_lists::ListKind, Vec<usize>)>,
     pub(crate) menu_top: Option<f32>,
     pub(crate) menu_scroll_drag: bool,
     pub(crate) pane_scroll: Option<(usize, usize)>,
@@ -366,6 +383,9 @@ impl App {
         self.renderer = Some(renderer);
         self.scene = Some(scene);
         self.present_splash("Starting");
+        if let Some(w) = self.window.as_ref() {
+            crate::game_link::window_shown(w);
+        }
         if self.args.bus.is_some() || self.args.cam.is_some() || self.args.no_menu {
             self.load_world_now(event_loop);
         } else {
@@ -580,6 +600,7 @@ impl App {
     }
 
     pub(crate) fn load_world_now(&mut self, event_loop: &ActiveEventLoop) {
+        crate::game_link::report("loading", Some(0.0), &self.args.map);
         #[cfg(not(target_os = "android"))]
         {
             self.discord_next_update = Instant::now();
@@ -648,6 +669,7 @@ impl App {
                 }
                 Err(e) => {
                     log::error!("{e:#}");
+                    crate::game_link::failed(&format!("{e:#}"));
                     platform::exit(event_loop);
                 }
             }
@@ -660,6 +682,7 @@ impl App {
             Ok((w, cam)) => self.start_world(Arc::new(w), cam, &renderer, &mut scene),
             Err(e) => {
                 log::error!("{e:#}");
+                crate::game_link::failed(&format!("{e:#}"));
                 platform::exit(event_loop);
             }
         }
@@ -793,7 +816,6 @@ impl App {
                     h.exact_fare = ::config::get_bool("gameplay", "exact_fare").unwrap_or(true);
                     h.boarding = ::config::get_string("gameplay", "boarding").unwrap_or_else(|| "auto".into());
                     h.prefer_seats = ::config::get_bool("gameplay", "pax_prefer_seats").unwrap_or(false);
-                    h.rear_entry = ::config::get_bool("gameplay", "pax_rear_entry").unwrap_or(true);
                     h.voices = match ::config::get_string("passengers", "voices").unwrap_or_else(|| "all".into()).as_str() {
                         "off" => 2,
                         "tickets" => 1,
@@ -908,6 +930,7 @@ impl App {
                 self.world = Some(w);
             }
         }
+        crate::game_link::report("running", None, "");
         self.last = Instant::now();
     }
 
@@ -956,6 +979,11 @@ impl App {
                 }
             })
             .unwrap_or_default();
+        crate::game_link::report(
+            "loading",
+            Some(done as f32 / total.max(1) as f32),
+            &format!("{} ({done} / {total} tiles)", name.trim()),
+        );
         let map_dir = self.world.as_ref().map(|w| w.map_dir.clone());
         let mut reconfigure = false;
         if let (Some(ui), Some(s), Some(win)) = (

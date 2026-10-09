@@ -58,14 +58,6 @@ impl AxisMode {
         }
     }
 
-    pub(crate) fn from_index(index: usize) -> Self {
-        match index {
-            1 => Self::Gamepad,
-            2 => Self::Native,
-            _ => Self::Auto,
-        }
-    }
-
     fn native(self, automatic: bool) -> bool {
         match self {
             Self::Auto => automatic,
@@ -395,7 +387,7 @@ impl Devices {
                         os_name: pad.os_name().to_string(),
                         path: pad.devpath().to_path_buf(),
                         mapped: pad.mapping_source() != gilrs::MappingSource::None,
-                        mode: mode_for(pad.name()),
+                        mode: AxisMode::Auto,
                         automatic: false,
                         reader: Cache {
                             value: None,
@@ -406,6 +398,7 @@ impl Devices {
             }
         }
         for (_, entry) in &mut self.devices {
+            entry.mode = mode_for(&entry.name);
             entry.poll(now);
         }
     }

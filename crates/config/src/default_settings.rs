@@ -22,7 +22,6 @@ impl Def {
 /// (category, key, default)
 pub const DEFAULTS: &[(&str, &str, Def)] = &[
     // [gameplay]
-    ("gameplay", "drive-keys", Def::Str("simple")),
     ("gameplay", "boarding", Def::Str("auto")),
     ("gameplay", "pax_prefer_seats", Def::Bool(false)),
     ("gameplay", "pax_rear_entry", Def::Bool(true)),
@@ -46,7 +45,8 @@ pub const DEFAULTS: &[(&str, &str, Def)] = &[
     ("controls", "old_steering", Def::Bool(false)),
     ("controls", "red_steer_spd", Def::Bool(false)),
     ("controls", "mouse_sens", Def::Float(1.0)),
-    ("controls", "stick_sens", Def::Float(0.25)),
+    ("controls", "stick_sens", Def::Float(1.0)),
+    ("controls", "stick_sens_v2", Def::Bool(true)),
     ("controls", "steer_center", Def::Bool(true)),
     ("controls", "brake_hold", Def::Bool(true)),
     ("controls", "mouse_steering", Def::Bool(false)),

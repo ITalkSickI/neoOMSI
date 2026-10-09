@@ -1,6 +1,8 @@
 # Linux controller axes
 
-The Linux launcher offers an **Axis mode** selector for each configured device. Press **Save** to retain it after restarting.
+The Linux in-game options offer an **Axis mode** selector for each configured device under **Controls / Game controllers**. Select the device tab after setting it up. Mode and **Invert** changes are saved immediately and retained after restarting. Invert is available even before assigning a function.
+
+The bundled Electron launcher uses the existing controller page; its protocol now accepts the optional `axis_mode` field. Until that separate UI offers a selector, use the in-game options to change the mode. Saving from an older launcher preserves the selected mode.
 
 | Mode | Axis input |
 | --- | --- |
@@ -20,7 +22,7 @@ Native axis layout and gamepad classification are separate: forcing Native on a 
 
 ## Cache and snapshots
 
-Each connection gets one cached evdev reader, capabilities, axis inventory and reported ranges. Successful and permanently unsupported results are retained without periodic capability checks. Both gilrs Connected and Disconnected events invalidate the entry, including when an ID and path are reused within one event drain. A changed path also replaces the entry.
+Each connection gets one cached evdev reader, capabilities, axis inventory and reported ranges. Successful and permanently unsupported results are retained without periodic capability checks. Both gilrs Connected and Disconnected events invalidate the entry, including when an ID and path are reused within one event drain. A changed path also replaces the entry. Saved mode changes are synchronized on regular polls and when the game reloads controller settings, without reopening the device or querying capabilities again.
 
 Temporary errors such as permission failures, an opening race or interrupted I/O permit at most three attempts, spaced by 500 ms. Other errors stop retries until reconnect. Initial probing, force feedback probing and current-value reads have separate retry state. Failures while reading values retain the capability cache and clear the displayed snapshot. A successful current-value read resets its consecutive failure budget.
 

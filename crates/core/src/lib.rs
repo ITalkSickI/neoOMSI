@@ -33,7 +33,6 @@ mod platform;
 mod radio;
 mod rail_drive;
 mod touch;
-mod pax_pack;
 mod updater;
 mod vr_navigator;
 
@@ -60,6 +59,7 @@ mod bus_service;
 mod camera_tool;
 mod camera_util;
 mod cli;
+mod control;
 mod controllers;
 #[cfg(windows)]
 mod dinput;
@@ -69,16 +69,19 @@ mod editor_ctl;
 mod evdev_axes;
 #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 mod evdev_ff;
-mod ffb_calibration;
+mod game_link;
 mod game_menu;
+mod lab_menu;
+mod lab_options;
+mod lab_pads;
 mod input_keys;
 mod input_mouse;
 mod input_script;
 mod lan_mods;
-mod launcher_link;
 mod memory;
 mod offscreen;
 mod on_foot;
+mod pax_pack;
 mod player;
 mod plugins;
 mod route_arrows;
@@ -110,7 +113,6 @@ use cli::*;
 use duty_start::*;
 use glam::{DVec3, Vec3};
 use input_script::*;
-use launcher_link::*;
 use memory::*;
 use offscreen::*;
 use ::render::{Camera, Renderer, Scene, SurfaceState};
@@ -135,11 +137,17 @@ use world_load::*;
 pub fn run() -> Result<()> {
     #[cfg(target_os = "macos")]
     restart_with_allocator_settings();
+    let protocol = std::env::args().any(|a| a == "--control-protocol");
+    // a console would take over the launcher's pipes
     #[cfg(windows)]
-    attach_parent_console();
+    if !protocol {
+        attach_parent_console();
+    }
     let args = Args::parse();
     let bare = std::env::args().len() == 1;
-    logging::init(if args.launcher || (bare && !args.menu) {
+    logging::init(if protocol {
+        "control"
+    } else if args.launcher || (bare && !args.menu) {
         "launcher"
     } else {
         "game"
@@ -157,10 +165,17 @@ pub fn run() -> Result<()> {
                 std::backtrace::Backtrace::force_capture()
             ),
         );
+        // (other threads' panics are often caught: a damaged tile, a plugin)
+        if std::thread::current().name() == Some("main") {
+            game_link::failed(&format!("the game stopped on an error: {info}"));
+        }
         default_hook(info);
     }));
     if let Err(e) = config::init(config::default_path()) {
         log::warn!("settings not loaded: {e}");
+    }
+    if protocol {
+        return control::run();
     }
     log::info!(
         "neoOMSI {VERSION}, build {BUILD}{}",
@@ -174,11 +189,19 @@ pub fn run() -> Result<()> {
         return Ok(());
     };
     if args.launcher || (bare && !args.menu) {
-        if legacy_config::env::var_os("OMSI_LAUNCHER").is_some() && open_launcher()? {
-            return Ok(());
+        // `--launcher` always means the built-in one
+        if !args.launcher {
+            match omsi_launcher_lib::start_external_launcher(&std::env::current_exe()?) {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(e) => log::warn!("{e:#}: the built-in launcher opens instead"),
+            }
         }
         launcher_statics();
         return launcher::run(graphics_instance());
+    }
+    if server_cfg.is_none() {
+        game_link::connect();
     }
     let Some(app) = make_app(args, server_cfg)? else {
         return Ok(());
@@ -339,12 +362,6 @@ pub(crate) fn make_app(
         place_on_duty(&mut args);
     }
     applog::log_system();
-    if args.drive_keys.eq_ignore_ascii_case("simple")
-        && let Some(k) = config::get_string("gameplay", "drive-keys")
-        && !k.eq_ignore_ascii_case("simple")
-    {
-        args.drive_keys = k;
-    }
     ENHANCED.store(
         (config::get_string("graphics", "graphics").as_deref() == Some("enhanced")) || args.enhanced || legacy_config::env::var_os("OMSI_ENHANCED").is_some(),
         std::sync::atomic::Ordering::Relaxed,
@@ -427,6 +444,7 @@ pub(crate) fn make_app(
     let view = args.view.clone();
     let args_root_for_keys = args.root.clone();
     let clock_note = args.clock_moved.clone();
+    let vehicle_scan = Some(lab_menu::scan_vehicles(args.root.clone(), args.map.clone()));
     let mut app = App {
         args,
         instance: graphics_instance(),
@@ -507,6 +525,14 @@ pub(crate) fn make_app(
         screenshot_mode: None,
         paused: false,
         game_menu: None,
+        lab_menu: None,
+        lab_map_direct: false,
+        lab_list: None,
+        lab_load: None,
+        lab_place: None,
+        lab_room: None,
+        lab_pic: None,
+        vehicle_scan,
         menu_top: None,
         menu_scroll_drag: false,
         pane_scroll: None,
@@ -519,7 +545,7 @@ pub(crate) fn make_app(
         headtrack: None,
         headtrack_failed: None,
         controllers: None,
-        mouse_drive: false,
+        mouse_drive: ::config::get_bool("controls", "mouse_steering").unwrap_or(false),
         mouse_steer: (0.0, 0.0),
         mouse_edge: 0.0,
         steer_cursor: None,
@@ -613,11 +639,6 @@ pub(crate) fn make_app(
     };
     app.lan = lan;
     app.remotes = lan_game;
-    if config::get_bool("controls", "mouse_steering").unwrap_or(false) {
-        app.mouse_drive = true;
-        app.mouse_steer = (0.0, 1.0);
-        app.center_cursor = true;
-    }
     std::mem::forget(_lan_status);
     Ok(Some(app))
 }
