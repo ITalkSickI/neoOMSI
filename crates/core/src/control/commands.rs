@@ -41,7 +41,6 @@ pub(super) const COMMANDS: &[&str] = &[
     "keybindings",
     "save_keybindings",
     "controllers",
-    "import_controllers",
     "save_controllers",
     "preview",
     "situations",
@@ -229,12 +228,6 @@ pub(super) fn call(cmd: &str, a: &Value) -> Result<Value> {
             let _file = settings_file();
             lib::init_settings();
             save_controllers(a)?;
-            controllers_now()
-        }
-        "import_controllers" => {
-            let _file = settings_file();
-            lib::init_settings();
-            import_controllers(a)?;
             controllers_now()
         }
         "preview" => json!(lib::bus_preview(&s("bus"), &s("paint"))?),
@@ -511,22 +504,6 @@ fn apply(d: &mut DeviceCfg, c: &ControllerIn) {
     };
 }
 
-fn import_controllers(a: &Value) -> Result<()> {
-    let path = match a.get("path").and_then(|p| p.as_str()).filter(|p| !p.trim().is_empty()) {
-        Some(p) => {
-            let p = PathBuf::from(p.trim());
-            if p.is_dir() {
-                ::legacy_config::original_gamectrler_cfg(&p)
-            } else {
-                p
-            }
-        }
-        None => lib::omsi_gamectrler_cfg()?,
-    };
-    controllers::import_omsi_cfg(&path).map_err(|e| anyhow!("{e}"))?;
-    ::config::save().map_err(|e| anyhow!("{e}"))
-}
-
 fn save_controllers(a: &Value) -> Result<()> {
     let list: Vec<ControllerIn> = serde_json::from_value(a.get("controllers").cloned().unwrap_or_default())
         .context("controllers: the list as `controllers` gives it")?;
@@ -631,9 +608,294 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_command_is_an_error() {
-        assert!(call("teleport", &json!({})).is_err());
-        assert!(!COMMANDS.contains(&"teleport"));
-        assert_eq!(call("version", &json!({})).unwrap()["protocol"], 1);
+use anyhow::{Result, anyhow};
+use launcher_protocol::api::{
+    self, AxisFunction, AxisShape, Controller, ControllerAxis, Empty, PaxState, request::Command, response::Answer,
+    setting_value,
+};
+use omsi_launcher_lib::servers;
+use serde_json::Value;
+use std::collections::HashMap;
+type Slot = Arc<Mutex<Option<Answer>>>;
+fn cached(name: &'static str, read: impl FnOnce() -> Result<Answer>) -> Result<Answer> {
+fn list<T, U: From<T>>(items: Vec<T>) -> Vec<U> {
+    items.into_iter().map(Into::into).collect()
+}
+
+fn settings(v: &Value) -> api::Settings {
+    api::Settings {
+        values: api::setting_values(v),
+    }
+}
+
+pub(super) fn call(command: Command) -> Result<Answer> {
+    Ok(match command {
+        Command::Handshake(_) | Command::Shutdown(_) => {
+            return Err(anyhow!("the handshake and shutdown are answered before any command"));
+        }
+        Command::Config(_) => Answer::Config(lib::load_config().into()),
+        Command::SaveConfig(changes) => {
+            for (v, field) in [(changes.root, &mut c.root), (changes.game, &mut c.game), (changes.profile, &mut c.profile)] {
+                if let Some(v) = v {
+                    *field = v;
+            Answer::SaveConfig(lib::load_config().into())
+        Command::Maps(_) => cached("maps", || Ok(Answer::Maps(api::MapList { maps: list(lib::list_maps()?) })))?,
+        Command::Vehicles(_) => cached("vehicles", || {
+            Ok(Answer::Vehicles(api::VehicleList {
+                vehicles: list(lib::list_vehicles()?),
+            }))
+        })?,
+        Command::Weather(_) => cached("weather", || {
+            Ok(Answer::Weather(api::WeatherList {
+                weather: list(lib::list_weather()?),
+            }))
+        })?,
+        Command::Lines(a) => Answer::Lines(api::LineList {
+            lines: list(lib::list_lines(&a.map, &a.date)?),
+        }),
+        Command::Minimap(a) => Answer::Minimap(super::minimap::minimap(&a.map, a.date.as_deref().unwrap_or(""))?),
+        Command::Ibis(a) => Answer::Ibis(lib::ibis_info(&a.bus, &a.hof, &a.line)?.into()),
+        Command::Profiles(_) => Answer::Profiles(api::ProfileNames {
+            names: lib::list_profiles()?,
+        }),
+        Command::Profile(a) => Answer::Profile(lib::get_profile(&a.name)?.into()),
+        Command::CreateProfile(a) => {
+            let sex = a.sex.as_deref().filter(|s| !s.is_empty()).unwrap_or("M");
+            Answer::CreateProfile(lib::create_profile(&a.name, sex)?.into())
+        Command::DeleteProfile(a) => {
+            lib::delete_profile(&a.name)?;
+            Answer::DeleteProfile(Empty {})
+        Command::Mods(_) => Answer::Mods(lib::mods_status()?.into()),
+        Command::Modinfo(a) => Answer::Modinfo(lib::inspect_mod(Path::new(&a.path))?.into()),
+        Command::StartInstall(a) => {
+            Answer::StartInstall(lib::start_install(Path::new(&a.path), lib::wire::install_mode(a.mode()))?.into())
+        Command::CancelInstall(a) => Answer::CancelInstall(api::Cancelled {
+            cancelled: lib::install::cancel(a.id),
+        }),
+        Command::ClearInstalls(_) => {
+            Answer::ClearInstalls(Empty {})
+        Command::Instances(_) => Answer::Instances(api::InstanceList {
+            instances: list(lib::list_instances()),
+        }),
+        Command::Launch(duty) => Answer::Launch(lib::launch(&duty.into())?.into()),
+        Command::Stop(a) => Answer::Stop(api::Stopped {
+            ended_by_itself: lib::stop_instance(a.pid)?,
+        }),
+        Command::Log(a) => Answer::Log(api::LogLines {
+            lines: lib::log_tail(a.pid, a.lines.unwrap_or(40) as usize)?,
+        }),
+        Command::Join(a) => {
+            let (ok, text) = match ::network::describe_join(&a.text) {
+                Ok(d) => (true, d),
+                Err(e) => (false, e),
+            };
+            Answer::Join(api::JoinCheck {
+                ok,
+                text,
+                local: lib::instances::local_hosts().iter().map(api::lan_status).collect(),
+            })
+        Command::Settings(_) => {
+            Answer::Settings(settings(&lib::get_settings()?))
+        Command::SaveSettings(changes) => {
+                &api::settings_json(&changes.values),
+            if changes.values.contains_key("language") {
+            if text_of(&changes.values, "pax_models") == Some("realistic") {
+            Answer::SaveSettings(settings(&saved))
+        Command::PaxPack(_) => Answer::PaxPack(pax_status()),
+        Command::InstallPaxPack(_) => {
+            Answer::InstallPaxPack(pax_status())
+        Command::UpdateCheck(_) => Answer::UpdateCheck(api::UpdateCheck {
+            release: crate::updater::latest()?.map(|r| api::GameRelease {
+                version: r.version,
+                page: r.page,
+                notes: r.notes,
+                prerelease: r.prerelease,
+                size: r.size,
+            }),
+        }),
+        Command::OptionPresets(_) => Answer::OptionPresets(api::OptionPresetList {
+            presets: lib::option_presets()
+                .map(|(name, values)| api::OptionPreset {
+                    name,
+                    values: api::setting_values(&values),
+                })
+        }),
+        Command::Keybindings(_) => {
+            Answer::Keybindings(lib::wire::key_bindings(lib::keyboard_cfg()?))
+        Command::SaveKeybindings(k) => {
+            lib::save_keyboard_cfg(&lib::wire::keyboard_cfg(k))?;
+            Answer::SaveKeybindings(lib::wire::key_bindings(lib::keyboard_cfg()?))
+        Command::Controllers(_) => {
+            Answer::Controllers(controllers_now())
+        Command::SaveControllers(list) => {
+            save_controllers(&list.controllers)?;
+            Answer::SaveControllers(controllers_now())
+        Command::Preview(a) => Answer::Preview(lib::bus_preview(&a.bus, &a.paint)?),
+        Command::Situations(a) => Answer::Situations(api::SituationList {
+            situations: lib::saved_situations(&a.map)
+                .map(|x| api::SavedSituation {
+                    name: x.name,
+                    file: x.file.to_string_lossy().into_owned(),
+                    time: x.saved,
+                })
+        }),
+        Command::Tutorials(_) => Answer::Tutorials(api::TutorialList {
+            tutorials: lib::tutorials()
+                .map(|(number, title, text)| api::Tutorial {
+                    number: number as u32,
+                    title,
+                    text,
+                })
+        }),
+        Command::Servers(_) => Answer::Servers(servers()),
+        Command::SaveServers(a) => {
+            let list = a
+                .servers
+                .into_iter()
+                .map(|s| servers::ServerEntry {
+                    name: s.name,
+                    address: s.address,
+                })
+                .collect();
+            servers::store(&servers::with_official(list))?;
+            Answer::SaveServers(Empty {})
+        Command::Version(_) => Answer::Version(api::EngineVersion {
+            version: crate::startup::VERSION.into(),
+            protocol: api::VERSION.parse().unwrap_or(0),
+        }),
+
+fn text_of<'a>(values: &'a HashMap<String, api::SettingValue>, key: &str) -> Option<&'a str> {
+    match values.get(key)?.value.as_ref()? {
+        setting_value::Value::Text(s) => Some(s),
+        _ => None,
+    }
+}
+pub(super) fn pax_status() -> api::PaxPack {
+        PaxStatus::Missing => (PaxState::Missing, 0, 0, String::new()),
+        PaxStatus::Outdated => (PaxState::Outdated, 0, 0, String::new()),
+        PaxStatus::Downloading { done, total } => (PaxState::Downloading, done, total, String::new()),
+        PaxStatus::Installing => (PaxState::Installing, 0, 0, String::new()),
+        PaxStatus::Installed => (PaxState::Installed, 0, 0, String::new()),
+        PaxStatus::Failed(e) => (PaxState::Failed, 0, 0, e),
+    api::PaxPack {
+        state: state.into(),
+        done,
+        total,
+        message,
+        installed: content().as_deref().and_then(crate::pax_pack::installed_version),
+        latest: crate::pax_pack::latest().map(|r| api::PaxRelease {
+            version: r.version,
+            notes: r.notes,
+            page: r.page,
+            published: r.published,
+        }),
+    }
+fn servers() -> api::ServerList {
+    let servers = asked
+        .into_iter()
+        .map(|(e, answer)| {
+            let official = network::official::is_alias(&e.address);
+            let answer = answer
+                .join()
+                .unwrap_or_else(|_| Err("the query stopped on an error".into()));
+            match answer {
+                Ok(i) => api::ServerInfo {
+                    name: if e.name.trim().is_empty() { i.name } else { e.name },
+                    address: e.address,
+                    official,
+                    motd: i.motd,
+                    map: i.map,
+                    time: i.time,
+                    weather: i.weather,
+                    players: i.players as u32,
+                    max_players: i.max_players as u32,
+                    error: None,
+                },
+                Err(err) => api::ServerInfo {
+                    name: if e.name.trim().is_empty() { e.address.clone() } else { e.name },
+                    address: e.address,
+                    official,
+                    error: Some(err),
+                    ..Default::default()
+                },
+            }
+        })
+        .collect();
+    api::ServerList { servers }
+const FUNCTIONS: [(Func, AxisFunction); 7] = [
+    (Func::Steering, AxisFunction::Steering),
+    (Func::Throttle, AxisFunction::Throttle),
+    (Func::Brake, AxisFunction::Brake),
+    (Func::Clutch, AxisFunction::Clutch),
+    (Func::ThrottleBrake, AxisFunction::ThrottleBrake),
+    (Func::LookX, AxisFunction::LookX),
+    (Func::LookY, AxisFunction::LookY),
+const SHAPES: [(AxisShape, i32); 5] = [
+    (AxisShape::Linear, 0),
+    (AxisShape::Progressive, 8),
+    (AxisShape::Degressive, 4),
+    (AxisShape::BiProgressive, 8 | 0x10),
+    (AxisShape::BiDegressive, 4 | 0x10),
+fn controller(d: &DeviceCfg, live: Option<&controllers::Connected>) -> Controller {
+    let axes = (0..8)
+                .map_or(AxisFunction::None, |(_, function)| *function);
+                .map_or(AxisShape::Linear, |(shape, _)| *shape);
+            ControllerAxis {
+                name: AXES[k].into(),
+                value: live
+                    .and_then(|c| c.axes.iter().find(|(slot, _)| *slot == k))
+                    .map_or(0.0, |(_, v)| *v),
+                function: function.into(),
+                reversed: d.axes[k].is_some_and(|(_, r)| r),
+                shape: shape.into(),
+            }
+    Controller {
+        name: d.name.clone(),
+        connected: live.is_some(),
+        enabled: d.enabled,
+        deadzone: d.deadzone.unwrap_or_else(controllers::global_deadzone),
+        force_feedback: d.ff_scale.is_none_or(|(steer, _)| steer > 0.0),
+        axes,
+        buttons: d
+            .buttons
+            .iter()
+            .map(|(action, number)| api::ButtonBinding {
+                action: action.clone(),
+                number: number.clone(),
+            })
+            .collect(),
+    }
+fn controllers_now() -> api::ControllerList {
+    let mut out: Vec<Controller> = configured
+        .map(|d| controller(d, live(&d.name)))
+            out.push(controller(&d, Some(c)));
+    api::ControllerList { controllers: out }
+fn apply(d: &mut DeviceCfg, c: &Controller) {
+            .find(|(_, function)| *function == axis.function())
+            .find(|(shape, _)| *shape == axis.shape())
+    d.buttons = c
+        .buttons
+        .iter()
+        .map(|b| (b.action.clone(), b.number.clone()))
+        .collect();
+fn save_controllers(list: &[Controller]) -> Result<()> {
+    use serde_json::json;
+        d.buttons = vec![("Horn".into(), "0".into())];
+        let mut changed = controller(&d, None);
+        assert_eq!(changed.axes[2].function(), AxisFunction::Brake);
+        assert!(changed.axes[2].reversed);
+        assert_eq!(changed.axes[2].shape(), AxisShape::Progressive);
+        assert_eq!(changed.axes[1].function(), AxisFunction::None);
+        assert!(changed.force_feedback && !changed.connected);
+        changed.axes[2].set_shape(AxisShape::BiDegressive);
+        changed.axes[1].set_function(AxisFunction::Clutch);
+        assert_eq!(back.buttons, d.buttons);
+        let mut changed = controller(&d, None);
+    fn the_version_names_this_protocol() {
+        let Answer::Version(v) = call(Command::Version(Empty {})).unwrap() else {
+            panic!("not a version");
+        };
+        assert_eq!((v.version.as_str(), v.protocol), (crate::startup::VERSION, 2));
+        assert!(call(Command::Shutdown(Empty {})).is_err());
     }
 }
