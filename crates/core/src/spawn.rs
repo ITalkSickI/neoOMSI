@@ -797,13 +797,10 @@ fn open_front_door(p: &mut Player) {
     }
     ids.sort_unstable();
     ids.dedup();
-    for _ in 0..60 {
-        for &i in &ids {
-            if let Some(x) = p.vehicle.state.vars.get_mut(i) {
-                *x = 1.0;
-            }
+    for &i in &ids {
+        if let Some(x) = p.vehicle.state.vars.get_mut(i) {
+            *x = 1.0;
         }
-        p.vehicle.update(1.0 / 30.0);
     }
 }
 
