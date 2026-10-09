@@ -302,7 +302,7 @@ pub(crate) fn prepare(
     }
     if config::get_string("passengers", "models").unwrap_or_else(|| "omsi".into()) == "realistic" {
         if let Some(content) = content_dir() {
-            let pack = content.join("Packs/RealisticPax");
+            let pack = pax_pack::folder(&content);
             if pack.join("Humans").is_dir() {
                 legacy_config::add_content_root(pack.clone());
                 log::info!("realistic passengers: {}", pack.display());
@@ -311,6 +311,9 @@ pub(crate) fn prepare(
                     "RealisticPax is missing at {}; using installed passengers",
                     pack.display()
                 );
+            }
+            if server_cfg.is_none() && args.offscreen.is_none() {
+                pax_pack::fetch_if_needed(|| Some(content));
             }
         }
     }
