@@ -388,7 +388,3 @@ pub(super) fn lamp_aim(d: Vec3, cfg: &LightSettings, bc: &BeamCfg) -> Vec3 {
     (glam::Quat::from_axis_angle(right, (cfg.lamp_pitch + bc.pitch).to_radians()) * yawed)
         .normalize_or_zero()
 }
-
-pub(crate) fn lamp_shift(dir: Vec3, cfg: &LightSettings) -> DVec3 {
-    shift(dir, cfg.lamp_offset, cfg.lamp_side, cfg.lamp_height)
-}

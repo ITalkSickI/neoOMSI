@@ -192,7 +192,7 @@ pub fn vehicle_lights(
                 .cos(),
         ];
         let spill_r = spill_radius(&sp);
-        for (model, _bb, xf, origin) in sections {
+        for (model, bb, xf, origin) in sections {
             let lit: Vec<usize> = (0..model.interior_lights.len())
                 .filter(|&li| {
                     let il = &model.interior_lights[li];
@@ -211,6 +211,15 @@ pub fn vehicle_lights(
                 let color = (col * (1.0 - INTERIOR_SPILL_WHITE)
                     + Vec3::splat(col.max_element()) * INTERIOR_SPILL_WHITE)
                     .to_array();
+                // only a lamp inside the saloon is a window light: one in or outside the body's
+                // walls (a door step light, an outside lamp) is no saloon source at all
+                if let Some(b) = bb {
+                    if (at.x - b[3]).abs() >= b[0] * 0.5 - 0.3
+                        || (at.y - b[4]).abs() >= b[1] * 0.5 - 0.1
+                    {
+                        continue;
+                    }
+                }
                 let sides = [Vec3::X, -Vec3::X];
                 let gain = INTERIOR_SPILL_LAMP * ic.gain * strength / sides.len() as f32;
                 for out in sides {
