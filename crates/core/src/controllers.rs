@@ -570,6 +570,15 @@ impl Connected {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn linux_gamepad_classification(
+    mode: crate::evdev_axes::AxisMode,
+    native_axes: bool,
+    mapped_gamepad: bool,
+) -> bool {
+    !native_axes && (mode == crate::evdev_axes::AxisMode::Gamepad || mapped_gamepad)
+}
+
 /// The first button number of the hat switches' directions (4 hats x up, right, down, left).
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const HAT_BUTTONS: usize = 128;
@@ -830,8 +839,11 @@ impl Devices {
                 #[cfg(target_os = "linux")]
                 let native_axes = self.linux_axes.is_native(_pad_id);
                 #[cfg(target_os = "linux")]
-                let gamepad = self.linux_axes.mode(_pad_id) == crate::evdev_axes::AxisMode::Gamepad
-                    || self.linux_axes.is_gamepad(_pad_id);
+                let gamepad = linux_gamepad_classification(
+                    self.linux_axes.mode(_pad_id),
+                    native_axes,
+                    self.linux_axes.is_gamepad(_pad_id),
+                );
                 // (macOS: a device with sliders or the simulation page's axes is a wheel or
                 // pedals, whatever SDL's list calls it - the HORI Truck Control System was
                 // taken as a gamepad: its left stick steered, with a gamepad's dead zone)
@@ -1163,7 +1175,7 @@ impl Controllers {
                                 continue;
                             }
                             steering_set_up = true;
-                            if c.gamepad {
+                            if c.gamepad_axes() {
                                 // a pad's stick set up to steer is still a stick (#200)
                                 let x = stick_deadzone(
                                     if inverted { -v } else { v },
@@ -1236,7 +1248,7 @@ impl Controllers {
                         }
                     }
                 }
-                None if c.gamepad => {}
+                None if c.gamepad_axes() => {}
                 None => {
                     // a wheel or joystick nobody has set up yet: its X axis steers (as on
                     // nearly every wheel), the pedals wait for the set-up (Launcher →
@@ -2286,6 +2298,39 @@ mod slot_tests {
             (0x3_0005, 1.0),
         ];
         assert_eq!(di_slots(&axes), [(0, 0.0), (1, 1.0), (2, 1.0), (5, 1.0)]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unrecognized_mapped_wheel_in_native_mode_uses_wheel_steering() {
+        use crate::evdev_axes::AxisMode;
+
+        // Gilrs has a mapping, but automatic detection does not recognize this wheel.
+        // An explicit Native selection must override the gamepad classification.
+        assert!(linux_gamepad_classification(AxisMode::Auto, false, true));
+        assert!(linux_gamepad_classification(AxisMode::Gamepad, false, true));
+        assert!(!linux_gamepad_classification(AxisMode::Native, true, true));
+
+        let connected = Connected {
+            name: "Unknown mapped wheel".into(),
+            hardware_id: None,
+            axes: di_slots(&[(0x3_0000, 0.04), (0x3_0002, 1.0), (0x3_0005, -1.0)]),
+            gamepad: linux_gamepad_classification(AxisMode::Native, true, true),
+            native_axes: true,
+            ff: false,
+            ff_capable: false,
+            buttons: 0,
+        };
+        assert!(!connected.gamepad);
+        assert!(!connected.gamepad_axes());
+        assert_eq!(connected.axes, [(0, 0.04), (2, 1.0), (5, -1.0)]);
+
+        // The wheel path retains small physical movements; the stick deadzone would
+        // remove them, and the gamepad steering curve must not be used here.
+        let (steering, position) = wheel_steering(connected.axes[0].1, false, 0, 0.0, 1.0);
+        assert!((steering - 0.04).abs() < 1e-6);
+        assert!((position - 0.04).abs() < 1e-6);
+        assert_eq!(stick_deadzone(0.04, STICK_DEADZONE), 0.0);
     }
 
     #[test]
