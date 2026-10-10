@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 static SEL: AtomicUsize = AtomicUsize::new(0);
 static LIVE: Mutex<Option<(Instant, Vec<Connected>)>> = Mutex::new(None);
+static IMPORT_MSG: Mutex<Option<String>> = Mutex::new(None);
 static TABMAP: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 
 type Rows = Vec<(String, String)>;
@@ -27,16 +28,23 @@ fn connected(pads: Option<&Controllers>) -> Vec<Connected> {
 }
 
 fn row_import() -> (String, String) {
+    let msg = IMPORT_MSG.lock().ok().and_then(|m| m.clone());
     (
         row(
             "pause.controls.import.title",
             'a',
             "pause.controls.import.name",
-            "pause.controls.import.desc",
+            msg.as_deref().unwrap_or("pause.controls.import.desc"),
             None,
         ),
         "pad_import".to_string(),
     )
+}
+
+fn set_import_msg(m: String) {
+    if let Ok(mut g) = IMPORT_MSG.lock() {
+        *g = Some(m);
+    }
 }
 
 fn heading(text: &str) -> (String, String) {
@@ -561,8 +569,14 @@ fn click_inner(pads: Option<&mut Controllers>, verb: &str, arg: &str) -> Option<
                     c.reload_cfg();
                 }
                 log::info!("controllers imported from OMSI 2: {}", names.join(", "));
+                // TODO: Move this to notification UI (not implemented yet)
+                set_import_msg(format!("Imported {}: {}", names.len(), names.join(", ")));
             }
-            Err(e) => log::warn!("controller import: {e}"),
+            Err(e) => {
+                log::warn!("controller import: {e}");
+                // TODO: Move this to notification UI (not implemented yet)
+                set_import_msg(format!("Import failed: {e}"));
+            }
         }
         return None;
     }

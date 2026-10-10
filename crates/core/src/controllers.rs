@@ -438,7 +438,8 @@ pub(crate) fn import_omsi_cfg(path: &Path) -> Result<Vec<String>, String> {
         let same = |d: &DeviceCfg| normalized_device_name(&d.name) == normalized_device_name(&n.name);
         if let Some(old) = devices.iter_mut().find(|d| same(d)) {
             n.calibration = old.calibration;
-            n.ff_scale = old.ff_scale.or(n.ff_scale);
+            n.enabled = old.enabled;
+            n.ff_scale = n.ff_scale.or(old.ff_scale);
             n.ff_invert = old.ff_invert;
             n.deadzone = old.deadzone;
             *old = n;
