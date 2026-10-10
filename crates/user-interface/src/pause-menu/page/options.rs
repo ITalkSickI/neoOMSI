@@ -214,7 +214,7 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
             sw(
                 "momentary_gears",
                 "pause.options.driving.momentary_gears.name",
-                "pause.options.later",
+                "pause.options.driving.momentary_gears.desc",
             ),
             sw(
                 "brake_hold",

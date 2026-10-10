@@ -34,8 +34,8 @@ pub(crate) fn map_options_page(app: &App) -> Page {
         switch_row(
             Some(app),
             "navigator",
-            &tx("pause.options.group.map"),
-            &tx("pause.page.text.enables_disables_the_minimap"),
+            &tx("pause.options.map.navigator.name"),
+            &tx("pause.options.map.navigator.desc"),
         ),
         switch_row(
             Some(app),
@@ -164,7 +164,7 @@ pub(crate) fn options_pages(app: &App) -> Vec<Page> {
             Some(app),
             "momentary_gears",
             &tx("pause.options.driving.momentary_gears.name"),
-            later,
+            &tx("pause.options.driving.momentary_gears.desc"),
         ),
         switch_row(
             Some(app),
@@ -826,41 +826,38 @@ pub(crate) fn options_pages(app: &App) -> Vec<Page> {
         vr.push(button(
             &tx("pause.options.vr.vr_nav_edit.name"),
             &tx("pause.options.button.open"),
-            desc,
+            &tx("pause.options.vr.vr_nav_edit.desc"),
             "vr_nav_edit",
         ));
-        for (id, label) in [
-            ("x", &tx("pause.options.vr.vr_nav_x.name")),
-            ("y", &tx("pause.options.vr.vr_nav_y.name")),
-            ("z", &tx("pause.options.vr.vr_nav_z.name")),
-            ("width", &tx("pause.options.vr.vr_nav_width.name")),
-        ] {
-            vr.extend(slider_row(Some(app), &format!("vr_nav_{id}"), label, desc, &cm));
-        }
-        for (id, label) in [
-            ("yaw", &tx("pause.options.vr.vr_nav_yaw.name")),
-            ("tilt", &tx("pause.options.vr.vr_nav_tilt.name")),
-            ("roll", &tx("pause.options.vr.vr_nav_roll.name")),
-        ] {
+        for id in ["x", "y", "z", "width"] {
             vr.extend(slider_row(
                 Some(app),
                 &format!("vr_nav_{id}"),
-                label,
-                desc,
+                &tx(&format!("pause.options.vr.vr_nav_{id}.name")),
+                &tx(&format!("pause.options.vr.vr_nav_{id}.desc")),
+                &cm,
+            ));
+        }
+        for id in ["yaw", "tilt", "roll"] {
+            vr.extend(slider_row(
+                Some(app),
+                &format!("vr_nav_{id}"),
+                &tx(&format!("pause.options.vr.vr_nav_{id}.name")),
+                &tx(&format!("pause.options.vr.vr_nav_{id}.desc")),
                 &|v| format!("{v:.0}°"),
             ));
         }
         vr.extend(slider_row(
             Some(app),
             "vr_nav_opacity",
-            &tx("pause.options.interface.ui_opacity.name"),
-            desc,
+            &tx("pause.options.vr.vr_nav_opacity.name"),
+            &tx("pause.options.vr.vr_nav_opacity.desc"),
             &pct,
         ));
         vr.push(button(
             &tx("pause.options.vr.vr_nav_reset.name"),
             &tx("pause.options.button.reset"),
-            desc,
+            &tx("pause.options.vr.vr_nav_reset.desc"),
             "vr_nav_reset",
         ));
     }
