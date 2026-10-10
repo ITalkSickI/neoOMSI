@@ -40,7 +40,7 @@ pub(crate) struct Dropdown {
 }
 
 pub(crate) fn value_label(setting: &str, value: &str, label: &str) -> String {
-    let key = format!("pause.options.value.{setting}.{value}");
+    let key = format!("pause.options.value.{setting}.{}", value.replace('.', "_"));
     let text = ::i18n::translate(&key, &[]);
     if text == key {
         ::user_interface::tr(label).into_owned()

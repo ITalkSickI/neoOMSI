@@ -627,6 +627,81 @@
         }
       },
       "value": {
+        "boarding": {
+          "auto": "Pay and take the ticket",
+          "pay": "The driver sells the ticket",
+          "walk": "Just walk in"
+        },
+        "pax_motion": {
+          "natural": "Natural",
+          "omsi": "OMSI 2"
+        },
+        "maintenance": {
+          "0": "Infinite (no wear)",
+          "1": "Very bad",
+          "2": "Bad",
+          "3": "Normal",
+          "4": "Good"
+        },
+        "ai_max_scheduled": {
+          "0": "All",
+          "10": "At most 10",
+          "25": "At most 25",
+          "50": "At most 50"
+        },
+        "ai_max_parked": {
+          "-1": "None",
+          "0": "Every space",
+          "35": "At most 35",
+          "100": "At most 100",
+          "250": "At most 250"
+        },
+        "pax_models": {
+          "omsi": "OMSI 2",
+          "realistic": "Realistic"
+        },
+        "shadow_casters": {
+          "all": "Every solid mesh",
+          "omsi": "OMSI 2"
+        },
+        "map_detail": {
+          "-1": "OMSI setting",
+          "0": "Low",
+          "1": "Normal",
+          "2": "Full",
+          "255": "All authored levels"
+        },
+        "view_distance": {
+          "0": "Default (900 m)",
+          "600": "600 m - fastest"
+        },
+        "max_obj_dist": {
+          "-1": "Automatic"
+        },
+        "min_obj_size": {
+          "0_005": "All",
+          "0_013": "Normal",
+          "0_02": "Fewer (faster)",
+          "0_03": "Few (fastest)"
+        },
+        "texture_memory": {
+          "0": "Automatic"
+        },
+        "max_fps": {
+          "0": "Screen refresh rate",
+          "1000": "Unlimited"
+        },
+        "pax_voices": {
+          "all": "Greetings and tickets",
+          "tickets": "Only the ticket asked for",
+          "off": "Silent"
+        },
+        "navigator_corner": {
+          "top-left": "Top left",
+          "top-right": "Top right",
+          "bottom-left": "Bottom left",
+          "bottom-right": "Bottom right"
+        },
         "window_mode": {
           "windowed": "Windowed",
           "borderless": "Borderless",

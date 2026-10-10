@@ -627,6 +627,81 @@
         }
       },
       "value": {
+        "boarding": {
+          "auto": "Bezahlen und Ticket nehmen",
+          "pay": "Fahrer verkauft das Ticket",
+          "walk": "Einfach einsteigen"
+        },
+        "pax_motion": {
+          "natural": "Natürlich",
+          "omsi": "OMSI 2"
+        },
+        "maintenance": {
+          "0": "Unendlich (Kein Verschleiß)",
+          "1": "Sehr schlecht",
+          "2": "Schlecht",
+          "3": "Normal",
+          "4": "Gut"
+        },
+        "ai_max_scheduled": {
+          "0": "Alle",
+          "10": "Höchstens 10",
+          "25": "Höchstens 25",
+          "50": "Höchstens 50"
+        },
+        "ai_max_parked": {
+          "-1": "Keine",
+          "0": "Jeder Platz",
+          "35": "Höchstens 35",
+          "100": "Höchstens 100",
+          "250": "Höchstens 250"
+        },
+        "pax_models": {
+          "omsi": "OMSI 2",
+          "realistic": "Realistisch"
+        },
+        "shadow_casters": {
+          "all": "Jedes feste Mesh",
+          "omsi": "OMSI 2"
+        },
+        "map_detail": {
+          "-1": "OMSI-Einstellung",
+          "0": "Niedrig",
+          "1": "Normal",
+          "2": "Voll",
+          "255": "Alle erstellten Stufen"
+        },
+        "view_distance": {
+          "0": "Standard (900 m)",
+          "600": "600 m – am schnellsten"
+        },
+        "max_obj_dist": {
+          "-1": "Automatisch"
+        },
+        "min_obj_size": {
+          "0_005": "Alle",
+          "0_013": "Normal",
+          "0_02": "Weniger (schneller)",
+          "0_03": "Wenige (am schnellsten)"
+        },
+        "texture_memory": {
+          "0": "Automatisch"
+        },
+        "max_fps": {
+          "0": "Bildwiederholrate des Bildschirms",
+          "1000": "Unbegrenzt"
+        },
+        "pax_voices": {
+          "all": "Begrüßungen und Tickets",
+          "tickets": "Nur das gewünschte Ticket",
+          "off": "Stumm"
+        },
+        "navigator_corner": {
+          "top-left": "Oben links",
+          "top-right": "Oben rechts",
+          "bottom-left": "Unten links",
+          "bottom-right": "Unten rechts"
+        },
         "window_mode": {
           "windowed": "Fenster",
           "borderless": "Rahmenlos",
