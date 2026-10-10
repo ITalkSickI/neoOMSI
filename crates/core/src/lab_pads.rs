@@ -206,6 +206,7 @@ pub(crate) fn rows(pads: Option<&Controllers>) -> Rows {
         }
     }
     let _ = tab;
+    out.push(row_import());
     out
 }
 
@@ -485,22 +486,6 @@ fn apply_inner(pads: Option<&mut Controllers>, verb: &str, arg: &str) {
     let Some(i) = selected(&devices) else {
         return;
     };
-    if verb == "pad_import" {
-        let done = omsi_launcher_lib::omsi_gamectrler_cfg()
-            .map_err(|e| e.to_string())
-            .and_then(|p| controllers::import_omsi_cfg(&p));
-        match done {
-            Ok(names) => {
-                let _ = ::config::save();
-                if let Some(c) = app.controllers.as_mut() {
-                    c.reload_cfg();
-                }
-                log::info!("controllers imported from OMSI 2: {}", names.join(", "));
-            }
-            Err(e) => log::warn!("controller import: {e}"),
-        }
-        return;
-    }
     if verb == "pad_set_ff" {
         let (which, v) = arg.split_once(' ').unwrap_or(("", ""));
         let Some(v) = v.parse::<f32>().ok().filter(|v| (0.0..=200.0).contains(v)) else {
@@ -565,6 +550,22 @@ pub(crate) fn click(mut pads: Option<&mut Controllers>, verb: &str, arg: &str) -
 }
 
 fn click_inner(pads: Option<&mut Controllers>, verb: &str, arg: &str) -> Option<usize> {
+    if verb == "pad_import" {
+        let done = omsi_launcher_lib::omsi_gamectrler_cfg()
+            .map_err(|e| e.to_string())
+            .and_then(|p| controllers::import_omsi_cfg(&p));
+        match done {
+            Ok(names) => {
+                let _ = ::config::save();
+                if let Some(c) = pads {
+                    c.reload_cfg();
+                }
+                log::info!("controllers imported from OMSI 2: {}", names.join(", "));
+            }
+            Err(e) => log::warn!("controller import: {e}"),
+        }
+        return None;
+    }
     let mut devices = controllers::read_cfg();
     match verb {
         "pad_add" => {
