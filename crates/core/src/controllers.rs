@@ -161,11 +161,11 @@ impl DeviceCfg {
     pub(crate) fn stick_deadzone(&self, k: usize) -> f32 {
         let own = self.deadzone.is_some()
             || self
-                .calibration
-                .get(k)
-                .copied()
-                .flatten()
-                .is_some_and(|c| c.deadzone.is_some());
+            .calibration
+            .get(k)
+            .copied()
+            .flatten()
+            .is_some_and(|c| c.deadzone.is_some());
         if own {
             self.deadzone(k)
         } else {
@@ -406,6 +406,118 @@ pub(crate) fn write_device(d: &DeviceCfg) {
     dev_put(n, "axis_mode", Some(Value::from(d.axis_mode.as_str())));
 }
 
+pub(crate) fn parse_omsi_cfg(lines: &[String]) -> Vec<DeviceCfg> {
+    let tag = |l: &str| l.trim().to_ascii_lowercase();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if tag(&lines[i]) != "[ctrl]" {
+            i += 1;
+            continue;
+        }
+        i += 1;
+        let start = i;
+        while i < lines.len() && tag(&lines[i]) != "[ctrl]" {
+            i += 1;
+        }
+        let block = &lines[start..i];
+        let split = block
+            .iter()
+            .position(|l| tag(l) == "[buttons]")
+            .unwrap_or(block.len());
+        let (head, buttons) = block.split_at(split);
+        let mut head = head.iter();
+        let name = head.next().map(|l| l.trim().to_string()).unwrap_or_default();
+        if name.is_empty() {
+            continue;
+        }
+        let second = head.next().map(|l| l.trim().to_string()).unwrap_or_default();
+        let nums: Vec<i32> = head
+            .flat_map(|l| l.split_whitespace())
+            .filter_map(|t| t.parse::<i32>().ok())
+            .collect();
+        let mut d = DeviceCfg {
+            name,
+            second,
+            ..Default::default()
+        };
+        for a in 0..8 {
+            let f = nums.get(a * 2).copied().unwrap_or(-1);
+            let flags = nums.get(a * 2 + 1).copied().unwrap_or(0);
+            d.axes[a] = Func::from_code(f).map(|f| (f, flags & 1 != 0));
+            d.axis_flags[a] = if cfg!(target_os = "linux") {
+                flags
+            } else {
+                flags & !1
+            };
+        }
+        let mut b: Vec<&str> = buttons.iter().skip(1).map(|l| l.trim()).collect();
+        while b.last().is_some_and(|l| l.is_empty()) {
+            b.pop();
+        }
+        let count = b.first().and_then(|l| l.parse::<usize>().ok());
+        if let Some(n) = count.filter(|n| b.len() > 2 * n) {
+            b = b[1..1 + 2 * n].to_vec();
+        } else if b.len() % 2 == 1 {
+            b.remove(0);
+        }
+        for p in b.chunks(2) {
+            let num = p.get(1).copied().filter(|s| !s.is_empty()).unwrap_or("0");
+            d.buttons.push((p[0].to_string(), num.to_string()));
+        }
+        d.buttons.truncate(512);
+        if let Some(k) = block.iter().position(|l| tag(l) == "[ffscale]") {
+            let v: Vec<f32> = block[k + 1..]
+                .iter()
+                .take(2)
+                .filter_map(|l| l.trim().parse::<f32>().ok())
+                .collect();
+            if let [steer, vibration] = v[..] {
+                d.ff_scale = Some((steer, vibration));
+            }
+        }
+        out.push(d);
+    }
+    out
+}
+
+fn preserve_device_settings(imported: &mut DeviceCfg, existing: &DeviceCfg) {
+    imported.calibration = existing.calibration;
+    imported.enabled = existing.enabled;
+    imported.ff_scale = imported.ff_scale.or(existing.ff_scale);
+    imported.ff_invert = existing.ff_invert;
+    imported.deadzone = existing.deadzone;
+    #[cfg(target_os = "linux")]
+    {
+        imported.axis_mode = existing.axis_mode;
+    }
+}
+
+/// Take the devices of OMSI's `gamectrler.cfg` into the settings: a device already set up
+/// is replaced (what only neoOMSI knows - calibration, force feedback - stays), the others
+/// stay as they are. Returns the names imported.
+pub(crate) fn import_omsi_cfg(path: &Path) -> Result<Vec<String>, String> {
+    let file = ::legacy_config::CfgFile::read(path).map_err(|e| e.to_string())?;
+    let found = parse_omsi_cfg(&file.lines);
+    if found.is_empty() {
+        return Err(format!("{}: no controller in it", path.display()));
+    }
+    let mut devices = read_cfg();
+    let mut names = Vec::new();
+    for mut n in found {
+        names.push(n.name.clone());
+        let same = |d: &DeviceCfg| normalized_device_name(&d.name) == normalized_device_name(&n.name);
+        if let Some(old) = devices.iter_mut().find(|d| same(d)) {
+            preserve_device_settings(&mut n, old);
+            *old = n;
+        } else {
+            devices.push(n);
+        }
+    }
+    write_cfg(&devices);
+    Ok(names)
+}
+
 /// The analog controls a controller gives this frame (None: that one is not on it).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Analog {
@@ -570,13 +682,24 @@ impl Connected {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn linux_gamepad_classification(
-    mode: crate::evdev_axes::AxisMode,
-    native_axes: bool,
-    mapped_gamepad: bool,
-) -> bool {
-    !native_axes && (mode == crate::evdev_axes::AxisMode::Gamepad || mapped_gamepad)
+fn configured_steering(
+    c: &Connected,
+    d: &DeviceCfg,
+    k: usize,
+    value: f32,
+    gain: f32,
+) -> (f32, Option<f32>) {
+    let reversed = d.axes[k].is_some_and(|(_, reversed)| reversed);
+    if c.gamepad {
+        (
+            stick_deadzone(if reversed { -value } else { value }, d.stick_deadzone(k)),
+            None,
+        )
+    } else {
+        let (steering, position) =
+            wheel_steering(value, reversed, d.axis_flags[k], d.deadzone(k), gain);
+        (steering, Some(position))
+    }
 }
 
 /// The first button number of the hat switches' directions (4 hats x up, right, down, left).
@@ -839,11 +962,7 @@ impl Devices {
                 #[cfg(target_os = "linux")]
                 let native_axes = self.linux_axes.is_native(_pad_id);
                 #[cfg(target_os = "linux")]
-                let gamepad = linux_gamepad_classification(
-                    self.linux_axes.mode(_pad_id),
-                    native_axes,
-                    self.linux_axes.is_gamepad(_pad_id),
-                );
+                let gamepad = self.linux_axes.is_gamepad(_pad_id);
                 // (macOS: a device with sliders or the simulation page's axes is a wheel or
                 // pedals, whatever SDL's list calls it - the HORI Truck Control System was
                 // taken as a gamepad: its left stick steered, with a gamepad's dead zone)
@@ -947,7 +1066,7 @@ pub(crate) fn is_system_gamepad(name: &str, is_di_device: bool) -> bool {
 
 /// A DirectInput name of an Xbox-type pad (which gilrs lists with the system's layout).
 #[cfg_attr(not(windows), allow(dead_code))]
-fn xinput_name(name: &str) -> bool {
+pub(crate) fn xinput_name(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     n.contains("xbox") || n.contains("xinput") || n.starts_with("controller (")
 }
@@ -1175,25 +1294,13 @@ impl Controllers {
                                 continue;
                             }
                             steering_set_up = true;
-                            if c.gamepad_axes() {
-                                // a pad's stick set up to steer is still a stick (#200)
-                                let x = stick_deadzone(
-                                    if inverted { -v } else { v },
-                                    d.stick_deadzone(k),
-                                );
-                                if out.steering.map_or(true, |s| s.abs() < x.abs()) {
-                                    out.steering = Some(x);
-                                    out.stick = true;
-                                }
-                                continue;
-                            }
                             let (steering, position) =
-                                wheel_steering(v, inverted, d.axis_flags[k], dz, self.steer_gain);
+                                configured_steering(&c, d, k, v, self.steer_gain);
                             if out.steering.map_or(true, |s| s.abs() < steering.abs()) {
-                                out.stick = false;
+                                out.stick = position.is_none();
                             }
                             set(&mut out.steering, steering);
-                            if steer.is_none() {
+                            if let Some(position) = position.filter(|_| steer.is_none()) {
                                 steer = Some((c.name.clone(), position, c.ff));
                             }
                             continue;
@@ -1248,7 +1355,7 @@ impl Controllers {
                         }
                     }
                 }
-                None if c.gamepad_axes() => {}
+                None if c.gamepad => {}
                 None => {
                     // a wheel or joystick nobody has set up yet: its X axis steers (as on
                     // nearly every wheel), the pedals wait for the set-up (Launcher →
@@ -2302,35 +2409,46 @@ mod slot_tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn unrecognized_mapped_wheel_in_native_mode_uses_wheel_steering() {
-        use crate::evdev_axes::AxisMode;
-
-        // Gilrs has a mapping, but automatic detection does not recognize this wheel.
-        // An explicit Native selection must override the gamepad classification.
-        assert!(linux_gamepad_classification(AxisMode::Auto, false, true));
-        assert!(linux_gamepad_classification(AxisMode::Gamepad, false, true));
-        assert!(!linux_gamepad_classification(AxisMode::Native, true, true));
-
-        let connected = Connected {
-            name: "Unknown mapped wheel".into(),
+    fn native_layout_keeps_gamepad_and_wheel_steering_separate() {
+        use super::{
+            Connected, DeviceCfg, Func, STICK_DEADZONE, configured_steering, di_slots,
+            stick_deadzone,
+        };
+        let mut connected = Connected {
+            name: "Native controller".into(),
             hardware_id: None,
             axes: di_slots(&[(0x3_0000, 0.04), (0x3_0002, 1.0), (0x3_0005, -1.0)]),
-            gamepad: linux_gamepad_classification(AxisMode::Native, true, true),
+            gamepad: false,
             native_axes: true,
             ff: false,
             ff_capable: false,
             buttons: 0,
         };
-        assert!(!connected.gamepad);
-        assert!(!connected.gamepad_axes());
+        let mut device = DeviceCfg {
+            deadzone: Some(0.0),
+            ..Default::default()
+        };
+        device.axes[0] = Some((Func::Steering, false));
         assert_eq!(connected.axes, [(0, 0.04), (2, 1.0), (5, -1.0)]);
-
-        // The wheel path retains small physical movements; the stick deadzone would
-        // remove them, and the gamepad steering curve must not be used here.
-        let (steering, position) = wheel_steering(connected.axes[0].1, false, 0, 0.0, 1.0);
+        assert!(!connected.gamepad_axes());
+        let (steering, position) = configured_steering(&connected, &device, 0, 0.04, 1.0);
         assert!((steering - 0.04).abs() < 1e-6);
-        assert!((position - 0.04).abs() < 1e-6);
-        assert_eq!(stick_deadzone(0.04, STICK_DEADZONE), 0.0);
+        assert_eq!(position, Some(0.04));
+        connected.gamepad = true;
+        device.deadzone = Some(STICK_DEADZONE);
+        assert!(!connected.gamepad_axes());
+        assert_eq!(
+            configured_steering(&connected, &device, 0, 0.04, 1.0),
+            (0.0, None)
+        );
+        let (steering, position) = configured_steering(&connected, &device, 0, 0.5, 0.25);
+        assert!((steering - stick_deadzone(0.5, STICK_DEADZONE)).abs() < 1e-6);
+        assert_eq!(position, None);
+        device.set_axis_reversed(0, true);
+        assert_eq!(
+            configured_steering(&connected, &device, 0, 0.5, 0.25).0,
+            -steering
+        );
     }
 
     #[test]
@@ -2363,6 +2481,58 @@ mod cfg_tests {
     fn round(d: &super::DeviceCfg) -> super::DeviceCfg {
         super::write_device(d);
         super::read_device(&d.name)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn omsi_import_keeps_inversion_on_an_unassigned_axis() {
+        let lines: Vec<String> = "[ctrl]\nOMSI unassigned Z regression\n0\n-1 0 -1 0 -1 9 -1 0 -1 0 -1 0 -1 0 -1 0\n[buttons]\n0"
+            .lines().map(String::from).collect();
+        let devices = super::parse_omsi_cfg(&lines);
+        assert_eq!(devices.len(), 1);
+        let mut device = round(&devices[0]);
+        assert!(device.axis_reversed(2));
+        assert_eq!(device.axes[2], None);
+        assert_eq!(device.axis_flags[2], 9);
+        device.set_axis_function(2, Some(super::Func::Brake));
+        assert_eq!(device.axes[2], Some((super::Func::Brake, true)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn importing_omsi_assignments_keeps_the_native_mode_and_calibration() {
+        use super::{AxisCal, DeviceCfg, Func, preserve_device_settings};
+        use crate::evdev_axes::AxisMode;
+        let mut existing = DeviceCfg {
+            axis_mode: AxisMode::Native,
+            enabled: false,
+            ff_scale: Some((0.5, 0.4)),
+            ff_invert: Some(true),
+            deadzone: Some(0.1),
+            ..Default::default()
+        };
+        existing.calibration[2] = Some(AxisCal {
+            min: -0.9,
+            max: 0.8,
+            centre: None,
+            deadzone: Some(0.02),
+        });
+        let mut imported = DeviceCfg {
+            name: "OMSI Native import regression".into(),
+            ..Default::default()
+        };
+        imported.axes[2] = Some((Func::Brake, true));
+        preserve_device_settings(&mut imported, &existing);
+        assert_eq!(imported.axis_mode, AxisMode::Native);
+        assert_eq!(imported.calibration, existing.calibration);
+        assert_eq!(imported.axes[2], Some((Func::Brake, true)));
+        assert!(!imported.enabled);
+        assert_eq!(imported.ff_scale, existing.ff_scale);
+        assert_eq!(imported.ff_invert, existing.ff_invert);
+        assert_eq!(imported.deadzone, existing.deadzone);
+        let saved = round(&imported);
+        assert_eq!(saved.axis_mode, AxisMode::Native);
+        assert_eq!(saved.axes[2], imported.axes[2]);
     }
 
     #[cfg(target_os = "linux")]

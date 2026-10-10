@@ -135,6 +135,11 @@ use winit::window::{Window, WindowId};
 use world_load::*;
 
 pub fn run() -> Result<()> {
+    let raw: Vec<String> = std::env::args().collect();
+    if raw.get(1).map(String::as_str) == Some(updater::FINISH_UPDATE) {
+        logging::init("update");
+        return updater::finish_update(&raw[2..]);
+    }
     #[cfg(target_os = "macos")]
     restart_with_allocator_settings();
     let protocol = std::env::args().any(|a| a == "--control-protocol");
@@ -304,7 +309,7 @@ pub(crate) fn prepare(
     }
     if config::get_string("passengers", "models").unwrap_or_else(|| "omsi".into()) == "realistic" {
         if let Some(content) = content_dir() {
-            let pack = content.join("Packs/RealisticPax");
+            let pack = pax_pack::folder(&content);
             if pack.join("Humans").is_dir() {
                 legacy_config::add_content_root(pack.clone());
                 log::info!("realistic passengers: {}", pack.display());
@@ -313,6 +318,9 @@ pub(crate) fn prepare(
                     "RealisticPax is missing at {}; using installed passengers",
                     pack.display()
                 );
+            }
+            if server_cfg.is_none() && args.offscreen.is_none() {
+                pax_pack::fetch_if_needed(|| Some(content));
             }
         }
     }
@@ -452,6 +460,7 @@ pub(crate) fn make_app(
         surface: None,
         renderer: None,
         resize_pending: None,
+        pending_triple_screen_span: None,
         #[cfg(windows)]
         vr: None,
         scene: None,
@@ -527,6 +536,8 @@ pub(crate) fn make_app(
         game_menu: None,
         lab_menu: None,
         lab_map_direct: false,
+        restart_pending: false,
+        restart_prompt: None,
         lab_list: None,
         lab_load: None,
         lab_place: None,
@@ -535,6 +546,7 @@ pub(crate) fn make_app(
         vehicle_scan,
         menu_top: None,
         menu_scroll_drag: false,
+        lab_bar_drag: 0,
         pane_scroll: None,
         plugin_keys: Vec::new(),
         clock_hold: 0.0,

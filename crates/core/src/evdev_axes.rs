@@ -157,16 +157,23 @@ fn automatic_native(name: &str, mapped: bool, absolute: &[u8], keys: &[u8]) -> b
         || name.contains("thrustmaster t128")
         || name.contains("thrustmaster t248");
     let pedal_name = name.contains("pedal");
-    !dual_stick
-        && ((wheel_name
-            && abs(ABS_X)
+    (wheel_name
+        && abs(ABS_X)
+        && [ABS_Y, ABS_Z, ABS_RZ, ABS_GAS, ABS_BRAKE]
+            .into_iter()
+            .any(abs))
+        || (pedal_name
             && [ABS_Y, ABS_Z, ABS_RZ, ABS_GAS, ABS_BRAKE]
                 .into_iter()
                 .any(abs))
-            || (pedal_name
-                && [ABS_Y, ABS_Z, ABS_RZ, ABS_GAS, ABS_BRAKE]
-                    .into_iter()
-                    .any(abs)))
+}
+
+fn gamepad_controls(name: &str, absolute: &[u8], keys: &[u8]) -> bool {
+    has_bit(keys, BTN_GAMEPAD)
+        && [ABS_X, ABS_Y]
+            .into_iter()
+            .all(|code| has_bit(absolute, code as usize))
+        && !automatic_native(name, true, absolute, keys)
 }
 
 struct Attempts {
@@ -325,6 +332,7 @@ struct Entry {
     mapped: bool,
     mode: AxisMode,
     automatic: bool,
+    gamepad: bool,
     reader: Cache<Reader>,
 }
 
@@ -335,6 +343,7 @@ impl Entry {
             let reader = self.reader.value.as_ref().unwrap();
             self.automatic =
                 automatic_native(&self.os_name, self.mapped, &reader.absolute, &reader.keys);
+            self.gamepad = gamepad_controls(&self.os_name, &reader.absolute, &reader.keys);
         }
         if let Some(reader) = self.reader.value.as_mut() {
             reader.ff_constant.probe(now, || {
@@ -345,6 +354,14 @@ impl Entry {
             if let Some(reader) = self.reader.value.as_mut() {
                 reader.poll(now);
             }
+        }
+    }
+
+    fn is_gamepad(&self) -> bool {
+        match self.mode {
+            AxisMode::Auto => self.mapped && !self.automatic,
+            AxisMode::Gamepad => true,
+            AxisMode::Native => self.gamepad,
         }
     }
 }
@@ -389,6 +406,7 @@ impl Devices {
                         mapped: pad.mapping_source() != gilrs::MappingSource::None,
                         mode: AxisMode::Auto,
                         automatic: false,
+                        gamepad: false,
                         reader: Cache {
                             value: None,
                             attempts: Attempts::default(),
@@ -428,8 +446,7 @@ impl Devices {
     }
 
     pub(crate) fn is_gamepad(&self, id: GamepadId) -> bool {
-        self.entry(id)
-            .is_some_and(|entry| entry.mapped && !entry.automatic)
+        self.entry(id).is_some_and(Entry::is_gamepad)
     }
 
     pub(crate) fn ff_capable(&self, id: GamepadId) -> Option<bool> {
@@ -511,6 +528,61 @@ mod tests {
         assert!(!AxisMode::Auto.native(automatic));
         assert!(AxisMode::Native.native(automatic));
         assert!(!AxisMode::Gamepad.native(true));
+    }
+
+    #[test]
+    fn native_axes_do_not_determine_the_device_type() {
+        let keys = bits::<96>(&[BTN_GAMEPAD]);
+        for codes in [vec![0, 1], vec![0, 1, 2, 5], vec![0, 1, 2, 3, 4, 5, 9]] {
+            let axes = bits::<8>(&codes);
+            assert!(gamepad_controls("Generic gamepad", &axes, &keys));
+            let mut entry = Entry {
+                name: "Generic gamepad".into(),
+                os_name: "Generic gamepad".into(),
+                path: PathBuf::new(),
+                mapped: true,
+                mode: AxisMode::Native,
+                automatic: automatic_native("Generic gamepad", true, &axes, &keys),
+                gamepad: gamepad_controls("Generic gamepad", &axes, &keys),
+                reader: Cache {
+                    value: None,
+                    attempts: Attempts::default(),
+                },
+            };
+            assert!(entry.mode.native(entry.automatic));
+            assert!(entry.is_gamepad());
+            entry.os_name = "Unknown mapped wheel".into();
+            let wheel_axes = bits::<8>(&[0, 2, 5]);
+            entry.gamepad = gamepad_controls(&entry.os_name, &wheel_axes, &[0; 96]);
+            entry.automatic = automatic_native(&entry.os_name, true, &wheel_axes, &[0; 96]);
+            assert!(!entry.is_gamepad());
+            entry.mode = AxisMode::Auto;
+            assert!(entry.is_gamepad());
+            entry.mode = AxisMode::Gamepad;
+            assert!(entry.is_gamepad());
+            assert!(!entry.mode.native(entry.automatic));
+            entry.automatic = true;
+            assert!(entry.is_gamepad());
+            assert!(!entry.mode.native(entry.automatic));
+        }
+    }
+
+    #[test]
+    fn wheel_evidence_overrides_gamepad_buttons_and_extra_axes() {
+        let axes = bits::<8>(&[0, 1, 2, 3, 4, 5]);
+        let keys = bits::<96>(&[BTN_GAMEPAD]);
+        assert!(automatic_native("Thrustmaster T128", true, &axes, &keys));
+        assert!(!gamepad_controls("Thrustmaster T128", &axes, &keys));
+        assert!(!gamepad_controls(
+            "Generic controller",
+            &axes,
+            &bits::<96>(&[BTN_GAMEPAD, BTN_GEAR_UP])
+        ));
+        assert!(!gamepad_controls(
+            "Generic controller",
+            &bits::<8>(&[ABS_Z as usize]),
+            &keys
+        ));
     }
 
     #[test]

@@ -103,6 +103,8 @@ mod crossing_tests;
 #[cfg(test)]
 mod detail_loading_tests;
 #[cfg(test)]
+mod object_tile_tests;
+#[cfg(test)]
 mod parity_acceptance_tests;
 #[cfg(test)]
 mod render_queue_tests;
@@ -165,6 +167,7 @@ pub struct World {
     pub light_objects: Mutex<Vec<LightObject>>,
     /// Placed objects with scripts / animations.
     pub scripted: Mutex<Vec<ScriptedObject>>,
+    pub scripted_of_object: Mutex<HashMap<i64, usize>>,
     /// The clock and the departure boards the scenery scripts read.
     pub timetable_boards: Mutex<StopBoards>,
     /// The map's `Holidays.txt`, read when first asked.

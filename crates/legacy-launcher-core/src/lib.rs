@@ -11,6 +11,7 @@ pub mod index;
 pub mod install;
 pub mod instances;
 pub mod servers;
+pub mod wire;
 
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
@@ -2235,6 +2236,10 @@ fn keyboard_cfg_read_path() -> Result<PathBuf> {
     Ok(::legacy_config::original_keyboard_cfg(&root()?))
 }
 
+pub fn omsi_gamectrler_cfg() -> Result<PathBuf> {
+    Ok(::legacy_config::original_gamectrler_cfg(&root()?))
+}
+
 /// The `keyboard.cfg` the launcher saved, if there is one: where [`save_keybindings`] writes it.
 pub fn saved_keyboard_cfg() -> Option<PathBuf> {
     let own = keyboard_cfg_write_path().ok()?;
@@ -2258,18 +2263,19 @@ fn binding_from_json(v: &Value) -> Option<::content::input::KeyBinding> {
 }
 
 pub fn get_keybindings() -> Result<Value> {
-    let path = keyboard_cfg_read_path()?;
-    let k = ::content::input::KeyboardCfg::load(&path)?
-        .with_game_defaults()
-        .with_vr_defaults();
+    let k = keyboard_cfg()?;
     Ok(
         json!({ "game": k.game.iter().map(binding_to_json).collect::<Vec<_>>(), "vehicles": k.vehicles.iter().map(binding_to_json).collect::<Vec<_>>() }),
     )
 }
 
-/// Replace the bindings with the page's list. Written to a temp file and read back through
-/// the same loader the game uses before it replaces the real file, so a page bug never
-/// leaves the player with a `keyboard.cfg` the game itself cannot parse.
+pub fn keyboard_cfg() -> Result<::content::input::KeyboardCfg> {
+    let path = keyboard_cfg_read_path()?;
+    Ok(::content::input::KeyboardCfg::load(&path)?
+        .with_game_defaults()
+        .with_vr_defaults())
+}
+
 pub fn save_keybindings(v: &Value) -> Result<()> {
     let list = |k: &str| -> Vec<::content::input::KeyBinding> {
         v.get(k)
@@ -2277,10 +2283,16 @@ pub fn save_keybindings(v: &Value) -> Result<()> {
             .map(|a| a.iter().filter_map(binding_from_json).collect())
             .unwrap_or_default()
     };
-    let k = ::content::input::KeyboardCfg {
+    save_keyboard_cfg(&::content::input::KeyboardCfg {
         game: list("game"),
         vehicles: list("vehicles"),
-    };
+    })
+}
+
+/// Replace the bindings with the page's list. Written to a temp file and read back through
+/// the same loader the game uses before it replaces the real file, so a page bug never
+/// leaves the player with a `keyboard.cfg` the game itself cannot parse.
+pub fn save_keyboard_cfg(k: &::content::input::KeyboardCfg) -> Result<()> {
     let path = keyboard_cfg_write_path()?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -2448,6 +2460,7 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("seat_x", "camera", "seat_x", Float(-1.5, 1.5)),
     ("seat_y", "camera", "seat_y", Float(-1.5, 1.5)),
     ("seat_z", "camera", "seat_z", Float(-1.5, 1.5)),
+    ("head_pitch", "camera", "head_pitch", Float(-45.0, 45.0)),
     ("look_sens", "camera", "look_sens", Float(0.1, 2.0)),
     ("alt_view", "camera", "alt_view", Bool),
     ("free_look", "camera", "free_look", Bool),
@@ -2461,6 +2474,10 @@ const SETTINGS: &[(&str, &str, &str, Kind)] = &[
     ("update_check", "launcher", "update_check", Bool),
     ("update_auto", "launcher", "update_auto", Bool),
 ];
+
+pub fn setting_keys() -> impl Iterator<Item = &'static str> {
+    SETTINGS.iter().map(|s| s.0)
+}
 
 fn toml_num(v: &Toml) -> Option<f64> {
     v.as_float().or_else(|| v.as_integer().map(|i| i as f64))
@@ -3836,6 +3853,7 @@ mod tests {
         assert_eq!(v["graphics"], "vanilla_plus");
         assert_eq!(v["enhanced"], false);
         assert_eq!(v["ai_unsched_factor"], 100);
+        assert_eq!(v["head_pitch"], 0.0);
         assert_eq!(v["time_speed"], "1");
         assert_eq!(v["mirror_refresh"], "full");
         assert_eq!(v["pax_prefer_seats"], false);
@@ -3859,6 +3877,7 @@ mod tests {
             ("look_sens", json!(0.5)),
             ("pedal_brake", json!(1.5)),
             ("seat_y", json!(-0.1)),
+            ("head_pitch", json!(-17.0)),
             ("vr", json!(true)),
             ("vr_scale", json!(0.8)),
             ("vr_mirror_rate", json!(120.0)),
@@ -3886,6 +3905,7 @@ mod tests {
         let _g = settings_guard();
         let mut v = default_settings();
         v["ui_scale"] = json!(9);
+        v["head_pitch"] = json!(90.0);
         v["mirror_size"] = json!(10);
         v["anisotropy"] = json!(32);
         v["view_distance"] = json!("1500");
@@ -3897,6 +3917,7 @@ mod tests {
         apply_settings(&v);
         let back = current_settings();
         assert_eq!(back["ui_scale"], 2.0);
+        assert_eq!(back["head_pitch"], 45.0);
         assert_eq!(back["mirror_size"], 64);
         assert_eq!(back["anisotropy"], 16);
         assert_eq!(back["view_distance"], "1500");

@@ -2,7 +2,7 @@
 
 The Linux in-game options offer an **Axis mode** selector for each configured device under **Controls / Game controllers**. Select the device tab after setting it up. Mode and **Invert** changes are saved immediately and retained after restarting. Invert is available even before assigning a function.
 
-The bundled Electron launcher uses the existing controller page; its protocol now accepts the optional `axis_mode` field. Until that separate UI offers a selector, use the in-game options to change the mode. Saving from an older launcher preserves the selected mode.
+The bundled Electron launcher uses the existing controller page; its protobuf protocol accepts the optional `axis_mode` field. Until that separate UI offers a selector, use the in-game options to change the mode. Saving from an older launcher preserves the selected mode.
 
 | Mode | Axis input |
 | --- | --- |
@@ -10,15 +10,15 @@ The bundled Electron launcher uses the existing controller page; its protocol no
 | Gamepad | Force gilrs processing and its stick/trigger layout. |
 | Native | Read the advertised native axes directly, regardless of device classification or force feedback support. |
 
-The per-device `controller` settings contain `axis_mode = "auto"`, `"gamepad"` or `"native"`. Missing, invalid and unknown values select Auto. Existing assignments, calibration, inversion, curve flags and force feedback settings remain in the existing format. Changing mode does not erase them; assignments made for a different layout may need adjustment.
+The per-device `controller` settings contain `axis_mode = "auto"`, `"gamepad"` or `"native"`. Missing, invalid and unknown values select Auto. Existing assignments, calibration, inversion, curve flags and force feedback settings remain in the existing format. Changing mode does not erase them; assignments made for a different layout may need adjustment. Importing OMSI assignments retains the existing native mode, calibration and neoOMSI feedback settings, including inversion flags on unassigned imported axes.
 
 ## Auto selection and classification
 
 Force feedback is never evidence for choosing an axis mode. Auto uses the actual OS device name and advertised axes/buttons. Explicit wheel/gearing controls, gas/brake axes, and joystick controls without gamepad buttons support native input. A mapped controller with normal gamepad buttons and two sticks remains on gilrs when gas/brake axes alone would be ambiguous.
 
-Recognized racing/steering wheel names, Driving Force, Thrustmaster T128/T248, and pedal names also require matching driving axes. A name alone is insufficient. Unknown mapped devices stay on gilrs. Vendor-wide classification is not used.
+Recognized racing/steering wheel names, Driving Force, Thrustmaster T128/T248, and pedal names also require matching driving axes. A name alone is insufficient. Unknown mapped devices stay on gilrs. Specific wheel names with matching driving axes take precedence over gamepad button and extra-axis reports. Vendor-wide classification is not used.
 
-Native axis layout and gamepad classification are separate: forcing Native on a gamepad exposes its native X/Y/Z/etc. slots while retaining gamepad steering behavior. Only the explicit Gamepad mode forces gamepad processing. A native read failure leaves its axes unavailable instead of silently switching layouts or reusing stale values.
+Native axis layout and gamepad classification are separate. In Native mode, gamepad buttons and X/Y stick axes retain gamepad steering unless specific wheel or pedal evidence is present. An unknown mapped wheel without this gamepad evidence uses wheel steering when Native is selected. Auto keeps the conservative gilrs fallback for unknown mapped devices; Gamepad explicitly forces it. Native axes retain their X/Y/Z/etc. labels. Assign functions to those slots; mapped stick/trigger defaults are excluded so they cannot overwrite or mix with native assignments. Force feedback does not affect this decision. A native read failure leaves its axes unavailable instead of silently switching layouts or reusing stale values.
 
 ## Cache and snapshots
 
@@ -42,4 +42,4 @@ Both helpers use the existing `libc::_IOR` implementation. It encodes the read d
 
 Sources: [Linux input UAPI](https://github.com/torvalds/linux/blob/master/include/uapi/linux/input.h), [ioctl encoding](https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/ioctl.h), [input event protocol](https://www.kernel.org/doc/html/latest/input/event-codes.html), [gamepad specification](https://www.kernel.org/doc/html/latest/input/gamepad.html).
 
-All new behavior is compiled only on Linux. Windows DirectInput, settings behavior and previews retain their existing implementation.
+Native axis reading, mode selection and independent inversion for unassigned axes are compiled only on Linux. The optional Protobuf field is ignored on other platforms. Windows DirectInput, settings behavior and previews retain their existing behavior.

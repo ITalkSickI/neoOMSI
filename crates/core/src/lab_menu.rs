@@ -110,7 +110,7 @@ impl App {
 
     fn lab_world_raw(&self) -> Vec<LabGroup> {
         match self.lab_group_page() {
-            Some(OPTIONS_PAGE) => crate::lab_options::options_groups(self),
+            Some(OPTIONS_PAGE) => crate::lab_options::options_groups(&crate::lab_options::Host::game(self)),
             Some(ADMIN_PAGE) => self.lab_admin_groups(),
             _ => crate::game_lists::world_groups(self),
         }
@@ -249,6 +249,7 @@ impl App {
             u.world_group = g;
             u.world_sub = 0;
             u.world_scroll = 0;
+            self.key_filter.clear();
             return;
         }
         if let Some(i) = hit(&u.world_sub_rc) {
@@ -261,6 +262,7 @@ impl App {
                 (u.world_sub + 1).min(tabs - 1)
             };
             u.world_scroll = 0;
+            self.key_filter.clear();
             return;
         }
         let Some(i) = hit(&u.world_rows_rc) else {
@@ -489,9 +491,10 @@ impl App {
         if self.lab_menu.is_none() {
             return;
         }
-        let list: Vec<String> = self.lab_entries().into_iter().map(|e| e.1).collect();
+        let (ids, list): (Vec<&'static str>, Vec<String>) = self.lab_entries().into_iter().unzip();
         if let Some(u) = self.ui.as_mut() {
             u.pause_entries = list;
+            u.pause_entry_ids = ids;
         }
     }
 
@@ -594,6 +597,41 @@ impl App {
                 false
             }
             _ => false,
+        }
+    }
+
+    pub(crate) fn lab_bar_press(&mut self) -> bool {
+        if self.lab_list.is_none() {
+            return false;
+        }
+        let (x, y) = self.cursor;
+        let inside = |r: [f32; 4]| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
+        let kind = match self.ui.as_ref() {
+            Some(u) if u.dialog_bar.is_some_and(inside) => 1,
+            Some(u) if u.dialog_pane_bar.is_some_and(inside) => 2,
+            _ => 0,
+        };
+        self.lab_bar_drag = kind;
+        if kind == 0 {
+            return false;
+        }
+        self.lab_bar_set();
+        true
+    }
+
+    pub(crate) fn lab_bar_set(&mut self) {
+        let y = self.cursor.1;
+        let kind = self.lab_bar_drag;
+        let vis = self.ui.as_ref().map_or(1, |u| u.dialog_vis);
+        let Some(u) = self.ui.as_mut() else { return };
+        let bar = if kind == 1 { u.dialog_bar } else { u.dialog_pane_bar };
+        let Some(bar) = bar else { return };
+        let frac = ((y - bar[1]) / (bar[3] - bar[1]).max(1.0)).clamp(0.0, 1.0);
+        if kind == 2 {
+            u.dialog_pane_top = Some((frac * u.dialog_pane_max as f32).round() as usize);
+        } else if let Some(Dialog::Select { scroll, options, .. }) = u.dialog.as_mut() {
+            let max = options.len().saturating_sub(vis) as f32;
+            *scroll = (frac * max).round() as usize;
         }
     }
 
@@ -1094,7 +1132,85 @@ impl App {
         }
     }
 
+    pub(crate) fn restart_ask(&mut self, target: Option<PauseState>) {
+        self.restart_prompt = Some(target);
+        if let Some(u) = self.ui.as_mut() {
+            u.dialog = Some(Dialog::Confirm {
+                title: tl("pause.dialog.restart.title"),
+                text: tl("pause.dialog.restart.text"),
+                yes: tl("pause.dialog.restart.yes"),
+                no: tl("pause.dialog.restart.no"),
+            });
+        }
+    }
+
+    fn restart_answer(&mut self, event_loop: &ActiveEventLoop, now: bool) {
+        let Some(target) = self.restart_prompt.take() else {
+            return;
+        };
+        if let Some(u) = self.ui.as_mut() {
+            u.dialog = None;
+            u.dialog_under = None;
+        }
+        self.restart_pending = false;
+        if now && self.restart_game(event_loop) {
+            return;
+        }
+        match target {
+            Some(s) => self.lab_menu = Some(s),
+            None => self.close_game_menu(),
+        }
+    }
+
+    fn restart_gate(&mut self, before: Option<PauseState>) {
+        if !self.restart_pending || self.restart_prompt.is_some() {
+            return;
+        }
+        if before.and_then(|s| s.page) != Some(OPTIONS_PAGE) {
+            return;
+        }
+        let now = self.lab_menu;
+        if now.and_then(|s| s.page) != Some(OPTIONS_PAGE) {
+            self.lab_menu = before;
+            self.restart_ask(now);
+        }
+    }
+
     pub(crate) fn lab_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode) {
+        if self.restart_prompt.is_some() {
+            match code {
+                KeyCode::Enter | KeyCode::NumpadEnter => self.restart_answer(event_loop, true),
+                KeyCode::Escape => self.restart_answer(event_loop, false),
+                _ => {}
+            }
+            return;
+        }
+        let before = self.lab_menu;
+        self.lab_key_inner(event_loop, code);
+        self.restart_gate(before);
+    }
+
+    pub(crate) fn lab_click(&mut self, event_loop: &ActiveEventLoop) {
+        if self.restart_prompt.is_some() {
+            let (x, y) = self.cursor;
+            let hit = self.ui.as_ref().and_then(|u| {
+                u.dialog_rects
+                    .iter()
+                    .position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3])
+            });
+            match hit {
+                Some(0) => self.restart_answer(event_loop, true),
+                Some(1) => self.restart_answer(event_loop, false),
+                _ => {}
+            }
+            return;
+        }
+        let before = self.lab_menu;
+        self.lab_click_inner(event_loop);
+        self.restart_gate(before);
+    }
+
+    fn lab_key_inner(&mut self, event_loop: &ActiveEventLoop, code: KeyCode) {
         SYNC_NOW.with(|c| c.set(true));
         let n = self.lab_pages();
         let st = self.lab_menu.unwrap_or_default();
@@ -1236,7 +1352,7 @@ impl App {
         }
     }
 
-    pub(crate) fn lab_click(&mut self, event_loop: &ActiveEventLoop) {
+    fn lab_click_inner(&mut self, event_loop: &ActiveEventLoop) {
         SYNC_NOW.with(|c| c.set(true));
         let (x, y) = self.cursor;
         let st = self.lab_menu.unwrap_or_default();

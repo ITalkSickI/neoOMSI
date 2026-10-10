@@ -10,12 +10,14 @@ use ab_glyph::{Font, FontVec, PxScale, ScaleFont, VariableFont};
 use ::render::{Renderer, Scene, TextureId};
 
 mod frame;
+mod infobar;
 #[path = "../pause-menu/mod.rs"]
 mod pause_menu;
 mod loading;
 mod run_report;
 mod shapes;
 mod style;
+mod timetable;
 #[cfg(test)]
 mod tests;
 mod text;
@@ -85,8 +87,11 @@ pub struct Ui {
     pub dialog_pane_rc: [f32; 4],
     pub dialog_pane_top: Option<usize>,
     pub dialog_pane_max: usize,
+    pub dialog_bar: Option<[f32; 4]>,
+    pub dialog_pane_bar: Option<[f32; 4]>,
     pub dialog_pane_key: String,
     pub dialog_pane_pos: f32,
+    pub dialog_list_pos: f32,
     pub dialog_under: Option<Dialog>,
     pub place_rects: Vec<[f32; 4]>,
     pub place_preview_size: (u32, u32),
@@ -99,6 +104,7 @@ pub struct Ui {
     pub dialog_preview: Option<Preview>,
     pub dialog_tall: bool,
     pub pause_entries: Vec<String>,
+    pub pause_entry_ids: Vec<&'static str>,
     pub world_view: std::sync::Arc<Vec<WorldGroup>>,
     pub world_view_page: usize,
     pub world_last_page: usize,
@@ -112,6 +118,7 @@ pub struct Ui {
     pub world_sub_rc: Vec<[f32; 4]>,
     pub world_scroll: usize,
     pub world_pos: f32,
+    world_held: Option<usize>,
     pub world_bar: Option<([f32; 4], [f32; 4])>,
     pub world_bar_grab: Option<f32>,
     pub world_first: usize,

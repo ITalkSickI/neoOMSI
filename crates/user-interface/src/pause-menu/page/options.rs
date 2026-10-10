@@ -214,7 +214,7 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
             sw(
                 "momentary_gears",
                 "pause.options.driving.momentary_gears.name",
-                "pause.options.later",
+                "pause.options.driving.momentary_gears.desc",
             ),
             sw(
                 "brake_hold",
@@ -406,6 +406,18 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
                 "pause.options.camera.seat_0.name",
                 "pause.options.camera.seat_0.desc",
                 Fmt::Cm,
+            ),
+            sl(
+                "head_pitch",
+                "pause.options.camera.head_pitch.name",
+                "pause.options.camera.head_pitch.desc",
+                Fmt::Deg,
+            ),
+            row(
+                "head_pitch_reset",
+                "pause.options.camera.head_pitch_reset.name",
+                "pause.options.camera.head_pitch_reset.desc",
+                OptKind::Button("pause.options.button.reset"),
             ),
             row(
                 "seat_reset",
@@ -620,10 +632,10 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
         title: "pause.options.group.display",
         tab: "",
         rows: &[
-            sw(
-                "fullscreen",
-                "pause.options.display.fullscreen.name",
-                "pause.options.display.fullscreen.desc",
+            sel(
+                "window_mode",
+                "pause.options.display.window_mode.name",
+                "pause.options.display.window_mode.desc",
             ),
             sw(
                 "vsync",
@@ -715,11 +727,6 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
                 "pause.options.interface.nav_arrows.desc",
             ),
             sw(
-                "info_bar",
-                "pause.options.interface.info_bar.name",
-                "pause.options.interface.info_bar.desc",
-            ),
-            sw(
                 "timetable_win",
                 "pause.options.interface.timetable_win.name",
                 "pause.options.interface.timetable_win.desc",
@@ -757,6 +764,55 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
             ),
         ],
         subs: &[OptSub {
+            title: "pause.options.group.info",
+            rows: &[
+                sw(
+                    "info_bar",
+                    "pause.options.interface.info_bar.name",
+                    "pause.options.interface.info_bar.desc",
+                ),
+                sw(
+                    "info_time",
+                    "pause.options.info.time.name",
+                    "pause.options.info.time.desc",
+                ),
+                sw(
+                    "info_speed",
+                    "pause.options.info.speed.name",
+                    "pause.options.info.speed.desc",
+                ),
+                sw(
+                    "info_temp",
+                    "pause.options.info.temp.name",
+                    "pause.options.info.temp.desc",
+                ),
+                sw(
+                    "info_fuel",
+                    "pause.options.info.fuel.name",
+                    "pause.options.info.fuel.desc",
+                ),
+                sw(
+                    "info_pax",
+                    "pause.options.info.pax.name",
+                    "pause.options.info.pax.desc",
+                ),
+                sw(
+                    "info_line",
+                    "pause.options.info.line.name",
+                    "pause.options.info.line.desc",
+                ),
+                sw(
+                    "info_next",
+                    "pause.options.info.next.name",
+                    "pause.options.info.next.desc",
+                ),
+                sw(
+                    "info_delay",
+                    "pause.options.info.delay.name",
+                    "pause.options.info.delay.desc",
+                ),
+            ],
+        }, OptSub {
             title: "pause.options.group.map",
             rows: &[
                 sw(
@@ -1037,6 +1093,21 @@ mod tests {
                 assert!(!s.rows.is_empty(), "{}", s.title);
             }
         }
+    }
+
+    #[test]
+    fn display_options_keep_the_three_window_modes() {
+        let display = OPTION_GROUPS
+            .iter()
+            .find(|group| group.title == "pause.options.group.display")
+            .expect("display options group");
+        let window_mode = display
+            .rows
+            .iter()
+            .find(|row| row.id == "window_mode")
+            .expect("window mode selector");
+        assert_eq!(window_mode.kind, OptKind::Select);
+        assert_eq!(window_mode.name, "pause.options.display.window_mode.name");
     }
 
     #[test]
