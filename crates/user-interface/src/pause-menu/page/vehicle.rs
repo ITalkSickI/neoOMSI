@@ -137,19 +137,27 @@ impl Ui {
             let rr = [rc[0] + ox, rc[1], rc[2] + ox, rc[3]];
             self.text
                 .rounded(r, scene, rr, 0.0, fade(mix(OPT_ROW, OPT_ROW_HOT, hv), e));
-            let vpx = (15.0 * u) as u32;
             let val = if a.opens {
                 t("pause.page.vehicle.choose")
             } else {
                 t(&action_key(a, "button"))
             };
-            let vw = self.text.width(&val, vpx as f32);
-            let vl = self.text.label(r, scene, &val, vpx, plain(mix(ACCENT, WHITE, hv)));
-            vl.place(
+            // the action: a small chip
+            let cpx = (14.0 * u) as u32;
+            let vl = self.text.label(r, scene, &val, cpx, plain(mix(SOFT, WHITE, hv)));
+            let (chip_px, chip_py) = (10.0 * u, 4.0 * u);
+            let vw = vl.w as f32 + chip_px * 2.0;
+            let ch = vl.h as f32 + chip_py * 2.0;
+            let cx = rr[2] - 18.0 * u - vw;
+            let cy = rr[1] + (row_h - ch) * 0.5;
+            self.text.rounded(
+                r,
                 scene,
-                rr[2] - 18.0 * u - vw,
-                rr[1] + (row_h - vl.h as f32) * 0.5,
+                [cx, cy, cx + vw, cy + ch],
+                4.0 * u,
+                fade(mix(CHIP, ACCENT_SOFT, hv), e),
             );
+            vl.place(scene, cx + chip_px, cy + chip_py);
             let npx = (18.0 * u) as u32;
             let name = clip_to(
                 &self.text,

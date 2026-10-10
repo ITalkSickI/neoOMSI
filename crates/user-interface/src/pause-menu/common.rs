@@ -225,7 +225,7 @@ impl Ui {
                 let rc = [x0, top, x0 + aw, top + th + 10.0 * u];
                 let hot = can && inside(rc, f.cursor) && !busy;
                 let col = if !can {
-                    [70, 73, 80, 255]
+                    [56, 56, 56, 255]
                 } else if hot {
                     WHITE
                 } else {
@@ -415,7 +415,7 @@ impl Ui {
                         scene,
                         [x0, y0, x0 + pw, y0 + ph],
                         0.0,
-                        fade([48, 48, 52, 255], e),
+                        fade([46, 46, 46, 255], e),
                     );
                     let kw = 20.0 * u;
                     let kx = x0 + 2.0 * u + (pw - kw - 4.0 * u) * k;
@@ -424,7 +424,7 @@ impl Ui {
                         scene,
                         [kx, y0 + 2.0 * u, kx + kw, y0 + ph - 2.0 * u],
                         0.0,
-                        fade(mix([150, 150, 154, 255], ACCENT, k), e),
+                        fade(mix([150, 150, 150, 255], ACCENT, k), e),
                     );
                     let word = t(if on {
                         "pause.page.world.on"
@@ -485,7 +485,7 @@ impl Ui {
                     let open = self.world_drop.as_ref().is_some_and(|d| d.k == n);
                     let bc = fade(
                         mix(
-                            [120, 123, 130, 255],
+                            [120, 120, 120, 255],
                             [236, 236, 236, 255],
                             (hv).max(if open { 1.0 } else { 0.0 }),
                         ),
@@ -548,9 +548,7 @@ impl Ui {
                 }
                 kind => {
                     let col = match kind {
-                        'a' | 'e' => mix(ACCENT, WHITE, hv),
-                        'E' => WHITE,
-                        'c' => [235, 150, 60, 255],
+                        'a' | 'e' | 'E' | 'c' => mix(SOFT, WHITE, hv),
                         _ => MUTED,
                     };
                     // a key binding that is set: a small x behind it takes the key away
@@ -565,7 +563,7 @@ impl Ui {
                             scene,
                             "\u{d7}",
                             (18.0 * u) as u32,
-                            plain(mix([110, 113, 120, 255], [235, 90, 80, 255], xv)),
+                            plain(mix([110, 110, 110, 255], [222, 78, 68, 255], xv)),
                         );
                         xl.place(
                             scene,
@@ -576,12 +574,37 @@ impl Ui {
                         vr = rx - xw - 6.0 * u;
                         ctl_w = xw + 6.0 * u;
                     }
-                    let txt = clip_to(&self.text, &value.to_uppercase(), vpx as f32, mid_w * 0.4);
-                    if !txt.is_empty() {
-                        let vw = self.text.width(&txt, vpx as f32);
-                        let vl = self.text.label(r, scene, &txt, vpx, plain(col));
-                        vl.place(scene, vr - vw, ry + (row_h - vl.h as f32) * 0.5);
-                        ctl_w += vw;
+                    if matches!(kind, 'a' | 'e' | 'E' | 'c') {
+                        // a clickable entry: a small chip with its action
+                        let cpx = (14.0 * u) as u32;
+                        let txt = clip_to(&self.text, &value, cpx as f32, mid_w * 0.4);
+                        if !txt.is_empty() {
+                            let (px_, py_) = (10.0 * u, 4.0 * u);
+                            let vw = self.text.width(&txt, cpx as f32);
+                            let vl = self.text.label(r, scene, &txt, cpx, plain(col));
+                            let (cw, ch) = (vw + px_ * 2.0, vl.h as f32 + py_ * 2.0);
+                            let cx = vr - cw;
+                            let cy = ry + (row_h - ch) * 0.5;
+                            let bg = mix(CHIP, ACCENT_SOFT, hv);
+                            self.text.rounded(
+                                r,
+                                scene,
+                                [cx, cy, cx + cw, cy + ch],
+                                4.0 * u,
+                                fade(bg, e),
+                            );
+                            vl.place(scene, cx + px_, cy + py_);
+                            ctl_w += cw;
+                        }
+                    } else {
+                        let txt =
+                            clip_to(&self.text, &value.to_uppercase(), vpx as f32, mid_w * 0.4);
+                        if !txt.is_empty() {
+                            let vw = self.text.width(&txt, vpx as f32);
+                            let vl = self.text.label(r, scene, &txt, vpx, plain(col));
+                            vl.place(scene, vr - vw, ry + (row_h - vl.h as f32) * 0.5);
+                            ctl_w += vw;
+                        }
                     }
                 }
             }
@@ -608,7 +631,7 @@ impl Ui {
                     let tag = clip_to(&self.text, &row.tag, tpx as f32, room);
                     let tl = self
                         .text
-                        .label(r, scene, &tag, tpx, fade([110, 113, 120, 255], e));
+                        .label(r, scene, &tag, tpx, fade([110, 110, 110, 255], e));
                     tl.place(scene, tx, ry + (row_h - tl.h as f32) * 0.5);
                 }
             }
@@ -675,7 +698,7 @@ impl Ui {
                         box_[3] + line,
                     ],
                     0.0,
-                    [150, 153, 160, 255],
+                    [150, 150, 150, 255],
                 );
                 self.text.rounded(r, scene, box_, 0.0, OPT_ROW);
                 self.world_drop_first = d.top;
