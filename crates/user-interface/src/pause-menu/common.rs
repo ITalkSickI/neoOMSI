@@ -89,8 +89,8 @@ impl Ui {
             let hv = self.ease((213, "grp", i), if hot { 1.0 } else { 0.0 }, 8.0);
             let sv = self.easeq((213, "grpsel", i), if i == gi { 1.0 } else { 0.0 }, 7.0);
             let bg = mix(
-                mix([30, 32, 37, 255], [42, 45, 52, 255], hv),
-                [58, 62, 70, 255],
+                mix([26, 26, 26, 255], [36, 36, 36, 255], hv),
+                [48, 48, 48, 255],
                 sv,
             );
             self.text.rounded(r, scene, rc, 0.0, fade(bg, e));
@@ -225,7 +225,7 @@ impl Ui {
                 let rc = [x0, top, x0 + aw, top + th + 10.0 * u];
                 let hot = can && inside(rc, f.cursor) && !busy;
                 let col = if !can {
-                    [70, 73, 80, 255]
+                    [56, 56, 56, 255]
                 } else if hot {
                     WHITE
                 } else {
@@ -299,7 +299,7 @@ impl Ui {
                     scene,
                     [mid_x, ly, mid_x + mid_w, ly + line.max(1.0)],
                     0.0,
-                    fade([58, 61, 67, 255], e),
+                    fade([46, 46, 46, 255], e),
                 );
                 self.world_rows_rc.push(rc);
                 self.world_tracks.push(None);
@@ -322,10 +322,10 @@ impl Ui {
                     scene,
                     rc,
                     0.0,
-                    fade(mix([20, 22, 27, 255], [28, 30, 36, 255], hv), e),
+                    fade(mix([18, 18, 18, 255], [26, 26, 26, 255], hv), e),
                 );
                 let b = (1.5 * u).max(line);
-                let c = fade(if active { ACCENT } else { [58, 61, 67, 255] }, e);
+                let c = fade(if active { ACCENT } else { [46, 46, 46, 255] }, e);
                 self.text
                     .rounded(r, scene, [rc[0], rc[3] - b, rc[2], rc[3]], 0.0, c);
                 let px = (16.0 * u) as u32;
@@ -373,7 +373,7 @@ impl Ui {
                 rr,
                 0.0,
                 fade(
-                    mix(mix([34, 36, 40, 255], [58, 61, 67, 255], hv), ACCENT, lit * 0.55),
+                    mix(mix([28, 28, 28, 255], [46, 46, 46, 255], hv), ACCENT, lit * 0.55),
                     e,
                 ),
             );
@@ -402,7 +402,7 @@ impl Ui {
                         scene,
                         [x0, y0, x0 + pw, y0 + ph],
                         0.0,
-                        fade([62, 65, 72, 255], e),
+                        fade([52, 52, 52, 255], e),
                     );
                     let kw = 20.0 * u;
                     let kx = x0 + 2.0 * u + (pw - kw - 4.0 * u) * k;
@@ -411,7 +411,7 @@ impl Ui {
                         scene,
                         [kx, y0 + 2.0 * u, kx + kw, y0 + ph - 2.0 * u],
                         0.0,
-                        fade(mix([150, 153, 160, 255], ACCENT, k), e),
+                        fade(mix([150, 150, 150, 255], ACCENT, k), e),
                     );
                     let word = t(if on {
                         "pause.page.world.on"
@@ -439,7 +439,7 @@ impl Ui {
                         scene,
                         [t0, cy - 2.0 * u, t1, cy + 2.0 * u],
                         0.0,
-                        fade([24, 26, 31, 255], e),
+                        fade([18, 18, 18, 255], e),
                     );
                     let fx = t0 + (t1 - t0) * row.frac.clamp(0.0, 1.0);
                     self.text.rounded(
@@ -472,7 +472,7 @@ impl Ui {
                     let open = self.world_drop.as_ref().is_some_and(|d| d.k == n);
                     let bc = fade(
                         mix(
-                            [120, 123, 130, 255],
+                            [120, 120, 120, 255],
                             [236, 236, 236, 255],
                             (hv).max(if open { 1.0 } else { 0.0 }),
                         ),
@@ -513,7 +513,7 @@ impl Ui {
                             scene,
                             [x0, cy - mh * 0.5, x1, cy + mh * 0.5],
                             0.0,
-                            fade([24, 26, 31, 255], e),
+                            fade([18, 18, 18, 255], e),
                         );
                         self.text.rounded(
                             r,
@@ -535,9 +535,7 @@ impl Ui {
                 }
                 kind => {
                     let col = match kind {
-                        'a' | 'e' => mix(ACCENT, WHITE, hv),
-                        'E' => WHITE,
-                        'c' => [235, 150, 60, 255],
+                        'a' | 'e' | 'E' | 'c' => mix(SOFT, WHITE, hv),
                         _ => MUTED,
                     };
                     // a key binding that is set: a small x behind it takes the key away
@@ -552,7 +550,7 @@ impl Ui {
                             scene,
                             "\u{d7}",
                             (18.0 * u) as u32,
-                            plain(mix([110, 113, 120, 255], [235, 90, 80, 255], xv)),
+                            plain(mix([110, 110, 110, 255], [222, 78, 68, 255], xv)),
                         );
                         xl.place(
                             scene,
@@ -563,12 +561,37 @@ impl Ui {
                         vr = rx - xw - 6.0 * u;
                         ctl_w = xw + 6.0 * u;
                     }
-                    let txt = clip_to(&self.text, &value.to_uppercase(), vpx as f32, mid_w * 0.4);
-                    if !txt.is_empty() {
-                        let vw = self.text.width(&txt, vpx as f32);
-                        let vl = self.text.label(r, scene, &txt, vpx, plain(col));
-                        vl.place(scene, vr - vw, ry + (row_h - vl.h as f32) * 0.5);
-                        ctl_w += vw;
+                    if matches!(kind, 'a' | 'e' | 'E' | 'c') {
+                        // a clickable entry: a small chip with its action
+                        let cpx = (14.0 * u) as u32;
+                        let txt = clip_to(&self.text, &value, cpx as f32, mid_w * 0.4);
+                        if !txt.is_empty() {
+                            let (px_, py_) = (10.0 * u, 4.0 * u);
+                            let vw = self.text.width(&txt, cpx as f32);
+                            let vl = self.text.label(r, scene, &txt, cpx, plain(col));
+                            let (cw, ch) = (vw + px_ * 2.0, vl.h as f32 + py_ * 2.0);
+                            let cx = vr - cw;
+                            let cy = ry + (row_h - ch) * 0.5;
+                            let bg = mix(CHIP, ACCENT_SOFT, hv);
+                            self.text.rounded(
+                                r,
+                                scene,
+                                [cx, cy, cx + cw, cy + ch],
+                                4.0 * u,
+                                fade(bg, e),
+                            );
+                            vl.place(scene, cx + px_, cy + py_);
+                            ctl_w += cw;
+                        }
+                    } else {
+                        let txt =
+                            clip_to(&self.text, &value.to_uppercase(), vpx as f32, mid_w * 0.4);
+                        if !txt.is_empty() {
+                            let vw = self.text.width(&txt, vpx as f32);
+                            let vl = self.text.label(r, scene, &txt, vpx, plain(col));
+                            vl.place(scene, vr - vw, ry + (row_h - vl.h as f32) * 0.5);
+                            ctl_w += vw;
+                        }
                     }
                 }
             }
@@ -588,7 +611,7 @@ impl Ui {
                     let tag = clip_to(&self.text, &row.tag, tpx as f32, room);
                     let tl = self
                         .text
-                        .label(r, scene, &tag, tpx, fade([110, 113, 120, 255], e));
+                        .label(r, scene, &tag, tpx, fade([110, 110, 110, 255], e));
                     tl.place(scene, tx, ry + (row_h - tl.h as f32) * 0.5);
                 }
             }
@@ -617,7 +640,7 @@ impl Ui {
                 scene,
                 [sx, y0, sx + bw, y0 + track_h],
                 0.0,
-                [34, 36, 42, 255],
+                [28, 28, 28, 255],
             );
             self.text.rounded(
                 r,
@@ -655,9 +678,9 @@ impl Ui {
                         box_[3] + line,
                     ],
                     0.0,
-                    [150, 153, 160, 255],
+                    [150, 150, 150, 255],
                 );
-                self.text.rounded(r, scene, box_, 0.0, [26, 28, 33, 255]);
+                self.text.rounded(r, scene, box_, 0.0, [22, 22, 22, 255]);
                 self.world_drop_first = d.top;
                 if !d.hay.is_empty() {
                     let rc = [
@@ -666,7 +689,7 @@ impl Ui {
                         box_[2] - 4.0 * u,
                         box_[1] + search_h - 4.0 * u,
                     ];
-                    self.text.rounded(r, scene, rc, 0.0, [8, 10, 14, 255]);
+                    self.text.rounded(r, scene, rc, 0.0, [10, 10, 10, 255]);
                     let bpx = 15.0 * u;
                     let q = &d.filter;
                     let (txt, col) = if q.is_empty() {
@@ -705,7 +728,7 @@ impl Ui {
                     let hv = self.ease((216, "dd", j), if hot || chosen { 1.0 } else { 0.0 }, 10.0);
                     if hv > 0.0 {
                         self.text
-                            .rounded(r, scene, irc, 0.0, fade([58, 61, 67, 255], hv));
+                            .rounded(r, scene, irc, 0.0, fade([46, 46, 46, 255], hv));
                     }
                     if d.current == Some(j) {
                         self.text.rounded(
@@ -757,7 +780,7 @@ impl Ui {
         let x0 = px0 + 14.0 * u * (1.0 - e);
         let card = [x0, top, x0 + (w - mx - px0), top + ph];
         self.text
-            .rounded(r, scene, card, 0.0, fade([20, 22, 27, 255], e));
+            .rounded(r, scene, card, 0.0, fade([18, 18, 18, 255], e));
         self.text.rounded(
             r,
             scene,
