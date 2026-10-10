@@ -1,4 +1,14 @@
 {
+  "ingame": {
+    "infobar": {
+      "outside": "Ext.",
+      "inside": "Int.",
+      "fuel": "Fuel",
+      "next_stop": "Next stop",
+      "passenger": "Passenger",
+      "passengers": "Passengers"
+    }
+  },
   "pause": {
     "entry": {
       "admin": "Administration",
@@ -444,6 +454,7 @@
         "free_look": "Free look",
         "gameplay": "Gameplay",
         "graphics": "Graphics",
+        "info": "Info bar",
         "interface": "Interface",
         "keybinds": "Key bindings",
         "map": "Map",
@@ -451,6 +462,40 @@
         "vr": "VR",
         "head_tracking": "Head tracking",
         "general": "General"
+      },
+      "info": {
+        "time": {
+          "desc": "Shows the simulation time",
+          "name": "Time"
+        },
+        "speed": {
+          "desc": "Shows the current speed",
+          "name": "Speed"
+        },
+        "temp": {
+          "desc": "Shows the outside and inside temperature",
+          "name": "Temperature"
+        },
+        "fuel": {
+          "desc": "Shows the fuel level",
+          "name": "Fuel"
+        },
+        "pax": {
+          "desc": "Shows the number of passengers aboard",
+          "name": "Passengers"
+        },
+        "line": {
+          "desc": "Shows the line and its destination",
+          "name": "Line and destination"
+        },
+        "next": {
+          "desc": "Shows the name of the next stop",
+          "name": "Next stop"
+        },
+        "delay": {
+          "desc": "Shows the deviation from the timetable",
+          "name": "Delay"
+        }
       },
       "interface": {
         "chat": {

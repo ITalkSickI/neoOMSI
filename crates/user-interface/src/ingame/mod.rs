@@ -10,6 +10,7 @@ use ab_glyph::{Font, FontVec, PxScale, ScaleFont, VariableFont};
 use ::render::{Renderer, Scene, TextureId};
 
 mod frame;
+mod infobar;
 #[path = "../pause-menu/mod.rs"]
 mod pause_menu;
 mod loading;

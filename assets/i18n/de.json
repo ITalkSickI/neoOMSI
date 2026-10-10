@@ -1,4 +1,14 @@
 {
+  "ingame": {
+    "infobar": {
+      "outside": "Außen",
+      "inside": "Innen",
+      "fuel": "Tank",
+      "next_stop": "Nächste Haltestelle",
+      "passenger": "Fahrgast",
+      "passengers": "Fahrgäste"
+    }
+  },
   "pause": {
     "entry": {
       "admin": "Verwaltung",
@@ -444,6 +454,7 @@
         "free_look": "Freier Blick",
         "gameplay": "Spielablauf",
         "graphics": "Grafik",
+        "info": "Infoleiste",
         "interface": "Oberfläche",
         "keybinds": "Tastenbelegung",
         "map": "Karte",
@@ -451,6 +462,40 @@
         "vr": "VR",
         "head_tracking": "Head-Tracking",
         "general": "Allgemein"
+      },
+      "info": {
+        "time": {
+          "desc": "Zeigt die Simulationszeit",
+          "name": "Uhrzeit"
+        },
+        "speed": {
+          "desc": "Zeigt die aktuelle Geschwindigkeit",
+          "name": "Geschwindigkeit"
+        },
+        "temp": {
+          "desc": "Zeigt die Außen- und Innentemperatur",
+          "name": "Temperatur"
+        },
+        "fuel": {
+          "desc": "Zeigt den Füllstand des Tanks",
+          "name": "Tankinhalt"
+        },
+        "pax": {
+          "desc": "Zeigt die Zahl der Fahrgäste an Bord",
+          "name": "Fahrgäste"
+        },
+        "line": {
+          "desc": "Zeigt die Linie und das Fahrtziel",
+          "name": "Linie und Ziel"
+        },
+        "next": {
+          "desc": "Zeigt den Namen der nächsten Haltestelle",
+          "name": "Nächste Haltestelle"
+        },
+        "delay": {
+          "desc": "Zeigt die Abweichung vom Fahrplan",
+          "name": "Verspätung"
+        }
       },
       "interface": {
         "chat": {

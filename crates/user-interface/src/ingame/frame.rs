@@ -288,27 +288,7 @@ impl Ui {
             ));
             l.place(scene, x, 10.0 * s);
         }
-        if let Some(info) = f.info.as_ref() {
-            self.text.flat = true;
-            let l = self.text.label(r, scene, info, (15.0 * s) as u32, WHITE);
-            let pad = 12.0 * s;
-            let (w, h) = (l.w as f32 + pad * 2.0, l.h as f32 + pad * 0.8);
-            let x = ((f.width - w) * 0.5).round();
-            let y = (8.0 * s).round();
-            let radius = ROW_R * s;
-            let card = [14, 14, 14, 245];
-            self.text.rounded(
-                r,
-                scene,
-                [x - 1.0, y - 1.0, x + w + 1.0, y + h + 1.0],
-                radius + 1.0,
-                BORDER,
-            );
-            self.text
-                .rounded(r, scene, [x, y, x + w, y + h], radius, card);
-            l.place(scene, x + pad, y + pad * 0.4);
-            self.text.flat = false;
-        }
+        self.draw_info_bar(r, scene, f, s);
         let tutorial_w = (420.0 * s).min(f.width * 0.42);
         self.draw_timetable(r, scene, f, s, corner_top, tutorial_w);
         if let Some((title, text, image, at, count)) = f.tutorial {

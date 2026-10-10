@@ -504,6 +504,14 @@ pub(crate) fn toggle_now(app: Option<&App>, id: &str) -> Option<bool> {
         "blinker_cancel" => ::config::get_bool("controls", "blinker_cancel").unwrap_or(true),
         "steer_center" => ::config::get_bool("controls", "steer_center").unwrap_or(true),
         "fps" => ::config::get_bool("ui", "show_fps").unwrap_or(false),
+        "info_time" => ::config::get_bool("ui", "info_time").unwrap_or(true),
+        "info_speed" => ::config::get_bool("ui", "info_speed").unwrap_or(true),
+        "info_temp" => ::config::get_bool("ui", "info_temp").unwrap_or(true),
+        "info_fuel" => ::config::get_bool("ui", "info_fuel").unwrap_or(true),
+        "info_pax" => ::config::get_bool("ui", "info_pax").unwrap_or(true),
+        "info_line" => ::config::get_bool("ui", "info_line").unwrap_or(true),
+        "info_next" => ::config::get_bool("ui", "info_next").unwrap_or(true),
+        "info_delay" => ::config::get_bool("ui", "info_delay").unwrap_or(true),
         "auto_ibis" => ::config::get_bool("gameplay", "auto_ibis").unwrap_or(false),
         "time_sync" => ::config::get_bool("gameplay", "time_sync").unwrap_or(false),
         "metar_sync" => ::config::get_bool("gameplay", "metar_sync").unwrap_or(false),
@@ -802,6 +810,11 @@ fn toggle_set_inner(mut app: Option<&mut App>, id: &str, on: bool) -> Option<(&'
         }
         "fps" => {
             ::config::set_setting("ui", "show_fps", on);
+            let _ = ::config::save();
+            None
+        }
+        id @ ("info_time" | "info_speed" | "info_temp" | "info_fuel" | "info_pax" | "info_line" | "info_next" | "info_delay") => {
+            ::config::set_setting("ui", id, on);
             let _ = ::config::save();
             None
         }
