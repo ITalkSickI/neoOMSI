@@ -627,6 +627,11 @@
         }
       },
       "value": {
+        "window_mode": {
+          "windowed": "Fenster",
+          "borderless": "Rahmenlos",
+          "fullscreen": "Vollbild"
+        },
         "post_aa": {
           "fxaa": "FXAA",
           "off": "Aus"

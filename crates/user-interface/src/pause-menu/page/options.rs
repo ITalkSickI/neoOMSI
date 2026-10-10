@@ -620,10 +620,10 @@ pub const OPTION_GROUPS: &[OptGroup] = &[
         title: "pause.options.group.display",
         tab: "",
         rows: &[
-            sw(
-                "fullscreen",
-                "pause.options.display.fullscreen.name",
-                "pause.options.display.fullscreen.desc",
+            sel(
+                "window_mode",
+                "pause.options.display.window_mode.name",
+                "pause.options.display.window_mode.desc",
             ),
             sw(
                 "vsync",
