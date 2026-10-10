@@ -990,6 +990,12 @@
       }
     },
     "dialog": {
+      "restart": {
+        "title": "Restart required",
+        "text": "For your changes to take full effect, you have to restart the game",
+        "yes": "Restart",
+        "no": "Later"
+      },
       "place": {
         "models": "models",
         "random_livery": "Random livery",

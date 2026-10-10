@@ -250,7 +250,15 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
 /// message to show when there is one.
 pub(crate) fn settings_pick(mut app: Option<&mut App>, action: &str) -> Option<String> {
     let msg = settings_pick_inner(app.as_deref_mut(), action);
+    let restart = match action.split_once(' ') {
+        Some(("pick", rest)) => rest.split_once(' ').is_some_and(|(k, _)| super::options::RESTART_KEYS.contains(&k)),
+        Some(("preset" | "gfxprofile", _)) => true,
+        _ => false,
+    };
     if let Some(app) = app {
+        if restart {
+            app.restart_pending = true;
+        }
         apply_live_settings(app);
     }
     msg

@@ -990,6 +990,12 @@
       }
     },
     "dialog": {
+      "restart": {
+        "title": "Neustart erforderlich",
+        "text": "Damit deine Änderungen vollständig in Kraft gehen, musst du das Spiel neustarten",
+        "yes": "Neustarten",
+        "no": "Später"
+      },
       "place": {
         "models": "Modelle",
         "random_livery": "Zufällige Lackierung",

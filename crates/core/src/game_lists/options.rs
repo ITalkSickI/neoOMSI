@@ -567,6 +567,12 @@ pub(crate) fn toggle_now(app: Option<&App>, id: &str) -> Option<bool> {
     })
 }
 
+pub(crate) const RESTART_KEYS: &[&str] = &[
+    "graphics", "graphics_api", "msaa", "render_scale", "anisotropy", "shadow_size", "clouds", "map_detail",
+    "view_distance", "mirror_size", "texture_memory", "texture_compression", "vr", "vr_scale",
+    "vr_head_smoothing_ms", "vr_mirror_rate", "vr_desktop_mirror", "pax_models", "ai_max_parked",
+];
+
 pub(crate) fn apply_live_settings(app: &mut App) {
     let max_obj_dist = match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
         d if d >= 0.0 => d,
@@ -601,6 +607,9 @@ pub(crate) fn apply_live_settings(app: &mut App) {
 pub(crate) fn toggle_set(mut app: Option<&mut App>, id: &str, on: bool) -> Option<(&'static str, String)> {
     let out = toggle_set_inner(app.as_deref_mut(), id, on);
     if let Some(app) = app {
+        if RESTART_KEYS.contains(&id) {
+            app.restart_pending = true;
+        }
         apply_live_settings(app);
     }
     out
