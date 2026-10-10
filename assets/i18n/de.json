@@ -1,5 +1,25 @@
 {
   "ingame": {
+    "navigator": {
+      "kmh": "km/h",
+      "off_route": "Abseits der Route",
+      "rerouting": "Route wird neu berechnet",
+      "recalculated": "Route neu berechnet",
+      "jam": "Stau",
+      "slow": "Langsam",
+      "map": "Karte",
+      "last_stop": "Endhaltestelle",
+      "on_time": "Pünktlich",
+      "days": {
+        "mon": "Mo",
+        "tue": "Di",
+        "wed": "Mi",
+        "thu": "Do",
+        "fri": "Fr",
+        "sat": "Sa",
+        "sun": "So"
+      }
+    },
     "infobar": {
       "outside": "Außen",
       "inside": "Innen",

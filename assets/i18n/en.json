@@ -1,5 +1,25 @@
 {
   "ingame": {
+    "navigator": {
+      "kmh": "km/h",
+      "off_route": "Off route",
+      "rerouting": "Recalculating route",
+      "recalculated": "Route recalculated",
+      "jam": "Traffic jam",
+      "slow": "Slow traffic",
+      "map": "Map",
+      "last_stop": "Final stop",
+      "on_time": "on time",
+      "days": {
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat",
+        "sun": "Sun"
+      }
+    },
     "infobar": {
       "outside": "Ext.",
       "inside": "Int.",
