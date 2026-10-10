@@ -23,7 +23,7 @@ mod words;
 
 pub(crate) use self::roads::{confirm_road_surfaces, road_geometry, simplify};
 pub(crate) use self::route::way_back;
-use self::{follow::*, roads::*, route::*, streets::*, style::*, util::*, words::*};
+use self::{roads::*, route::*, streets::*, style::*, util::*, words::*};
 
 pub(crate) fn stop_requested(vehicle: &::simulation::vehicle::VehicleInstance) -> bool {
     ["haltewunsch", "haltewunschlampe"]
