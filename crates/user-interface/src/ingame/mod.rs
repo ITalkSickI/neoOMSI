@@ -16,6 +16,7 @@ mod loading;
 mod run_report;
 mod shapes;
 mod style;
+mod timetable;
 #[cfg(test)]
 mod tests;
 mod text;
