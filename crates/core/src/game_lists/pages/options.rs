@@ -71,7 +71,7 @@ pub(crate) fn map_options_page(app: &App) -> Page {
             &file,
             "navigator_corner",
             &tx("pause.options.map.navigator_corner.name"),
-            &tx("pause.options.later"),
+            "",
         ),
     ]
     .into_iter()
@@ -121,7 +121,7 @@ pub(crate) fn options_pages(app: &App) -> Vec<Page> {
             &tx("pause.page.text.boarding_at_the_rear_doors"),
             &tx("pause.page.text.passengers_who_need_no_ticket_from_the_driver_also_get_on_at_the_rear_doors"),
         ),
-        pick("maintenance", &tx("pause.options.gameplay.maintenance.name"), later),
+        pick("maintenance", &tx("pause.options.gameplay.maintenance.name"), ""),
         switch_row(
             Some(app),
             "coll_objects",
@@ -140,8 +140,8 @@ pub(crate) fn options_pages(app: &App) -> Vec<Page> {
             &tx("pause.options.gameplay.collision_pedestrians.name"),
             &tx("pause.options.gameplay.collision_pedestrians.desc"),
         ),
-        pick("ai_unsched_factor", &tx("pause.options.gameplay.ai_unsched_factor.name"), later),
-        pick("ai_max_scheduled", &tx("pause.options.gameplay.ai_max_scheduled.name"), later),
+        pick("ai_unsched_factor", &tx("pause.options.gameplay.ai_unsched_factor.name"), ""),
+        pick("ai_max_scheduled", &tx("pause.options.gameplay.ai_max_scheduled.name"), ""),
         pick("ai_max_parked", &tx("pause.options.gameplay.ai_max_parked.name"), later),
     ]
         .into_iter()
@@ -464,9 +464,9 @@ pub(crate) fn options_pages(app: &App) -> Vec<Page> {
         pick(
             "shadow_casters",
             &tx("pause.options.graphics.shadow_casters.name"),
-            later,
+            "",
         ),
-        switch_row(Some(app), "ssao", &tx("pause.options.graphics.ssao.name"), later),
+        switch_row(Some(app), "ssao", &tx("pause.options.graphics.ssao.name"), ""),
         switch_row(
             Some(app),
             "reflections",
@@ -498,12 +498,12 @@ pub(crate) fn options_pages(app: &App) -> Vec<Page> {
         pick(
             "max_obj_dist",
             &tx("pause.options.graphics.max_obj_dist.name"),
-            later,
+            "",
         ),
         pick(
             "min_obj_size",
             &tx("pause.options.graphics.min_obj_size.name"),
-            later,
+            "",
         ),
         pick(
             "mirror_size",

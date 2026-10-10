@@ -249,6 +249,14 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
 /// What a drop-down of the settings chose, in a game or in the launcher (no `app`): a
 /// message to show when there is one.
 pub(crate) fn settings_pick(mut app: Option<&mut App>, action: &str) -> Option<String> {
+    let msg = settings_pick_inner(app.as_deref_mut(), action);
+    if let Some(app) = app {
+        apply_live_settings(app);
+    }
+    msg
+}
+
+fn settings_pick_inner(mut app: Option<&mut App>, action: &str) -> Option<String> {
     let (verb, arg) = action.split_once(' ').unwrap_or((action, ""));
     match verb {
         "pick" => {

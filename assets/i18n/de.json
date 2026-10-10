@@ -240,7 +240,7 @@
         },
         "momentary_gears": {
           "name": "Gangtasten ohne Rastung",
-          "desc": "Halte eine Gangtaste, um im Gang zu bleiben; beim Loslassen geht es zurück in den Leerlauf. Wirkt sich beim nächsten Spielstart aus"
+          "desc": "Halte eine Gangtaste, um im Gang zu bleiben; beim Loslassen geht es zurück in den Leerlauf"
         },
         "old_steering": {
           "desc": "Das Lenkrad bleibt dort, wo die Tasten es gelassen haben; du musst selbst zurücklenken",

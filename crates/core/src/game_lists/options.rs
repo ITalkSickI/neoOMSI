@@ -567,7 +567,46 @@ pub(crate) fn toggle_now(app: Option<&App>, id: &str) -> Option<bool> {
     })
 }
 
+pub(crate) fn apply_live_settings(app: &mut App) {
+    let max_obj_dist = match ::config::get_float("graphics", "max_obj_dist").unwrap_or(-1.0) as f32 {
+        d if d >= 0.0 => d,
+        _ => ::config::get_float("graphics", "view_distance")
+            .filter(|v| *v > 0.0)
+            .map(|v| v as f32)
+            .unwrap_or(900.0),
+    };
+    if let Some(r) = app.renderer.as_mut() {
+        r.options.ssao = ::config::get_bool("graphics", "ssao").unwrap_or(true);
+        r.options.reflections = ::config::get_bool("graphics", "reflections").unwrap_or(true);
+        r.options.omsi_shadow_casters = ::config::get_string("graphics", "shadow_casters").as_deref() == Some("omsi");
+        r.options.min_obj_size = ::config::get_float("graphics", "min_obj_size").unwrap_or(0.013) as f32;
+        r.options.max_obj_dist = max_obj_dist;
+    }
+    if let Some(p) = app.player.as_mut() {
+        p.momentary_gears = ::config::get_bool("gameplay", "momentary_gears").unwrap_or(false);
+        p.vehicle.host.wear_lifespan = [1.5e6, 0.01, 0.1, 1.0, 10.0]
+            [::config::get_int("gameplay", "maintenance").unwrap_or(0).clamp(0, 4) as usize];
+    }
+    if let Some(t) = app.traffic.as_mut() {
+        t.unsched_factor = ::config::get_float("ai", "unsched_factor").unwrap_or(1.0) as f32;
+        t.max_scheduled = ::config::get_int("ai", "max_scheduled")
+            .and_then(|v| u32::try_from(v).ok())
+            .unwrap_or(0);
+    }
+    if let Some(n) = app.navigator.as_mut() {
+        n.corner = ::config::get_string("ui", "navigator_corner").unwrap_or_else(|| "bottom-left".into());
+    }
+}
+
 pub(crate) fn toggle_set(mut app: Option<&mut App>, id: &str, on: bool) -> Option<(&'static str, String)> {
+    let out = toggle_set_inner(app.as_deref_mut(), id, on);
+    if let Some(app) = app {
+        apply_live_settings(app);
+    }
+    out
+}
+
+fn toggle_set_inner(mut app: Option<&mut App>, id: &str, on: bool) -> Option<(&'static str, String)> {
     match id {
         "navigator" => {
             if let Some(app) = app.as_deref_mut().filter(|a| a.vr_active()) {

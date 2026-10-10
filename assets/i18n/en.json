@@ -240,7 +240,7 @@
         },
         "momentary_gears": {
           "name": "Momentary gear buttons",
-          "desc": "Hold a gear button to stay in that gear; releasing it returns to neutral. Takes effect when the game starts the next time"
+          "desc": "Hold a gear button to stay in that gear; releasing it returns to neutral"
         },
         "old_steering": {
           "desc": "The steering wheel stays where the keys left it; you have to steer back yourself",
